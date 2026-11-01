@@ -13,12 +13,9 @@ panics.
 |---|---|
 | [`biguint`](crates/biguint) | Fixed-width unsigned integers of any bit width, with Karatsuba multiplication and divide-and-conquer division |
 
-Each crate's README covers its usage, algorithms, features and benchmarks.
-
 ## Minimum supported Rust version
 
-Every crate builds with Rust 1.88 or newer. `rust-toolchain.toml` pins the toolchain that CI and
-development use.
+Every crate builds with Rust 1.88 or newer.
 
 ## Development
 

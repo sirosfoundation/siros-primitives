@@ -1,7 +1,7 @@
 # biguint-bench-report
 
 Runs the benchmarks that compare `biguint` with other big-integer crates and writes
-`crates/biguint/BENCHMARKS.md` with one SVG chart per operation. The crate is unpublished.
+`crates/biguint/BENCHMARKS.md` with one SVG chart per operation.
 
 ## Usage
 
@@ -21,12 +21,3 @@ of the machine; the record keeps it for later reports.
 
 Timings need a quiet machine. On a busy one, pin the run to an idle CPU (for example with
 `taskset -c <cpu>`) and pass `--provisional`.
-
-## License
-
-Licensed under either of
-
-- [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
-- [MIT license](https://opensource.org/licenses/MIT)
-
-at your option.

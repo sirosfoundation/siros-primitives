@@ -8,7 +8,6 @@ use core::ops::Add;
 
 use biguint::typenum::{Sum, U1024 as Bits1024, U2048 as Bits2048, U4096 as Bits4096};
 use biguint::{Bits, Bits64, Bits128, Bits256, Bits384, Bits512, Uint};
-use bnum::cast::As;
 use num_bigint::BigUint;
 
 use super::{Cells, FromLimbs, Lib, Limbs, Op, Row, Visitor};
@@ -29,7 +28,7 @@ macro_rules! widths {
                         .lib(Lib::Native, $native)
                         .lib(Lib::Ruint, ruint::<$bits, $limbs, V>)
                         .lib(Lib::CryptoBigint, crypto_bigint::<$limbs, V>)
-                        .lib(Lib::Bnum, bnum::<$bytes, { 2 * $bytes }, V>)
+                        .lib(Lib::Bnum, bnum::<$bytes, V>)
                         .lib(Lib::Uint, parity::$parity)
                         .lib(Lib::NumBigint, num_bigint),
                 )*
@@ -117,23 +116,18 @@ macro_rules! primitive {
     };
 }
 
-/// `u64`. Its mulmod reduces the `u128` product.
+/// `u64`.
 fn native_u64<V: Visitor>(cells: Cells<V>) -> Cells<V> {
-    primitive!(cells, u64).composed(
-        Op::MulMod,
-        "`u128` product, then `% NonZero<u128>`",
-        three::<u64, NonZero<u64>>,
-        |&(a, b, modulus)| {
-            let product = u128::from(a) * u128::from(b);
-            (product % NonZero::<u128>::from(modulus)) as u64
-        },
-    )
+    primitive!(cells, u64).absent(Op::MulMod, NO_MUL_MOD)
 }
 
-/// `u128`. Its mulmod would need a 256-bit product.
+/// `u128`.
 fn native_u128<V: Visitor>(cells: Cells<V>) -> Cells<V> {
-    primitive!(cells, u128).absent(Op::MulMod, "no 256-bit primitive")
+    primitive!(cells, u128).absent(Op::MulMod, NO_MUL_MOD)
 }
+
+/// The reason for an absent mulmod case.
+const NO_MUL_MOD: &str = "no modular product";
 
 /// The widths above 128 bits, which have no primitive integer.
 fn native_none<V: Visitor>(cells: Cells<V>) -> Cells<V> {
@@ -184,8 +178,8 @@ fn crypto_bigint<const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
         )
 }
 
-/// `bnum` at `N` bytes. `W = 2 * N` is the width of the product in the composed mulmod.
-fn bnum<const N: usize, const W: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
+/// `bnum` at `N` bytes.
+fn bnum<const N: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
     by_value!(
         cells,
         bnum::Uint<N>,
@@ -194,29 +188,7 @@ fn bnum<const N: usize, const W: usize, V: Visitor>(cells: Cells<V>) -> Cells<V>
         Div => wrapping_div,
         Mod => wrapping_rem,
     )
-    .composed(
-        Op::MulMod,
-        "`widening_mul`, the halves joined at twice the width, then `wrapping_rem`",
-        three::<bnum::Uint<N>, bnum::Uint<N>>,
-        |&(a, b, modulus)| bnum_mul_mod::<N, W>(a, b, modulus),
-    )
-}
-
-/// `a * b mod modulus` from bnum's public API: the two halves of `widening_mul` joined into a
-/// `W`-byte integer, reduced by `wrapping_rem`, then cast back to `N` bytes.
-fn bnum_mul_mod<const N: usize, const W: usize>(
-    a: bnum::Uint<N>,
-    b: bnum::Uint<N>,
-    modulus: bnum::Uint<N>,
-) -> bnum::Uint<N> {
-    let (low, high) = a.widening_mul(b);
-    let mut bytes = [0; W];
-    let (low_bytes, high_bytes) = bytes.split_at_mut(N);
-    low_bytes.copy_from_slice(low.as_bytes());
-    high_bytes.copy_from_slice(high.as_bytes());
-    bnum::Uint::<W>::from_le_bytes(bytes)
-        .wrapping_rem(modulus.as_::<bnum::Uint<W>>())
-        .as_()
+    .absent(Op::MulMod, NO_MUL_MOD)
 }
 
 /// `num-bigint`, which allocates each result and returns it exactly.
@@ -226,12 +198,7 @@ fn num_bigint<V: Visitor>(cells: Cells<V>) -> Cells<V> {
         .api(Op::Mul, "&a * &b", pair::<BigUint>, |(a, b)| a * b)
         .api(Op::Div, "&a / &b", pair::<BigUint>, |(a, b)| a / b)
         .api(Op::Mod, "&a % &b", pair::<BigUint>, |(a, b)| a % b)
-        .composed(
-            Op::MulMod,
-            "`&a * &b`, then `%`",
-            three::<BigUint, BigUint>,
-            |(a, b, modulus)| a * b % modulus,
-        )
+        .absent(Op::MulMod, NO_MUL_MOD)
 }
 
 /// The parity `uint` crate: one `construct_uint!` type per width, and the double-width type of
@@ -242,7 +209,7 @@ fn num_bigint<V: Visitor>(cells: Cells<V>) -> Cells<V> {
     reason = "the code that `construct_uint!` expands to"
 )]
 mod parity {
-    use super::{Cells, FromLimbs, Limbs, Op, Visitor, pair, three};
+    use super::{Cells, FromLimbs, Limbs, Op, Visitor, pair};
     use crate::suite::ToLimbs;
 
     /// The `construct_uint!` type `$t` of `$words` words, with its limb conversions.
@@ -283,61 +250,29 @@ mod parity {
         };
     }
 
-    /// Generates each type with its `mul_mod` and its adapter. A line names the adapter, the
-    /// type, its `u64` words, and the type of its full product.
+    /// Generates each type and its adapter. A line names the adapter, the type and its `u64`
+    /// words.
     macro_rules! parity {
-        ($($adapter:ident: $t:ident($words:tt) => $wide:ident;)*) => {
+        ($($adapter:ident: $t:ident($words:tt);)*) => {
             $(
                 parity_type!($t($words));
 
-                impl $t {
-                    /// `self * rhs mod modulus`: the full product as `primitive-types` builds it
-                    /// (`uint_full_mul_reg!`), the modulus zero-extended to the product's width,
-                    /// then `%`.
-                    fn mul_mod(self, rhs: Self, modulus: Self) -> Self {
-                        let product = $wide(uint::uint_full_mul_reg!($t, $words, self, rhs));
-                        let mut wide_modulus = [0; 2 * $words];
-                        wide_modulus[..$words].copy_from_slice(&modulus.0);
-                        let remainder = product % $wide(wide_modulus);
-                        Self(core::array::from_fn(|index| remainder.0[index]))
-                    }
-                }
-
                 /// `uint` at the width of `$t`.
                 pub(super) fn $adapter<V: Visitor>(cells: Cells<V>) -> Cells<V> {
-                    parity_ops!(cells, $t).composed(
-                        Op::MulMod,
-                        "`uint_full_mul_reg!` (`full_mul` in primitive-types), then `%`",
-                        three::<$t, $t>,
-                        |&(a, b, modulus)| a.mul_mod(b, modulus),
-                    )
+                    parity_ops!(cells, $t).absent(Op::MulMod, super::NO_MUL_MOD)
                 }
             )*
         };
     }
 
-    uint::construct_uint! {
-        struct U768(12);
-    }
-
     parity! {
-        uint_64: U64(1) => U128;
-        uint_128: U128(2) => U256;
-        uint_256: U256(4) => U512;
-        uint_384: U384(6) => U768;
-        uint_512: U512(8) => U1024;
-        uint_1024: U1024(16) => U2048;
-        uint_2048: U2048(32) => U4096;
-    }
-
-    parity_type!(U4096(64));
-
-    /// `uint` at 4096 bits. `construct_uint!` unrolls each loop over the words with `crunchy`,
-    /// which `uint` builds with a limit of 64 words, so the 8192-bit product does not compile.
-    pub(super) fn uint_4096<V: Visitor>(cells: Cells<V>) -> Cells<V> {
-        parity_ops!(cells, U4096).absent(
-            Op::MulMod,
-            "`construct_uint!` stops at 64 words, below the 128 of the 8192-bit product",
-        )
+        uint_64: U64(1);
+        uint_128: U128(2);
+        uint_256: U256(4);
+        uint_384: U384(6);
+        uint_512: U512(8);
+        uint_1024: U1024(16);
+        uint_2048: U2048(32);
+        uint_4096: U4096(64);
     }
 }

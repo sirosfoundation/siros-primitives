@@ -13,8 +13,6 @@ use crate::Error;
 pub(crate) enum Kind {
     /// The crate's own function for the operation.
     Api,
-    /// A composition of the crate's public functions.
-    Composed,
     /// No case; the detail gives the reason.
     Absent,
 }
@@ -33,7 +31,7 @@ pub(crate) struct Cell {
     pub(crate) library: String,
     /// What the cell runs.
     pub(crate) kind: Kind,
-    /// The function, the composition, or the reason for the absence.
+    /// The function, or the reason for the absence.
     pub(crate) detail: String,
     /// The operations in one iteration of the case.
     pub(crate) batch: u32,

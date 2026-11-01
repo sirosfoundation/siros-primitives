@@ -50,6 +50,7 @@ pub(crate) fn write(
     lines.extend(method(&table));
     lines.extend(functions(&table));
     lines.extend(results(&table));
+    lines.extend(reproduce());
     let path = paths.library().join("BENCHMARKS.md");
     fs::write(&path, lines.join("\n") + "\n").map_err(|source| Error::io(&path, source))
 }
@@ -203,25 +204,13 @@ fn header(record: &Record, table: &Table<'_>) -> Vec<String> {
         "# Benchmarks".to_owned(),
         String::new(),
         format!(
-            "`{SUBJECT}` against {}: {} at {} bits.",
+            "`{SUBJECT}` at commit `{}` against {}: {} at {} bits, measured on {}.{state}",
+            short(&record.library_commit),
             sentence(&others),
             sentence(&table.ops.iter().map(|(op, _)| *op).collect::<Vec<_>>()),
-            sentence(&table.widths)
-        ),
-        String::new(),
-        format!(
-            "The numbers measure `{SUBJECT}` at commit `{}`, the last commit that changed \
-             `crates/{SUBJECT}/src`. The bench ran at commit `{}` on {}.{state} These commands \
-             regenerate the results:",
-            short(&record.library_commit),
-            short(&record.head),
+            sentence(&table.widths),
             record.date
         ),
-        String::new(),
-        "```sh".to_owned(),
-        "cargo run -p biguint-bench-report -- bench    # criterion, for both builds".to_owned(),
-        "cargo run -p biguint-bench-report -- report   # this file and benchmarks/*.svg".to_owned(),
-        "```".to_owned(),
         String::new(),
     ]
 }
@@ -273,28 +262,18 @@ fn summary(table: &Table<'_>) -> Vec<String> {
 }
 
 fn setup(record: &Record) -> Result<Vec<String>, Error> {
-    let available = match record.available_cpus {
-        1 => "1 logical CPU".to_owned(),
-        count => format!("{count} logical CPUs"),
+    let cpu = match &record.machine {
+        Some(machine) => format!("{machine} (`{}`)", record.native_cpu),
+        None => format!("`{}`", record.native_cpu),
     };
-    let mut cpu = format!(
-        "`{}` (the CPU that `-C target-cpu=native` selects); {available} available to the run",
-        record.native_cpu
-    );
-    if let Some(machine) = &record.machine {
-        cpu = format!("{machine}; {cpu}");
-    }
     let builds: Vec<String> = record
         .builds
         .iter()
         .map(|build| {
             if build.rustflags.is_empty() {
-                format!(
-                    "`{}`: no `RUSTFLAGS`, the baseline of the host target.",
-                    build.name
-                )
+                format!("`{}`: the baseline of the host target.", build.name)
             } else {
-                format!("`{}`: `RUSTFLAGS=\"{}\"`.", build.name, build.rustflags)
+                format!("`{}`: `{}`.", build.name, build.rustflags)
             }
         })
         .collect();
@@ -309,18 +288,18 @@ fn setup(record: &Record) -> Result<Vec<String>, Error> {
         .filter(|entry| entry.name != "criterion")
         .map(|entry| format!("{} {}", entry.name, entry.version))
         .collect();
+    let timing = match record.criterion_args.as_slice() {
+        [] => format!("criterion {}", criterion.version),
+        args => format!("criterion {} `{}`", criterion.version, args.join(" ")),
+    };
     let rows = vec![
         vec!["CPU".to_owned(), cpu],
-        vec!["Host".to_owned(), format!("`{}`", record.host)],
         vec![
             "Compiler".to_owned(),
             format!("{}, LLVM {}, `bench` profile", record.rustc, record.llvm),
         ],
         vec!["Builds".to_owned(), builds.join(" ")],
-        vec![
-            "Timing".to_owned(),
-            timing(&criterion.version, &record.criterion_args),
-        ],
+        vec!["Timing".to_owned(), timing],
         vec!["Crates".to_owned(), crates.join(", ")],
     ];
     let mut lines = vec!["## Setup".to_owned(), String::new()];
@@ -328,24 +307,12 @@ fn setup(record: &Record) -> Result<Vec<String>, Error> {
     if let Some(reason) = &record.provisional {
         lines.push(String::new());
         lines.push(format!(
-            "**The times are provisional.** {reason} Each time is an upper bound, and the times \
+            "**The times are provisional.** {reason}. Each time is an upper bound, and the times \
              compare only within one table."
         ));
     }
     lines.push(String::new());
     Ok(lines)
-}
-
-/// How criterion `version` sampled the cases with `args`.
-fn timing(version: &str, args: &[String]) -> String {
-    match args {
-        [quick] if quick == "--quick" => format!(
-            "criterion {version} with `--quick`: no warm-up; the iterations of a case double until \
-             two consecutive runs agree within 5%, from 100 ms to 3 s"
-        ),
-        [] => format!("criterion {version}: 1 s warm-up, 3 s of samples, 100 samples"),
-        _ => format!("criterion {version} with `{}`", args.join(" ")),
-    }
 }
 
 fn method(table: &Table<'_>) -> Vec<String> {
@@ -370,31 +337,17 @@ fn method(table: &Table<'_>) -> Vec<String> {
         "## Method".to_owned(),
         String::new(),
         format!(
-            "- Each case runs one crate's function over a batch of {batch} operand sets. Each \
-             operand set and each result passes through `core::hint::black_box`, so the branch \
-             predictors see varied data and the compiler computes every result."
+            "Each case times one crate's function over {batch} operand sets, the same for every \
+             crate in a row, with operands and results behind `core::hint::black_box`. The time \
+             per operation is criterion's median for the batch divided by {batch}. Every result \
+             equals `num-bigint`'s, reduced modulo 2^N for the crates that wrap."
         ),
-        format!(
-            "- Time per operation: criterion's median estimate of one iteration, divided by \
-             {batch}."
-        ),
-        "- Before a case is measured, its result on every operand set must equal the exact \
-         result from `num-bigint`, reduced modulo 2^N for the crates that wrap."
-            .to_owned(),
-        String::new(),
-        "## Operands".to_owned(),
-        String::new(),
-        "At width N:".to_owned(),
         String::new(),
     ];
     lines.extend(markdown_table(
-        &["Operation".to_owned(), "Operands".to_owned()],
+        &["Operation".to_owned(), "Operands at width N".to_owned()],
         &rows,
         "ll",
-    ));
-    lines.push(String::new());
-    lines.push(format!(
-        "Every crate in a row gets the same {batch} operand sets."
     ));
     lines.push(String::new());
     lines
@@ -405,37 +358,28 @@ fn functions(table: &Table<'_>) -> Vec<String> {
     for (op, _) in &table.ops {
         let mut row = vec![(*op).to_owned()];
         for library in &table.crates {
-            // Whether the function is composed, the function, and its widths.
-            let mut groups: Vec<(bool, &str, Vec<u32>)> = Vec::new();
+            // Each function with the widths it runs at.
+            let mut groups: Vec<(&str, Vec<u32>)> = Vec::new();
             for &bits in &table.widths {
                 let Some(cell) = table.cells.get(&(*op, bits, *library)) else {
                     continue;
                 };
-                let composed = match cell.kind {
-                    Kind::Api => false,
-                    Kind::Composed => true,
-                    Kind::Absent => continue,
-                };
-                match groups
-                    .iter_mut()
-                    .find(|(other, detail, _)| *other == composed && *detail == cell.detail)
-                {
-                    Some((_, _, widths)) => widths.push(bits),
-                    None => groups.push((composed, &cell.detail, vec![bits])),
+                if cell.kind == Kind::Absent {
+                    continue;
+                }
+                match groups.iter_mut().find(|(detail, _)| *detail == cell.detail) {
+                    Some((_, widths)) => widths.push(bits),
+                    None => groups.push((&cell.detail, vec![bits])),
                 }
             }
             let entries: Vec<String> = groups
                 .iter()
-                .map(|(composed, detail, widths)| {
-                    let mut text = if *composed {
-                        format!("{detail} (composed)")
-                    } else {
+                .map(|(detail, widths)| {
+                    if *widths == table.widths {
                         format!("`{detail}`")
-                    };
-                    if *widths != table.widths {
-                        text += &format!(" at {} bits", sentence(widths));
+                    } else {
+                        format!("`{detail}` at {} bits", sentence(widths))
                     }
-                    text
                 })
                 .collect();
             row.push(if entries.is_empty() {
@@ -451,24 +395,18 @@ fn functions(table: &Table<'_>) -> Vec<String> {
     let mut lines = vec![
         "## Functions".to_owned(),
         String::new(),
-        "Each crate runs its own fastest public function for an operation. A crate without one \
-         runs the obvious composition of its public functions, marked composed."
-            .to_owned(),
+        "Each cell times the crate's own function:".to_owned(),
         String::new(),
     ];
     lines.extend(markdown_table(&header, &rows, &"l".repeat(header.len())));
     lines.push(String::new());
     lines.extend(
         [
-            "- `native` is `u64` at 64 bits and `u128` at 128 bits. Its divisors are `NonZero`.",
-            "- `biguint` subtracts with the carry chain of its addition, so the bench measures add \
-             only.",
-            "- `crypto-bigint` is constant-time by design. Its div, mod and mulmod cases run its \
-             `*_vartime` functions. Its add and mul have no variable-time variant.",
-            "- `num-bigint` allocates every result and returns it exactly: add returns up to N + \
-             1 bits, and mul returns the 2N-bit product. Its times include the allocation.",
-            "- `uint` is the parity crate. Its types come from `construct_uint!`, as in \
-             `primitive-types`; its add and mul wrap through `overflowing_*`.",
+            "- `native` is `u64` at 64 bits and `u128` at 128 bits.",
+            "- `crypto-bigint` is constant-time; its div, mod and mulmod cases run its \
+             `*_vartime` functions.",
+            "- `num-bigint` allocates each result.",
+            "- `uint` is `construct_uint!`, as in `primitive-types`.",
         ]
         .map(str::to_owned),
     );
@@ -477,13 +415,15 @@ fn functions(table: &Table<'_>) -> Vec<String> {
     lines
 }
 
-/// One line per crate and reason without a case: the operations and the widths it covers.
+/// Per crate, its empty cells as (operation, width).
+type EmptyCells<'a> = Vec<(&'a str, Vec<(&'a str, u32)>)>;
+
+/// One line per reason for an empty cell: per crate, the operations and widths it covers, with
+/// the operations left out when they are all of them.
 fn absences(table: &Table<'_>) -> Vec<String> {
-    let mut lines = Vec::new();
+    let mut reasons: Vec<(&str, EmptyCells<'_>)> = Vec::new();
     for library in &table.crates {
-        let mut groups: Vec<(&str, Vec<u32>, Vec<&str>)> = Vec::new();
         for (op, _) in &table.ops {
-            let mut reasons: Vec<(&str, Vec<u32>)> = Vec::new();
             for &bits in &table.widths {
                 let Some(cell) = table.cells.get(&(*op, bits, *library)) else {
                     continue;
@@ -491,42 +431,62 @@ fn absences(table: &Table<'_>) -> Vec<String> {
                 if cell.kind != Kind::Absent {
                     continue;
                 }
-                match reasons
-                    .iter_mut()
-                    .find(|(reason, _)| *reason == cell.detail)
+                let position = match reasons
+                    .iter()
+                    .position(|(reason, _)| *reason == cell.detail)
                 {
-                    Some((_, widths)) => widths.push(bits),
-                    None => reasons.push((&cell.detail, vec![bits])),
+                    Some(position) => position,
+                    None => {
+                        reasons.push((&cell.detail, Vec::new()));
+                        reasons.len() - 1
+                    }
+                };
+                let Some((_, crates)) = reasons.get_mut(position) else {
+                    continue;
+                };
+                match crates.iter_mut().find(|(other, _)| other == library) {
+                    Some((_, cells)) => cells.push((op, bits)),
+                    None => crates.push((library, vec![(op, bits)])),
                 }
             }
-            for (reason, widths) in reasons {
-                match groups
-                    .iter_mut()
-                    .find(|(other, other_widths, _)| *other == reason && *other_widths == widths)
-                {
-                    Some((_, _, ops)) => ops.push(op),
-                    None => groups.push((reason, widths, vec![op])),
-                }
-            }
-        }
-        for (reason, widths, ops) in groups {
-            lines.push(format!(
-                "- `{library}` has no case for {} at {} bits: {reason}.",
-                sentence(&ops),
-                sentence(&widths)
-            ));
         }
     }
-    lines
+    reasons
+        .iter()
+        .map(|(reason, crates)| {
+            let cases: Vec<String> = crates
+                .iter()
+                .map(|(library, cells)| describe(table, library, cells))
+                .collect();
+            let mut reason = (*reason).to_owned();
+            if let Some(first) = reason.get_mut(..1) {
+                first.make_ascii_uppercase();
+            }
+            format!("- {reason}: {}.", sentence(&cases))
+        })
+        .collect()
+}
+
+/// The empty `cells` of `library`: its name, the operations unless all of them, and the widths
+/// unless all of them.
+fn describe(table: &Table<'_>, library: &str, cells: &[(&str, u32)]) -> String {
+    let ops = unique(cells.iter().map(|(op, _)| *op));
+    let widths = unique(cells.iter().map(|(_, bits)| *bits));
+    let mut text = format!("`{library}`");
+    if ops.len() < table.ops.len() {
+        text += &format!(" {}", sentence(&ops));
+    }
+    if widths.len() < table.widths.len() {
+        text += &format!(" at {} bits", sentence(&widths));
+    }
+    text
 }
 
 fn results(table: &Table<'_>) -> Vec<String> {
     let mut lines = vec![
         "## Results".to_owned(),
         String::new(),
-        "Each cell: nanoseconds per operation. Bold marks the fastest time in each row. A dash \
-         marks a crate without a case."
-            .to_owned(),
+        "Each cell: nanoseconds per operation. Bold marks the fastest time in each row.".to_owned(),
     ];
     for (op, formula) in &table.ops {
         let mut rows = Vec::new();
@@ -566,4 +526,18 @@ fn results(table: &Table<'_>) -> Vec<String> {
         ));
     }
     lines
+}
+
+fn reproduce() -> Vec<String> {
+    [
+        "",
+        "## Reproduce",
+        "",
+        "```sh",
+        "cargo run -p biguint-bench-report -- bench    # criterion, default and native builds",
+        "cargo run -p biguint-bench-report -- report   # this file and benchmarks/*.svg",
+        "```",
+    ]
+    .map(str::to_owned)
+    .to_vec()
 }

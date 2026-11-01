@@ -146,26 +146,23 @@ impl fmt::Display for CaseId {
 pub enum Call {
     /// The crate's function for the operation, by name.
     Api(&'static str),
-    /// A composition of the crate's public functions, described.
-    Composed(&'static str),
     /// No case; the reason.
     Absent(&'static str),
 }
 
 impl Call {
-    /// `api`, `composed` or `absent`.
+    /// `api` or `absent`.
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::Api(_) => "api",
-            Self::Composed(_) => "composed",
             Self::Absent(_) => "absent",
         }
     }
 
-    /// The function, the composition, or the reason for the absence.
+    /// The function, or the reason for the absence.
     pub const fn detail(&self) -> &'static str {
         match self {
-            Self::Api(detail) | Self::Composed(detail) | Self::Absent(detail) => detail,
+            Self::Api(detail) | Self::Absent(detail) => detail,
         }
     }
 }
@@ -260,18 +257,6 @@ impl<V: Visitor> Cells<V> {
         run: impl Fn(&I) -> O + Copy,
     ) -> Self {
         self.offer(op, Call::Api(function), prepare, run)
-    }
-
-    /// Offers the case that composes `op` from the crate's public functions, as `description`
-    /// says.
-    pub fn composed<I, O: ToLimbs>(
-        self,
-        op: Op,
-        description: &'static str,
-        prepare: impl Fn(&[Limbs]) -> I,
-        run: impl Fn(&I) -> O + Copy,
-    ) -> Self {
-        self.offer(op, Call::Composed(description), prepare, run)
     }
 
     /// Records that the crate has no case for `op`, for `reason`.
