@@ -23,7 +23,16 @@ thiserror.workspace = true
 typenum.workspace = true
 
 [dev-dependencies]
+bnum.workspace = true
+criterion.workspace = true
+crypto-bigint.workspace = true
+num-bigint.workspace = true
 ruint.workspace = true
+uint.workspace = true
+
+[[bench]]
+name = "compare"
+harness = false
 
 [lints]
 workspace = true

@@ -17,7 +17,12 @@ generic-array = { version = "1.4.3", default-features = false, features = ["cons
 thiserror = { version = "2.0.17", default-features = false }
 typenum = { version = "1.20.1", features = ["const-generics"] }
 
-ruint = { version = "=1.17.2", default-features = false }
+bnum = { version = "0.14.4", default-features = false }
+criterion = { version = "0.8.2", default-features = false }
+crypto-bigint = { version = "0.7.10", default-features = false }
+num-bigint = { version = "0.5.1", default-features = false }
+ruint = { version = "1.21.1", default-features = false }
+uint = { version = "0.10.2", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
