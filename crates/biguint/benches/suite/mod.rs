@@ -221,9 +221,6 @@ pub fn visit<V: Visitor>(visitor: V) -> V {
 /// Runs `run` on each input of `batch` and returns the number of runs. Each input and each
 /// result passes through [`black_box`], so the compiler can neither precompute a result nor skip
 /// one.
-///
-/// Criterion times this function. In `--count` mode a case calls it once, and callgrind counts
-/// the instructions from its entry to its exit.
 #[inline(never)]
 pub fn run_batch<I, O>(batch: &[I], run: impl Fn(&I) -> O) -> usize {
     batch

@@ -6,7 +6,7 @@
 use core::num::NonZero;
 use core::ops::Add;
 
-use biguint::typenum::Sum;
+use biguint::typenum::{Sum, U1024 as Bits1024, U2048 as Bits2048, U4096 as Bits4096};
 use biguint::{Bits, Bits64, Bits128, Bits256, Bits384, Bits512, Uint};
 use bnum::cast::As;
 use num_bigint::BigUint;
@@ -45,6 +45,9 @@ widths! {
     256: Bits256, native_none, 4, 32, uint_256;
     384: Bits384, native_none, 6, 48, uint_384;
     512: Bits512, native_none, 8, 64, uint_512;
+    1024: Bits1024, native_none, 16, 128, uint_1024;
+    2048: Bits2048, native_none, 32, 256, uint_2048;
+    4096: Bits4096, native_none, 64, 512, uint_4096;
 }
 
 /// The two operands of a set.
@@ -246,28 +249,53 @@ mod parity {
     use super::{Cells, FromLimbs, Limbs, Op, Visitor, pair, three};
     use crate::suite::ToLimbs;
 
-    /// Generates each type, its limb conversions, its `mul_mod`, and its adapter. A line names
-    /// the adapter, the type, its `u64` words, and the type of its full product.
+    /// The `construct_uint!` type `$t` of `$words` words, with its limb conversions.
+    macro_rules! parity_type {
+        ($t:ident($words:tt)) => {
+            uint::construct_uint! {
+                struct $t($words);
+            }
+
+            impl FromLimbs for $t {
+                fn from_limbs(limbs: &[u64]) -> Self {
+                    Self(limbs.try_into().unwrap_or_else(|_| {
+                        panic!("{} limbs for a {}-word integer", limbs.len(), $words)
+                    }))
+                }
+            }
+
+            impl ToLimbs for $t {
+                fn to_limbs(&self) -> Option<Limbs> {
+                    Some(self.0.to_vec())
+                }
+            }
+        };
+    }
+
+    /// Offers add, sub, mul, div and mod of `$t`.
+    macro_rules! parity_ops {
+        ($cells:expr, $t:ident) => {
+            $cells
+                .api(Op::Add, "overflowing_add", pair::<$t>, |&(a, b)| {
+                    a.overflowing_add(b).0
+                })
+                .api(Op::Sub, "overflowing_sub", pair::<$t>, |&(a, b)| {
+                    a.overflowing_sub(b).0
+                })
+                .api(Op::Mul, "overflowing_mul", pair::<$t>, |&(a, b)| {
+                    a.overflowing_mul(b).0
+                })
+                .api(Op::Div, "/", pair::<$t>, |&(a, b)| a / b)
+                .api(Op::Mod, "%", pair::<$t>, |&(a, b)| a % b)
+        };
+    }
+
+    /// Generates each type with its `mul_mod` and its adapter. A line names the adapter, the
+    /// type, its `u64` words, and the type of its full product.
     macro_rules! parity {
         ($($adapter:ident: $t:ident($words:tt) => $wide:ident;)*) => {
             $(
-                uint::construct_uint! {
-                    struct $t($words);
-                }
-
-                impl FromLimbs for $t {
-                    fn from_limbs(limbs: &[u64]) -> Self {
-                        Self(limbs.try_into().unwrap_or_else(|_| {
-                            panic!("{} limbs for a {}-word integer", limbs.len(), $words)
-                        }))
-                    }
-                }
-
-                impl ToLimbs for $t {
-                    fn to_limbs(&self) -> Option<Limbs> {
-                        Some(self.0.to_vec())
-                    }
-                }
+                parity_type!($t($words));
 
                 impl $t {
                     /// `self * rhs mod modulus`: the full product as `primitive-types` builds it
@@ -284,24 +312,12 @@ mod parity {
 
                 /// `uint` at the width of `$t`.
                 pub(super) fn $adapter<V: Visitor>(cells: Cells<V>) -> Cells<V> {
-                    cells
-                        .api(Op::Add, "overflowing_add", pair::<$t>, |&(a, b)| {
-                            a.overflowing_add(b).0
-                        })
-                        .api(Op::Sub, "overflowing_sub", pair::<$t>, |&(a, b)| {
-                            a.overflowing_sub(b).0
-                        })
-                        .api(Op::Mul, "overflowing_mul", pair::<$t>, |&(a, b)| {
-                            a.overflowing_mul(b).0
-                        })
-                        .api(Op::Div, "/", pair::<$t>, |&(a, b)| a / b)
-                        .api(Op::Mod, "%", pair::<$t>, |&(a, b)| a % b)
-                        .composed(
-                            Op::MulMod,
-                            "`uint_full_mul_reg!` (`full_mul` in primitive-types), then `%`",
-                            three::<$t, $t>,
-                            |&(a, b, modulus)| a.mul_mod(b, modulus),
-                        )
+                    parity_ops!(cells, $t).composed(
+                        Op::MulMod,
+                        "`uint_full_mul_reg!` (`full_mul` in primitive-types), then `%`",
+                        three::<$t, $t>,
+                        |&(a, b, modulus)| a.mul_mod(b, modulus),
+                    )
                 }
             )*
         };
@@ -311,15 +327,24 @@ mod parity {
         struct U768(12);
     }
 
-    uint::construct_uint! {
-        struct U1024(16);
-    }
-
     parity! {
         uint_64: U64(1) => U128;
         uint_128: U128(2) => U256;
         uint_256: U256(4) => U512;
         uint_384: U384(6) => U768;
         uint_512: U512(8) => U1024;
+        uint_1024: U1024(16) => U2048;
+        uint_2048: U2048(32) => U4096;
+    }
+
+    parity_type!(U4096(64));
+
+    /// `uint` at 4096 bits. `construct_uint!` unrolls each loop over the words with `crunchy`,
+    /// which `uint` builds with a limit of 64 words, so the 8192-bit product does not compile.
+    pub(super) fn uint_4096<V: Visitor>(cells: Cells<V>) -> Cells<V> {
+        parity_ops!(cells, U4096).absent(
+            Op::MulMod,
+            "`construct_uint!` stops at 64 words, below the 128 of the 8192-bit product",
+        )
     }
 }
