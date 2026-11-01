@@ -7,17 +7,14 @@ use typenum::{Gr, IsGreater, Mod, NonZero, Quot, Sum, U0, U1, Unsigned};
 type DivUp<A, B> = Sum<Quot<A, B>, Gr<Mod<A, B>, U0>>;
 type LimbsFor<N> = DivUp<N, typenum::U64>;
 type BytesFor<N> = DivUp<N, typenum::U8>;
-type DigitsFor<N> = Sum<LimbsFor<N>, LimbsFor<N>>;
 
 pub(crate) mod sealed {
     use generic_array::ArrayLength;
 
-    /// Seals [`super::Bits`] and carries the array lengths that only the division uses.
+    /// Seals [`super::Bits`] and carries the array length that only the division uses.
     pub trait Sealed {
-        /// `2 * ceil(N / 64)`: the base-2^32 digits of a `Uint<N>`.
-        type Digits: ArrayLength;
-        /// `Digits + 1`: the digits of a normalized dividend.
-        type NormalizedDigits: ArrayLength;
+        /// `ceil(N / 64) + 1`: a dividend shifted left until its divisor's top bit is set.
+        type Window: ArrayLength;
     }
 }
 
@@ -26,12 +23,10 @@ where
     N: Unsigned + Div<typenum::U64> + Rem<typenum::U64>,
     Mod<N, typenum::U64>: IsGreater<U0>,
     Quot<N, typenum::U64>: Add<Gr<Mod<N, typenum::U64>, U0>>,
-    LimbsFor<N>: Add<LimbsFor<N>>,
-    DigitsFor<N>: ArrayLength + Add<U1>,
-    Sum<DigitsFor<N>, U1>: ArrayLength,
+    LimbsFor<N>: Add<U1>,
+    Sum<LimbsFor<N>, U1>: ArrayLength,
 {
-    type Digits = DigitsFor<N>;
-    type NormalizedDigits = Sum<DigitsFor<N>, U1>;
+    type Window = Sum<LimbsFor<N>, U1>;
 }
 
 /// A bit width `N >= 1`, given as a `typenum` unsigned integer, with its storage sizes.

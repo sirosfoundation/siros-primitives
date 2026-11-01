@@ -7,12 +7,16 @@
 //! each stream into straight-line code over the limbs.
 //!
 //! ```
-//! use siros_primitives_core::typenum::U521;
-//! use siros_primitives_core::{U256, U512, Uint, WideningMul};
+//! use biguint::typenum::U521;
+//! use biguint::{U256, U512, Uint, WideningMul};
 //!
 //! let top = U256::ONE << 255usize;
 //! assert_eq!(U256::from_u64(3) * top, top);
 //! assert_eq!(top.widening_mul(top), U512::ONE << 510usize);
+//! assert_eq!(
+//!     U256::from_u64(7).mul_mod(U256::from_u64(9), U256::from_u64(10)),
+//!     Some(U256::from_u64(3))
+//! );
 //!
 //! let max521: Uint<U521> = !Uint::ZERO;
 //! assert_eq!(max521.bit_len(), 521);
@@ -40,7 +44,7 @@ mod bitwise;
 mod bytes;
 mod cmp;
 mod convert;
-mod div_rem;
+mod div;
 mod fmt;
 mod limb;
 mod mul;

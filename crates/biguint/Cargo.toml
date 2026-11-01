@@ -1,0 +1,29 @@
+[package]
+name = "biguint"
+version = "0.1.0"
+description = "Fixed-width big unsigned integers of any bit width, with optimal division and modular multiplication"
+keywords = ["bigint", "biguint", "uint", "u256", "arithmetic"]
+categories = ["mathematics", "cryptography", "no-std", "no-std::no-alloc"]
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["precomputed"]
+# A 512-byte table seeds the division reciprocal; without it, a 32-bit division computes the seed.
+precomputed = []
+
+[dependencies]
+const-default.workspace = true
+derive-where.workspace = true
+generic-array.workspace = true
+thiserror.workspace = true
+typenum.workspace = true
+
+[dev-dependencies]
+ruint.workspace = true
+
+[lints]
+workspace = true

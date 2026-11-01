@@ -3,9 +3,9 @@
 
 use core::ops::Add;
 
+use biguint::{Bits, OutOfRange, Pow, Uint, WideningMul};
 use generic_array::GenericArray;
 use generic_array::sequence::GenericSequence;
-use siros_primitives_core::{Bits, OutOfRange, Pow, Uint, WideningMul};
 use typenum::{
     Sum, U1, U7, U8, U28, U63, U64, U65, U100, U128, U129, U192, U256, U384, U512, U521,
 };
@@ -55,11 +55,9 @@ fn repeated<N: Bits>(limb: u64) -> Uint<N> {
     Uint::from_generic_limbs(GenericArray::generate(|_| limb))
 }
 
-fn limbs<N: Bits>(low: u64, high: u64) -> Uint<N> {
-    Uint::from_generic_limbs(GenericArray::generate(|index| match index {
-        0 => low,
-        1 => high,
-        _ => 0,
+fn limbs<N: Bits>(values: &[u64]) -> Uint<N> {
+    Uint::from_generic_limbs(GenericArray::generate(|index| {
+        values.get(index).copied().unwrap_or(0)
     }))
 }
 
@@ -83,11 +81,11 @@ fn samples<N: Bits>() -> Vec<Uint<N>> {
             values.push((Uint::ONE << bit) - Uint::<N>::ONE);
         }
     }
-    if N::BITS >= 128 {
-        // Knuth's add-back case (step D6) in base 2^32: the estimated quotient digit
-        // 0xffff_ffff is one too large for this dividend and divisor.
-        values.push(limbs(0, 0x7fff_ffff_8000_0000));
-        values.push(limbs(1, 0x8000_0000));
+    if N::BITS >= 256 {
+        // Dividing the first by the second, the 3-by-2 step overestimates the first quotient limb
+        // (Knuth's add-back, step D6), and the second quotient limb is `2^64 - 1`.
+        values.push(limbs(&[11, 3, 7, 1 << 63]));
+        values.push(limbs(&[9, 7, 1 << 63]));
     }
     let mut rng = Rng(N::BITS as u64);
     values.extend((0..24).map(|_| rng.uint::<N>()));
@@ -212,6 +210,71 @@ fn division_matches_reference() {
         }
     }
     for_each_width!(check);
+}
+
+#[test]
+fn mul_mod_matches_reference() {
+    /// The moduli: the edges of the range and random values.
+    fn moduli<N: Bits>() -> Vec<Uint<N>> {
+        let values = samples::<N>();
+        let mut moduli: Vec<Uint<N>> = values.iter().copied().take(7).collect();
+        moduli.extend(values.iter().copied().rev().take(5));
+        moduli
+    }
+
+    fn check<N, const B: usize, const L: usize>()
+    where
+        N: Bits + Add<N>,
+        Sum<N, N>: Bits,
+    {
+        let operands: Vec<Uint<N>> = samples::<N>().into_iter().rev().take(16).collect();
+        for modulus in moduli::<N>() {
+            let rm = reference::<N, B, L>(modulus);
+            for &a in &operands {
+                for &b in &operands {
+                    let expected = (!modulus.is_zero())
+                        .then(|| reference::<N, B, L>(a).mul_mod(reference(b), rm));
+                    let product = a.mul_mod(b, modulus).map(reference::<N, B, L>);
+                    assert_eq!(product, expected, "{B}: {a:?} * {b:?} mod {modulus:?}");
+                }
+            }
+        }
+    }
+
+    /// Operands and modulus of three different widths, against `ruint` at a width that holds all.
+    fn check_mixed<N, M, Q>()
+    where
+        N: Bits + Add<M>,
+        M: Bits,
+        Q: Bits,
+        Sum<N, M>: Bits,
+    {
+        type Wide = ruint::Uint<1152, 18>;
+        fn wide<W: Bits>(value: Uint<W>) -> Wide {
+            Wide::from_limbs(core::array::from_fn(|index| {
+                value.as_limbs().get(index).copied().unwrap_or(0)
+            }))
+        }
+        let rhs_values: Vec<Uint<M>> = samples::<M>().into_iter().rev().take(12).collect();
+        for modulus in moduli::<Q>() {
+            for a in samples::<N>().into_iter().rev().take(12) {
+                for &b in &rhs_values {
+                    let expected =
+                        (!modulus.is_zero()).then(|| wide(a).mul_mod(wide(b), wide(modulus)));
+                    let product = a.mul_mod(b, modulus).map(wide);
+                    assert_eq!(product, expected, "{a:?} * {b:?} mod {modulus:?}");
+                }
+            }
+        }
+    }
+
+    for_each_width!(check);
+    check_mixed::<U64, U64, U128>();
+    check_mixed::<U256, U128, U192>();
+    check_mixed::<U521, U521, U64>();
+    check_mixed::<U100, U28, U100>();
+    check_mixed::<U512, U512, U521>();
+    check_mixed::<U8, U1, U7>();
 }
 
 #[test]

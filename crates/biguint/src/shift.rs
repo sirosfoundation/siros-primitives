@@ -53,7 +53,7 @@ fn shift_amount<N: Bits, RhsN: Bits>(rhs: Uint<RhsN>) -> Option<usize> {
 }
 
 /// The limbs of `limbs * 2^shift`, then `0` forever.
-struct ShiftLeftStream<'a> {
+pub(crate) struct ShiftLeftStream<'a> {
     limbs: &'a [u64],
     limb_shift: usize,
     bit_shift: usize,
@@ -62,7 +62,7 @@ struct ShiftLeftStream<'a> {
 
 impl<'a> ShiftLeftStream<'a> {
     #[inline(always)]
-    const fn new(limbs: &'a [u64], shift: usize) -> Self {
+    pub(crate) const fn new(limbs: &'a [u64], shift: usize) -> Self {
         Self {
             limbs,
             limb_shift: shift / 64,

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/siros-primitives-core"]
+members = ["crates/biguint"]
 
 [workspace.package]
 edition = "2024"

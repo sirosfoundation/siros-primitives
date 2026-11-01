@@ -20,6 +20,7 @@ jobs:
       - uses: ./.github/actions/rust-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo test --locked --workspace --all-features
+      - run: cargo test --locked --workspace --no-default-features
 
   test-adx:
     name: Test with the adx carry intrinsics
@@ -51,7 +52,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       # A 32-bit target without `std` or `adx`: the portable carry path and the `no_std` build.
-      - run: cargo clippy --locked -p siros-primitives-core --target thumbv7em-none-eabi -- -D warnings
+      - run: cargo clippy --locked -p biguint --target thumbv7em-none-eabi -- -D warnings
 
   docs:
     name: Docs
@@ -75,4 +76,4 @@ jobs:
           rustup toolchain install 1.85 --profile minimal
           echo "RUSTUP_TOOLCHAIN=1.85" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo check --locked -p siros-primitives-core
+      - run: cargo check --locked -p biguint
