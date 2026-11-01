@@ -82,6 +82,7 @@ macro_rules! by_ref {
     };
 }
 
+/// `biguint`, the crate under test, at `N` bits.
 fn this_crate<N, V: Visitor>(cells: Cells<V>) -> Cells<V>
 where
     N: Bits + Add<N>,
@@ -114,6 +115,7 @@ macro_rules! primitive {
     };
 }
 
+/// `u64`. Its mulmod reduces the `u128` product.
 fn native_u64<V: Visitor>(cells: Cells<V>) -> Cells<V> {
     primitive!(cells, u64).composed(
         Op::MulMod,
@@ -126,16 +128,19 @@ fn native_u64<V: Visitor>(cells: Cells<V>) -> Cells<V> {
     )
 }
 
+/// `u128`. Its mulmod would need a 256-bit product.
 fn native_u128<V: Visitor>(cells: Cells<V>) -> Cells<V> {
     primitive!(cells, u128).absent(Op::MulMod, "no 256-bit primitive")
 }
 
+/// The widths above 128 bits, which have no primitive integer.
 fn native_none<V: Visitor>(cells: Cells<V>) -> Cells<V> {
     Op::ALL.into_iter().fold(cells, |cells, op| {
         cells.absent(op, "no primitive of this width")
     })
 }
 
+/// `ruint` at `B` bits in `L` limbs.
 fn ruint<const B: usize, const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
     by_value!(
         cells,
@@ -154,6 +159,7 @@ fn ruint<const B: usize, const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V
     )
 }
 
+/// `crypto-bigint` at `L` limbs. Division and mulmod run its variable-time functions.
 fn crypto_bigint<const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
     use crypto_bigint::{NonZero, Uint};
     by_ref!(cells, Uint<L>, Add => wrapping_add, Sub => wrapping_sub, Mul => wrapping_mul)
@@ -177,7 +183,7 @@ fn crypto_bigint<const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
         )
 }
 
-/// `N` bytes wide; `W = 2 * N` is the width of the product in the composed mulmod.
+/// `bnum` at `N` bytes. `W = 2 * N` is the width of the product in the composed mulmod.
 fn bnum<const N: usize, const W: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
     by_value!(
         cells,
@@ -213,6 +219,7 @@ fn bnum_mul_mod<const N: usize, const W: usize>(
         .as_()
 }
 
+/// `num-bigint`, which allocates each result and returns it exactly.
 fn num_bigint<V: Visitor>(cells: Cells<V>) -> Cells<V> {
     cells
         .api(Op::Add, "&a + &b", pair::<BigUint>, |(a, b)| a + b)
@@ -275,6 +282,7 @@ mod parity {
                     }
                 }
 
+                /// `uint` at the width of `$t`.
                 pub(super) fn $adapter<V: Visitor>(cells: Cells<V>) -> Cells<V> {
                     cells
                         .api(Op::Add, "overflowing_add", pair::<$t>, |&(a, b)| {
