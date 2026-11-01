@@ -1,0 +1,17 @@
+[package]
+name = "biguint-bench-report"
+version = "0.0.0"
+description = "Runs the benchmarks that compare biguint with other crates and writes BENCHMARKS.md"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

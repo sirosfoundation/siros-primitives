@@ -56,6 +56,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "biguint-bench-report"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "bnum"
 version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
