@@ -3,12 +3,11 @@
 mod chart;
 mod document;
 mod record;
-mod results;
 mod run;
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, ExitStatus};
+use std::process::{Command, ExitCode, ExitStatus, Stdio};
 
 use record::Record;
 
@@ -30,31 +29,11 @@ fn execute(args: Vec<String>) -> Result<(), Error> {
         [command, flag, machine] if command == "bench" && flag == "--machine" => {
             run::bench(&paths, Some(machine.clone()))
         }
-        [command] if command == "report" => report(&paths, None),
-        [command, flag, reason] if command == "report" && flag == "--provisional" => {
-            report(&paths, Some(reason.clone()))
+        [command] if command == "report" => {
+            document::write(&paths, &Record::read(&paths.record())?)
         }
         _ => Err(Error::Usage),
     }
-}
-
-/// Writes the document and the charts from the recorded run. A `provisional` reason replaces
-/// the recorded one.
-fn report(paths: &Paths, provisional: Option<String>) -> Result<(), Error> {
-    let mut record = Record::read(&paths.record())?;
-    if provisional.is_some() {
-        record.provisional = provisional;
-        record.write(&paths.record())?;
-    }
-    let measured = record
-        .builds
-        .iter()
-        .map(|build| {
-            let times = results::times(&paths.criterion(&build.name), build, &record.cells)?;
-            Ok(results::Measured { build, times })
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
-    document::write(paths, &record, &measured)
 }
 
 /// The locations that the tool reads and writes.
@@ -74,7 +53,7 @@ impl Paths {
         }
     }
 
-    /// The directory of all results.
+    /// The target directory of the bench build, which holds the run record.
     fn results(&self) -> PathBuf {
         self.root.join("target").join("benchmarks")
     }
@@ -82,16 +61,6 @@ impl Paths {
     /// The run record.
     fn record(&self) -> PathBuf {
         self.results().join("run.json")
-    }
-
-    /// The target directory of the build `name`.
-    fn build(&self, name: &str) -> PathBuf {
-        self.results().join(name)
-    }
-
-    /// Criterion's output directory for the build `name`.
-    fn criterion(&self, name: &str) -> PathBuf {
-        self.build(name).join("criterion")
     }
 
     /// The crate whose benchmarks the document describes.
@@ -104,10 +73,7 @@ impl Paths {
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     /// The arguments name no command.
-    #[error(
-        "usage: biguint-bench-report bench [--machine <description>] \
-         | report [--provisional <reason>]"
-    )]
+    #[error("usage: biguint-bench-report bench [--machine <description>] | report")]
     Usage,
     /// A file or directory could not be read or written.
     #[error("{}: {source}", path.display())]
@@ -149,31 +115,12 @@ pub(crate) enum Error {
         /// Where it should be.
         origin: String,
     },
-    /// The machine did not report its logical CPUs.
-    #[error("the number of logical CPUs: {0}")]
-    Parallelism(io::Error),
     /// The system clock is before the Unix epoch.
     #[error("the system clock: {0}")]
     Clock(std::time::SystemTimeError),
-    /// A line of `compare --cases` is no cell.
-    #[error("compare --cases: {0}")]
-    Cases(serde_json::Error),
-    /// Criterion has no result for a case of the run.
-    #[error("{} has no result for {case}", directory.display())]
-    NoResult {
-        /// The criterion directory.
-        directory: PathBuf,
-        /// The case.
-        case: String,
-    },
-    /// Criterion's result for a case is older than the run.
-    #[error("the result for {case} in {} predates the run", directory.display())]
-    Stale {
-        /// The criterion directory.
-        directory: PathBuf,
-        /// The case.
-        case: String,
-    },
+    /// A line of the `compare` bench is no cell.
+    #[error("the compare bench: {0}")]
+    Cells(serde_json::Error),
     /// The chart palette has fewer colors than the comparison has crates.
     #[error("{crates} crates for a palette of {slots} colors")]
     Palette {
@@ -181,14 +128,6 @@ pub(crate) enum Error {
         crates: usize,
         /// The colors of the palette.
         slots: usize,
-    },
-    /// Two criterion results have the same id.
-    #[error("{} has two results for {case}", directory.display())]
-    Duplicate {
-        /// The criterion directory.
-        directory: PathBuf,
-        /// The case.
-        case: String,
     },
 }
 
@@ -215,36 +154,22 @@ impl Error {
     }
 }
 
-/// The standard output of `command`, which must succeed.
+/// The standard output of `command`, which must succeed. Its standard error goes to the terminal.
 fn output(command: &mut Command) -> Result<String, Error> {
     let line = format!("{command:?}");
-    let output = command.output().map_err(|source| Error::Spawn {
-        command: line.clone(),
-        source,
-    })?;
+    let output = command
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|source| Error::Spawn {
+            command: line.clone(),
+            source,
+        })?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
         Err(Error::Failed {
             command: line,
             status: output.status,
-        })
-    }
-}
-
-/// Runs `command` with the terminal as its output; it must succeed.
-fn status(command: &mut Command) -> Result<(), Error> {
-    let line = format!("{command:?}");
-    let status = command.status().map_err(|source| Error::Spawn {
-        command: line.clone(),
-        source,
-    })?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::Failed {
-            command: line,
-            status,
         })
     }
 }

@@ -1,5 +1,5 @@
-//! One SVG line chart per operation: the time per operation against the width, one panel per
-//! build, one line per crate.
+//! One SVG line chart per operation: the instructions per operation against the width, one line
+//! per crate, on a linear scale from zero.
 //!
 //! The colors are the categorical slots of the reference palette of the dataviz method, in their
 //! fixed order, with a light and a dark step each. Every crate also has its own marker shape.
@@ -65,41 +65,30 @@ const CHARACTER_WIDTH: f64 = 6.3;
 
 const WIDTH: f64 = 960.0;
 const PAD: f64 = 24.0;
-const COLUMN_GAP: f64 = 32.0;
-const PANEL_WIDTH: f64 = (WIDTH - 2.0 * PAD - COLUMN_GAP) / 2.0;
 const AXIS_WIDTH: f64 = 56.0;
-const PANEL_TITLE: f64 = 24.0;
-const PLOT_HEIGHT: f64 = 220.0;
+const PLOT_HEIGHT: f64 = 300.0;
 const X_AXIS: f64 = 40.0;
 
 /// The chart of one operation.
 pub(crate) struct Chart<'a> {
     /// The title.
     pub(crate) title: String,
-    /// The lines of the subtitle.
-    pub(crate) notes: Vec<&'a str>,
+    /// The line under the title.
+    pub(crate) subtitle: &'a str,
     /// The widths along the horizontal axis.
     pub(crate) widths: &'a [u32],
     /// The crates, in the order of their colors.
     pub(crate) crates: &'a [&'a str],
-    /// One panel per build.
-    pub(crate) panels: Vec<Panel<'a>>,
-}
-
-/// The times of one build.
-pub(crate) struct Panel<'a> {
-    /// The build.
-    pub(crate) build: &'a str,
-    /// One point per case.
+    /// One point per counted case.
     pub(crate) points: Vec<Point<'a>>,
 }
 
-/// The time per operation of one crate at one width.
+/// The instructions per operation of one crate at one width.
 #[derive(Clone, Copy)]
 pub(crate) struct Point<'a> {
     pub(crate) library: &'a str,
     pub(crate) bits: u32,
-    pub(crate) nanoseconds: f64,
+    pub(crate) instructions: f64,
 }
 
 /// The SVG of `chart`.
@@ -110,19 +99,18 @@ pub(crate) fn svg(chart: &Chart<'_>) -> Result<String, Error> {
             slots: SLOTS.len(),
         });
     }
-    let legend_y = PAD + 36.0 + 18.0 * chart.notes.len() as f64 + 8.0;
-    let panels_top = legend_y + 22.0;
-    let height = panels_top + PANEL_TITLE + PLOT_HEIGHT + X_AXIS + PAD;
+    let scale = LinearScale::new(chart.points.iter().map(|point| point.instructions))
+        .ok_or_else(|| Error::missing("positive count", &format!("the chart {}", chart.title)))?;
+    let legend_y = PAD + 62.0;
+    let plot_top = legend_y + 30.0;
+    let height = plot_top + PLOT_HEIGHT + X_AXIS + PAD;
     let mut parts = vec![
         format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{WIDTH}\" height=\"{height}\" \
              viewBox=\"0 0 {WIDTH} {height}\" role=\"img\" aria-labelledby=\"title description\">"
         ),
         format!("<title id=\"title\">{}</title>", escape(&chart.title)),
-        format!(
-            "<desc id=\"description\">{}</desc>",
-            escape(&chart.notes.join(" "))
-        ),
+        format!("<desc id=\"description\">{}</desc>", escape(chart.subtitle)),
         format!("<style>{}</style>", style(chart.crates.len())),
         format!("<rect class=\"surface\" width=\"{WIDTH}\" height=\"{height}\" rx=\"8\"/>"),
         format!(
@@ -130,25 +118,14 @@ pub(crate) fn svg(chart: &Chart<'_>) -> Result<String, Error> {
             PAD + 14.0,
             escape(&chart.title)
         ),
-    ];
-    for (line, note) in chart.notes.iter().enumerate() {
-        parts.push(format!(
+        format!(
             "<text class=\"subtitle\" x=\"{PAD}\" y=\"{}\">{}</text>",
-            PAD + 36.0 + 18.0 * line as f64,
-            escape(note)
-        ));
-    }
+            PAD + 36.0,
+            escape(chart.subtitle)
+        ),
+    ];
     parts.extend(legend(legend_y, chart.crates));
-    let scale = LogScale::new(
-        chart
-            .panels
-            .iter()
-            .flat_map(|panel| panel.points.iter().map(|point| point.nanoseconds)),
-    );
-    for (column, panel) in chart.panels.iter().enumerate() {
-        let left = PAD + column as f64 * (PANEL_WIDTH + COLUMN_GAP);
-        parts.extend(draw_panel(chart, panel, left, panels_top, &scale)?);
-    }
+    parts.extend(plot(chart, plot_top, &scale)?);
     parts.push("</svg>".to_owned());
     Ok(parts.join("\n") + "\n")
 }
@@ -159,7 +136,7 @@ fn style(slots: usize) -> String {
     let colors = |ink: &Ink, dark: bool| {
         let mut rules = format!(
             ".surface{{fill:{surface}}}.grid{{stroke:{grid}}}.axis{{stroke:{axis}}}\
-             .title,.panel{{fill:{ink}}}.subtitle,.legend{{fill:{secondary}}}\
+             .title{{fill:{ink}}}.subtitle,.legend{{fill:{secondary}}}\
              .tick{{fill:{muted}}}.marker{{stroke:{surface}}}",
             surface = ink.surface,
             grid = ink.grid,
@@ -176,7 +153,7 @@ fn style(slots: usize) -> String {
     };
     format!(
         ".grid,.axis{{stroke-width:1}}.title{{font:600 16px {FONT}}}\
-         .subtitle,.legend{{font:12px {FONT}}}.panel{{font:600 13px {FONT}}}\
+         .subtitle,.legend{{font:12px {FONT}}}\
          .tick{{font:11px {FONT};font-variant-numeric:tabular-nums}}\
          .line{{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}}\
          .marker{{stroke-width:4;paint-order:stroke}}{}\
@@ -207,67 +184,71 @@ fn legend(y: f64, crates: &[&str]) -> Vec<String> {
     parts
 }
 
-/// A base-10 logarithmic axis over whole decades around the values.
-struct LogScale {
-    /// The exponent of the bottom decade.
-    low: i32,
-    /// The exponent of the top decade.
-    high: i32,
+/// A linear axis from zero to a clean number at or above every value, in about five steps of
+/// 1, 2 or 5 times a power of ten.
+struct LinearScale {
+    /// The distance between two ticks.
+    step: f64,
+    /// The top of the axis, a whole number of steps.
+    top: f64,
 }
 
-impl LogScale {
-    fn new(values: impl Iterator<Item = f64>) -> Self {
-        let (low, high) = values.fold((f64::INFINITY, f64::NEG_INFINITY), |(low, high), value| {
-            (low.min(value), high.max(value))
-        });
-        let low = low.log10().floor() as i32;
-        let high = (high.log10().ceil() as i32).max(low + 1);
-        Self { low, high }
+impl LinearScale {
+    /// `None` unless the largest value is positive.
+    fn new(values: impl Iterator<Item = f64>) -> Option<Self> {
+        let largest = values.fold(0.0, f64::max);
+        if largest <= 0.0 {
+            return None;
+        }
+        let rough = largest / 5.0;
+        let power = 10f64.powf(rough.log10().floor());
+        let factor = match rough / power {
+            normalized if normalized <= 1.0 => 1.0,
+            normalized if normalized <= 2.0 => 2.0,
+            normalized if normalized <= 5.0 => 5.0,
+            _ => 10.0,
+        };
+        let step = factor * power;
+        Some(Self {
+            step,
+            top: (largest / step).ceil() * step,
+        })
     }
 
     /// 0 at the bottom of the axis, 1 at the top.
     fn fraction(&self, value: f64) -> f64 {
-        (value.log10() - f64::from(self.low)) / f64::from(self.high - self.low)
+        value / self.top
     }
 
-    /// The ticks and their labels: every decade, and 2 and 5 times each decade on an axis of at
-    /// most two decades. On an axis that reaches 10,000 the labels are compact (10K).
+    /// Every step from zero to the top, with its label: in full below 10,000, and in thousands
+    /// or millions (10K, 2M) on an axis that reaches 10,000 or 10,000,000.
     fn ticks(&self) -> Vec<(f64, String)> {
-        let steps: &[u32] = if self.high - self.low <= 2 {
-            &[1, 2, 5]
+        let (unit, suffix) = if self.top >= 1e7 {
+            (1e6, "M")
+        } else if self.top >= 1e4 {
+            (1e3, "K")
         } else {
-            &[1]
+            (1.0, "")
         };
-        let compact = self.high >= 4;
-        let mut ticks = Vec::new();
-        for exponent in self.low..=self.high {
-            for &step in steps {
-                if exponent == self.high && step > 1 {
-                    continue;
-                }
-                let value = f64::from(step) * 10f64.powi(exponent);
-                ticks.push((value, tick_label(step, exponent, compact)));
-            }
-        }
-        ticks
+        let unit_step = self.step / unit;
+        let decimals = if unit_step >= 1.0 {
+            0
+        } else {
+            (-unit_step.log10().floor()) as usize
+        };
+        let steps = (self.top / self.step).round() as u32;
+        (0..=steps)
+            .map(|index| {
+                let value = f64::from(index) * self.step;
+                let label = match (index, decimals) {
+                    (0, _) => "0".to_owned(),
+                    (_, 0) => format!("{}{suffix}", grouped((value / unit).round() as u64)),
+                    (_, decimals) => format!("{:.decimals$}{suffix}", value / unit),
+                };
+                (value, label)
+            })
+            .collect()
     }
-}
-
-/// `step * 10^exponent` as a clean number: in full below 10,000, compact on a compact axis.
-fn tick_label(step: u32, exponent: i32, compact: bool) -> String {
-    let Ok(power) = u32::try_from(exponent) else {
-        let decimals = exponent.unsigned_abs() as usize;
-        return format!("{:.decimals$}", f64::from(step) * 10f64.powi(exponent));
-    };
-    let value = u64::from(step) * 10u64.pow(power);
-    if compact {
-        for (suffix_power, suffix) in [(9, "G"), (6, "M"), (3, "K")] {
-            if power >= suffix_power {
-                return format!("{}{suffix}", value / 10u64.pow(suffix_power));
-            }
-        }
-    }
-    grouped(value)
 }
 
 /// `value` with a comma between groups of three digits.
@@ -283,30 +264,25 @@ pub(crate) fn grouped(value: u64) -> String {
     text
 }
 
-/// One panel at `left`, `top`: its title, its axes, and one line of markers per crate.
-fn draw_panel(
-    chart: &Chart<'_>,
-    panel: &Panel<'_>,
-    left: f64,
-    top: f64,
-    scale: &LogScale,
-) -> Result<Vec<String>, Error> {
-    let plot_left = left + AXIS_WIDTH;
-    let plot_right = left + PANEL_WIDTH - 8.0;
-    let plot_bottom = top + PANEL_TITLE + PLOT_HEIGHT;
+/// The plot below `top`: its axes, and one line of markers per crate.
+fn plot(chart: &Chart<'_>, top: f64, scale: &LinearScale) -> Result<Vec<String>, Error> {
+    let plot_left = PAD + AXIS_WIDTH;
+    let plot_right = WIDTH - PAD - 8.0;
+    let plot_bottom = top + PLOT_HEIGHT;
     let band = (plot_right - plot_left) / chart.widths.len() as f64;
     let x_of = |position: usize| plot_left + (position as f64 + 0.5) * band;
-    let y_of = |nanoseconds: f64| plot_bottom - scale.fraction(nanoseconds) * PLOT_HEIGHT;
-    let mut parts = vec![format!(
-        "<text class=\"panel\" x=\"{left}\" y=\"{}\">Time per operation (ns) · {}</text>",
-        top + 13.0,
-        escape(panel.build)
-    )];
+    let y_of = |instructions: f64| plot_bottom - scale.fraction(instructions) * PLOT_HEIGHT;
+    let mut parts = Vec::new();
     for (value, label) in scale.ticks() {
         let y = y_of(value).round() + 0.5;
+        // The baseline is the axis, drawn below.
+        if value > 0.0 {
+            parts.push(format!(
+                "<path class=\"grid\" d=\"M{plot_left},{y}H{plot_right}\"/>"
+            ));
+        }
         parts.push(format!(
-            "<path class=\"grid\" d=\"M{plot_left},{y}H{plot_right}\"/>\
-             <text class=\"tick\" x=\"{}\" y=\"{}\" text-anchor=\"end\">{label}</text>",
+            "<text class=\"tick\" x=\"{}\" y=\"{}\" text-anchor=\"end\">{label}</text>",
             plot_left - 8.0,
             y + 4.0
         ));
@@ -330,7 +306,7 @@ fn draw_panel(
     for (index, (library, marker)) in chart.crates.iter().zip(MARKERS).enumerate() {
         // The crate's points as (position along the axis, point), in width order.
         let mut points = Vec::new();
-        for point in panel
+        for point in chart
             .points
             .iter()
             .filter(|point| point.library == *library)
@@ -348,7 +324,7 @@ fn draw_panel(
         let mut runs: Vec<Vec<String>> = Vec::new();
         let mut previous = None;
         for (position, point) in &points {
-            let coordinates = format!("{:.1},{:.1}", x_of(*position), y_of(point.nanoseconds));
+            let coordinates = format!("{:.1},{:.1}", x_of(*position), y_of(point.instructions));
             match (runs.last_mut(), previous) {
                 (Some(run), Some(last)) if last + 1 == *position => run.push(coordinates),
                 (Some(_) | None, _) => runs.push(vec![coordinates]),
@@ -361,17 +337,26 @@ fn draw_panel(
         for (position, point) in &points {
             parts.push(format!(
                 "<path class=\"marker\" transform=\"translate({:.1},{:.1})\" d=\"{marker}\">\
-                 <title>{}, {} bits: {:.4} ns</title></path>",
+                 <title>{}, {} bits: {} instructions per operation</title></path>",
                 x_of(*position),
-                y_of(point.nanoseconds),
+                y_of(point.instructions),
                 escape(library),
                 point.bits,
-                point.nanoseconds
+                instructions(point.instructions)
             ));
         }
         parts.push("</g>".to_owned());
     }
     Ok(parts)
+}
+
+/// A count per operation: one decimal below 100, whole and grouped from 100 up.
+pub(crate) fn instructions(value: f64) -> String {
+    if value >= 100.0 {
+        grouped(value.round() as u64)
+    } else {
+        format!("{value:.1}")
+    }
 }
 
 /// `text` with the XML special characters escaped.

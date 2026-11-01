@@ -150,23 +150,6 @@ pub enum Call {
     Absent(&'static str),
 }
 
-impl Call {
-    /// `api` or `absent`.
-    pub const fn kind(&self) -> &'static str {
-        match self {
-            Self::Api(_) => "api",
-            Self::Absent(_) => "absent",
-        }
-    }
-
-    /// The function, or the reason for the absence.
-    pub const fn detail(&self) -> &'static str {
-        match self {
-            Self::Api(detail) | Self::Absent(detail) => detail,
-        }
-    }
-}
-
 /// Receives every cell of the comparison.
 pub trait Visitor: Sized {
     /// Takes note of the cell `id`, which runs `call`.
@@ -197,7 +180,8 @@ pub fn visit<V: Visitor>(visitor: V) -> V {
 
 /// Runs `run` on each input of `batch` and returns the number of runs. Each input and each
 /// result passes through [`black_box`], so the compiler can neither precompute a result nor skip
-/// one.
+/// one. Callgrind counts the instructions from the entry of this function to its exit, so it
+/// keeps a symbol of its own.
 #[inline(never)]
 pub fn run_batch<I, O>(batch: &[I], run: impl Fn(&I) -> O) -> usize {
     batch

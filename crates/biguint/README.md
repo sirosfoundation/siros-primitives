@@ -49,12 +49,13 @@ The width selects the algorithm at compile time, and every operand length folds 
 
 [BENCHMARKS.md](https://github.com/sirosfoundation/siros-primitives/blob/main/crates/biguint/BENCHMARKS.md)
 compares `biguint` with `u64`/`u128`, ruint, crypto-bigint, bnum, uint and num-bigint on add, mul,
-div, mod and mulmod at 64 to 4096 bits, in time per operation. The unpublished
+div, mod and mulmod at 64 to 4096 bits, in instructions per operation that Callgrind counts. The
+unpublished
 [`biguint-bench-report`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/biguint/bench-report)
 regenerates it:
 
 ```sh
-cargo run -p biguint-bench-report -- bench    # criterion, default and native builds
+cargo run -p biguint-bench-report -- bench    # Callgrind counts of the native build
 cargo run -p biguint-bench-report -- report   # BENCHMARKS.md and benchmarks/*.svg
 ```
 

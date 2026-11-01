@@ -25,7 +25,6 @@ typenum.workspace = true
 
 [dev-dependencies]
 bnum.workspace = true
-criterion.workspace = true
 crypto-bigint.workspace = true
 num-bigint.workspace = true
 ruint.workspace = true

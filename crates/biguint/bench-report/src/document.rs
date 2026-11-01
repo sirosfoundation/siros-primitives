@@ -3,9 +3,8 @@
 use std::collections::HashMap;
 use std::fs;
 
-use crate::chart::{self, Chart, Panel, Point, grouped};
-use crate::record::{Cell, Kind, Record};
-use crate::results::Measured;
+use crate::chart::{self, Chart, Point, instructions};
+use crate::record::{Cell, Count, Outcome, Record};
 use crate::{Error, Paths};
 
 /// The crate under test.
@@ -20,33 +19,28 @@ const FORMULAS: [(&str, &str); 5] = [
     ("mulmod", "a × b mod m"),
 ];
 
-/// Writes the document and one chart per operation from `record` and the times of its builds.
-pub(crate) fn write(
-    paths: &Paths,
-    record: &Record,
-    measured: &[Measured<'_>],
-) -> Result<(), Error> {
-    let table = Table::new(record, measured)?;
+/// The line under the title of every chart.
+const CHART_SUBTITLE: &str =
+    "Instructions per operation, counted by Callgrind. BENCHMARKS.md lists the values.";
+
+/// Writes the document and one chart per operation from `record`.
+pub(crate) fn write(paths: &Paths, record: &Record) -> Result<(), Error> {
+    let table = Table::new(record)?;
     let charts = paths.library().join("benchmarks");
     fs::create_dir_all(&charts).map_err(|source| Error::io(&charts, source))?;
     for (op, formula) in &table.ops {
         let svg = chart::svg(&Chart {
             title: format!("{op}: {formula}"),
-            notes: chart_notes(record),
+            subtitle: CHART_SUBTITLE,
             widths: &table.widths,
             crates: &table.crates,
-            panels: table
-                .builds
-                .iter()
-                .map(|build| table.panel(build, op))
-                .collect(),
+            points: table.points(op),
         })?;
         let path = charts.join(format!("{op}.svg"));
         fs::write(&path, svg).map_err(|source| Error::io(&path, source))?;
     }
     let mut lines = header(record, &table);
-    lines.extend(summary(&table));
-    lines.extend(setup(record)?);
+    lines.extend(setup(record));
     lines.extend(method(&table));
     lines.extend(functions(&table));
     lines.extend(results(&table));
@@ -55,23 +49,25 @@ pub(crate) fn write(
     fs::write(&path, lines.join("\n") + "\n").map_err(|source| Error::io(&path, source))
 }
 
-/// The cells and times of a run, indexed by operation, width and crate.
+/// The cells of a run, indexed by operation, width and crate.
 struct Table<'a> {
-    builds: &'a [Measured<'a>],
     /// Each operation with its formula.
     ops: Vec<(&'a str, &'static str)>,
     widths: Vec<u32>,
     crates: Vec<&'a str>,
     cells: HashMap<(&'a str, u32, &'a str), &'a Cell>,
-    /// The operations in one iteration of every case.
+    /// The operand sets of every counted batch.
     batch: u32,
 }
 
 impl<'a> Table<'a> {
-    /// Fails when the record has no cells, cells of different batch sizes, or an operation
-    /// without a formula.
-    fn new(record: &'a Record, builds: &'a [Measured<'a>]) -> Result<Self, Error> {
-        let batches = unique(record.cells.iter().map(|cell| cell.batch));
+    /// Fails unless the record has exactly one cell for every operation, width and crate, its
+    /// batches have one size, and every operation has a formula.
+    fn new(record: &'a Record) -> Result<Self, Error> {
+        let batches = unique(record.cells.iter().filter_map(|cell| match &cell.outcome {
+            Outcome::Counted(count) => Some(count.operations),
+            Outcome::Absent(_) => None,
+        }));
         let [batch] = batches.as_slice() else {
             return Err(Error::missing(
                 "single batch size",
@@ -87,9 +83,8 @@ impl<'a> Table<'a> {
                     .map(|(_, formula)| (op, *formula))
                     .ok_or_else(|| Error::missing(&format!("formula for {op}"), "the report"))
             })
-            .collect::<Result<_, _>>()?;
-        Ok(Self {
-            builds,
+            .collect::<Result<Vec<_>, _>>()?;
+        let table = Self {
             ops,
             widths: unique(record.cells.iter().map(|cell| cell.bits)),
             crates: unique(record.cells.iter().map(|cell| cell.library.as_str())),
@@ -99,32 +94,55 @@ impl<'a> Table<'a> {
                 .map(|cell| ((cell.op.as_str(), cell.bits, cell.library.as_str()), cell))
                 .collect(),
             batch: *batch,
-        })
+        };
+        if table.cells.len() != record.cells.len() {
+            return Err(Error::missing(
+                "single cell per operation, width and crate",
+                "the run record",
+            ));
+        }
+        for (op, _) in &table.ops {
+            for bits in &table.widths {
+                for library in &table.crates {
+                    if !table.cells.contains_key(&(*op, *bits, *library)) {
+                        return Err(Error::missing(
+                            &format!("cell {op}/{bits}/{library}"),
+                            "the run record",
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(table)
     }
 
-    /// The time of `op` at `bits` in `library` in `build`; `None` without a case.
-    fn time(build: &Measured<'_>, op: &str, bits: u32, library: &str) -> Option<f64> {
-        build.times.get(&format!("{op}/{bits}/{library}")).copied()
+    /// The count of `op` at `bits` in `library`; `None` for an absent cell.
+    fn count(&self, op: &str, bits: u32, library: &str) -> Option<&'a Count> {
+        match self
+            .cells
+            .get(&(op, bits, library))
+            .map(|cell| &cell.outcome)
+        {
+            Some(Outcome::Counted(count)) => Some(count),
+            Some(Outcome::Absent(_)) | None => None,
+        }
     }
 
-    /// The chart panel of `op` in `build`: one point per case.
-    fn panel(&self, build: &'a Measured<'a>, op: &str) -> Panel<'a> {
+    /// The chart points of `op`: one per counted case.
+    fn points(&self, op: &str) -> Vec<Point<'a>> {
         let mut points = Vec::new();
         for library in &self.crates {
             for &bits in &self.widths {
-                if let Some(nanoseconds) = Self::time(build, op, bits, library) {
+                if let Some(count) = self.count(op, bits, library) {
                     points.push(Point {
                         library,
                         bits,
-                        nanoseconds,
+                        instructions: count.per_operation(),
                     });
                 }
             }
         }
-        Panel {
-            build: &build.build.name,
-            points,
-        }
+        points
     }
 }
 
@@ -137,15 +155,6 @@ fn unique<T: PartialEq>(items: impl Iterator<Item = T>) -> Vec<T> {
         }
     }
     values
-}
-
-fn chart_notes(record: &Record) -> Vec<&'static str> {
-    let mut notes =
-        vec!["Each point is one crate at one width. Log scale; BENCHMARKS.md lists the values."];
-    if record.provisional.is_some() {
-        notes.push("The times are provisional upper bounds; BENCHMARKS.md gives the reason.");
-    }
-    notes
 }
 
 /// `values` joined as in a sentence: `a, b and c`.
@@ -172,22 +181,6 @@ fn markdown_table(header: &[String], rows: &[Vec<String>], align: &str) -> Vec<S
     lines
 }
 
-/// Three significant digits; whole nanoseconds from 100 up.
-fn nanoseconds(value: f64) -> String {
-    if value >= 100.0 {
-        grouped(value.round() as u64)
-    } else {
-        let decimals = if value >= 10.0 {
-            1
-        } else if value >= 1.0 {
-            2
-        } else {
-            3
-        };
-        format!("{value:.decimals$}")
-    }
-}
-
 fn header(record: &Record, table: &Table<'_>) -> Vec<String> {
     let others: Vec<String> = table
         .crates
@@ -196,7 +189,7 @@ fn header(record: &Record, table: &Table<'_>) -> Vec<String> {
         .map(|library| format!("`{library}`"))
         .collect();
     let state = if record.dirty {
-        " The measured files had uncommitted changes."
+        " The counted files had uncommitted changes."
     } else {
         ""
     };
@@ -204,7 +197,8 @@ fn header(record: &Record, table: &Table<'_>) -> Vec<String> {
         "# Benchmarks".to_owned(),
         String::new(),
         format!(
-            "`{SUBJECT}` at commit `{}` against {}: {} at {} bits, measured on {}.{state}",
+            "`{SUBJECT}` at commit `{}` against {}: {} at {} bits, in instructions per \
+             operation, counted on {}.{state}",
             short(&record.library_commit),
             sentence(&others),
             sentence(&table.ops.iter().map(|(op, _)| *op).collect::<Vec<_>>()),
@@ -220,99 +214,36 @@ fn short(commit: &str) -> &str {
     commit.get(..7).unwrap_or(commit)
 }
 
-fn summary(table: &Table<'_>) -> Vec<String> {
-    let mut rows = Vec::new();
-    for (op, _) in &table.ops {
-        for build in table.builds {
-            let mut row = vec![(*op).to_owned(), build.build.name.clone()];
-            for &bits in &table.widths {
-                let own = Table::time(build, op, bits, SUBJECT);
-                let fastest_other = table
-                    .crates
-                    .iter()
-                    .filter(|library| **library != SUBJECT)
-                    .filter_map(|library| Table::time(build, op, bits, library))
-                    .reduce(f64::min);
-                row.push(match (own, fastest_other) {
-                    (Some(own), Some(other)) => format!("{:.2}", own / other),
-                    (None, _) | (_, None) => "–".to_owned(),
-                });
-            }
-            rows.push(row);
-        }
-    }
-    let mut header = vec!["Operation".to_owned(), "Build".to_owned()];
-    header.extend(table.widths.iter().map(|bits| format!("{bits} bits")));
-    let mut lines = vec![
-        "## Summary".to_owned(),
-        String::new(),
-        format!(
-            "Each cell: `{SUBJECT}`'s time per operation over the fastest other crate's. Below 1, \
-             `{SUBJECT}` is faster."
-        ),
-        String::new(),
-    ];
-    lines.extend(markdown_table(
-        &header,
-        &rows,
-        &("ll".to_owned() + &"r".repeat(table.widths.len())),
-    ));
-    lines.push(String::new());
-    lines
-}
-
-fn setup(record: &Record) -> Result<Vec<String>, Error> {
+fn setup(record: &Record) -> Vec<String> {
     let cpu = match &record.machine {
         Some(machine) => format!("{machine} (`{}`)", record.native_cpu),
         None => format!("`{}`", record.native_cpu),
     };
-    let builds: Vec<String> = record
-        .builds
-        .iter()
-        .map(|build| {
-            if build.rustflags.is_empty() {
-                format!("`{}`: the baseline of the host target.", build.name)
-            } else {
-                format!("`{}`: `{}`.", build.name, build.rustflags)
-            }
-        })
-        .collect();
-    let criterion = record
-        .versions
-        .iter()
-        .find(|entry| entry.name == "criterion")
-        .ok_or_else(|| Error::missing("criterion version", "the run record"))?;
+    let counter = match record.valgrind.strip_prefix("valgrind-") {
+        Some(version) => format!("Valgrind {version}, Callgrind"),
+        None => format!("{}, Callgrind", record.valgrind),
+    };
     let crates: Vec<String> = record
         .versions
         .iter()
-        .filter(|entry| entry.name != "criterion")
         .map(|entry| format!("{} {}", entry.name, entry.version))
         .collect();
-    let timing = match record.criterion_args.as_slice() {
-        [] => format!("criterion {}", criterion.version),
-        args => format!("criterion {} `{}`", criterion.version, args.join(" ")),
-    };
     let rows = vec![
         vec!["CPU".to_owned(), cpu],
         vec![
             "Compiler".to_owned(),
-            format!("{}, LLVM {}, `bench` profile", record.rustc, record.llvm),
+            format!(
+                "{}, LLVM {}, `bench` profile, `{}`",
+                record.rustc, record.llvm, record.rustflags
+            ),
         ],
-        vec!["Builds".to_owned(), builds.join(" ")],
-        vec!["Timing".to_owned(), timing],
+        vec!["Counter".to_owned(), counter],
         vec!["Crates".to_owned(), crates.join(", ")],
     ];
     let mut lines = vec!["## Setup".to_owned(), String::new()];
     lines.extend(markdown_table(&[String::new(), String::new()], &rows, "ll"));
-    if let Some(reason) = &record.provisional {
-        lines.push(String::new());
-        lines.push(format!(
-            "**The times are provisional.** {reason}. Each time is an upper bound, and the times \
-             compare only within one table."
-        ));
-    }
     lines.push(String::new());
-    Ok(lines)
+    lines
 }
 
 fn method(table: &Table<'_>) -> Vec<String> {
@@ -337,10 +268,14 @@ fn method(table: &Table<'_>) -> Vec<String> {
         "## Method".to_owned(),
         String::new(),
         format!(
-            "Each case times one crate's function over {batch} operand sets, the same for every \
-             crate in a row, with operands and results behind `core::hint::black_box`. The time \
-             per operation is criterion's median for the batch divided by {batch}. Every result \
-             equals `num-bigint`'s, reduced modulo 2^N for the crates that wrap."
+            "Each case runs one crate's function over {batch} operand sets, the same for every \
+             crate in a row, with operands and results behind `core::hint::black_box`. Callgrind \
+             counts the instructions of the loop over the batch, including the functions it \
+             calls, such as the allocator of `num-bigint`; each count is that total divided by \
+             {batch}. The loop's own loads and stores are part of every count. Every instruction \
+             counts as one, whatever its latency: a hardware divide weighs as much as an \
+             addition. The counts are exact at any machine load. Every result equals \
+             `num-bigint`'s, reduced modulo 2^N for the crates that wrap."
         ),
         String::new(),
     ];
@@ -361,24 +296,24 @@ fn functions(table: &Table<'_>) -> Vec<String> {
             // Each function with the widths it runs at.
             let mut groups: Vec<(&str, Vec<u32>)> = Vec::new();
             for &bits in &table.widths {
-                let Some(cell) = table.cells.get(&(*op, bits, *library)) else {
+                let Some(count) = table.count(op, bits, library) else {
                     continue;
                 };
-                if cell.kind == Kind::Absent {
-                    continue;
-                }
-                match groups.iter_mut().find(|(detail, _)| *detail == cell.detail) {
+                match groups
+                    .iter_mut()
+                    .find(|(function, _)| *function == count.function)
+                {
                     Some((_, widths)) => widths.push(bits),
-                    None => groups.push((&cell.detail, vec![bits])),
+                    None => groups.push((&count.function, vec![bits])),
                 }
             }
             let entries: Vec<String> = groups
                 .iter()
-                .map(|(detail, widths)| {
+                .map(|(function, widths)| {
                     if *widths == table.widths {
-                        format!("`{detail}`")
+                        format!("`{function}`")
                     } else {
-                        format!("`{detail}` at {} bits", sentence(widths))
+                        format!("`{function}` at {} bits", sentence(widths))
                     }
                 })
                 .collect();
@@ -395,7 +330,7 @@ fn functions(table: &Table<'_>) -> Vec<String> {
     let mut lines = vec![
         "## Functions".to_owned(),
         String::new(),
-        "Each cell times the crate's own function:".to_owned(),
+        "Each cell counts the crate's own function:".to_owned(),
         String::new(),
     ];
     lines.extend(markdown_table(&header, &rows, &"l".repeat(header.len())));
@@ -415,29 +350,27 @@ fn functions(table: &Table<'_>) -> Vec<String> {
     lines
 }
 
-/// Per crate, its empty cells as (operation, width).
-type EmptyCells<'a> = Vec<(&'a str, Vec<(&'a str, u32)>)>;
+/// Per crate, its absent cells as (operation, width).
+type AbsentCells<'a> = Vec<(&'a str, Vec<(&'a str, u32)>)>;
 
-/// One line per reason for an empty cell: per crate, the operations and widths it covers, with
+/// One line per reason for an absent cell: per crate, the operations and widths it covers, with
 /// the operations left out when they are all of them.
 fn absences(table: &Table<'_>) -> Vec<String> {
-    let mut reasons: Vec<(&str, EmptyCells<'_>)> = Vec::new();
+    let mut reasons: Vec<(&str, AbsentCells<'_>)> = Vec::new();
     for library in &table.crates {
         for (op, _) in &table.ops {
             for &bits in &table.widths {
-                let Some(cell) = table.cells.get(&(*op, bits, *library)) else {
+                let Some(Outcome::Absent(reason)) = table
+                    .cells
+                    .get(&(*op, bits, *library))
+                    .map(|cell| &cell.outcome)
+                else {
                     continue;
                 };
-                if cell.kind != Kind::Absent {
-                    continue;
-                }
-                let position = match reasons
-                    .iter()
-                    .position(|(reason, _)| *reason == cell.detail)
-                {
+                let position = match reasons.iter().position(|(other, _)| other == reason) {
                     Some(position) => position,
                     None => {
-                        reasons.push((&cell.detail, Vec::new()));
+                        reasons.push((reason, Vec::new()));
                         reasons.len() - 1
                     }
                 };
@@ -467,7 +400,7 @@ fn absences(table: &Table<'_>) -> Vec<String> {
         .collect()
 }
 
-/// The empty `cells` of `library`: its name, the operations unless all of them, and the widths
+/// The absent `cells` of `library`: its name, the operations unless all of them, and the widths
 /// unless all of them.
 fn describe(table: &Table<'_>, library: &str, cells: &[(&str, u32)]) -> String {
     let ops = unique(cells.iter().map(|(op, _)| *op));
@@ -486,30 +419,26 @@ fn results(table: &Table<'_>) -> Vec<String> {
     let mut lines = vec![
         "## Results".to_owned(),
         String::new(),
-        "Each cell: nanoseconds per operation. Bold marks the fastest time in each row.".to_owned(),
+        "Each cell: instructions per operation. Bold marks the fewest in each row.".to_owned(),
     ];
     for (op, formula) in &table.ops {
         let mut rows = Vec::new();
         for &bits in &table.widths {
-            for build in table.builds {
-                let times: Vec<Option<f64>> = table
-                    .crates
-                    .iter()
-                    .map(|library| Table::time(build, op, bits, library))
-                    .collect();
-                let fastest = times.iter().flatten().copied().reduce(f64::min);
-                let mut row = vec![bits.to_string(), build.build.name.clone()];
-                row.extend(times.iter().map(|time| match time {
-                    Some(time) if Some(*time) == fastest => {
-                        format!("**{} ns**", nanoseconds(*time))
-                    }
-                    Some(time) => format!("{} ns", nanoseconds(*time)),
-                    None => "–".to_owned(),
-                }));
-                rows.push(row);
-            }
+            let counts: Vec<Option<f64>> = table
+                .crates
+                .iter()
+                .map(|library| table.count(op, bits, library).map(Count::per_operation))
+                .collect();
+            let fewest = counts.iter().flatten().copied().reduce(f64::min);
+            let mut row = vec![bits.to_string()];
+            row.extend(counts.iter().map(|count| match count {
+                Some(count) if Some(*count) == fewest => format!("**{}**", instructions(*count)),
+                Some(count) => instructions(*count),
+                None => "–".to_owned(),
+            }));
+            rows.push(row);
         }
-        let mut header = vec!["Bits".to_owned(), "Build".to_owned()];
+        let mut header = vec!["Bits".to_owned()];
         header.extend(table.crates.iter().map(|library| (*library).to_owned()));
         let title = format!("{op}: {formula}");
         lines.extend([
@@ -522,7 +451,7 @@ fn results(table: &Table<'_>) -> Vec<String> {
         lines.extend(markdown_table(
             &header,
             &rows,
-            &("rl".to_owned() + &"r".repeat(table.crates.len())),
+            &("r".to_owned() + &"r".repeat(table.crates.len())),
         ));
     }
     lines
@@ -534,7 +463,7 @@ fn reproduce() -> Vec<String> {
         "## Reproduce",
         "",
         "```sh",
-        "cargo run -p biguint-bench-report -- bench    # criterion, default and native builds",
+        "cargo run -p biguint-bench-report -- bench    # Callgrind counts of the native build",
         "cargo run -p biguint-bench-report -- report   # this file and benchmarks/*.svg",
         "```",
     ]

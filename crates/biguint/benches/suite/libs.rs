@@ -1,7 +1,7 @@
 //! One adapter per crate: the function that the crate runs for each operation, at each width.
 //!
-//! Each crate uses its own fastest public function for an operation. A crate without one gets
-//! the obvious composition of its public functions, or an absent cell with the reason.
+//! Each crate uses its own fastest public function for an operation. A crate without one gets an
+//! absent cell with the reason.
 
 use core::num::NonZero;
 use core::ops::Add;

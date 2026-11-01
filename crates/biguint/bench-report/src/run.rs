@@ -1,32 +1,19 @@
-//! `bench`: runs the `compare` bench of every build and records the run.
+//! `bench`: builds the `compare` bench for the native CPU, runs it, and records the counts.
 
 use std::fs;
-use std::io;
 use std::process::Command;
-use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::record::{Build, Cell, Record, Version};
-use crate::{Error, Paths, output, status};
+use crate::record::{Cell, Record, Version};
+use crate::{Error, Paths, output};
 
-/// The builds: their names and `RUSTFLAGS`.
-pub(crate) const BUILDS: [(&str, &str); 2] = [("default", ""), ("native", "-C target-cpu=native")];
-
-/// The arguments of every timing run to criterion: its quick mode, which doubles the iterations
-/// until two consecutive runs agree within 5%.
-const CRITERION_ARGS: [&str; 1] = ["--quick"];
+/// The `RUSTFLAGS` of the build: code for the CPU that runs the bench.
+const RUSTFLAGS: &str = "-C target-cpu=native";
 
 /// The crates whose versions the record keeps.
-const VERSIONS: [&str; 6] = [
-    "ruint",
-    "crypto-bigint",
-    "bnum",
-    "uint",
-    "num-bigint",
-    "criterion",
-];
+const VERSIONS: [&str; 5] = ["ruint", "crypto-bigint", "bnum", "uint", "num-bigint"];
 
-/// The files that the measured executables are built from, as git pathspecs.
+/// The files that the measured executable is built from, as git pathspecs.
 const MEASURED: [&str; 6] = [
     "Cargo.toml",
     "Cargo.lock",
@@ -36,7 +23,8 @@ const MEASURED: [&str; 6] = [
     ":(exclude)crates/biguint/benchmarks",
 ];
 
-/// Lists the cells, times every build, and writes the record. `machine` describes the machine.
+/// Counts every case of the `compare` bench and writes the record. `machine` describes the
+/// machine.
 pub(crate) fn bench(paths: &Paths, machine: Option<String>) -> Result<(), Error> {
     let started = now()?;
     let rustc = output(Command::new("rustc").arg("-vV").current_dir(&paths.root))?;
@@ -45,8 +33,9 @@ pub(crate) fn bench(paths: &Paths, machine: Option<String>) -> Result<(), Error>
             .args(["--print", "target-cpus"])
             .current_dir(&paths.root),
     )?;
+    let valgrind = output(Command::new("valgrind").arg("--version"))?;
     let status_lines = git(paths, &["status", "--porcelain", "--"], &MEASURED)?;
-    let mut record = Record {
+    let record = Record {
         date: date(started),
         head: git(paths, &["rev-parse", "HEAD"], &[])?,
         library_commit: git(
@@ -63,74 +52,31 @@ pub(crate) fn bench(paths: &Paths, machine: Option<String>) -> Result<(), Error>
         llvm: field(&rustc, "LLVM version: ", "rustc -vV")?,
         host: field(&rustc, "host: ", "rustc -vV")?,
         native_cpu: native_cpu(&target_cpus)?,
-        available_cpus: thread::available_parallelism()
-            .map_err(Error::Parallelism)?
-            .get(),
         machine,
-        criterion_args: CRITERION_ARGS.map(str::to_owned).to_vec(),
-        provisional: None,
+        rustflags: RUSTFLAGS.to_owned(),
+        valgrind: valgrind.trim_end().to_owned(),
         versions: versions(paths)?,
-        builds: Vec::new(),
         cells: cells(paths)?,
     };
-    for (name, rustflags) in BUILDS {
-        let criterion = paths.criterion(name);
-        match fs::remove_dir_all(&criterion) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(Error::io(&criterion, error)),
-        }
-        let started = now()?;
-        with_cargo(paths, name, rustflags, |cargo| {
-            status(
-                cargo
-                    .args([
-                        "bench", "--locked", "-p", "biguint", "--bench", "compare", "--",
-                    ])
-                    .args(CRITERION_ARGS),
-            )
-        })?;
-        record.builds.push(Build {
-            name: name.to_owned(),
-            rustflags: rustflags.to_owned(),
-            started,
-            finished: now()?,
-        });
-    }
-    let results = paths.results();
-    fs::create_dir_all(&results).map_err(|source| Error::io(&results, source))?;
     record.write(&paths.record())
 }
 
-/// Calls `run` with a `cargo` command for the build `name`: its own target directory, its
-/// `RUSTFLAGS`, and its criterion output directory. `CARGO` names the cargo that runs this tool.
-fn with_cargo<T>(
-    paths: &Paths,
-    name: &str,
-    rustflags: &str,
-    run: impl FnOnce(&mut Command) -> T,
-) -> T {
-    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    run(Command::new(cargo)
-        .current_dir(&paths.root)
-        .env("CARGO_TARGET_DIR", paths.build(name))
-        .env("CRITERION_HOME", paths.criterion(name))
-        .env("RUSTFLAGS", rustflags)
-        .env_remove("CARGO_ENCODED_RUSTFLAGS"))
-}
-
-/// The cells of the comparison, from `compare --cases` in the first build.
+/// Every cell of the comparison with its count: the lines that the `compare` bench prints.
+/// `CARGO` names the cargo that runs this tool.
 fn cells(paths: &Paths) -> Result<Vec<Cell>, Error> {
-    let [(name, rustflags), ..] = BUILDS;
-    let listing = with_cargo(paths, name, rustflags, |cargo| {
-        output(cargo.args([
-            "bench", "--locked", "-p", "biguint", "--bench", "compare", "--", "--cases",
-        ]))
-    })?;
-    listing
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let lines = output(
+        Command::new(cargo)
+            .args(["bench", "--locked", "-p", "biguint", "--bench", "compare"])
+            .current_dir(&paths.root)
+            .env("CARGO_TARGET_DIR", paths.results())
+            .env("RUSTFLAGS", RUSTFLAGS)
+            .env_remove("CARGO_ENCODED_RUSTFLAGS"),
+    )?;
+    lines
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| serde_json::from_str(line).map_err(Error::Cases))
+        .map(|line| serde_json::from_str(line).map_err(Error::Cells))
         .collect()
 }
 
