@@ -1,0 +1,6 @@
+disallowed-types = [
+  { path = "core::cell::Cell", reason = "no interior mutability" },
+  { path = "core::cell::RefCell", reason = "no interior mutability" },
+  { path = "core::cell::OnceCell", reason = "no interior mutability" },
+  { path = "core::cell::UnsafeCell", reason = "no interior mutability" },
+]

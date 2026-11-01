@@ -1,0 +1,24 @@
+[package]
+name = "siros-primitives-core"
+version = "0.1.0"
+description = "Fixed-width unsigned big integers with a type-level bit width"
+keywords = ["bigint", "uint", "arithmetic", "no_std"]
+categories = ["mathematics", "cryptography", "no-std"]
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+const-default.workspace = true
+derive-where.workspace = true
+generic-array.workspace = true
+thiserror.workspace = true
+typenum.workspace = true
+
+[dev-dependencies]
+ruint.workspace = true
+
+[lints]
+workspace = true

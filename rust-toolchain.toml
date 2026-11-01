@@ -1,0 +1,7 @@
+# Exact toolchain pin, shared by local builds and CI (.github/actions/rust-toolchain).
+# `rust-version` in Cargo.toml is the MSRV; the `msrv` CI job checks it.
+# To bump: change `channel` in its own commit, then run fmt, clippy and the tests.
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

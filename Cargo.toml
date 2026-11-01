@@ -1,0 +1,43 @@
+[workspace]
+resolver = "3"
+members = ["crates/siros-primitives-core"]
+
+[workspace.package]
+edition = "2024"
+license = "BSD-2-Clause"
+repository = "https://github.com/sirosfoundation/siros-primitives"
+authors = ["SIROS Foundation"]
+# Edition 2024 needs 1.85; the `msrv` CI job builds on it.
+rust-version = "1.85"
+
+[workspace.dependencies]
+const-default = { version = "1.0.0", default-features = false }
+derive-where = "1.6.1"
+generic-array = { version = "1.4.3", default-features = false, features = ["const-default"] }
+thiserror = { version = "2.0.17", default-features = false }
+typenum = { version = "1.20.1", features = ["const-generics"] }
+
+ruint = { version = "=1.17.2", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+unused_must_use = "deny"
+unused_results = "deny"
+unused_imports = "deny"
+unused_variables = "deny"
+unused_assignments = "deny"
+unreachable_code = "deny"
+unreachable_patterns = "deny"
+
+[workspace.lints.clippy]
+disallowed_types = "deny"
+let_underscore_must_use = "deny"
+let_underscore_untyped = "deny"
+wildcard_enum_match_arm = "deny"
+map_err_ignore = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+must_use_candidate = "deny"
+return_self_not_must_use = "deny"
+result_unit_err = "deny"

@@ -1,0 +1,334 @@
+//! Every operation against `ruint`, an independent fixed-width implementation. The widths cover
+//! one bit, partial top limbs, exact limb multiples, and the 521-bit case of nine limbs.
+
+use core::ops::Add;
+
+use generic_array::GenericArray;
+use generic_array::sequence::GenericSequence;
+use siros_primitives_core::{Bits, OutOfRange, Pow, Uint, WideningMul};
+use typenum::{
+    Sum, U1, U7, U8, U28, U63, U64, U65, U100, U128, U129, U192, U256, U384, U512, U521,
+};
+
+type Reference<const B: usize, const L: usize> = ruint::Uint<B, L>;
+
+/// Calls `$check::<N, B, L>()` for every width `B` with `L` limbs.
+macro_rules! for_each_width {
+    ($check:ident) => {
+        $check::<U1, 1, 1>();
+        $check::<U7, 7, 1>();
+        $check::<U8, 8, 1>();
+        $check::<U63, 63, 1>();
+        $check::<U64, 64, 1>();
+        $check::<U65, 65, 2>();
+        $check::<U100, 100, 2>();
+        $check::<U128, 128, 2>();
+        $check::<U129, 129, 3>();
+        $check::<U192, 192, 3>();
+        $check::<U256, 256, 4>();
+        $check::<U384, 384, 6>();
+        $check::<U512, 512, 8>();
+        $check::<U521, 521, 9>();
+    };
+}
+
+/// SplitMix64.
+struct Rng(u64);
+
+impl Rng {
+    fn next_u64(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    }
+
+    /// A random value with a random bit length.
+    fn uint<N: Bits>(&mut self) -> Uint<N> {
+        let full = Uint::<N>::from_generic_limbs(GenericArray::generate(|_| self.next_u64()));
+        full >> (self.next_u64() as usize % N::BITS)
+    }
+}
+
+fn repeated<N: Bits>(limb: u64) -> Uint<N> {
+    Uint::from_generic_limbs(GenericArray::generate(|_| limb))
+}
+
+fn limbs<N: Bits>(low: u64, high: u64) -> Uint<N> {
+    Uint::from_generic_limbs(GenericArray::generate(|index| match index {
+        0 => low,
+        1 => high,
+        _ => 0,
+    }))
+}
+
+/// Edge values and random values of width `N`.
+fn samples<N: Bits>() -> Vec<Uint<N>> {
+    let max = !Uint::<N>::ZERO;
+    let mut values = vec![
+        Uint::ZERO,
+        Uint::ONE,
+        Uint::from_u64(2),
+        max,
+        max - Uint::<N>::ONE,
+        max >> 1usize,
+        Uint::ONE << (N::BITS - 1),
+        repeated(0xaaaa_aaaa_aaaa_aaaa),
+        repeated(0x5555_5555_5555_5555),
+    ];
+    for bit in [31, 32, 63, 64, 65, 127, 128] {
+        if bit < N::BITS {
+            values.push(Uint::ONE << bit);
+            values.push((Uint::ONE << bit) - Uint::<N>::ONE);
+        }
+    }
+    if N::BITS >= 128 {
+        // Knuth's add-back case (step D6) in base 2^32: the estimated quotient digit
+        // 0xffff_ffff is one too large for this dividend and divisor.
+        values.push(limbs(0, 0x7fff_ffff_8000_0000));
+        values.push(limbs(1, 0x8000_0000));
+    }
+    let mut rng = Rng(N::BITS as u64);
+    values.extend((0..24).map(|_| rng.uint::<N>()));
+    values
+}
+
+fn reference<N: Bits, const B: usize, const L: usize>(value: Uint<N>) -> Reference<B, L> {
+    Reference::from_limbs(core::array::from_fn(|index| value.as_limbs()[index]))
+}
+
+fn shift_amounts(bits: usize) -> [usize; 11] {
+    [
+        0,
+        1,
+        31,
+        63,
+        64,
+        65,
+        bits - 1,
+        bits,
+        bits + 1,
+        2 * bits + 3,
+        usize::MAX,
+    ]
+}
+
+#[test]
+fn arithmetic_matches_reference() {
+    fn check<N: Bits, const B: usize, const L: usize>() {
+        let values = samples::<N>();
+        for &a in &values {
+            let ra = reference::<N, B, L>(a);
+            for &b in &values {
+                let rb = reference::<N, B, L>(b);
+                assert_eq!(reference(a + b), ra.wrapping_add(rb), "{B}: {a:?} + {b:?}");
+                assert_eq!(reference(a - b), ra.wrapping_sub(rb), "{B}: {a:?} - {b:?}");
+                assert_eq!(reference(a * b), ra.wrapping_mul(rb), "{B}: {a:?} * {b:?}");
+                for carry in [false, true] {
+                    let carry_in = Reference::<B, L>::from_limbs(core::array::from_fn(|index| {
+                        u64::from(carry && index == 0)
+                    }));
+                    let (sum, add_low) = ra.overflowing_add(rb);
+                    let (sum, add_high) = sum.overflowing_add(carry_in);
+                    let (out, carry_out) = a.carrying_add(b, carry);
+                    assert_eq!((reference(out), carry_out), (sum, add_low | add_high));
+
+                    let (difference, sub_low) = ra.overflowing_sub(rb);
+                    let (difference, sub_high) = difference.overflowing_sub(carry_in);
+                    let (out, borrow_out) = a.borrowing_sub(b, carry);
+                    assert_eq!(
+                        (reference(out), borrow_out),
+                        (difference, sub_low | sub_high)
+                    );
+                }
+            }
+        }
+        for (&a, &b) in values.iter().zip(values.iter().rev()).take(6) {
+            let expected = reference::<N, B, L>(a).wrapping_pow(reference(b));
+            assert_eq!(reference(a.pow(b)), expected, "{B}: {a:?} ^ {b:?}");
+        }
+    }
+    for_each_width!(check);
+}
+
+#[test]
+fn widening_mul_matches_reference() {
+    /// `N`-bit times `M`-bit into `R = N + M` bits; `L`, `K` and `S` are the limb counts.
+    fn check<
+        N,
+        M,
+        const B: usize,
+        const L: usize,
+        const C: usize,
+        const K: usize,
+        const R: usize,
+        const S: usize,
+    >()
+    where
+        N: Bits + Add<M>,
+        M: Bits,
+        Sum<N, M>: Bits,
+    {
+        let rhs_values = samples::<M>();
+        for a in samples::<N>() {
+            for &b in &rhs_values {
+                let expected: Reference<R, S> =
+                    reference::<N, B, L>(a).widening_mul(reference::<M, C, K>(b));
+                assert_eq!(
+                    reference(a.widening_mul(b)),
+                    expected,
+                    "{B}x{C}: {a:?} {b:?}"
+                );
+            }
+        }
+    }
+    check::<U1, U7, 1, 1, 7, 1, 8, 1>();
+    check::<U64, U64, 64, 1, 64, 1, 128, 2>();
+    check::<U65, U63, 65, 2, 63, 1, 128, 2>();
+    check::<U100, U28, 100, 2, 28, 1, 128, 2>();
+    check::<U129, U192, 129, 3, 192, 3, 321, 6>();
+    check::<U256, U256, 256, 4, 256, 4, 512, 8>();
+    check::<U521, U521, 521, 9, 521, 9, 1042, 17>();
+}
+
+#[test]
+fn division_matches_reference() {
+    fn check<N: Bits, const B: usize, const L: usize>() {
+        let values = samples::<N>();
+        for &a in &values {
+            for &b in &values {
+                let Some((quotient, remainder)) = a.div_rem(b) else {
+                    assert!(b.is_zero(), "{B}: {a:?} / {b:?} refused");
+                    continue;
+                };
+                let expected = reference::<N, B, L>(a).div_rem(reference(b));
+                assert_eq!(
+                    (reference(quotient), reference(remainder)),
+                    expected,
+                    "{B}: {a:?} / {b:?}"
+                );
+            }
+        }
+    }
+    for_each_width!(check);
+}
+
+#[test]
+fn bit_operations_match_reference() {
+    fn check<N: Bits, const B: usize, const L: usize>() {
+        let values = samples::<N>();
+        for &a in &values {
+            let ra = reference::<N, B, L>(a);
+            assert_eq!(reference(!a), !ra);
+            assert_eq!(a.bit_len(), ra.bit_len(), "{B}: {a:?}");
+            assert_eq!(a.leading_zeros(), ra.leading_zeros(), "{B}: {a:?}");
+            assert_eq!(a.trailing_zeros(), ra.trailing_zeros(), "{B}: {a:?}");
+            assert_eq!(a.count_ones(), ra.count_ones(), "{B}: {a:?}");
+            assert_eq!(a.count_zeros(), ra.count_zeros(), "{B}: {a:?}");
+            for index in [0, 1, 63, 64, B - 1, B, B + 1, 4096] {
+                assert_eq!(a.bit_at(index), ra.bit(index), "{B}: bit {index} of {a:?}");
+            }
+            for shift in shift_amounts(B) {
+                let amount = Uint::<U8>::from_u64(shift as u64);
+                let fits_amount = shift < 256;
+                assert_eq!(
+                    reference(a << shift),
+                    ra.wrapping_shl(shift),
+                    "{B}: {a:?} << {shift}"
+                );
+                assert_eq!(
+                    reference(a >> shift),
+                    ra.wrapping_shr(shift),
+                    "{B}: {a:?} >> {shift}"
+                );
+                if fits_amount {
+                    assert_eq!(reference(a << amount), ra.wrapping_shl(shift));
+                    assert_eq!(reference(a >> amount), ra.wrapping_shr(shift));
+                }
+                assert_eq!(reference(a.rotate_left(shift)), ra.rotate_left(shift));
+                assert_eq!(reference(a.rotate_right(shift)), ra.rotate_right(shift));
+            }
+            for &b in &values {
+                let rb = reference::<N, B, L>(b);
+                assert_eq!(reference(a & b), ra & rb);
+                assert_eq!(reference(a | b), ra | rb);
+                assert_eq!(reference(a ^ b), ra ^ rb);
+                assert_eq!(a.cmp(&b), ra.cmp(&rb), "{B}: {a:?} cmp {b:?}");
+                let expected_shift = usize::try_from(rb).ok().filter(|shift| *shift < B);
+                let expected_shl = expected_shift.map_or(Reference::ZERO, |shift| ra << shift);
+                assert_eq!(reference(a << b), expected_shl, "{B}: {a:?} << {b:?}");
+            }
+        }
+    }
+    for_each_width!(check);
+}
+
+#[test]
+fn encodings_and_conversions_match_reference() {
+    fn check<N: Bits, const B: usize, const L: usize>() {
+        for a in samples::<N>() {
+            let ra = reference::<N, B, L>(a);
+            let expected_le: Vec<u8> = (0..B.div_ceil(8)).map(|index| ra.byte(index)).collect();
+            let le = a.to_le_bytes();
+            let be = a.to_be_bytes();
+            assert_eq!(le.as_slice(), expected_le, "{B}: {a:?}");
+            assert!(be.iter().eq(expected_le.iter().rev()), "{B}: {a:?}");
+            assert_eq!(Uint::<N>::from_le_bytes(&le), Ok(a));
+            assert_eq!(Uint::<N>::from_be_bytes(&be), Ok(a));
+
+            assert_eq!(u64::try_from(a).ok(), u64::try_from(ra).ok(), "{B}: {a:?}");
+            assert_eq!(
+                u128::try_from(a).ok(),
+                u128::try_from(ra).ok(),
+                "{B}: {a:?}"
+            );
+            let narrowed = a.try_resize::<U64>().map(reference::<U64, 64, 1>);
+            let expected_narrowed = u64::try_from(ra)
+                .ok()
+                .map(|low| Reference::<64, 1>::from_limbs([low]))
+                .ok_or(OutOfRange { width: 64 });
+            assert_eq!(narrowed, expected_narrowed, "{B}: {a:?}");
+            let resized = a.resize::<U100>();
+            assert!((0..128).all(|index| resized.bit_at(index) == (index < 100 && ra.bit(index))));
+            if let Ok(value) = u128::try_from(ra) {
+                assert_eq!(format!("{a:?}"), format!("{value:#x}"));
+            }
+        }
+        if !B.is_multiple_of(8) {
+            let mut over = Uint::<N>::ZERO.to_le_bytes();
+            if let Some(top) = over.last_mut() {
+                *top = 1 << (B % 8);
+            }
+            assert_eq!(
+                Uint::<N>::from_le_bytes(&over),
+                Err(OutOfRange { width: B })
+            );
+        }
+    }
+    for_each_width!(check);
+
+    assert_eq!(u64::try_from(Uint::<U64>::from(u64::MAX)), Ok(u64::MAX));
+    assert_eq!(u128::try_from(Uint::<U128>::from(u128::MAX)), Ok(u128::MAX));
+    assert_eq!(Uint::<U1>::from(true), Uint::ONE);
+}
+
+#[test]
+fn swap_bytes_matches_reference() {
+    fn check<N, const B: usize, const L: usize, const Y: usize>()
+    where
+        N: Bits + core::ops::Rem<U8, Output = typenum::U0>,
+    {
+        for a in samples::<N>() {
+            let ra = reference::<N, B, L>(a);
+            let expected = Reference::<B, L>::from_be_bytes::<Y>(ra.to_le_bytes::<Y>());
+            assert_eq!(reference(a.swap_bytes()), expected, "{B}: {a:?}");
+        }
+    }
+    check::<U8, 8, 1, 1>();
+    check::<U64, 64, 1, 8>();
+    check::<U128, 128, 2, 16>();
+    check::<U192, 192, 3, 24>();
+    check::<U256, 256, 4, 32>();
+    check::<U512, 512, 8, 64>();
+}
