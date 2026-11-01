@@ -23,7 +23,7 @@ impl<N: Bits, RhsN: Bits> Mul<Uint<RhsN>> for Uint<N> {
 
     #[inline(always)]
     fn mul(self, rhs: Uint<RhsN>) -> Self::Output {
-        Uint::from_generic_limbs(mul_into(self, rhs))
+        Uint::from_generic_limbs(mul_into(&self.limbs, &rhs.limbs))
     }
 }
 
@@ -38,7 +38,7 @@ where
 
     #[inline(always)]
     fn widening_mul(self, rhs: Uint<RhsN>) -> Self::Output {
-        Uint::from_generic_limbs(mul_into(self, rhs))
+        Uint::from_generic_limbs(mul_into(&self.limbs, &rhs.limbs))
     }
 }
 
@@ -47,7 +47,8 @@ where
 #[inline(always)]
 fn truncate_carry(_carry: u64) {}
 
-/// The schoolbook product `a * b` in `O` little-endian limbs, modulo `2^(64 * O)`.
+/// The schoolbook product of the little-endian limbs `a` and `b` in `O` limbs, modulo
+/// `2^(64 * O)`.
 ///
 /// The longer operand's [`MulIter`] stream is scaled by each limb of the shorter one and added
 /// into the output window, which advances one limb per multiplier limb. The accumulation runs
@@ -55,12 +56,10 @@ fn truncate_carry(_carry: u64) {}
 /// of at most 16 limb pairs skip the data-dependent `mul != 0` branch, whose misprediction costs
 /// more than the multiply.
 #[inline(always)]
-fn mul_into<A: Bits, B: Bits, O: ArrayLength>(a: Uint<A>, b: Uint<B>) -> GenericArray<u64, O> {
+fn mul_into<O: ArrayLength>(a: &[u64], b: &[u64]) -> GenericArray<u64, O> {
     let mut product = GenericArray::<u64, O>::default();
     {
         let mut window = product.as_mut_slice();
-        let a = a.limbs.as_slice();
-        let b = b.limbs.as_slice();
         let (a, b) = if b.len() > a.len() { (b, a) } else { (a, b) };
         for &mul in b {
             if a.len() * b.len() <= 16 || mul != 0 {

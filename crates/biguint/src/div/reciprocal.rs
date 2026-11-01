@@ -14,7 +14,7 @@ macro_rules! division_steps {
 
         /// `high * β + low`.
         #[inline(always)]
-        pub(super) const fn join(high: $word, low: $word) -> $double {
+        pub(crate) const fn join(high: $word, low: $word) -> $double {
             ((high as $double) << BITS) | low as $double
         }
 
@@ -46,10 +46,17 @@ macro_rules! division_steps {
             };
             // Rarely, it is one too small.
             if remainder >= divisor {
-                (quotient + 1, remainder - divisor)
+                one_more(quotient, remainder, divisor)
             } else {
                 (quotient, remainder)
             }
+        }
+
+        /// `(quotient + 1, remainder - divisor)`, out of the hot path.
+        #[cold]
+        #[inline(never)]
+        fn one_more(quotient: $word, remainder: $word, divisor: $word) -> ($word, $word) {
+            (quotient + 1, remainder - divisor)
         }
 
         /// `floor((β^3 - 1) / d) - β` for `d = high * β + low` with `high` normalized, from the
@@ -102,10 +109,21 @@ macro_rules! division_steps {
             };
             // Rarely, it is one too small.
             if remainder >= divisor {
-                (quotient + 1, remainder - divisor)
+                one_more_wide(quotient, remainder, divisor)
             } else {
                 (quotient, remainder)
             }
+        }
+
+        /// `(quotient + 1, remainder - divisor)`, out of the hot path.
+        #[cold]
+        #[inline(never)]
+        fn one_more_wide(
+            quotient: $word,
+            remainder: $double,
+            divisor: $double,
+        ) -> ($word, $double) {
+            (quotient + 1, remainder - divisor)
         }
     };
 }
@@ -114,7 +132,7 @@ mod limb {
     division_steps!(u64, u128);
 }
 
-use limb::join;
+pub(super) use limb::join;
 
 /// A limb with its top bit set.
 #[derive(Clone, Copy)]
