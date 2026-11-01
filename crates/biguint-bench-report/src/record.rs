@@ -42,7 +42,7 @@ pub(crate) struct Cell {
 /// One build of the bench.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct Build {
-    /// `x86-64` or `native`.
+    /// `default` or `native`.
     pub(crate) name: String,
     /// The `RUSTFLAGS` of the build.
     pub(crate) rustflags: String,

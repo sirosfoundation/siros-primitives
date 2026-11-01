@@ -10,7 +10,7 @@ use crate::record::{Build, Cell, Record, Version};
 use crate::{Error, Paths, output, status};
 
 /// The builds: their names and `RUSTFLAGS`.
-pub(crate) const BUILDS: [(&str, &str); 2] = [("x86-64", ""), ("native", "-C target-cpu=native")];
+pub(crate) const BUILDS: [(&str, &str); 2] = [("default", ""), ("native", "-C target-cpu=native")];
 
 /// The crates whose versions the record keeps.
 const VERSIONS: [&str; 6] = [
