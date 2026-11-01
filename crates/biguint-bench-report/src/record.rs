@@ -84,6 +84,8 @@ pub(crate) struct Record {
     pub(crate) logical_cpus: usize,
     /// The operator's description of the machine.
     pub(crate) machine: Option<String>,
+    /// The arguments of the timing runs to criterion.
+    pub(crate) criterion_args: Vec<String>,
     /// Why the times are upper bounds, when they are.
     pub(crate) provisional: Option<String>,
     /// The versions of the compared crates and of criterion.

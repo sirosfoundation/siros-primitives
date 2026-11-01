@@ -12,6 +12,10 @@ use crate::{Error, Paths, output, status};
 /// The builds: their names and `RUSTFLAGS`.
 pub(crate) const BUILDS: [(&str, &str); 2] = [("default", ""), ("native", "-C target-cpu=native")];
 
+/// The arguments of every timing run to criterion: its quick mode, which doubles the iterations
+/// until two consecutive runs agree within 5%.
+const CRITERION_ARGS: [&str; 1] = ["--quick"];
+
 /// The crates whose versions the record keeps.
 const VERSIONS: [&str; 6] = [
     "ruint",
@@ -63,6 +67,7 @@ pub(crate) fn bench(paths: &Paths, machine: Option<String>) -> Result<(), Error>
             .map_err(Error::Parallelism)?
             .get(),
         machine,
+        criterion_args: CRITERION_ARGS.map(str::to_owned).to_vec(),
         provisional: None,
         versions: versions(paths)?,
         builds: Vec::new(),
@@ -77,7 +82,13 @@ pub(crate) fn bench(paths: &Paths, machine: Option<String>) -> Result<(), Error>
         }
         let started = now()?;
         with_cargo(paths, name, rustflags, |cargo| {
-            status(cargo.args(["bench", "--locked", "-p", "biguint", "--bench", "compare"]))
+            status(
+                cargo
+                    .args([
+                        "bench", "--locked", "-p", "biguint", "--bench", "compare", "--",
+                    ])
+                    .args(CRITERION_ARGS),
+            )
         })?;
         record.builds.push(Build {
             name: name.to_owned(),

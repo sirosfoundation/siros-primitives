@@ -12,9 +12,8 @@ use crate::{Error, Paths};
 const SUBJECT: &str = "biguint";
 
 /// The formula of each operation.
-const FORMULAS: [(&str, &str); 6] = [
+const FORMULAS: [(&str, &str); 5] = [
     ("add", "a + b"),
-    ("sub", "a − b"),
     ("mul", "a × b"),
     ("div", "a / b"),
     ("mod", "a mod b"),
@@ -316,10 +315,7 @@ fn setup(record: &Record) -> Result<Vec<String>, Error> {
         vec!["Builds".to_owned(), builds.join(" ")],
         vec![
             "Timing".to_owned(),
-            format!(
-                "criterion {}: 1 s warm-up, 3 s of samples, 100 samples",
-                criterion.version
-            ),
+            timing(&criterion.version, &record.criterion_args),
         ],
         vec!["Crates".to_owned(), crates.join(", ")],
     ];
@@ -336,14 +332,22 @@ fn setup(record: &Record) -> Result<Vec<String>, Error> {
     Ok(lines)
 }
 
+/// How criterion `version` sampled the cases with `args`.
+fn timing(version: &str, args: &[String]) -> String {
+    match args {
+        [quick] if quick == "--quick" => format!(
+            "criterion {version} with `--quick`: no warm-up; the iterations of a case double until \
+             two consecutive runs agree within 5%, from 100 ms to 3 s"
+        ),
+        [] => format!("criterion {version}: 1 s warm-up, 3 s of samples, 100 samples"),
+        _ => format!("criterion {version} with `{}`", args.join(" ")),
+    }
+}
+
 fn method(table: &Table<'_>) -> Vec<String> {
     let batch = table.batch;
     let operands = [
         ["add, mul", "`a` and `b` uniform below 2^N"],
-        [
-            "sub",
-            "`a` and `b` uniform below 2^N, ordered so that `a >= b`",
-        ],
         [
             "div, mod",
             "a dividend with bit N − 1 set; a divisor below 2^(N/2) with bit N/2 − 1 set, held \
@@ -367,7 +371,7 @@ fn method(table: &Table<'_>) -> Vec<String> {
              predictors see varied data and the compiler computes every result."
         ),
         format!(
-            "- Time per operation: the median of criterion's samples, per iteration, divided by \
+            "- Time per operation: criterion's median estimate of one iteration, divided by \
              {batch}."
         ),
         "- Before a case is measured, its result on every operand set must equal the exact \
@@ -453,12 +457,14 @@ fn functions(table: &Table<'_>) -> Vec<String> {
     lines.extend(
         [
             "- `native` is `u64` at 64 bits and `u128` at 128 bits. Its divisors are `NonZero`.",
+            "- `biguint` subtracts with the carry chain of its addition, so the bench measures add \
+             only.",
             "- `crypto-bigint` is constant-time by design. Its div, mod and mulmod cases run its \
-             `*_vartime` functions. Its add, sub and mul have no variable-time variant.",
+             `*_vartime` functions. Its add and mul have no variable-time variant.",
             "- `num-bigint` allocates every result and returns it exactly: add returns up to N + \
              1 bits, and mul returns the 2N-bit product. Its times include the allocation.",
             "- `uint` is the parity crate. Its types come from `construct_uint!`, as in \
-             `primitive-types`; its add, sub and mul wrap through `overflowing_*`.",
+             `primitive-types`; its add and mul wrap through `overflowing_*`.",
         ]
         .map(str::to_owned),
     );
