@@ -7,7 +7,7 @@ use crate::kernel::{
     add_assign, add_limb, add_to, compare, fits, split, split_mut, sub_assign, sub_limb,
 };
 use crate::recursion::{Depth, product_scratch};
-use crate::stream::{LimbStream, Op2CarryIter, SubOp, ZeroExtended, add_into};
+use crate::stream::{LimbStream, Op2CarryIter, SubOp, ZeroExtended};
 
 use super::basecase;
 
@@ -49,10 +49,8 @@ pub(crate) fn karatsuba<D: Depth>(out: &mut [u64], a: &[u64], b: &[u64], scratch
 fn abs_difference(out: &mut [u64], x: &[u64], y: &[u64]) -> bool {
     let below = compare(x, y).is_lt();
     let (larger, smaller) = select_unpredictable(below, (y, x), (x, y));
-    let mut difference = Op2CarryIter::<_, _, SubOp>::new(
-        ZeroExtended::new(larger.iter().copied()),
-        ZeroExtended::new(smaller.iter().copied()),
-    );
+    let mut difference =
+        Op2CarryIter::<_, _, SubOp>::new(ZeroExtended::new(larger), ZeroExtended::new(smaller));
     for slot in out {
         *slot = difference.next_limb();
     }
@@ -71,7 +69,8 @@ fn interpolate(out: &mut [u64], difference_product: &[u64], negative: bool, half
         // X = H0 + L1 replaces L1; X + L0 replaces H0; X + H1 replaces X.
         let carry_x = add_assign(l1, h0);
         let carry_at_2h = carry_x + add_to(h0, l1, l0);
-        let carry_at_3h = carry_x + add_into(ZeroExtended::new(h1.iter().copied()), l1);
+        let (l1_low, l1_high) = split_mut(l1, h1.len());
+        let carry_at_3h = carry_x + add_limb(l1_high, add_assign(l1_low, h1));
         (carry_at_2h, carry_at_3h)
     };
     let (_, from_h) = split_mut(out, half);

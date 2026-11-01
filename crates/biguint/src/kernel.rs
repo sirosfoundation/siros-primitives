@@ -9,6 +9,7 @@
 use core::cmp::Ordering;
 
 use crate::limb::{BorrowingSub, CarryingAdd};
+use crate::stream::{LimbStream, ZeroExtended, for_each_slot};
 
 /// `a * b + c + d` as `(low, high)`.
 #[inline(always)]
@@ -53,33 +54,34 @@ pub(crate) fn sub_mul_row(out: &mut [u64], a: &[u64], m: u64) -> u64 {
 /// Adds the equally long `a` to `out` and returns the carry out of the top limb.
 #[inline(always)]
 pub(crate) fn add_assign(out: &mut [u64], a: &[u64]) -> u64 {
-    out.iter_mut().zip(a).fold(0, |carry, (slot, &limb)| {
-        let (sum, carry) = slot.add_carry(limb, carry);
-        *slot = sum;
-        carry
-    })
+    let mut source = ZeroExtended::new(a);
+    let mut carry = 0;
+    for_each_slot(out, |slot| {
+        (*slot, carry) = slot.add_carry(source.next_limb(), carry);
+    });
+    carry
 }
 
 /// Subtracts the equally long `a` from `out` and returns the borrow out of the top limb.
 #[inline(always)]
 pub(crate) fn sub_assign(out: &mut [u64], a: &[u64]) -> u64 {
-    out.iter_mut().zip(a).fold(0, |borrow, (slot, &limb)| {
-        let (difference, borrow) = slot.sub_borrow(limb, borrow);
-        *slot = difference;
-        borrow
-    })
+    let mut source = ZeroExtended::new(a);
+    let mut borrow = 0;
+    for_each_slot(out, |slot| {
+        (*slot, borrow) = slot.sub_borrow(source.next_limb(), borrow);
+    });
+    borrow
 }
 
 /// Writes `a + b` to `out`, all equally long, and returns the carry out of the top limb.
 #[inline(always)]
 pub(crate) fn add_to(out: &mut [u64], a: &[u64], b: &[u64]) -> u64 {
-    out.iter_mut()
-        .zip(a.iter().zip(b))
-        .fold(0, |carry, (slot, (&x, &y))| {
-            let (sum, carry) = x.add_carry(y, carry);
-            *slot = sum;
-            carry
-        })
+    let (mut a, mut b) = (ZeroExtended::new(a), ZeroExtended::new(b));
+    let mut carry = 0;
+    for_each_slot(out, |slot| {
+        (*slot, carry) = a.next_limb().add_carry(b.next_limb(), carry);
+    });
+    carry
 }
 
 /// Adds `carry` to the bottom limb of `out`, ripples it up until it is absorbed, and returns the

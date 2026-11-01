@@ -3,8 +3,6 @@
 //! half and two products of half the length, which Karatsuba computes below the schoolbook's
 //! quadratic cost.
 
-use core::hint::cold_path;
-
 use super::reciprocal::Reciprocal3By2;
 use super::{QuotientSink, divide_by_limbs};
 use crate::kernel::{add_assign, add_mul_row, split, split_mut, sub_assign, sub_limb};
@@ -98,7 +96,6 @@ fn settle(
     let mut top = top;
     // At most twice.
     while borrow != 0 {
-        cold_path();
         top -= sub_limb(quotient, 1);
         borrow -= add_assign(window, divisor);
     }

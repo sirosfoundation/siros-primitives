@@ -4,7 +4,7 @@ use generic_array::{GenericArray, IntoArrayLength};
 use typenum::Const;
 
 use crate::bits::{Bits, Bits8, Bits16, Bits32, Bits64, Bits128, Bits256, Bits384, Bits512};
-use crate::stream::{LimbStream, ZeroExtended};
+use crate::stream::{LimbStream, ZeroExtended, for_each_slot};
 
 /// An unsigned integer of exactly `N` bits.
 ///
@@ -178,17 +178,21 @@ impl<N: Bits> Uint<N> {
         N::BITS - self.count_ones()
     }
 
-    /// Collects the first `ceil(N / 64)` limbs of `stream`, modulo `2^N`.
+    /// Collects the first `ceil(N / 64)` limbs of `stream`, modulo `2^N`. Up to four limbs the
+    /// plain pull unrolls; longer pulls run in groups of four.
     #[inline(always)]
     pub(crate) fn from_stream(mut stream: impl LimbStream) -> Self {
-        Self::from_generic_limbs(GenericArray::generate(|_| stream.next_limb()))
+        if N::LIMBS <= 4 {
+            return Self::from_generic_limbs(GenericArray::generate(|_| stream.next_limb()));
+        }
+        let mut limbs = GenericArray::<u64, N::Limbs>::default();
+        for_each_slot(&mut limbs, |slot| *slot = stream.next_limb());
+        Self::from_generic_limbs(limbs)
     }
 
     /// The limbs, then `0` forever.
     #[inline(always)]
-    pub(crate) fn into_stream(
-        self,
-    ) -> ZeroExtended<<GenericArray<u64, N::Limbs> as IntoIterator>::IntoIter> {
-        ZeroExtended::new(self.limbs.into_iter())
+    pub(crate) fn stream(&self) -> ZeroExtended<'_> {
+        ZeroExtended::new(&self.limbs)
     }
 }

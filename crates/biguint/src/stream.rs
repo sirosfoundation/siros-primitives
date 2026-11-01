@@ -1,12 +1,12 @@
 //! The limb-stream algebra that every multi-limb operation is written in.
 //!
 //! An operation is a lazy, infinite stream of little-endian limbs ([`LimbStream`]). A source
-//! yields its limbs and then `0` forever ([`ZeroExtended`]). The zero fill is the end marker, so
-//! the hot loop handles plain `u64` limbs. Carries fall out of the algebra: [`AddOp`] on two
-//! exhausted operands with a pending carry yields the carry limb, and [`MulIter`] yields its high
-//! limb once its operand is exhausted. `Uint::from_stream` pulls exactly `ceil(N / 64)` limbs and
-//! masks the top one. Every combinator inlines, and the compiler unrolls the pull into
-//! straight-line code over the limbs.
+//! yields the limbs of a slice and then `0` forever ([`ZeroExtended`]). The zero fill is the end
+//! marker, so the hot loop handles plain `u64` limbs. Carries fall out of the algebra: [`AddOp`] on
+//! two exhausted operands with a pending carry yields the carry limb, and [`MulIter`] yields its
+//! high limb once its operand is exhausted. `Uint::from_stream` pulls exactly `ceil(N / 64)` limbs
+//! and masks the top one. Every combinator inlines. The compiler unrolls a short pull into
+//! straight-line code; a long one runs four limbs per iteration ([`for_each_slot`]).
 
 use core::marker::PhantomData;
 
@@ -18,22 +18,67 @@ pub(crate) trait LimbStream {
     fn next_limb(&mut self) -> u64;
 }
 
-/// The limbs of a finite iterator, then `0` forever.
-pub(crate) struct ZeroExtended<I> {
-    iter: I,
+/// The limbs of a slice, then `0` forever.
+///
+/// It reads by index: the index advances with the consumer's loop, so the compiler proves the
+/// reads in bounds and drops the zero fill when the slice is at least as long as the output.
+pub(crate) struct ZeroExtended<'a> {
+    limbs: &'a [u64],
+    index: usize,
 }
 
-impl<I> ZeroExtended<I> {
+impl<'a> ZeroExtended<'a> {
     #[inline(always)]
-    pub(crate) const fn new(iter: I) -> Self {
-        Self { iter }
+    pub(crate) const fn new(limbs: &'a [u64]) -> Self {
+        Self { limbs, index: 0 }
     }
 }
 
-impl<I: Iterator<Item = u64>> LimbStream for ZeroExtended<I> {
+impl LimbStream for ZeroExtended<'_> {
     #[inline(always)]
     fn next_limb(&mut self) -> u64 {
-        self.iter.next().unwrap_or(0)
+        let limb = self.limbs.get(self.index).copied().unwrap_or(0);
+        self.index += 1;
+        limb
+    }
+}
+
+/// The limbs of a slice, then `0` forever, read through the slice iterator.
+///
+/// Inside a product that the compiler unrolls completely, the iterator's end test folds as early
+/// as the unroll; the indexed [`ZeroExtended`] leaves the rows of such a product rolled.
+pub(crate) struct Unrolled<'a> {
+    limbs: core::slice::Iter<'a, u64>,
+}
+
+impl<'a> Unrolled<'a> {
+    #[inline(always)]
+    pub(crate) fn new(limbs: &'a [u64]) -> Self {
+        Self {
+            limbs: limbs.iter(),
+        }
+    }
+}
+
+impl LimbStream for Unrolled<'_> {
+    #[inline(always)]
+    fn next_limb(&mut self) -> u64 {
+        self.limbs.next().copied().unwrap_or(0)
+    }
+}
+
+/// Runs `step` on every slot of `slots` in order, four slots per loop iteration: the compiler
+/// keeps a carry in the flags within each group of four.
+#[inline(always)]
+pub(crate) fn for_each_slot(slots: &mut [u64], mut step: impl FnMut(&mut u64)) {
+    let (groups, rest) = slots.as_chunks_mut::<4>();
+    for group in groups {
+        for slot in group {
+            step(slot);
+        }
+    }
+    for slot in rest {
+        step(slot);
     }
 }
 

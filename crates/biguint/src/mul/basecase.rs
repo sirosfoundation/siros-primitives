@@ -2,7 +2,7 @@
 //! unrolls it completely, rows of fused multiply-accumulate steps elsewhere.
 
 use crate::kernel::{add_mul_row, mul_row, split_mut};
-use crate::stream::{MulIter, ZeroExtended, add_into};
+use crate::stream::{MulIter, Unrolled, add_into};
 
 /// The most steps of a full stream product that the compiler unrolls completely (a 7 by 7 limb
 /// product), measured with rustc 1.99. Up to there the unrolled stream beats the rows by up to
@@ -52,10 +52,7 @@ pub(crate) fn stream(out: &mut [u64], a: &[u64], b: &[u64]) {
     let (a, b) = if b.len() > a.len() { (b, a) } else { (a, b) };
     let mut window = out;
     for &multiplier in b {
-        truncate_carry(add_into(
-            MulIter::new(ZeroExtended::new(a.iter().copied()), multiplier),
-            window,
-        ));
+        truncate_carry(add_into(MulIter::new(Unrolled::new(a), multiplier), window));
         window = match window.split_first_mut() {
             Some((_, rest)) => rest,
             None => break,

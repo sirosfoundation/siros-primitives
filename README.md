@@ -40,7 +40,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-`rust-toolchain.toml` pins the compiler. The minimum supported Rust version is 1.95.
+`rust-toolchain.toml` pins the compiler. The minimum supported Rust version is 1.88.
 
 ## License
 

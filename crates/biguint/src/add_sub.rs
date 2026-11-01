@@ -54,8 +54,8 @@ impl<N: Bits, RhsN: Bits> Add<Uint<RhsN>> for Uint<N> {
     #[inline(always)]
     fn add(self, rhs: Uint<RhsN>) -> Self::Output {
         Uint::from_stream(Op2CarryIter::<_, _, AddOp>::new(
-            self.into_stream(),
-            rhs.into_stream(),
+            self.stream(),
+            rhs.stream(),
         ))
     }
 }
@@ -67,8 +67,8 @@ impl<N: Bits, RhsN: Bits> Sub<Uint<RhsN>> for Uint<N> {
     #[inline(always)]
     fn sub(self, rhs: Uint<RhsN>) -> Self::Output {
         Uint::from_stream(Op2CarryIter::<_, _, SubOp>::new(
-            self.into_stream(),
-            rhs.into_stream(),
+            self.stream(),
+            rhs.stream(),
         ))
     }
 }
