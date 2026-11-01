@@ -96,20 +96,39 @@ pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength>(
         stream(&mut product, a, b);
     } else if !Shape::<A, B, P::Limbs>::KARATSUBA {
         rows(&mut product, a, b);
+    } else if A::USIZE == B::USIZE {
+        // The difference products need about seven eighths of the product's limbs.
+        karatsuba_into::<P>(
+            &mut product,
+            a,
+            b,
+            &mut GenericArray::<u64, P::BalancedScratch>::default(),
+        );
     } else {
-        let mut scratch = GenericArray::<u64, P::ProductScratch>::default();
-        if P::LIMBS >= A::USIZE + B::USIZE {
-            karatsuba_product(&mut product, a, b, &mut scratch);
-        } else {
-            // The top limb of the full product is zero; it needs a place to land.
-            let mut wide = GenericArray::<u64, P::Window>::default();
-            karatsuba_product(&mut wide, a, b, &mut scratch);
-            for (slot, &limb) in product.iter_mut().zip(wide.iter()) {
-                *slot = limb;
-            }
-        }
+        // The block product and its difference products.
+        karatsuba_into::<P>(
+            &mut product,
+            a,
+            b,
+            &mut GenericArray::<u64, P::ProductScratch>::default(),
+        );
     }
     product
+}
+
+/// `a * b` into `product`, the `P::LIMBS` limbs of the width `P`, by [`karatsuba_product`].
+#[inline(always)]
+fn karatsuba_into<P: Bits>(product: &mut [u64], a: &[u64], b: &[u64], scratch: &mut [u64]) {
+    if P::LIMBS >= a.len() + b.len() {
+        karatsuba_product(product, a, b, scratch);
+    } else {
+        // The top limb of the full product is zero; it needs a place to land.
+        let mut wide = GenericArray::<u64, P::Window>::default();
+        karatsuba_product(&mut wide, a, b, scratch);
+        for (slot, &limb) in product.iter_mut().zip(wide.iter()) {
+            *slot = limb;
+        }
+    }
 }
 
 /// `a * b mod 2^N`.

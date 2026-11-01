@@ -17,7 +17,11 @@ pub(crate) mod sealed {
     pub trait Sealed {
         /// `ceil(N / 64) + 1`: a dividend shifted left until its divisor's top bit is set.
         type Window: ArrayLength;
-        /// `2 * ceil(N / 64) + 8`: the work area of a full product into `N` bits.
+        /// `ceil(N / 64) + 8`: the work area of a full product into `N` bits of two equally long
+        /// operands.
+        type BalancedScratch: ArrayLength;
+        /// `2 * ceil(N / 64) + 8`: the work area of a full product into `N` bits of two operands
+        /// of different lengths.
         type ProductScratch: ArrayLength;
         /// `3 * ceil(N / 64) + 8`: the work area of a product modulo `2^N`.
         type TruncatedScratch: ArrayLength;
@@ -31,8 +35,9 @@ where
     N: Unsigned + Div<typenum::U64> + Rem<typenum::U64>,
     Mod<N, typenum::U64>: IsGreater<U0>,
     Quot<N, typenum::U64>: Add<Gr<Mod<N, typenum::U64>, U0>>,
-    LimbsFor<N>: Add<U1> + Mul<U2> + Mul<U3> + Mul<U4>,
+    LimbsFor<N>: Add<U1> + Add<U8> + Mul<U2> + Mul<U3> + Mul<U4>,
     Sum<LimbsFor<N>, U1>: ArrayLength,
+    Sum<LimbsFor<N>, U8>: ArrayLength,
     Prod<LimbsFor<N>, U2>: Add<U8>,
     Prod<LimbsFor<N>, U3>: Add<U8>,
     Prod<LimbsFor<N>, U4>: Add<U8>,
@@ -41,6 +46,7 @@ where
     ScratchFor<N, U4>: ArrayLength,
 {
     type Window = Sum<LimbsFor<N>, U1>;
+    type BalancedScratch = Sum<LimbsFor<N>, U8>;
     type ProductScratch = ScratchFor<N, U2>;
     type TruncatedScratch = ScratchFor<N, U3>;
     type DivisionScratch = ScratchFor<N, U4>;
