@@ -38,6 +38,17 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 `rust-toolchain.toml` pins the compiler. The minimum supported Rust version is 1.85.
 
+## Benchmarks
+
+[`crates/biguint/BENCHMARKS.md`](crates/biguint/BENCHMARKS.md) compares `biguint` with
+`u64`/`u128`, ruint, crypto-bigint, bnum, uint and num-bigint on add, mul, div, mod and mulmod at
+64 to 4096 bits, in time per operation. These commands regenerate it:
+
+```sh
+cargo run -p biguint-bench-report -- bench
+cargo run -p biguint-bench-report -- report
+```
+
 ## License
 
 Licensed under either of
