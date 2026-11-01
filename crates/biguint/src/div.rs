@@ -62,14 +62,19 @@ impl<N: Bits> Uint<N> {
 /// `quotient`. `W` holds the dividend's limbs and one more for the bits that the normalization
 /// shifts out.
 ///
-/// The divisor shifts left until its top bit is set, the dividend with it, and the remainder
-/// shifts back. Divisors of one or two significant limbs divide in registers.
+/// A dividend and a divisor that fit in `u128` divide natively: the compiler emits the hardware
+/// division, which beats computing a reciprocal for one or two quotient limbs. Otherwise the
+/// divisor shifts left until its top bit is set, the dividend with it, and the remainder shifts
+/// back; divisors of one or two significant limbs divide in registers.
 #[inline(always)]
 fn remainder<L: ArrayLength, W: ArrayLength, M: Bits>(
     dividend: &[u64],
     divisor: &GenericArray<u64, L>,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) -> Option<Uint<M>> {
+    if Native::<W, L>::FITS {
+        return native(dividend, divisor, quotient);
+    }
     let len = divisor.iter().rposition(|limb| *limb != 0)? + 1;
     let shift = divisor.get(len - 1)?.leading_zeros();
     Some(match (len, divisor.as_slice()) {
@@ -126,6 +131,35 @@ fn remainder<L: ArrayLength, W: ArrayLength, M: Bits>(
             Uint::from_stream(ShrBits::new(ZeroExtended::new(window), shift))
         }
     })
+}
+
+/// Whether a dividend in a `W`-limb window and an `L`-limb divisor both fit in `u128`.
+struct Native<W, L>(core::marker::PhantomData<(W, L)>);
+
+impl<W: ArrayLength, L: ArrayLength> Native<W, L> {
+    const FITS: bool = W::USIZE <= 3 && L::USIZE <= 2;
+}
+
+/// `dividend mod divisor` by `u128` division, or `None` when `divisor` is zero; both have at most
+/// two limbs. One-limb operands narrow to a single `u64` division.
+#[inline(always)]
+fn native<M: Bits>(
+    dividend: &[u64],
+    divisor: &[u64],
+    quotient: &mut (impl QuotientSink + ?Sized),
+) -> Option<Uint<M>> {
+    let wide = |limbs: &[u64]| {
+        limbs
+            .iter()
+            .rev()
+            .fold(0u128, |value, &limb| (value << 64) | u128::from(limb))
+    };
+    let divisor = core::num::NonZero::new(wide(divisor))?;
+    let dividend = wide(dividend);
+    let whole = dividend / divisor;
+    quotient.put(0, whole as u64);
+    quotient.put(1, (whole >> 64) as u64);
+    Some(Uint::from_u128(dividend % divisor))
 }
 
 /// The division of a `W`-limb window by a divisor that fills its `L` limbs, decided at compile
