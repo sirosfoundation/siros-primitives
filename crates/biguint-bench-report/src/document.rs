@@ -273,9 +273,13 @@ fn summary(table: &Table<'_>) -> Vec<String> {
 }
 
 fn setup(record: &Record) -> Result<Vec<String>, Error> {
+    let available = match record.available_cpus {
+        1 => "1 logical CPU".to_owned(),
+        count => format!("{count} logical CPUs"),
+    };
     let mut cpu = format!(
-        "`{}` (the CPU that `-C target-cpu=native` selects), {} logical CPUs",
-        record.native_cpu, record.logical_cpus
+        "`{}` (the CPU that `-C target-cpu=native` selects); {available} available to the run",
+        record.native_cpu
     );
     if let Some(machine) = &record.machine {
         cpu = format!("{machine}; {cpu}");

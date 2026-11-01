@@ -80,8 +80,8 @@ pub(crate) struct Record {
     pub(crate) host: String,
     /// The CPU that `-C target-cpu=native` selects.
     pub(crate) native_cpu: String,
-    /// The logical CPUs of the machine.
-    pub(crate) logical_cpus: usize,
+    /// The logical CPUs that the operating system let the run use.
+    pub(crate) available_cpus: usize,
     /// The operator's description of the machine.
     pub(crate) machine: Option<String>,
     /// The arguments of the timing runs to criterion.

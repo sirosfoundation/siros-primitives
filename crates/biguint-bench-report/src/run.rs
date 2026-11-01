@@ -63,7 +63,7 @@ pub(crate) fn bench(paths: &Paths, machine: Option<String>) -> Result<(), Error>
         llvm: field(&rustc, "LLVM version: ", "rustc -vV")?,
         host: field(&rustc, "host: ", "rustc -vV")?,
         native_cpu: native_cpu(&target_cpus)?,
-        logical_cpus: thread::available_parallelism()
+        available_cpus: thread::available_parallelism()
             .map_err(Error::Parallelism)?
             .get(),
         machine,
