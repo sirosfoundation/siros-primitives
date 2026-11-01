@@ -139,8 +139,8 @@ impl<const N: usize> FromLimbs for bnum::Uint<N> {
             limbs.len()
         );
         let mut bytes = [0; N];
-        for (chunk, limb) in bytes.chunks_exact_mut(8).zip(limbs) {
-            chunk.copy_from_slice(&limb.to_le_bytes());
+        for (chunk, limb) in bytes.as_chunks_mut::<8>().0.iter_mut().zip(limbs) {
+            *chunk = limb.to_le_bytes();
         }
         Self::from_le_bytes(bytes)
     }
@@ -150,8 +150,10 @@ impl<const N: usize> ToLimbs for bnum::Uint<N> {
     fn to_limbs(&self) -> Option<Limbs> {
         Some(
             self.to_le_bytes()
-                .chunks_exact(8)
-                .map(|chunk| u64::from_le_bytes(chunk.try_into().expect("an 8-byte chunk")))
+                .as_chunks::<8>()
+                .0
+                .iter()
+                .map(|chunk| u64::from_le_bytes(*chunk))
                 .collect(),
         )
     }

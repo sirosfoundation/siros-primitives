@@ -1,19 +1,4 @@
-//! Runs the benchmarks that compare `biguint` with other big-integer crates and writes
-//! `crates/biguint/BENCHMARKS.md` with one SVG chart per operation.
-//!
-//! ```text
-//! cargo run -p biguint-bench-report -- bench [--machine <description>]
-//! cargo run -p biguint-bench-report -- report [--provisional <reason>]
-//! ```
-//!
-//! `bench` runs the `compare` bench of `biguint` twice: for the default target, and with
-//! `-C target-cpu=native`. Each build has its own target directory under `target/benchmarks`.
-//! It records the commit, the compiler, the machine and the cells of the comparison in
-//! `target/benchmarks/run.json`. `--machine` adds a description of the machine.
-//!
-//! `report` reads that record and criterion's `estimates.json` files and writes the document and
-//! the charts. `--provisional` marks the times as upper bounds and gives the reason, for example
-//! the load of the machine; the record keeps it for later reports.
+#![doc = include_str!("../README.md")]
 
 mod chart;
 mod document;
@@ -76,13 +61,16 @@ fn report(paths: &Paths, provisional: Option<String>) -> Result<(), Error> {
 pub(crate) struct Paths {
     /// The workspace root.
     root: PathBuf,
+    /// The crate whose benchmarks the document describes: the directory that holds this tool.
+    library: PathBuf,
 }
 
 impl Paths {
     fn new() -> Self {
-        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let library = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         Self {
-            root: manifest.join("..").join(".."),
+            root: library.join("..").join(".."),
+            library,
         }
     }
 
@@ -108,7 +96,7 @@ impl Paths {
 
     /// The crate whose benchmarks the document describes.
     fn library(&self) -> PathBuf {
-        self.root.join("crates").join("biguint")
+        self.library.clone()
     }
 }
 
