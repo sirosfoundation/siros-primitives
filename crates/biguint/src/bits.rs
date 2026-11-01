@@ -1,20 +1,28 @@
-use core::ops::{Add, Div, Rem};
+use core::ops::{Add, Div, Mul, Rem};
 
 use const_default::ConstDefault;
 use generic_array::ArrayLength;
-use typenum::{Gr, IsGreater, Mod, NonZero, Quot, Sum, U0, U1, Unsigned};
+use typenum::{Gr, IsGreater, Mod, NonZero, Prod, Quot, Sum, U0, U1, U2, U3, U4, U8, Unsigned};
 
 type DivUp<A, B> = Sum<Quot<A, B>, Gr<Mod<A, B>, U0>>;
 type LimbsFor<N> = DivUp<N, typenum::U64>;
 type BytesFor<N> = DivUp<N, typenum::U8>;
+/// `k * limbs + 8`.
+type ScratchFor<N, K> = Sum<Prod<LimbsFor<N>, K>, U8>;
 
 pub(crate) mod sealed {
     use generic_array::ArrayLength;
 
-    /// Seals [`super::Bits`] and carries the array length that only the division uses.
+    /// Seals [`super::Bits`] and carries the array lengths of the work areas.
     pub trait Sealed {
         /// `ceil(N / 64) + 1`: a dividend shifted left until its divisor's top bit is set.
         type Window: ArrayLength;
+        /// `2 * ceil(N / 64) + 8`: the work area of a full product into `N` bits.
+        type ProductScratch: ArrayLength;
+        /// `3 * ceil(N / 64) + 8`: the work area of a product modulo `2^N`.
+        type TruncatedScratch: ArrayLength;
+        /// `4 * ceil(N / 64) + 8`: the work area of a division by an `N`-bit divisor.
+        type DivisionScratch: ArrayLength;
     }
 }
 
@@ -23,10 +31,19 @@ where
     N: Unsigned + Div<typenum::U64> + Rem<typenum::U64>,
     Mod<N, typenum::U64>: IsGreater<U0>,
     Quot<N, typenum::U64>: Add<Gr<Mod<N, typenum::U64>, U0>>,
-    LimbsFor<N>: Add<U1>,
+    LimbsFor<N>: Add<U1> + Mul<U2> + Mul<U3> + Mul<U4>,
     Sum<LimbsFor<N>, U1>: ArrayLength,
+    Prod<LimbsFor<N>, U2>: Add<U8>,
+    Prod<LimbsFor<N>, U3>: Add<U8>,
+    Prod<LimbsFor<N>, U4>: Add<U8>,
+    ScratchFor<N, U2>: ArrayLength,
+    ScratchFor<N, U3>: ArrayLength,
+    ScratchFor<N, U4>: ArrayLength,
 {
     type Window = Sum<LimbsFor<N>, U1>;
+    type ProductScratch = ScratchFor<N, U2>;
+    type TruncatedScratch = ScratchFor<N, U3>;
+    type DivisionScratch = ScratchFor<N, U4>;
 }
 
 /// A bit width `N >= 1`, given as a `typenum` unsigned integer, with its storage sizes.

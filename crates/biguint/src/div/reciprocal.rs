@@ -175,7 +175,7 @@ impl Reciprocal {
 
 /// A normalized two-limb divisor `d` with its reciprocal `floor((2^192 - 1) / d) - 2^64`.
 #[derive(Clone, Copy)]
-pub(super) struct Reciprocal3By2 {
+pub(crate) struct Reciprocal3By2 {
     divisor: u128,
     reciprocal: u64,
 }

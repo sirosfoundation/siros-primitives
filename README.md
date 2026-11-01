@@ -4,7 +4,7 @@ Big-integer primitives in Rust: `no_std`, no `unsafe`, no panics.
 
 | Crate | Contents |
 |---|---|
-| [`biguint`](crates/biguint) | `Uint<N>`: an unsigned integer of exactly `N` bits for any `typenum` width. Wrapping arithmetic, carrying add and subtract, widening multiplication, division, modular multiplication, shifts, rotations, comparisons, byte encodings and exact conversions. |
+| [`biguint`](crates/biguint) | `Uint<N>`: an unsigned integer of exactly `N` bits for any `typenum` width. Wrapping arithmetic, carrying add and subtract, widening multiplication, division by a divisor of any width, modular multiplication, shifts, rotations, comparisons, byte encodings and exact conversions. |
 
 ## Usage
 
@@ -24,6 +24,10 @@ assert_eq!(max521.bit_len(), 521);
 Arithmetic wraps modulo `2^N`. Builds with the `adx` target feature (for example
 `-C target-cpu=native` on a recent x86-64) run the carry chain on the `adc`/`sbb` intrinsics.
 
+The width selects the algorithm at compile time. Products of 16 limbs (1024 bits) and more use
+Karatsuba; divisions and modular products by a divisor of 24 limbs (1536 bits) or more that fills
+its width use divide-and-conquer division.
+
 ## Features
 
 - `precomputed` (default): a 512-byte table seeds the reciprocal that every division and
@@ -36,7 +40,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-`rust-toolchain.toml` pins the compiler. The minimum supported Rust version is 1.85.
+`rust-toolchain.toml` pins the compiler. The minimum supported Rust version is 1.95.
 
 ## License
 

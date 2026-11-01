@@ -219,12 +219,6 @@ impl MulCarry {
         self.carry = (product >> 64) as u64 + u64::from(overflow);
         out
     }
-
-    /// The limb above the limbs stepped so far.
-    #[inline(always)]
-    pub(crate) const fn carry(&self) -> u64 {
-        self.carry
-    }
 }
 
 /// The schoolbook product `inner * mul`, one limb at a time: each product limb, then the high
