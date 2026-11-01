@@ -1,5 +1,5 @@
-//! Compares `biguint` with other Rust big-integer crates: add, sub, mul, div, mod and mulmod at
-//! 64 to 4096 bits.
+//! Compares `biguint` with other Rust big-integer crates: add, mul, div, mod and mulmod at 64 to
+//! 4096 bits.
 //!
 //! By default, criterion times every case. With `--cases`, the bench prints every cell of the
 //! comparison as one JSON object per line instead. `biguint-bench-report` runs both and writes

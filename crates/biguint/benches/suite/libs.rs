@@ -93,7 +93,6 @@ where
 {
     cells
         .api(Op::Add, "+", pair::<Uint<N>>, |&(a, b)| a + b)
-        .api(Op::Sub, "-", pair::<Uint<N>>, |&(a, b)| a - b)
         .api(Op::Mul, "*", pair::<Uint<N>>, |&(a, b)| a * b)
         .api(Op::Div, "div_rem", pair::<Uint<N>>, |&(a, b)| {
             a.div_rem(b).map(|(quotient, _)| quotient)
@@ -109,10 +108,10 @@ where
         )
 }
 
-/// Offers add, sub, mul, div and mod of the primitive `$t`. The divisor is a `NonZero<$t>`.
+/// Offers add, mul, div and mod of the primitive `$t`. The divisor is a `NonZero<$t>`.
 macro_rules! primitive {
     ($cells:expr, $t:ty) => {
-        by_value!($cells, $t, Add => wrapping_add, Sub => wrapping_sub, Mul => wrapping_mul)
+        by_value!($cells, $t, Add => wrapping_add, Mul => wrapping_mul)
             .api(Op::Div, "/ NonZero", two::<$t, NonZero<$t>>, |&(a, divisor)| a / divisor)
             .api(Op::Mod, "% NonZero", two::<$t, NonZero<$t>>, |&(a, divisor)| a % divisor)
     };
@@ -149,7 +148,6 @@ fn ruint<const B: usize, const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V
         cells,
         ruint::Uint<B, L>,
         Add => wrapping_add,
-        Sub => wrapping_sub,
         Mul => wrapping_mul,
         Div => wrapping_div,
         Mod => wrapping_rem,
@@ -165,7 +163,7 @@ fn ruint<const B: usize, const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V
 /// `crypto-bigint` at `L` limbs. Division and mulmod run its variable-time functions.
 fn crypto_bigint<const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
     use crypto_bigint::{NonZero, Uint};
-    by_ref!(cells, Uint<L>, Add => wrapping_add, Sub => wrapping_sub, Mul => wrapping_mul)
+    by_ref!(cells, Uint<L>, Add => wrapping_add, Mul => wrapping_mul)
         .api(
             Op::Div,
             "wrapping_div_vartime",
@@ -192,7 +190,6 @@ fn bnum<const N: usize, const W: usize, V: Visitor>(cells: Cells<V>) -> Cells<V>
         cells,
         bnum::Uint<N>,
         Add => wrapping_add,
-        Sub => wrapping_sub,
         Mul => wrapping_mul,
         Div => wrapping_div,
         Mod => wrapping_rem,
@@ -226,7 +223,6 @@ fn bnum_mul_mod<const N: usize, const W: usize>(
 fn num_bigint<V: Visitor>(cells: Cells<V>) -> Cells<V> {
     cells
         .api(Op::Add, "&a + &b", pair::<BigUint>, |(a, b)| a + b)
-        .api(Op::Sub, "&a - &b", pair::<BigUint>, |(a, b)| a - b)
         .api(Op::Mul, "&a * &b", pair::<BigUint>, |(a, b)| a * b)
         .api(Op::Div, "&a / &b", pair::<BigUint>, |(a, b)| a / b)
         .api(Op::Mod, "&a % &b", pair::<BigUint>, |(a, b)| a % b)
@@ -272,15 +268,12 @@ mod parity {
         };
     }
 
-    /// Offers add, sub, mul, div and mod of `$t`.
+    /// Offers add, mul, div and mod of `$t`.
     macro_rules! parity_ops {
         ($cells:expr, $t:ident) => {
             $cells
                 .api(Op::Add, "overflowing_add", pair::<$t>, |&(a, b)| {
                     a.overflowing_add(b).0
-                })
-                .api(Op::Sub, "overflowing_sub", pair::<$t>, |&(a, b)| {
-                    a.overflowing_sub(b).0
                 })
                 .api(Op::Mul, "overflowing_mul", pair::<$t>, |&(a, b)| {
                     a.overflowing_mul(b).0

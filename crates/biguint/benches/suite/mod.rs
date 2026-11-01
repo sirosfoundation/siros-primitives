@@ -24,10 +24,8 @@ pub const BATCH: usize = 256;
 /// An operation under comparison.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Op {
-    /// `a + b`.
+    /// `a + b`. Subtraction runs the same carry chain, so the bench measures addition only.
     Add,
-    /// `a - b`.
-    Sub,
     /// `a * b`.
     Mul,
     /// `a / b`.
@@ -40,18 +38,10 @@ pub enum Op {
 
 impl Op {
     /// Every operation, in measurement order.
-    pub const ALL: [Self; 6] = [
-        Self::Add,
-        Self::Sub,
-        Self::Mul,
-        Self::Div,
-        Self::Mod,
-        Self::MulMod,
-    ];
+    pub const ALL: [Self; 5] = [Self::Add, Self::Mul, Self::Div, Self::Mod, Self::MulMod];
 
     /// One operand set of width `bits`:
     /// - add, mul: two uniform `bits`-bit values;
-    /// - sub: two uniform `bits`-bit values, the larger first;
     /// - div, mod: a dividend of exactly `bits` bits and a divisor of exactly `bits / 2` bits;
     /// - mulmod: a modulus `m` of exactly `bits` bits and two uniform values below `m`, as
     ///   `[a, b, m]`.
@@ -61,14 +51,6 @@ impl Op {
         let limbs = bits / 64;
         match self {
             Self::Add | Self::Mul => vec![rng.uniform(limbs), rng.uniform(limbs)],
-            Self::Sub => {
-                let (a, b) = (rng.uniform(limbs), rng.uniform(limbs));
-                if compare(&a, &b) == Ordering::Less {
-                    vec![b, a]
-                } else {
-                    vec![a, b]
-                }
-            }
             Self::Div | Self::Mod => vec![rng.exact(limbs, bits), rng.exact(limbs, bits / 2)],
             Self::MulMod => {
                 let modulus = rng.exact(limbs, bits);
@@ -81,7 +63,6 @@ impl Op {
     fn exact(self, operands: &[BigUint]) -> BigUint {
         match (self, operands) {
             (Self::Add, [a, b]) => a + b,
-            (Self::Sub, [a, b]) => a - b,
             (Self::Mul, [a, b]) => a * b,
             (Self::Div, [a, b]) => a / b,
             (Self::Mod, [a, b]) => a % b,
@@ -95,7 +76,6 @@ impl fmt::Display for Op {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::Add => "add",
-            Self::Sub => "sub",
             Self::Mul => "mul",
             Self::Div => "div",
             Self::Mod => "mod",
