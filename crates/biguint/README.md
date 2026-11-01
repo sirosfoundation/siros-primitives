@@ -42,7 +42,7 @@ The width selects the algorithm at compile time, and every operand length folds 
 | Product modulo `2^N` | 48 limbs and more | Karatsuba on the low parts and truncated cross products, after GMP's `dc_mullo` |
 | Division | dividend and divisor within 128 bits | `u128` division, which compiles to the hardware divide |
 | Division | other divisors | Knuth's algorithm D with Möller–Granlund reciprocals |
-| Division | divisor of 24 limbs (1536 bits) and more that fills its width | Divide-and-conquer, after GMP's `dcpi1_div_qr` |
+| Division | divisor and quotient of 24 limbs (1536 bits) and more, the divisor filling its width | Divide-and-conquer, after GMP's `dcpi1_div_qr` |
 | Shift | up to 8 limbs | Branch-free barrel shifter |
 
 ## Benchmarks

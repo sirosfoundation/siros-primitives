@@ -36,75 +36,75 @@
 <text class="tick" x="432.5" y="386" text-anchor="middle">4096</text>
 <text class="tick" x="268.0" y="402" text-anchor="middle">bits</text>
 <g class="c0">
-<path class="line" d="M103.5,314.4L150.5,301.6L197.5,287.3L244.5,276.1L291.5,268.0L338.5,232.7L385.5,210.6L432.5,171.3"/>
-<path class="marker" transform="translate(103.5,314.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 64 bits: 0.5721 ns</title></path>
-<path class="marker" transform="translate(150.5,301.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 128 bits: 0.8564 ns</title></path>
-<path class="marker" transform="translate(197.5,287.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 256 bits: 1.3435 ns</title></path>
-<path class="marker" transform="translate(244.5,276.1)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 384 bits: 1.9076 ns</title></path>
-<path class="marker" transform="translate(291.5,268.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 512 bits: 2.4582 ns</title></path>
-<path class="marker" transform="translate(338.5,232.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 1024 bits: 7.4500 ns</title></path>
-<path class="marker" transform="translate(385.5,210.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 2048 bits: 14.8958 ns</title></path>
-<path class="marker" transform="translate(432.5,171.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 4096 bits: 51.1851 ns</title></path>
+<path class="line" d="M103.5,320.0L150.5,307.6L197.5,292.5L244.5,280.1L291.5,271.4L338.5,235.0L385.5,213.7L432.5,176.2"/>
+<path class="marker" transform="translate(103.5,320.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 64 bits: 0.4803 ns</title></path>
+<path class="marker" transform="translate(150.5,307.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 128 bits: 0.7095 ns</title></path>
+<path class="marker" transform="translate(197.5,292.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 256 bits: 1.1415 ns</title></path>
+<path class="marker" transform="translate(244.5,280.1)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 384 bits: 1.6822 ns</title></path>
+<path class="marker" transform="translate(291.5,271.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 512 bits: 2.2100 ns</title></path>
+<path class="marker" transform="translate(338.5,235.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 1024 bits: 6.9248 ns</title></path>
+<path class="marker" transform="translate(385.5,213.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 2048 bits: 13.5345 ns</title></path>
+<path class="marker" transform="translate(432.5,176.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 4096 bits: 43.9465 ns</title></path>
 </g>
 <g class="c1">
-<path class="line" d="M103.5,300.1L150.5,298.9"/>
-<path class="marker" transform="translate(103.5,300.1)" d="M-4,-4H4V4H-4Z"><title>native, 64 bits: 0.8965 ns</title></path>
-<path class="marker" transform="translate(150.5,298.9)" d="M-4,-4H4V4H-4Z"><title>native, 128 bits: 0.9320 ns</title></path>
+<path class="line" d="M103.5,321.3L150.5,306.5"/>
+<path class="marker" transform="translate(103.5,321.3)" d="M-4,-4H4V4H-4Z"><title>native, 64 bits: 0.4608 ns</title></path>
+<path class="marker" transform="translate(150.5,306.5)" d="M-4,-4H4V4H-4Z"><title>native, 128 bits: 0.7338 ns</title></path>
 </g>
 <g class="c2">
-<path class="line" d="M103.5,312.1L150.5,303.3L197.5,288.8L244.5,276.2L291.5,264.6L338.5,231.8L385.5,182.3L432.5,160.2"/>
-<path class="marker" transform="translate(103.5,312.1)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 64 bits: 0.6151 ns</title></path>
-<path class="marker" transform="translate(150.5,303.3)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 128 bits: 0.8117 ns</title></path>
-<path class="marker" transform="translate(197.5,288.8)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 256 bits: 1.2792 ns</title></path>
-<path class="marker" transform="translate(244.5,276.2)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 384 bits: 1.8991 ns</title></path>
-<path class="marker" transform="translate(291.5,264.6)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 512 bits: 2.7409 ns</title></path>
-<path class="marker" transform="translate(338.5,231.8)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 1024 bits: 7.6646 ns</title></path>
-<path class="marker" transform="translate(385.5,182.3)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 2048 bits: 36.2602 ns</title></path>
-<path class="marker" transform="translate(432.5,160.2)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 4096 bits: 72.5202 ns</title></path>
+<path class="line" d="M103.5,319.8L150.5,305.8L197.5,292.4L244.5,280.1L291.5,271.3L338.5,234.7L385.5,190.4L432.5,162.5"/>
+<path class="marker" transform="translate(103.5,319.8)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 64 bits: 0.4837 ns</title></path>
+<path class="marker" transform="translate(150.5,305.8)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 128 bits: 0.7498 ns</title></path>
+<path class="marker" transform="translate(197.5,292.4)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 256 bits: 1.1444 ns</title></path>
+<path class="marker" transform="translate(244.5,280.1)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 384 bits: 1.6829 ns</title></path>
+<path class="marker" transform="translate(291.5,271.3)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 512 bits: 2.2163 ns</title></path>
+<path class="marker" transform="translate(338.5,234.7)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 1024 bits: 6.9918 ns</title></path>
+<path class="marker" transform="translate(385.5,190.4)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 2048 bits: 28.1202 ns</title></path>
+<path class="marker" transform="translate(432.5,162.5)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 4096 bits: 67.5385 ns</title></path>
 </g>
 <g class="c3">
-<path class="line" d="M103.5,313.9L150.5,300.9L197.5,288.2L244.5,274.8L291.5,260.6L338.5,220.7L385.5,194.6L432.5,168.9"/>
-<path class="marker" transform="translate(103.5,313.9)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 64 bits: 0.5816 ns</title></path>
-<path class="marker" transform="translate(150.5,300.9)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 128 bits: 0.8750 ns</title></path>
-<path class="marker" transform="translate(197.5,288.2)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 256 bits: 1.3041 ns</title></path>
-<path class="marker" transform="translate(244.5,274.8)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 384 bits: 1.9838 ns</title></path>
-<path class="marker" transform="translate(291.5,260.6)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 512 bits: 3.1062 ns</title></path>
-<path class="marker" transform="translate(338.5,220.7)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 1024 bits: 10.8691 ns</title></path>
-<path class="marker" transform="translate(385.5,194.6)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 2048 bits: 24.6523 ns</title></path>
-<path class="marker" transform="translate(432.5,168.9)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 4096 bits: 55.2055 ns</title></path>
+<path class="line" d="M103.5,313.4L150.5,308.2L197.5,290.4L244.5,276.0L291.5,263.9L338.5,225.1L385.5,201.6L432.5,169.7"/>
+<path class="marker" transform="translate(103.5,313.4)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 64 bits: 0.5914 ns</title></path>
+<path class="marker" transform="translate(150.5,308.2)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 128 bits: 0.6964 ns</title></path>
+<path class="marker" transform="translate(197.5,290.4)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 256 bits: 1.2174 ns</title></path>
+<path class="marker" transform="translate(244.5,276.0)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 384 bits: 1.9143 ns</title></path>
+<path class="marker" transform="translate(291.5,263.9)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 512 bits: 2.7949 ns</title></path>
+<path class="marker" transform="translate(338.5,225.1)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 1024 bits: 9.4485 ns</title></path>
+<path class="marker" transform="translate(385.5,201.6)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 2048 bits: 19.8169 ns</title></path>
+<path class="marker" transform="translate(432.5,169.7)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 4096 bits: 53.8452 ns</title></path>
 </g>
 <g class="c4">
-<path class="line" d="M103.5,313.5L150.5,303.3L197.5,287.8L244.5,272.9L291.5,265.1L338.5,234.5L385.5,204.0L432.5,167.4"/>
-<path class="marker" transform="translate(103.5,313.5)" d="M0,5.5L5,-4H-5Z"><title>bnum, 64 bits: 0.5900 ns</title></path>
-<path class="marker" transform="translate(150.5,303.3)" d="M0,5.5L5,-4H-5Z"><title>bnum, 128 bits: 0.8128 ns</title></path>
-<path class="marker" transform="translate(197.5,287.8)" d="M0,5.5L5,-4H-5Z"><title>bnum, 256 bits: 1.3225 ns</title></path>
-<path class="marker" transform="translate(244.5,272.9)" d="M0,5.5L5,-4H-5Z"><title>bnum, 384 bits: 2.1115 ns</title></path>
-<path class="marker" transform="translate(291.5,265.1)" d="M0,5.5L5,-4H-5Z"><title>bnum, 512 bits: 2.6968 ns</title></path>
-<path class="marker" transform="translate(338.5,234.5)" d="M0,5.5L5,-4H-5Z"><title>bnum, 1024 bits: 7.0411 ns</title></path>
-<path class="marker" transform="translate(385.5,204.0)" d="M0,5.5L5,-4H-5Z"><title>bnum, 2048 bits: 18.3452 ns</title></path>
-<path class="marker" transform="translate(432.5,167.4)" d="M0,5.5L5,-4H-5Z"><title>bnum, 4096 bits: 57.9087 ns</title></path>
+<path class="line" d="M103.5,320.1L150.5,308.5L197.5,289.8L244.5,277.7L291.5,267.7L338.5,239.2L385.5,208.2L432.5,172.8"/>
+<path class="marker" transform="translate(103.5,320.1)" d="M0,5.5L5,-4H-5Z"><title>bnum, 64 bits: 0.4797 ns</title></path>
+<path class="marker" transform="translate(150.5,308.5)" d="M0,5.5L5,-4H-5Z"><title>bnum, 128 bits: 0.6887 ns</title></path>
+<path class="marker" transform="translate(197.5,289.8)" d="M0,5.5L5,-4H-5Z"><title>bnum, 256 bits: 1.2421 ns</title></path>
+<path class="marker" transform="translate(244.5,277.7)" d="M0,5.5L5,-4H-5Z"><title>bnum, 384 bits: 1.8153 ns</title></path>
+<path class="marker" transform="translate(291.5,267.7)" d="M0,5.5L5,-4H-5Z"><title>bnum, 512 bits: 2.4838 ns</title></path>
+<path class="marker" transform="translate(338.5,239.2)" d="M0,5.5L5,-4H-5Z"><title>bnum, 1024 bits: 6.0798 ns</title></path>
+<path class="marker" transform="translate(385.5,208.2)" d="M0,5.5L5,-4H-5Z"><title>bnum, 2048 bits: 16.0859 ns</title></path>
+<path class="marker" transform="translate(432.5,172.8)" d="M0,5.5L5,-4H-5Z"><title>bnum, 4096 bits: 48.8118 ns</title></path>
 </g>
 <g class="c5">
-<path class="line" d="M103.5,314.9L150.5,301.5L197.5,282.0L244.5,263.1L291.5,237.5L338.5,215.3L385.5,189.1L432.5,166.0"/>
-<path class="marker" transform="translate(103.5,314.9)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 64 bits: 0.5639 ns</title></path>
-<path class="marker" transform="translate(150.5,301.5)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 128 bits: 0.8590 ns</title></path>
-<path class="marker" transform="translate(197.5,282.0)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 256 bits: 1.5860 ns</title></path>
-<path class="marker" transform="translate(244.5,263.1)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 384 bits: 2.8735 ns</title></path>
-<path class="marker" transform="translate(291.5,237.5)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 512 bits: 6.4132 ns</title></path>
-<path class="marker" transform="translate(338.5,215.3)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 1024 bits: 12.8572 ns</title></path>
-<path class="marker" transform="translate(385.5,189.1)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 2048 bits: 29.3031 ns</title></path>
-<path class="marker" transform="translate(432.5,166.0)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 4096 bits: 60.5996 ns</title></path>
+<path class="line" d="M103.5,320.3L150.5,308.3L197.5,287.5L244.5,266.6L291.5,247.8L338.5,219.6L385.5,195.2L432.5,171.0"/>
+<path class="marker" transform="translate(103.5,320.3)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 64 bits: 0.4762 ns</title></path>
+<path class="marker" transform="translate(150.5,308.3)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 128 bits: 0.6938 ns</title></path>
+<path class="marker" transform="translate(197.5,287.5)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 256 bits: 1.3338 ns</title></path>
+<path class="marker" transform="translate(244.5,266.6)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 384 bits: 2.5689 ns</title></path>
+<path class="marker" transform="translate(291.5,247.8)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 512 bits: 4.6350 ns</title></path>
+<path class="marker" transform="translate(338.5,219.6)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 1024 bits: 11.2345 ns</title></path>
+<path class="marker" transform="translate(385.5,195.2)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 2048 bits: 24.1785 ns</title></path>
+<path class="marker" transform="translate(432.5,171.0)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 4096 bits: 51.7200 ns</title></path>
 </g>
 <g class="c6">
-<path class="line" d="M103.5,207.1L150.5,165.6L197.5,180.6L244.5,180.2L291.5,166.0L338.5,158.5L385.5,161.5L432.5,157.3"/>
-<path class="marker" transform="translate(103.5,207.1)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 64 bits: 16.6377 ns</title></path>
-<path class="marker" transform="translate(150.5,165.6)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 128 bits: 61.3665 ns</title></path>
-<path class="marker" transform="translate(197.5,180.6)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 256 bits: 38.2691 ns</title></path>
-<path class="marker" transform="translate(244.5,180.2)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 384 bits: 38.7800 ns</title></path>
-<path class="marker" transform="translate(291.5,166.0)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 512 bits: 60.4169 ns</title></path>
-<path class="marker" transform="translate(338.5,158.5)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 1024 bits: 76.5306 ns</title></path>
-<path class="marker" transform="translate(385.5,161.5)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 2048 bits: 69.6900 ns</title></path>
-<path class="marker" transform="translate(432.5,157.3)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 4096 bits: 79.6103 ns</title></path>
+<path class="line" d="M103.5,221.5L150.5,174.2L197.5,187.4L244.5,188.5L291.5,174.8L338.5,173.6L385.5,170.1L432.5,164.4"/>
+<path class="marker" transform="translate(103.5,221.5)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 64 bits: 10.5876 ns</title></path>
+<path class="marker" transform="translate(150.5,174.2)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 128 bits: 46.7373 ns</title></path>
+<path class="marker" transform="translate(197.5,187.4)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 256 bits: 30.9243 ns</title></path>
+<path class="marker" transform="translate(244.5,188.5)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 384 bits: 29.8103 ns</title></path>
+<path class="marker" transform="translate(291.5,174.8)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 512 bits: 45.8761 ns</title></path>
+<path class="marker" transform="translate(338.5,173.6)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 1024 bits: 47.7192 ns</title></path>
+<path class="marker" transform="translate(385.5,170.1)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 2048 bits: 53.2685 ns</title></path>
+<path class="marker" transform="translate(432.5,164.4)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 4096 bits: 63.7042 ns</title></path>
 </g>
 <text class="panel" x="496" y="139">Time per operation (ns) · native</text>
 <path class="grid" d="M552,370.5H928"/><text class="tick" x="544" y="374.5" text-anchor="end">0.1</text>
@@ -122,74 +122,74 @@
 <text class="tick" x="904.5" y="386" text-anchor="middle">4096</text>
 <text class="tick" x="740.0" y="402" text-anchor="middle">bits</text>
 <g class="c0">
-<path class="line" d="M575.5,314.6L622.5,302.7L669.5,288.9L716.5,274.4L763.5,256.2L810.5,238.0L857.5,209.8L904.5,167.0"/>
-<path class="marker" transform="translate(575.5,314.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 64 bits: 0.5689 ns</title></path>
-<path class="marker" transform="translate(622.5,302.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 128 bits: 0.8279 ns</title></path>
-<path class="marker" transform="translate(669.5,288.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 256 bits: 1.2756 ns</title></path>
-<path class="marker" transform="translate(716.5,274.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 384 bits: 2.0125 ns</title></path>
-<path class="marker" transform="translate(763.5,256.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 512 bits: 3.5679 ns</title></path>
-<path class="marker" transform="translate(810.5,238.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 1024 bits: 6.3144 ns</title></path>
-<path class="marker" transform="translate(857.5,209.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 2048 bits: 15.2967 ns</title></path>
-<path class="marker" transform="translate(904.5,167.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 4096 bits: 58.6035 ns</title></path>
+<path class="line" d="M575.5,319.0L622.5,305.4L669.5,291.4L716.5,278.8L763.5,270.3L810.5,234.3L857.5,207.7L904.5,182.8"/>
+<path class="marker" transform="translate(575.5,319.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 64 bits: 0.4961 ns</title></path>
+<path class="marker" transform="translate(622.5,305.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 128 bits: 0.7603 ns</title></path>
+<path class="marker" transform="translate(669.5,291.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 256 bits: 1.1794 ns</title></path>
+<path class="marker" transform="translate(716.5,278.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 384 bits: 1.7537 ns</title></path>
+<path class="marker" transform="translate(763.5,270.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 512 bits: 2.2877 ns</title></path>
+<path class="marker" transform="translate(810.5,234.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 1024 bits: 7.0880 ns</title></path>
+<path class="marker" transform="translate(857.5,207.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 2048 bits: 16.3571 ns</title></path>
+<path class="marker" transform="translate(904.5,182.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 4096 bits: 35.7397 ns</title></path>
 </g>
 <g class="c1">
-<path class="line" d="M575.5,310.2L622.5,300.8"/>
-<path class="marker" transform="translate(575.5,310.2)" d="M-4,-4H4V4H-4Z"><title>native, 64 bits: 0.6547 ns</title></path>
-<path class="marker" transform="translate(622.5,300.8)" d="M-4,-4H4V4H-4Z"><title>native, 128 bits: 0.8791 ns</title></path>
+<path class="line" d="M575.5,319.4L622.5,307.3"/>
+<path class="marker" transform="translate(575.5,319.4)" d="M-4,-4H4V4H-4Z"><title>native, 64 bits: 0.4899 ns</title></path>
+<path class="marker" transform="translate(622.5,307.3)" d="M-4,-4H4V4H-4Z"><title>native, 128 bits: 0.7155 ns</title></path>
 </g>
 <g class="c2">
-<path class="line" d="M575.5,315.1L622.5,302.6L669.5,289.5L716.5,274.8L763.5,265.0L810.5,232.6L857.5,202.5L904.5,167.4"/>
-<path class="marker" transform="translate(575.5,315.1)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 64 bits: 0.5613 ns</title></path>
-<path class="marker" transform="translate(622.5,302.6)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 128 bits: 0.8304 ns</title></path>
-<path class="marker" transform="translate(669.5,289.5)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 256 bits: 1.2524 ns</title></path>
-<path class="marker" transform="translate(716.5,274.8)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 384 bits: 1.9861 ns</title></path>
-<path class="marker" transform="translate(763.5,265.0)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 512 bits: 2.7068 ns</title></path>
-<path class="marker" transform="translate(810.5,232.6)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 1024 bits: 7.4710 ns</title></path>
-<path class="marker" transform="translate(857.5,202.5)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 2048 bits: 19.2185 ns</title></path>
-<path class="marker" transform="translate(904.5,167.4)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 4096 bits: 57.8815 ns</title></path>
+<path class="line" d="M575.5,319.7L622.5,296.3L669.5,291.2L716.5,277.8L763.5,269.6L810.5,230.1L857.5,190.0L904.5,178.5"/>
+<path class="marker" transform="translate(575.5,319.7)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 64 bits: 0.4853 ns</title></path>
+<path class="marker" transform="translate(622.5,296.3)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 128 bits: 1.0111 ns</title></path>
+<path class="marker" transform="translate(669.5,291.2)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 256 bits: 1.1882 ns</title></path>
+<path class="marker" transform="translate(716.5,277.8)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 384 bits: 1.8071 ns</title></path>
+<path class="marker" transform="translate(763.5,269.6)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 512 bits: 2.3365 ns</title></path>
+<path class="marker" transform="translate(810.5,230.1)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 1024 bits: 8.0830 ns</title></path>
+<path class="marker" transform="translate(857.5,190.0)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 2048 bits: 28.4823 ns</title></path>
+<path class="marker" transform="translate(904.5,178.5)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>ruint, 4096 bits: 40.8843 ns</title></path>
 </g>
 <g class="c3">
-<path class="line" d="M575.5,317.9L622.5,301.9L669.5,288.2L716.5,271.4L763.5,259.2L810.5,221.3L857.5,198.7L904.5,169.7"/>
-<path class="marker" transform="translate(575.5,317.9)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 64 bits: 0.5131 ns</title></path>
-<path class="marker" transform="translate(622.5,301.9)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 128 bits: 0.8478 ns</title></path>
-<path class="marker" transform="translate(669.5,288.2)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 256 bits: 1.3038 ns</title></path>
-<path class="marker" transform="translate(716.5,271.4)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 384 bits: 2.2087 ns</title></path>
-<path class="marker" transform="translate(763.5,259.2)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 512 bits: 3.2471 ns</title></path>
-<path class="marker" transform="translate(810.5,221.3)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 1024 bits: 10.6444 ns</title></path>
-<path class="marker" transform="translate(857.5,198.7)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 2048 bits: 21.7010 ns</title></path>
-<path class="marker" transform="translate(904.5,169.7)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 4096 bits: 53.8911 ns</title></path>
+<path class="line" d="M575.5,318.7L622.5,296.5L669.5,290.8L716.5,278.2L763.5,263.5L810.5,218.7L857.5,190.3L904.5,173.6"/>
+<path class="marker" transform="translate(575.5,318.7)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 64 bits: 0.5009 ns</title></path>
+<path class="marker" transform="translate(622.5,296.5)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 128 bits: 1.0066 ns</title></path>
+<path class="marker" transform="translate(669.5,290.8)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 256 bits: 1.2030 ns</title></path>
+<path class="marker" transform="translate(716.5,278.2)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 384 bits: 1.7851 ns</title></path>
+<path class="marker" transform="translate(763.5,263.5)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 512 bits: 2.8323 ns</title></path>
+<path class="marker" transform="translate(810.5,218.7)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 1024 bits: 11.5510 ns</title></path>
+<path class="marker" transform="translate(857.5,190.3)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 2048 bits: 28.2350 ns</title></path>
+<path class="marker" transform="translate(904.5,173.6)" d="M0,-5.5L5,4H-5Z"><title>crypto-bigint, 4096 bits: 47.7021 ns</title></path>
 </g>
 <g class="c4">
-<path class="line" d="M575.5,310.6L622.5,303.0L669.5,288.5L716.5,274.5L763.5,263.6L810.5,231.1L857.5,202.9L904.5,168.8"/>
-<path class="marker" transform="translate(575.5,310.6)" d="M0,5.5L5,-4H-5Z"><title>bnum, 64 bits: 0.6447 ns</title></path>
-<path class="marker" transform="translate(622.5,303.0)" d="M0,5.5L5,-4H-5Z"><title>bnum, 128 bits: 0.8191 ns</title></path>
-<path class="marker" transform="translate(669.5,288.5)" d="M0,5.5L5,-4H-5Z"><title>bnum, 256 bits: 1.2923 ns</title></path>
-<path class="marker" transform="translate(716.5,274.5)" d="M0,5.5L5,-4H-5Z"><title>bnum, 384 bits: 2.0070 ns</title></path>
-<path class="marker" transform="translate(763.5,263.6)" d="M0,5.5L5,-4H-5Z"><title>bnum, 512 bits: 2.8245 ns</title></path>
-<path class="marker" transform="translate(810.5,231.1)" d="M0,5.5L5,-4H-5Z"><title>bnum, 1024 bits: 7.8356 ns</title></path>
-<path class="marker" transform="translate(857.5,202.9)" d="M0,5.5L5,-4H-5Z"><title>bnum, 2048 bits: 19.0041 ns</title></path>
-<path class="marker" transform="translate(904.5,168.8)" d="M0,5.5L5,-4H-5Z"><title>bnum, 4096 bits: 55.4687 ns</title></path>
+<path class="line" d="M575.5,317.8L622.5,306.2L669.5,291.4L716.5,276.2L763.5,269.0L810.5,227.0L857.5,207.1L904.5,173.4"/>
+<path class="marker" transform="translate(575.5,317.8)" d="M0,5.5L5,-4H-5Z"><title>bnum, 64 bits: 0.5150 ns</title></path>
+<path class="marker" transform="translate(622.5,306.2)" d="M0,5.5L5,-4H-5Z"><title>bnum, 128 bits: 0.7423 ns</title></path>
+<path class="marker" transform="translate(669.5,291.4)" d="M0,5.5L5,-4H-5Z"><title>bnum, 256 bits: 1.1797 ns</title></path>
+<path class="marker" transform="translate(716.5,276.2)" d="M0,5.5L5,-4H-5Z"><title>bnum, 384 bits: 1.8988 ns</title></path>
+<path class="marker" transform="translate(763.5,269.0)" d="M0,5.5L5,-4H-5Z"><title>bnum, 512 bits: 2.3863 ns</title></path>
+<path class="marker" transform="translate(810.5,227.0)" d="M0,5.5L5,-4H-5Z"><title>bnum, 1024 bits: 8.9156 ns</title></path>
+<path class="marker" transform="translate(857.5,207.1)" d="M0,5.5L5,-4H-5Z"><title>bnum, 2048 bits: 16.6304 ns</title></path>
+<path class="marker" transform="translate(904.5,173.4)" d="M0,5.5L5,-4H-5Z"><title>bnum, 4096 bits: 47.9589 ns</title></path>
 </g>
 <g class="c5">
-<path class="line" d="M575.5,316.3L622.5,303.0L669.5,280.6L716.5,262.9L763.5,241.1L810.5,213.4L857.5,188.1L904.5,163.5"/>
-<path class="marker" transform="translate(575.5,316.3)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 64 bits: 0.5396 ns</title></path>
-<path class="marker" transform="translate(622.5,303.0)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 128 bits: 0.8185 ns</title></path>
-<path class="marker" transform="translate(669.5,280.6)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 256 bits: 1.6586 ns</title></path>
-<path class="marker" transform="translate(716.5,262.9)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 384 bits: 2.8913 ns</title></path>
-<path class="marker" transform="translate(763.5,241.1)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 512 bits: 5.7332 ns</title></path>
-<path class="marker" transform="translate(810.5,213.4)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 1024 bits: 13.6590 ns</title></path>
-<path class="marker" transform="translate(857.5,188.1)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 2048 bits: 30.2053 ns</title></path>
-<path class="marker" transform="translate(904.5,163.5)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 4096 bits: 65.4437 ns</title></path>
+<path class="line" d="M575.5,319.4L622.5,306.6L669.5,286.5L716.5,269.5L763.5,245.2L810.5,207.1L857.5,196.3L904.5,170.9"/>
+<path class="marker" transform="translate(575.5,319.4)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 64 bits: 0.4905 ns</title></path>
+<path class="marker" transform="translate(622.5,306.6)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 128 bits: 0.7316 ns</title></path>
+<path class="marker" transform="translate(669.5,286.5)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 256 bits: 1.3767 ns</title></path>
+<path class="marker" transform="translate(716.5,269.5)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 384 bits: 2.3445 ns</title></path>
+<path class="marker" transform="translate(763.5,245.2)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 512 bits: 5.0329 ns</title></path>
+<path class="marker" transform="translate(810.5,207.1)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 1024 bits: 16.6404 ns</title></path>
+<path class="marker" transform="translate(857.5,196.3)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 2048 bits: 23.3476 ns</title></path>
+<path class="marker" transform="translate(904.5,170.9)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 4096 bits: 51.9006 ns</title></path>
 </g>
 <g class="c6">
-<path class="line" d="M575.5,213.8L622.5,182.4L669.5,181.0L716.5,169.8L763.5,169.5L810.5,178.1L857.5,167.7L904.5,162.8"/>
-<path class="marker" transform="translate(575.5,213.8)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 64 bits: 13.4941 ns</title></path>
-<path class="marker" transform="translate(622.5,182.4)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 128 bits: 36.1653 ns</title></path>
-<path class="marker" transform="translate(669.5,181.0)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 256 bits: 37.7952 ns</title></path>
-<path class="marker" transform="translate(716.5,169.8)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 384 bits: 53.7138 ns</title></path>
-<path class="marker" transform="translate(763.5,169.5)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 512 bits: 54.1863 ns</title></path>
-<path class="marker" transform="translate(810.5,178.1)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 1024 bits: 41.4092 ns</title></path>
-<path class="marker" transform="translate(857.5,167.7)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 2048 bits: 57.3836 ns</title></path>
-<path class="marker" transform="translate(904.5,162.8)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 4096 bits: 66.8385 ns</title></path>
+<path class="line" d="M575.5,215.1L622.5,187.7L669.5,185.9L716.5,186.4L763.5,171.0L810.5,171.2L857.5,173.7L904.5,156.4"/>
+<path class="marker" transform="translate(575.5,215.1)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 64 bits: 12.9342 ns</title></path>
+<path class="marker" transform="translate(622.5,187.7)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 128 bits: 30.6560 ns</title></path>
+<path class="marker" transform="translate(669.5,185.9)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 256 bits: 32.3986 ns</title></path>
+<path class="marker" transform="translate(716.5,186.4)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 384 bits: 31.8559 ns</title></path>
+<path class="marker" transform="translate(763.5,171.0)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 512 bits: 51.7635 ns</title></path>
+<path class="marker" transform="translate(810.5,171.2)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 1024 bits: 51.3919 ns</title></path>
+<path class="marker" transform="translate(857.5,173.7)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 2048 bits: 47.5394 ns</title></path>
+<path class="marker" transform="translate(904.5,156.4)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 4096 bits: 81.8074 ns</title></path>
 </g>
 </svg>
