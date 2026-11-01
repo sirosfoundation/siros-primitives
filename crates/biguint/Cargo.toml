@@ -2,6 +2,7 @@
 name = "biguint"
 version = "0.1.0"
 description = "Fixed-width big unsigned integers of any bit width, with optimal division and modular multiplication"
+readme = "README.md"
 keywords = ["bigint", "biguint", "uint", "u256", "arithmetic"]
 categories = ["mathematics", "cryptography", "no-std", "no-std::no-alloc"]
 edition.workspace = true
