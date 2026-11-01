@@ -196,15 +196,42 @@ impl Op1Op for NotOp {
     }
 }
 
-/// The schoolbook product `inner * mul`, one limb at a time: each product limb, then the high
-/// carry limb, then `0` forever.
+/// The product of a run of limbs by the limb `mul`, one limb at a time, with its running carry.
 ///
 /// The one 64x64->128 multiply of the multiplication path lives here. LLVM lowers the `u128`
 /// product to `mul` or `mulx`.
-pub(crate) struct MulIter<I> {
-    inner: I,
+pub(crate) struct MulCarry {
     mul: u64,
     carry: u64,
+}
+
+impl MulCarry {
+    #[inline(always)]
+    pub(crate) const fn new(mul: u64) -> Self {
+        Self { mul, carry: 0 }
+    }
+
+    /// The next product limb: `limb * mul` plus the carry, which takes the high limb.
+    #[inline(always)]
+    pub(crate) fn step(&mut self, limb: u64) -> u64 {
+        let product = limb as u128 * self.mul as u128;
+        let (out, overflow) = (product as u64).overflowing_add(self.carry);
+        self.carry = (product >> 64) as u64 + u64::from(overflow);
+        out
+    }
+
+    /// The limb above the limbs stepped so far.
+    #[inline(always)]
+    pub(crate) const fn carry(&self) -> u64 {
+        self.carry
+    }
+}
+
+/// The schoolbook product `inner * mul`, one limb at a time: each product limb, then the high
+/// carry limb, then `0` forever.
+pub(crate) struct MulIter<I> {
+    inner: I,
+    product: MulCarry,
 }
 
 impl<I> MulIter<I> {
@@ -212,8 +239,7 @@ impl<I> MulIter<I> {
     pub(crate) const fn new(inner: I, mul: u64) -> Self {
         Self {
             inner,
-            mul,
-            carry: 0,
+            product: MulCarry::new(mul),
         }
     }
 }
@@ -221,9 +247,79 @@ impl<I> MulIter<I> {
 impl<I: LimbStream> LimbStream for MulIter<I> {
     #[inline(always)]
     fn next_limb(&mut self) -> u64 {
-        let product = self.inner.next_limb() as u128 * self.mul as u128;
-        let (out, overflow) = (product as u64).overflowing_add(self.carry);
-        self.carry = (product >> 64) as u64 + u64::from(overflow);
+        self.product.step(self.inner.next_limb())
+    }
+}
+
+/// `limb << shift` with the bits that `below` sheds into it, for `shift < 64`.
+#[inline(always)]
+pub(crate) const fn funnel_left(limb: u64, below: u64, shift: u32) -> u64 {
+    // `(below >> 1) >> (63 - shift)` is `below >> (64 - shift)`, and `0` when `shift` is `0`.
+    (limb << shift) | ((below >> 1) >> (63 - shift))
+}
+
+/// `limb >> shift` with the bits that `above` sheds into it, for `shift < 64`.
+#[inline(always)]
+pub(crate) const fn funnel_right(limb: u64, above: u64, shift: u32) -> u64 {
+    // `(above << 1) << (63 - shift)` is `above << (64 - shift)`, and `0` when `shift` is `0`.
+    (limb >> shift) | ((above << 1) << (63 - shift))
+}
+
+/// The limbs of `inner * 2^shift` for `shift < 64`: each limb takes the bits shifted out of the
+/// limb below it.
+pub(crate) struct ShlBits<I> {
+    inner: I,
+    shift: u32,
+    below: u64,
+}
+
+impl<I> ShlBits<I> {
+    #[inline(always)]
+    pub(crate) const fn new(inner: I, shift: u32) -> Self {
+        Self {
+            inner,
+            shift,
+            below: 0,
+        }
+    }
+}
+
+impl<I: LimbStream> LimbStream for ShlBits<I> {
+    #[inline(always)]
+    fn next_limb(&mut self) -> u64 {
+        let limb = self.inner.next_limb();
+        let out = funnel_left(limb, self.below, self.shift);
+        self.below = limb;
+        out
+    }
+}
+
+/// The limbs of `floor(inner / 2^shift)` for `shift < 64`: each limb takes the bits shifted out of
+/// the limb above it.
+pub(crate) struct ShrBits<I> {
+    inner: I,
+    shift: u32,
+    current: u64,
+}
+
+impl<I: LimbStream> ShrBits<I> {
+    #[inline(always)]
+    pub(crate) fn new(mut inner: I, shift: u32) -> Self {
+        let current = inner.next_limb();
+        Self {
+            inner,
+            shift,
+            current,
+        }
+    }
+}
+
+impl<I: LimbStream> LimbStream for ShrBits<I> {
+    #[inline(always)]
+    fn next_limb(&mut self) -> u64 {
+        let above = self.inner.next_limb();
+        let out = funnel_right(self.current, above, self.shift);
+        self.current = above;
         out
     }
 }
