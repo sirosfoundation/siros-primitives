@@ -3,7 +3,7 @@ use core::ops::Rem;
 use typenum::U0;
 
 use crate::bits::Bits;
-use crate::shift::ShiftRightStream;
+use crate::shift::shift_right;
 use crate::uint::Uint;
 
 impl<N: Bits> Uint<N> {
@@ -45,6 +45,10 @@ impl<N: Bits> Uint<N> {
         reversed
             .iter_mut()
             .for_each(|limb| *limb = limb.swap_bytes());
-        Self::from_stream(ShiftRightStream::new(&reversed, N::LIMBS * 64 - N::BITS))
+        Self::from_generic_limbs(shift_right(
+            &reversed,
+            N::LIMBS * 64 - N::BITS,
+            N::LIMBS * 64,
+        ))
     }
 }

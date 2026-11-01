@@ -290,18 +290,20 @@ impl<I: LimbStream> LimbStream for MulIter<I> {
     }
 }
 
-/// `limb << shift` with the bits that `below` sheds into it, for `shift < 64`.
+/// `limb << shift` with the bits that `below` sheds into it, for `shift < 64`: the high limb of
+/// the two-limb `limb:below` shifted left, which the compiler lowers to one funnel shift (`shld`).
+/// The mask tells it the amount is below 64.
 #[inline(always)]
 pub(crate) const fn funnel_left(limb: u64, below: u64, shift: u32) -> u64 {
-    // `(below >> 1) >> (63 - shift)` is `below >> (64 - shift)`, and `0` when `shift` is `0`.
-    (limb << shift) | ((below >> 1) >> (63 - shift))
+    ((((limb as u128) << 64) | below as u128) << (shift & 63) >> 64) as u64
 }
 
-/// `limb >> shift` with the bits that `above` sheds into it, for `shift < 64`.
+/// `limb >> shift` with the bits that `above` sheds into it, for `shift < 64`: the low limb of
+/// the two-limb `above:limb` shifted right, which the compiler lowers to one funnel shift (`shrd`).
+/// The mask tells it the amount is below 64.
 #[inline(always)]
 pub(crate) const fn funnel_right(limb: u64, above: u64, shift: u32) -> u64 {
-    // `(above << 1) << (63 - shift)` is `above << (64 - shift)`, and `0` when `shift` is `0`.
-    (limb >> shift) | ((above << 1) << (63 - shift))
+    ((((above as u128) << 64) | limb as u128) >> (shift & 63)) as u64
 }
 
 /// The limbs of `inner * 2^shift` for `shift < 64`: each limb takes the bits shifted out of the
