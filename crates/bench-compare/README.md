@@ -10,10 +10,9 @@ bench: it checks every case against the accepted results, counts each one under 
 own process, and prints every cell as one JSON line.
 
 A library's report tool calls `bench_compare::execute` with the files it measures and a `Layout` of
-words for the document. `bench` builds the bench with `-C target-cpu=native -C target-
-feature=-sse4a` (Valgrind runs no `extrq`) in `target/benchmarks`, runs it and records the counts,
-the commit, the compiler and the machine in the run record. `report` reads the record and writes the
-document with one SVG chart per operation.
-
+words for the document. `bench` builds the bench with
+`-C target-cpu=native -C target-feature=-sse4a` (Valgrind runs no `extrq`) in `target/benchmarks`,
+runs it and records the counts, the commit, the compiler and the machine in the run record.
+`report` reads the record and writes the document with one SVG chart per operation.
 
 `bench` needs Valgrind in `PATH`. The counts are exact at any machine load.
