@@ -79,6 +79,12 @@ PCLMULQDQ, PMULL, or a const comb in builds without them; the plan knows which t
 | GCM view | `GF(2^128)` with the GCM polynomial | Bit reversal of the big-endian block, the order of NIST SP 800-38D |
 | POLYVAL view | the same field | Bit reversal of the little-endian block times `x`: RFC 8452 works in the reciprocal polynomial with a factor `x^-128`, and this map is the field isomorphism that carries its sum and product |
 
+Timing: addition, product, `square`, `sqrt`, `trace`, `times_x` and `over_x` take one path for
+every value, and `invert` by Itoh and Tsujii for every nonzero value. The Euclidean `invert` takes
+time that depends on the value, and `pow` on the exponent. A selection by a secret bit is a mask
+that passes through `core::hint::black_box`, which keeps the compiler from turning it into a
+branch.
+
 ## Benchmarks
 
 [BENCHMARKS.md](https://github.com/sirosfoundation/siros-primitives/blob/main/crates/binary-field/BENCHMARKS.md)

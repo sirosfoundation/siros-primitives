@@ -2,6 +2,16 @@
 //! field and its runtime operations share them. Every length and shift is a constant after
 //! inlining, so each loop folds to straight-line code.
 
+use core::hint::black_box;
+
+/// All ones when `condition` holds, else zero. The mask passes through [`black_box`], so the
+/// compiler cannot tell that it takes only those two values: an operand masked by it stays
+/// bitwise arithmetic, where the compiler could otherwise branch on the condition.
+#[inline(always)]
+pub(crate) const fn mask(condition: bool) -> u64 {
+    black_box(0u64.wrapping_sub(condition as u64))
+}
+
 /// `slice.split_at(mid)` with `mid` clamped to the length.
 #[inline(always)]
 pub(crate) const fn split(slice: &[u64], mid: usize) -> (&[u64], &[u64]) {

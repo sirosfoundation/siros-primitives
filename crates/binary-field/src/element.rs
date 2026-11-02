@@ -10,7 +10,7 @@ use generic_array::GenericArray;
 use crate::error::OutOfField;
 use crate::invert::invert;
 use crate::kernel::{
-    bit, copy, gather, head, is_zero, masked_parity, set_bit, spread, square_limbs, truncate,
+    bit, copy, gather, head, is_zero, mask, masked_parity, set_bit, spread, square_limbs, truncate,
     xor_shifted,
 };
 use crate::mul::{Depth, Levels};
@@ -239,9 +239,9 @@ impl<P: Polynomial> Gf2<P> {
         addend: &GenericArray<u64, Limbs<P>>,
         add: bool,
     ) -> Self {
-        let mask = 0u64.wrapping_sub(u64::from(add));
+        let take = mask(add);
         for (slot, &limb) in limbs.iter_mut().zip(addend.iter()) {
-            *slot ^= limb & mask;
+            *slot ^= limb & take;
         }
         Self::from_reduced(limbs)
     }
