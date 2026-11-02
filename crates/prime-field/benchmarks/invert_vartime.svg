@@ -44,15 +44,15 @@
 <text class="tick" x="880.9" y="432" text-anchor="middle">P-521 base</text>
 <text class="tick" x="504.0" y="448" text-anchor="middle">field</text>
 <g class="c0">
-<path class="marker" transform="translate(127.1,414.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Mersenne-31: 1,191 instructions per operation</title></path>
-<path class="marker" transform="translate(221.3,414.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BabyBear: 1,186 instructions per operation</title></path>
-<path class="marker" transform="translate(315.6,413.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Goldilocks: 2,179 instructions per operation</title></path>
-<path class="marker" transform="translate(409.8,397.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BN254 scalar: 15,829 instructions per operation</title></path>
-<path class="marker" transform="translate(504.0,398.1)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, secp256k1 base: 14,892 instructions per operation</title></path>
-<path class="marker" transform="translate(598.2,397.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 base: 15,152 instructions per operation</title></path>
-<path class="marker" transform="translate(692.4,397.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 scalar: 15,490 instructions per operation</title></path>
-<path class="marker" transform="translate(786.7,379.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BLS12-381 base: 30,135 instructions per operation</title></path>
-<path class="marker" transform="translate(880.9,349.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-521 base: 55,552 instructions per operation</title></path>
+<path class="marker" transform="translate(127.1,415.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Mersenne-31: 870 instructions per operation</title></path>
+<path class="marker" transform="translate(221.3,415.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BabyBear: 808 instructions per operation</title></path>
+<path class="marker" transform="translate(315.6,413.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Goldilocks: 1,858 instructions per operation</title></path>
+<path class="marker" transform="translate(409.8,399.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BN254 scalar: 14,162 instructions per operation</title></path>
+<path class="marker" transform="translate(504.0,398.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, secp256k1 base: 14,737 instructions per operation</title></path>
+<path class="marker" transform="translate(598.2,397.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 base: 15,180 instructions per operation</title></path>
+<path class="marker" transform="translate(692.4,398.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 scalar: 14,992 instructions per operation</title></path>
+<path class="marker" transform="translate(786.7,384.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BLS12-381 base: 25,958 instructions per operation</title></path>
+<path class="marker" transform="translate(880.9,365.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-521 base: 42,491 instructions per operation</title></path>
 </g>
 <g class="c1">
 <path class="marker" transform="translate(409.8,387.1)" d="M-4,-4H4V4H-4Z"><title>ark-ff, BN254 scalar: 24,120 instructions per operation</title></path>

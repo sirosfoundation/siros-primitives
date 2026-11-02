@@ -1,6 +1,6 @@
 # Benchmarks
 
-`prime-field` at commit `5bbb9f2` against `ark-ff`, `crypto-bigint`, `k256/p256`, `halo2curves`, `plonky3`, `winter-math`, `runtime-algebra` and `compile-algebra`: add, sub, mul, square, invert, invert_vartime and sqrt over Mersenne-31, BabyBear, Goldilocks, BN254 scalar, secp256k1 base, P-256 base, P-256 scalar, BLS12-381 base and P-521 base, in instructions per operation, counted on 2026-11-02. The counted files had uncommitted changes.
+`prime-field` at commit `28d5f56` against `ark-ff`, `crypto-bigint`, `k256/p256`, `halo2curves`, `plonky3`, `winter-math`, `runtime-algebra` and `compile-algebra`: add, sub, mul, square, invert, invert_vartime and sqrt over Mersenne-31, BabyBear, Goldilocks, BN254 scalar, secp256k1 base, P-256 base, P-256 scalar, BLS12-381 base and P-521 base, in instructions per operation, counted on 2026-11-02.
 
 ## Setup
 
@@ -35,10 +35,10 @@ Each cell counts the crate's own function:
 | invert_vartime | `invert_vartime` | `inverse` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar and BLS12-381 base | `invert_vartime` | – | – | – | – | `invert` | `invert` over P-256 base and P-256 scalar |
 | sqrt | `sqrt` | `sqrt` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar and BLS12-381 base | `sqrt` | `sqrt` over secp256k1 base, P-256 base and P-256 scalar | `sqrt` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar and BLS12-381 base | `tonelli_shanks` over Mersenne-31, BabyBear and Goldilocks | – | – | – |
 
-- `prime-field`, `ark-ff`, `crypto-bigint`, `halo2curves` and `runtime-algebra` are generic over the modulus; `k256`, `p256`, `p521`, `p3-*` and `winter-math` are written for their field.
+- `prime-field`, `ark-ff`, `crypto-bigint`, `halo2curves` and `runtime-algebra` are generic over the modulus; `k256`, `p256`, `p3-*` and `winter-math` are written for their field.
 - `crypto-bigint` is `ConstMontyForm` with a `const_monty_params!` modulus.
 - `ark-ff` is `Fp` with `MontBackend` from the arkworks curve crates; its `inverse` and `sqrt` run in variable time.
-- `plonky3` is `p3-mersenne-31`, `p3-baby-bear` and `p3-goldilocks` on their field; its inverse is a Fermat exponentiation.
+- `plonky3` is `p3-mersenne-31`, `p3-baby-bear` and `p3-goldilocks` on their field; its inverse is a Fermat exponentiation by an addition chain.
 - `runtime-algebra` and `compile-algebra` are longfellow-zk's prover-side and compile-side fields: `FpGenericField` is their generic Montgomery field with the modulus held at run time; `P256Field` adds a hand-written P-256 strategy; `compile-algebra`'s `FpField` computes on `num-bigint`.
 - No arkworks crate declares the field: `ark-ff` over Mersenne-31, BabyBear, Goldilocks and P-521 base.
 - The inverse runs in variable time: `ark-ff` invert over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar and BLS12-381 base and `runtime-algebra` invert.
@@ -96,15 +96,15 @@ The charts show the first 8 crates; `compile-algebra` appears in the tables only
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 29.0 | – | 40.1 | – | – | **15.0** | – | 31.1 | – |
+| Mersenne-31 | 18.0 | – | 40.1 | – | – | **15.0** | – | 31.1 | – |
 | BabyBear | 17.1 | – | 40.1 | – | – | **17.0** | – | 31.1 | – |
-| Goldilocks | 20.1 | – | 44.1 | – | – | **18.0** | 18.0 | 31.1 | – |
-| BN254 scalar | 333 | **232** | 363 | – | 254 | – | – | 302 | – |
-| secp256k1 base | 431 | **229** | 363 | 244 | 251 | – | – | 302 | – |
-| P-256 base | 289 | **189** | 363 | 204 | 204 | – | – | 210 | 2,438 |
-| P-256 scalar | 372 | **231** | 363 | 428 | 263 | – | – | 302 | 2,445 |
-| BLS12-381 base | 673 | **498** | 746 | – | 532 | – | – | 687 | – |
-| P-521 base | **733** | – | 1,498 | – | – | – | – | 1,230 | – |
+| Goldilocks | 19.0 | – | 44.1 | – | – | **18.0** | 18.0 | 31.1 | – |
+| BN254 scalar | **222** | 232 | 363 | – | 254 | – | – | 302 | – |
+| secp256k1 base | **177** | 229 | 363 | 244 | 251 | – | – | 302 | – |
+| P-256 base | 195 | **189** | 363 | 204 | 204 | – | – | 210 | 2,438 |
+| P-256 scalar | 254 | **231** | 363 | 428 | 263 | – | – | 302 | 2,445 |
+| BLS12-381 base | 506 | **498** | 746 | – | 532 | – | – | 687 | – |
+| P-521 base | **699** | – | 1,498 | – | – | – | – | 1,230 | – |
 
 ### square: a²
 
@@ -112,15 +112,15 @@ The charts show the first 8 crates; `compile-algebra` appears in the tables only
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 90.1 | – | 40.1 | – | – | **14.0** | – | – | – |
-| BabyBear | 81.1 | – | 40.1 | – | – | **16.0** | – | – | – |
-| Goldilocks | 85.1 | – | 44.1 | – | – | **18.0** | 18.0 | – | – |
-| BN254 scalar | 514 | **185** | 323 | – | 217 | – | – | – | – |
-| secp256k1 base | 462 | 206 | 323 | **173** | 233 | – | – | – | – |
-| P-256 base | 498 | **168** | 323 | 198 | 184 | – | – | – | – |
-| P-256 scalar | 529 | **213** | 323 | 421 | 243 | – | – | – | – |
-| BLS12-381 base | 1,026 | **401** | 747 | – | 450 | – | – | – | – |
-| P-521 base | **1,480** | – | 1,483 | – | – | – | – | – | – |
+| Mersenne-31 | 18.0 | – | 40.1 | – | – | **14.0** | – | – | – |
+| BabyBear | 17.1 | – | 40.1 | – | – | **16.0** | – | – | – |
+| Goldilocks | 19.0 | – | 44.1 | – | – | **18.0** | 18.0 | – | – |
+| BN254 scalar | 202 | **185** | 342 | – | 217 | – | – | – | – |
+| secp256k1 base | **144** | 206 | 342 | 173 | 233 | – | – | – | – |
+| P-256 base | 170 | **168** | 341 | 198 | 184 | – | – | – | – |
+| P-256 scalar | 219 | **213** | 342 | 421 | 243 | – | – | – | – |
+| BLS12-381 base | 506 | **401** | 747 | – | 450 | – | – | – | – |
+| P-521 base | **487** | – | 1,483 | – | – | – | – | – | – |
 
 ### invert: a⁻¹, constant time
 
@@ -128,15 +128,15 @@ The charts show the first 8 crates; `compile-algebra` appears in the tables only
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 2,195 | – | 16,049 | – | – | **556** | – | – | – |
-| BabyBear | 2,190 | – | 16,049 | – | – | **554** | – | – | – |
-| Goldilocks | 5,561 | – | 16,051 | – | – | 1,201 | **825** | – | – |
-| BN254 scalar | 28,191 | – | 70,349 | – | **17,208** | – | – | – | – |
-| secp256k1 base | 27,461 | – | 70,349 | 47,560 | **17,225** | – | – | – | – |
-| P-256 base | 27,595 | – | 70,348 | 52,756 | **17,273** | – | – | – | – |
-| P-256 scalar | 27,767 | – | 70,349 | 179,604 | **17,335** | – | – | – | – |
-| BLS12-381 base | 54,593 | – | 115,623 | – | **30,045** | – | – | – | – |
-| P-521 base | **93,817** | – | 188,473 | – | – | – | – | – | – |
+| Mersenne-31 | 870 | – | 16,049 | – | – | **556** | – | – | – |
+| BabyBear | 808 | – | 16,049 | – | – | **554** | – | – | – |
+| Goldilocks | 1,858 | – | 16,051 | – | – | 1,201 | **825** | – | – |
+| BN254 scalar | 26,102 | – | 70,349 | – | **17,208** | – | – | – | – |
+| secp256k1 base | 25,866 | – | 70,349 | 47,560 | **17,225** | – | – | – | – |
+| P-256 base | 26,096 | – | 70,348 | 52,756 | **17,273** | – | – | – | – |
+| P-256 scalar | 26,003 | – | 70,349 | 179,604 | **17,335** | – | – | – | – |
+| BLS12-381 base | 47,772 | – | 115,623 | – | **30,045** | – | – | – | – |
+| P-521 base | **71,917** | – | 188,473 | – | – | – | – | – | – |
 
 ### invert_vartime: a⁻¹, variable time
 
@@ -144,15 +144,15 @@ The charts show the first 8 crates; `compile-algebra` appears in the tables only
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 1,191 | – | 2,469 | – | – | – | – | **1,062** | – |
-| BabyBear | 1,186 | – | 2,435 | – | – | – | – | **1,064** | – |
-| Goldilocks | 2,179 | – | 4,577 | – | – | – | – | **2,131** | – |
-| BN254 scalar | **15,829** | 24,120 | 24,779 | – | – | – | – | 33,637 | – |
-| secp256k1 base | **14,892** | 25,608 | 24,786 | – | – | – | – | 34,025 | – |
-| P-256 base | **15,152** | 24,322 | 24,784 | – | – | – | – | 33,834 | 357,137 |
-| P-256 scalar | **15,490** | 23,458 | 24,796 | – | – | – | – | 33,964 | 357,614 |
-| BLS12-381 base | **30,135** | 58,510 | 44,686 | – | – | – | – | 94,003 | – |
-| P-521 base | **55,552** | – | 72,645 | – | – | – | – | 206,553 | – |
+| Mersenne-31 | **870** | – | 2,469 | – | – | – | – | 1,062 | – |
+| BabyBear | **808** | – | 2,435 | – | – | – | – | 1,064 | – |
+| Goldilocks | **1,858** | – | 4,577 | – | – | – | – | 2,131 | – |
+| BN254 scalar | **14,162** | 24,120 | 24,779 | – | – | – | – | 33,637 | – |
+| secp256k1 base | **14,737** | 25,608 | 24,786 | – | – | – | – | 34,025 | – |
+| P-256 base | **15,180** | 24,322 | 24,784 | – | – | – | – | 33,834 | 357,137 |
+| P-256 scalar | **14,992** | 23,458 | 24,796 | – | – | – | – | 33,964 | 357,614 |
+| BLS12-381 base | **25,958** | 58,510 | 44,686 | – | – | – | – | 94,003 | – |
+| P-521 base | **42,491** | – | 72,645 | – | – | – | – | 206,553 | – |
 
 ### sqrt: √a
 
@@ -160,15 +160,15 @@ The charts show the first 8 crates; `compile-algebra` appears in the tables only
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 6,500 | – | 2,032 | – | – | **1,869** | – | – | – |
-| BabyBear | 22,117 | – | 34,518 | – | – | **4,673** | – | – | – |
-| Goldilocks | 30,281 | – | 49,082 | – | – | **8,158** | – | – | – |
-| BN254 scalar | 342,834 | **116,356** | 290,231 | – | 232,852 | – | – | – | – |
-| secp256k1 base | 232,952 | 107,893 | 121,475 | **46,980** | 115,287 | – | – | – | – |
-| P-256 base | 205,924 | 52,496 | 102,495 | **51,576** | 88,858 | – | – | – | – |
-| P-256 scalar | 239,246 | **95,495** | 119,957 | 187,781 | 101,056 | – | – | – | – |
-| BLS12-381 base | 656,226 | **267,181** | 347,908 | – | 373,122 | – | – | – | – |
-| P-521 base | 1,268,745 | – | **748,951** | – | – | – | – | – | – |
+| Mersenne-31 | **417** | – | 2,000 | – | – | 1,869 | – | – | – |
+| BabyBear | **3,841** | – | 34,581 | – | – | 4,673 | – | – | – |
+| Goldilocks | **6,658** | – | 49,297 | – | – | 8,158 | – | – | – |
+| BN254 scalar | **114,369** | 116,356 | 298,970 | – | 232,852 | – | – | – | – |
+| secp256k1 base | 67,467 | 107,893 | 120,736 | **46,980** | 115,287 | – | – | – | – |
+| P-256 base | **42,918** | 52,496 | 101,496 | 51,576 | 88,858 | – | – | – | – |
+| P-256 scalar | **91,996** | 95,495 | 119,163 | 187,781 | 101,056 | – | – | – | – |
+| BLS12-381 base | 298,991 | **267,181** | 346,870 | – | 373,122 | – | – | – | – |
+| P-521 base | **241,441** | – | 748,440 | – | – | – | – | – | – |
 
 ## Reproduce
 

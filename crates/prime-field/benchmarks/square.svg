@@ -40,15 +40,15 @@
 <text class="tick" x="880.9" y="432" text-anchor="middle">P-521 base</text>
 <text class="tick" x="504.0" y="448" text-anchor="middle">field</text>
 <g class="c0">
-<path class="marker" transform="translate(127.1,398.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Mersenne-31: 90.1 instructions per operation</title></path>
-<path class="marker" transform="translate(221.3,399.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BabyBear: 81.1 instructions per operation</title></path>
-<path class="marker" transform="translate(315.6,399.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Goldilocks: 85.1 instructions per operation</title></path>
-<path class="marker" transform="translate(409.8,313.1)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BN254 scalar: 514 instructions per operation</title></path>
-<path class="marker" transform="translate(504.0,323.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, secp256k1 base: 462 instructions per operation</title></path>
-<path class="marker" transform="translate(598.2,316.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 base: 498 instructions per operation</title></path>
-<path class="marker" transform="translate(692.4,310.1)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 scalar: 529 instructions per operation</title></path>
-<path class="marker" transform="translate(786.7,210.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BLS12-381 base: 1,026 instructions per operation</title></path>
-<path class="marker" transform="translate(880.9,120.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-521 base: 1,480 instructions per operation</title></path>
+<path class="marker" transform="translate(127.1,412.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Mersenne-31: 18.0 instructions per operation</title></path>
+<path class="marker" transform="translate(221.3,412.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BabyBear: 17.1 instructions per operation</title></path>
+<path class="marker" transform="translate(315.6,412.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Goldilocks: 19.0 instructions per operation</title></path>
+<path class="marker" transform="translate(409.8,375.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BN254 scalar: 202 instructions per operation</title></path>
+<path class="marker" transform="translate(504.0,387.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, secp256k1 base: 144 instructions per operation</title></path>
+<path class="marker" transform="translate(598.2,382.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 base: 170 instructions per operation</title></path>
+<path class="marker" transform="translate(692.4,372.1)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 scalar: 219 instructions per operation</title></path>
+<path class="marker" transform="translate(786.7,314.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BLS12-381 base: 506 instructions per operation</title></path>
+<path class="marker" transform="translate(880.9,318.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-521 base: 487 instructions per operation</title></path>
 </g>
 <g class="c1">
 <path class="marker" transform="translate(409.8,378.9)" d="M-4,-4H4V4H-4Z"><title>ark-ff, BN254 scalar: 185 instructions per operation</title></path>
@@ -61,10 +61,10 @@
 <path class="marker" transform="translate(127.1,408.0)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, Mersenne-31: 40.1 instructions per operation</title></path>
 <path class="marker" transform="translate(221.3,408.0)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, BabyBear: 40.1 instructions per operation</title></path>
 <path class="marker" transform="translate(315.6,407.2)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, Goldilocks: 44.1 instructions per operation</title></path>
-<path class="marker" transform="translate(409.8,351.4)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, BN254 scalar: 323 instructions per operation</title></path>
-<path class="marker" transform="translate(504.0,351.4)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, secp256k1 base: 323 instructions per operation</title></path>
-<path class="marker" transform="translate(598.2,351.4)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, P-256 base: 323 instructions per operation</title></path>
-<path class="marker" transform="translate(692.4,351.4)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, P-256 scalar: 323 instructions per operation</title></path>
+<path class="marker" transform="translate(409.8,347.6)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, BN254 scalar: 342 instructions per operation</title></path>
+<path class="marker" transform="translate(504.0,347.6)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, secp256k1 base: 342 instructions per operation</title></path>
+<path class="marker" transform="translate(598.2,347.8)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, P-256 base: 341 instructions per operation</title></path>
+<path class="marker" transform="translate(692.4,347.6)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, P-256 scalar: 342 instructions per operation</title></path>
 <path class="marker" transform="translate(786.7,266.6)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, BLS12-381 base: 747 instructions per operation</title></path>
 <path class="marker" transform="translate(880.9,119.4)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>crypto-bigint, P-521 base: 1,483 instructions per operation</title></path>
 </g>
