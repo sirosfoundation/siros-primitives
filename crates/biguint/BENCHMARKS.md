@@ -67,8 +67,6 @@ Each cell measures the crate's own function:
 
 ### add: a + b
 
-![add: a + b](benchmarks/add.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
@@ -83,8 +81,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | 4096 | **163** / **220** | – | 173 / 238 | 204 / 323 | 211 / 315 | – | – |
 
 ### mul: a × b
-
-![mul: a × b](benchmarks/mul.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -101,8 +97,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### div: a / b
 
-![div: a / b](benchmarks/div.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
@@ -117,8 +111,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | 4096 | **4,605** / – | – | 4,924 / – | 12,952 / – | 12,618 / – | 12,561 / – | 6,441 / – |
 
 ### mod: a mod b
-
-![mod: a mod b](benchmarks/mod.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -135,8 +127,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### mulmod: a × b mod m
 
-![mulmod: a × b mod m](benchmarks/mulmod.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
@@ -152,8 +142,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### add_mod: a + b mod m
 
-![add_mod: a + b mod m](benchmarks/add_mod.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
@@ -168,8 +156,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | 4096 | **328** / **392** | – | 731 / 818 | – | – | – | 839 / – |
 
 ### sub_mod: a − b mod m
-
-![sub_mod: a − b mod m](benchmarks/sub_mod.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -188,5 +174,5 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ```sh
 cargo run -p biguint-bench-report -- bench    # the CPU's counts of the native build
-cargo run -p biguint-bench-report -- report   # this file and benchmarks/*.svg
+cargo run -p biguint-bench-report -- report   # this file
 ```

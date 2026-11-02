@@ -83,8 +83,6 @@ The charts show the first 8 crates; `compile-algebra` appears in the tables only
 
 ### add_vartime: a + b, variable time
 
-![add_vartime: a + b, variable time](benchmarks/add_vartime.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
@@ -105,8 +103,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### add_ct: a + b, constant time
 
-![add_ct: a + b, constant time](benchmarks/add_ct.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
@@ -125,8 +121,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### sub_vartime: a − b, variable time
 
-![sub_vartime: a − b, variable time](benchmarks/sub_vartime.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
@@ -144,8 +138,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 \* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
 
 ### sub_ct: a − b, constant time
-
-![sub_ct: a − b, constant time](benchmarks/sub_ct.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
 
@@ -167,8 +159,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### mul_vartime: a × b, variable time
 
-![mul_vartime: a × b, variable time](benchmarks/mul_vartime.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
@@ -185,8 +175,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### mul_ct: a × b, constant time
 
-![mul_ct: a × b, constant time](benchmarks/mul_ct.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
@@ -202,8 +190,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | P-521 base | **195** / **212** | – | 570 / 625 | – | – | – | – | 464 / 496 | – |
 
 ### square_vartime: a², variable time
-
-![square_vartime: a², variable time](benchmarks/square_vartime.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
 
@@ -223,8 +209,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### square_ct: a², constant time
 
-![square_ct: a², constant time](benchmarks/square_ct.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
@@ -240,8 +224,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | P-521 base | **122** / **136** | – | 570 / 624 | – | – | – | – | – | – |
 
 ### invert_vartime: a⁻¹, variable time
-
-![invert_vartime: a⁻¹, variable time](benchmarks/invert_vartime.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -259,8 +241,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### invert_ct: a⁻¹, constant time
 
-![invert_ct: a⁻¹, constant time](benchmarks/invert_ct.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
@@ -277,8 +257,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### sqrt_vartime: √a, variable time
 
-![sqrt_vartime: √a, variable time](benchmarks/sqrt_vartime.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
@@ -294,8 +272,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | P-521 base | **71,644** / – | – | – | – | – | – | – | – | – |
 
 ### sqrt_ct: √a, constant time
-
-![sqrt_ct: √a, constant time](benchmarks/sqrt_ct.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -315,5 +291,5 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ```sh
 cargo run -p prime-field-bench-report -- bench    # the CPU's counts of the native build
-cargo run -p prime-field-bench-report -- report   # this file and benchmarks/*.svg
+cargo run -p prime-field-bench-report -- report   # this file
 ```

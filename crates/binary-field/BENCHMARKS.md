@@ -99,8 +99,6 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 ### add: a + b, constant time, with carry-less multiplication
 
-![add: a + b, constant time, with carry-less multiplication](benchmarks/add.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
@@ -114,8 +112,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | GF(2⁵⁷¹) | **9.5** / **19.9** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### add_vartime: a + b, variable time, with carry-less multiplication
-
-![add_vartime: a + b, variable time, with carry-less multiplication](benchmarks/add_vartime.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -131,8 +127,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### mul: a × b, constant time, with carry-less multiplication
 
-![mul: a × b, constant time, with carry-less multiplication](benchmarks/mul.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
@@ -146,8 +140,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | GF(2⁵⁷¹) | **275** / **283** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul_vartime: a × b, variable time, with carry-less multiplication
-
-![mul_vartime: a × b, variable time, with carry-less multiplication](benchmarks/mul_vartime.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -163,8 +155,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### square: a², constant time, with carry-less multiplication
 
-![square: a², constant time, with carry-less multiplication](benchmarks/square.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
@@ -178,8 +168,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | GF(2⁵⁷¹) | **41.3** / **56.2** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square_vartime: a², variable time, with carry-less multiplication
-
-![square_vartime: a², variable time, with carry-less multiplication](benchmarks/square_vartime.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -195,8 +183,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### invert: a⁻¹, constant time, with carry-less multiplication
 
-![invert: a⁻¹, constant time, with carry-less multiplication](benchmarks/invert.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
@@ -210,8 +196,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | GF(2⁵⁷¹) | **28,828** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert_vartime: a⁻¹, variable time, with carry-less multiplication
-
-![invert_vartime: a⁻¹, variable time, with carry-less multiplication](benchmarks/invert_vartime.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -227,8 +211,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### sqrt: √a, constant time, with carry-less multiplication
 
-![sqrt: √a, constant time, with carry-less multiplication](benchmarks/sqrt.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
@@ -242,8 +224,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | GF(2⁵⁷¹) | **318** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt_vartime: √a, variable time, with carry-less multiplication
-
-![sqrt_vartime: √a, variable time, with carry-less multiplication](benchmarks/sqrt_vartime.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -263,8 +243,6 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 ### add: a + b, constant time, without carry-less multiplication
 
-![add: a + b, constant time, without carry-less multiplication](benchmarks/add-without-clmul.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
@@ -278,8 +256,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | GF(2⁵⁷¹) | **6.4** / **23.9** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### add_vartime: a + b, variable time, without carry-less multiplication
-
-![add_vartime: a + b, variable time, without carry-less multiplication](benchmarks/add_vartime-without-clmul.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -295,8 +271,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### mul: a × b, constant time, without carry-less multiplication
 
-![mul: a × b, constant time, without carry-less multiplication](benchmarks/mul-without-clmul.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
@@ -310,8 +284,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | GF(2⁵⁷¹) | **4,972** / **4,924** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul_vartime: a × b, variable time, without carry-less multiplication
-
-![mul_vartime: a × b, variable time, without carry-less multiplication](benchmarks/mul_vartime-without-clmul.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -327,8 +299,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### square: a², constant time, without carry-less multiplication
 
-![square: a², constant time, without carry-less multiplication](benchmarks/square-without-clmul.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
@@ -342,8 +312,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | GF(2⁵⁷¹) | **220** / **235** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square_vartime: a², variable time, without carry-less multiplication
-
-![square_vartime: a², variable time, without carry-less multiplication](benchmarks/square_vartime-without-clmul.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -359,8 +327,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### invert: a⁻¹, constant time, without carry-less multiplication
 
-![invert: a⁻¹, constant time, without carry-less multiplication](benchmarks/invert-without-clmul.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
@@ -374,8 +340,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | GF(2⁵⁷¹) | **188,274** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert_vartime: a⁻¹, variable time, without carry-less multiplication
-
-![invert_vartime: a⁻¹, variable time, without carry-less multiplication](benchmarks/invert_vartime-without-clmul.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -391,8 +355,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ### sqrt: √a, constant time, without carry-less multiplication
 
-![sqrt: √a, constant time, without carry-less multiplication](benchmarks/sqrt-without-clmul.svg)
-
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
@@ -406,8 +368,6 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | GF(2⁵⁷¹) | **5,073** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt_vartime: √a, variable time, without carry-less multiplication
-
-![sqrt_vartime: √a, variable time, without carry-less multiplication](benchmarks/sqrt_vartime-without-clmul.svg)
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
@@ -425,5 +385,5 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ```sh
 cargo run -p binary-field-bench-report -- bench    # the CPU's counts of the native build
-cargo run -p binary-field-bench-report -- report   # this file and benchmarks/*.svg
+cargo run -p binary-field-bench-report -- report   # this file
 ```
