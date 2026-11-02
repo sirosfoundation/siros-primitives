@@ -99,14 +99,14 @@
 <path class="marker" transform="translate(875.0,264.9)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>uint, 4096 bits: 20,146 instructions per operation</title></path>
 </g>
 <g class="c6">
-<path class="line" d="M133.0,413.9L239.0,411.4L345.0,410.2L451.0,407.7L557.0,405.0L663.0,391.1L769.0,340.0L875.0,177.9"/>
-<path class="marker" transform="translate(133.0,413.9)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 64 bits: 277 instructions per operation</title></path>
-<path class="marker" transform="translate(239.0,411.4)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 128 bits: 613 instructions per operation</title></path>
-<path class="marker" transform="translate(345.0,410.2)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 256 bits: 778 instructions per operation</title></path>
-<path class="marker" transform="translate(451.0,407.7)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 384 bits: 1,100 instructions per operation</title></path>
-<path class="marker" transform="translate(557.0,405.0)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 512 bits: 1,471 instructions per operation</title></path>
-<path class="marker" transform="translate(663.0,391.1)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 1024 bits: 3,325 instructions per operation</title></path>
-<path class="marker" transform="translate(769.0,340.0)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 2048 bits: 10,129 instructions per operation</title></path>
-<path class="marker" transform="translate(875.0,177.9)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 4096 bits: 31,749 instructions per operation</title></path>
+<path class="line" d="M133.0,413.9L239.0,411.4L345.0,410.2L451.0,407.8L557.0,405.1L663.0,391.0L769.0,340.0L875.0,178.1"/>
+<path class="marker" transform="translate(133.0,413.9)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 64 bits: 276 instructions per operation</title></path>
+<path class="marker" transform="translate(239.0,411.4)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 128 bits: 611 instructions per operation</title></path>
+<path class="marker" transform="translate(345.0,410.2)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 256 bits: 776 instructions per operation</title></path>
+<path class="marker" transform="translate(451.0,407.8)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 384 bits: 1,098 instructions per operation</title></path>
+<path class="marker" transform="translate(557.0,405.1)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 512 bits: 1,457 instructions per operation</title></path>
+<path class="marker" transform="translate(663.0,391.0)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 1024 bits: 3,335 instructions per operation</title></path>
+<path class="marker" transform="translate(769.0,340.0)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 2048 bits: 10,127 instructions per operation</title></path>
+<path class="marker" transform="translate(875.0,178.1)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>num-bigint, 4096 bits: 31,723 instructions per operation</title></path>
 </g>
 </svg>
