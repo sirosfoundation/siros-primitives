@@ -4,14 +4,14 @@
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
 ![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
-Fixed-width unsigned integers of any bit width in pure Rust: `no_std`, without `unsafe` or
-panics.
+Fixed-width unsigned integers of any bit width: `no_std`, without `unsafe`, allocation or
+panics. Rust 1.93 or newer.
 
-`Uint<N>` holds an integer of exactly `N` bits for any `typenum` width `N`, in `ceil(N / 64)`
-little-endian `u64` limbs. It provides wrapping arithmetic, carrying addition and subtraction,
-widening multiplication, division by a divisor of any width, modular arithmetic, shifts,
-rotations, comparisons, byte encodings and exact conversions. `<<` and `>>` take an amount of any
-primitive integer type or any `Uint`; an amount that is negative or at least `N` gives `0`.
+`Uint<N>` holds exactly `N` bits for any `typenum` width `N`, in `ceil(N / 64)` little-endian
+`u64` limbs. It provides wrapping, carrying and widening arithmetic, division by a divisor of any
+width, modular arithmetic, shifts, rotations, comparisons, byte encodings and exact conversions.
+`<<` and `>>` take an amount of any primitive integer type or any `Uint`; an amount that is
+negative or at least `N` gives `0`.
 
 ## Example
 
@@ -33,15 +33,11 @@ assert_eq!(max521.bit_len(), 521);
 
 ## Division
 
-A divisor is a `NonZeroUint`, the alias of `NonZero<Uint<N>>`. `NonZero::new` returns `None` for
-zero, so the check runs once per divisor; `get` returns the value and `as_ref` borrows it, and
-`TryFrom` and `From` convert both ways. `div_rem`, `/` and `%` take a `NonZeroUint` and return
-plain values. The operations whose result stays nonzero return a `NonZeroUint`: `|` with any
-`Uint`, `saturating_add` and `saturating_mul`, and `checked_add`, `checked_mul` and `checked_pow`
-with an `Option`. `leading_zeros`, `trailing_zeros`, `ilog2` and `is_power_of_two` need no zero
-case.
-`checked_div_rem` takes a `Uint` and returns `None` for a zero divisor. The divisor may have any
-width, and the remainder has the divisor's.
+A divisor is a `NonZeroUint` (`NonZero<Uint<N>>`); `NonZero::new` returns `None` for zero.
+`div_rem`, `/` and `%` take a `NonZeroUint` of any width and return plain values; the remainder
+has the divisor's width. `checked_div_rem` takes a `Uint` and returns `None` for a zero divisor.
+`|`, `saturating_add`, `saturating_mul`, `checked_add`, `checked_mul` and `checked_pow` return a
+`NonZeroUint` for a `NonZeroUint` operand.
 
 ```rust
 use biguint::{NonZeroUint, U128, U256};
@@ -57,25 +53,19 @@ assert_eq!(a.checked_div_rem(U128::ZERO), None);
 ## num-traits
 
 `Uint` implements these `num-traits` traits, each with the inherent method of the same name:
+`Zero`, `One`, `ConstZero`, `ConstOne`, `Bounded`, `Pow<u32>`, `MulAdd`,
+`Checked{Add,Sub,Mul,Neg,Shl,Shr}`, `Wrapping{Add,Sub,Mul,Neg,Shl,Shr}`,
+`Saturating{Add,Sub,Mul}`, `Overflowing{Add,Sub,Mul}`, `ToPrimitive`, `FromPrimitive`, `NumCast`,
+and `ToBytes` and `FromBytes` on `ceil(N / 8)` bytes.
 
-- `Zero`, `One`, `ConstZero`, `ConstOne`, `Bounded`;
-- `Pow<u32>`, `MulAdd`, modulo `2^N`;
-- `CheckedAdd`, `CheckedSub`, `CheckedMul`, `CheckedNeg`, `CheckedShl`, `CheckedShr`;
-- `WrappingAdd`, `WrappingSub`, `WrappingMul`, `WrappingNeg`, `WrappingShl`, `WrappingShr`;
-- `SaturatingAdd`, `SaturatingSub`, `SaturatingMul`;
-- `OverflowingAdd`, `OverflowingSub`, `OverflowingMul`;
-- `ToPrimitive`, `FromPrimitive`, `NumCast`;
-- `ToBytes`, `FromBytes`, on `ceil(N / 8)` bytes.
-
-`checked_shl` and `checked_shr` return `None` for a shift of `N` or more; `wrapping_shl` and
-`wrapping_shr` shift by the amount modulo `N`. `FromBytes` reads the bytes modulo `2^N`.
-`to_f32` and `to_f64` round to the nearest float, ties to even. `FromPrimitive` keeps the integer
-part of a float. `NumCast` reads its source through `to_u128` and returns `None` from `2^128` up.
-
-`checked_div` and `checked_rem` are inherent methods only: `CheckedDiv`, `CheckedRem`, `Num`,
-`Unsigned`, `PrimInt` and `Euclid` require `Div<Self>` and `Rem<Self>`, which panic on a zero
-divisor. `NonZero<T>` has the crate's `One` wherever `T` has it. `num-traits`' `One` requires
-`Mul<Output = Self>`, and a product of two nonzero `Uint`s can wrap to zero.
+- `checked_shl` and `checked_shr` return `None` for a shift of `N` or more; `wrapping_shl` and
+  `wrapping_shr` shift by the amount modulo `N`.
+- `FromBytes` reads the bytes modulo `2^N`; `FromPrimitive` keeps the integer part of a float;
+  `NumCast` returns `None` from `2^128` up; `to_f32` and `to_f64` round to nearest, ties to even.
+- `checked_div` and `checked_rem` are inherent methods. `CheckedDiv`, `CheckedRem`, `Num`,
+  `Unsigned`, `PrimInt` and `Euclid` are not implemented: they require `Div<Self>` and
+  `Rem<Self>`.
+- `NonZero<T>` has the crate's `One` wherever `T` has it.
 
 ## Modular arithmetic
 
@@ -94,12 +84,9 @@ assert_eq!(U256::from_u64(50).mul_mod(U256::from_u64(4), m), U256::from_u64(6));
 ```
 
 A `Modulus` prepares a modulus once for many operations. `Modulus::scope` runs a closure on a
-`Ring`, which makes residues. `reduce` takes a value of any width. `residue` takes a value below
-the modulus and returns `NotReduced` for any other. Residues have `+`, `-`, unary `-`, `*`,
-`square` and `pow`, and `get` returns the value below the modulus. Each scope gives its residues a
-lifetime of their own: an expression on residues of two scopes fails to compile, and the residue
-operations run without checks. An odd modulus keeps residues in Montgomery form. An even modulus
-divides each product by the modulus, normalized and with its reciprocal computed once.
+`Ring`: `reduce` makes a residue from a value of any width, `residue` from a value below the
+modulus (otherwise `NotReduced`). Residues have `+`, `-`, unary `-`, `*`, `square`, `pow` and
+`get`. Residues of different scopes fail to compile together.
 
 ```rust
 use biguint::{Modulus, U256};
@@ -113,83 +100,21 @@ let value = p.scope(|ring| {
 assert_eq!(value, U256::from_u64((6 * 90 + 6 * 6 * 6) % 97));
 ```
 
-## Algorithms
-
-The width selects the algorithm at compile time, and every operand length folds to a constant.
-
-| Operation | Width | Algorithm |
-|---|---|---|
-| Product | below 16 limbs | Schoolbook rows of two carry chains, unrolled up to 16 limbs per operand |
-| Product | 16 limbs (1024 bits) and more | Karatsuba with GMP's `toom22` interpolation, up to three halvings |
-| Product modulo `2^N` | 17 limbs and more | Full product of the low parts and truncated cross products, split again, after GMP's `dc_mullo` |
-| Division | dividend and divisor within 128 bits | `u128` division, which compiles to the hardware divide |
-| Division | divisor of one or two significant limbs | Möller–Granlund 2-by-1 and 3-by-2 reciprocal steps, with the remainder in registers |
-| Division | other divisors | Knuth's algorithm D with Möller–Granlund 3-by-2 reciprocals |
-| Division | divisor and quotient of 24 limbs (1536 bits) and more, the divisor filling its width | Divide-and-conquer, after GMP's `dcpi1_div_qr` |
-| `add_mod`, `sub_mod`, `neg_mod` | up to 8 limbs | One carry chain, then the correction as a second chain and a conditional move per limb |
-| `add_mod`, `sub_mod`, `neg_mod` | 9 limbs and more | One carry chain; the top limbs decide the correction, and a full comparison runs only when they are equal |
-| `Modulus` product | odd modulus | Montgomery multiplication |
-| `Modulus` product | even modulus of 4 to 8 limbs (256 to 512 bits) whose top limb is nonzero | Product, then Barrett's reduction with a precomputed reciprocal |
-| `Modulus` product | other even moduli | Product, then division by the prepared modulus from one limb below the top |
-| `Modulus` square | below 16 limbs | Products of distinct limbs once, doubled, plus the squares of the limbs |
-| `Residue::pow` | any | Sliding windows of up to 6 bits over odd powers |
-| Shift | up to 2 limbs | `u128` shifts |
-| Shift | 3 limbs and more | Funnel shifts of the limbs, written at the limb offset in one vectorized pass |
-
-## Benchmarks
-
-[BENCHMARKS.md](https://github.com/sirosfoundation/siros-primitives/blob/main/crates/biguint/BENCHMARKS.md)
-compares `biguint` with `u64`/`u128`, ruint, crypto-bigint, bnum, uint and num-bigint on add, mul,
-div, mod, mulmod, add_mod and sub_mod at 64 to 4096 bits, in cycles per operation
-that the CPU's performance counters count. The unpublished
-[`biguint-bench-report`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/biguint/bench-report)
-regenerates it:
-
-```sh
-cargo run -p biguint-bench-report -- bench    # the CPU's counts of the native build
-cargo run -p biguint-bench-report -- report   # BENCHMARKS.md
-```
-
 ## Memory
 
-No operation allocates. Valgrind's DRD counts the thread stack that 4096-bit operations use:
-
-| Build | `*` | `div_rem` | `mul_mod` |
-|---|---:|---:|---:|
-| release | 4.8 KiB | 4.6 KiB | 7.9 KiB |
-| unoptimized | 224 KiB | 38 KiB | 1.0 MiB |
+No operation allocates. A 4096-bit `*`, `div_rem` or `mul_mod` uses at most 7.9 KiB of stack in a
+release build.
 
 ## Features
 
-Every division and modular multiplication starts from the reciprocal of the divisor's top limb.
-By default, targets other than x86-64 seed it from a 512-byte table. `not-precomputed` removes the
-table, and a 32-bit division computes the seed. Cargo unifies features, so one crate in a build
-that enables it removes the table from the whole build. x86-64 computes the reciprocal with one
-128-by-64 division and holds no table in either build.
+- `not-precomputed`: removes the 512-byte table that seeds the division reciprocal on targets
+  other than x86-64; a 32-bit division computes the seed. x86-64 holds no table in either build.
+  Cargo unifies features: one dependent that enables it removes the table from the whole build.
 
-| Build | `.rodata` of a 256-bit division, thumbv7em-none-eabi | Cycles of a 256-bit division by a 128-bit divisor, Zen 3 |
-|---|---|---|
-| default | 512 bytes | 105 with the table; 91 on x86-64 |
-| `not-precomputed` | 0 bytes | 111 with the 32-bit seed; 91 on x86-64 |
-
-The `.rodata` counts subtract an empty program's. The cycles of the table and the 32-bit seed come
-from x86-64 builds that run the seeded reciprocal.
-
-## Minimum supported Rust version
-
-Rust 1.93 or newer.
+[BENCHMARKS.md](https://github.com/sirosfoundation/siros-primitives/blob/main/crates/biguint/BENCHMARKS.md)
+compares `biguint` with other big-integer crates.
 
 ## License
 
-The crate is licensed under either of
-
-- [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
-- [MIT license](https://opensource.org/licenses/MIT)
-
-at your option.
-
-### Contribution
-
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
-the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
-additional terms or conditions.
+Licensed under either of [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+or [MIT license](https://opensource.org/licenses/MIT) at your option.
