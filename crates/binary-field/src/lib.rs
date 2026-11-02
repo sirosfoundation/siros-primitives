@@ -18,8 +18,10 @@
 mod arith;
 mod element;
 mod error;
+mod frobenius;
 mod invert;
 mod kernel;
+mod linear;
 mod plan;
 mod reduce;
 mod representation;

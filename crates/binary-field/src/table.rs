@@ -11,6 +11,7 @@ use generic_array::GenericArray;
 use crate::arith::Lanes;
 use crate::element::Limbs;
 use crate::kernel::{copy, head, set_bit, spread};
+use crate::linear::{Blocks, apply, blocks};
 use crate::plan::{Plan, Polynomial, Wide};
 use crate::reduce::const_reduce;
 
@@ -23,8 +24,6 @@ pub(crate) struct Tables<P>(PhantomData<P>);
 impl<P: Polynomial> Tables<P> {
     /// `sqrt(x) = x^(2^(n-1))`.
     const SQRT_X: Poly<P::Degree> = Poly::from_uint(Uint::from_generic_limbs(sqrt_x::<P>()));
-    /// `sqrt(x)` in one word, for degrees up to 64.
-    pub(crate) const SQRT_X_WORD: u64 = word(sqrt_x::<P>().as_slice());
 
     /// `sqrt(x)`.
     #[inline(always)]
@@ -35,12 +34,14 @@ impl<P: Polynomial> Tables<P> {
     /// The product of every pair of elements of a field of degree up to 8, `a b` at `256 b + a`.
     const PRODUCTS: &'static [u8; ELEMENTS] = &products(Plan::<P>::DEGREE, Plan::<P>::TAPS);
 
-    /// The squares of the bytes, and of the bytes times `x^8`.
-    const SQUARES: &'static [[u16; 256]; 2] =
-        &linear_tables(Plan::<P>::DEGREE, Plan::<P>::TAPS, false);
-    /// The square roots of the bytes, and of the bytes times `x^8`.
-    const ROOTS: &'static [[u16; 256]; 2] =
-        &linear_tables(Plan::<P>::DEGREE, Plan::<P>::TAPS, true);
+    /// The square of every element.
+    const SQUARES: &'static [u16; ELEMENTS] = &linear_table(Plan::<P>::DEGREE, Plan::<P>::TAPS, 1);
+    /// The square root of every element, `a^(2^(n-1))`.
+    const ROOTS: &'static [u16; ELEMENTS] =
+        &linear_table(Plan::<P>::DEGREE, Plan::<P>::TAPS, Plan::<P>::DEGREE - 1);
+    /// The Frobenius maps `a -> a^(2^k)` for `k` up to 16, of the fields up to degree 16: constants
+    /// of the constant-time operations, outside the feature.
+    const FROBENIUS: &'static [Blocks; 17] = &frobenius_maps(Plan::<P>::DEGREE, Plan::<P>::TAPS);
     /// The inverse of every element, `0` for `0`.
     const INVERSES: &'static [u16; ELEMENTS] = &inverses(Plan::<P>::DEGREE, Plan::<P>::TAPS);
 
@@ -54,37 +55,32 @@ impl<P: Polynomial> Tables<P> {
             .map_or(0, u64::from)
     }
 
-    /// `a^2` by the table of squares: one lookup per byte.
+    /// `a^2` by the table of squares.
     #[inline(always)]
     pub(crate) fn square(a: u64) -> u64 {
-        linear(Self::SQUARES, a)
+        Self::SQUARES.get(a as usize).copied().map_or(0, u64::from)
     }
 
-    /// The square root by the table of square roots: one lookup per byte.
+    /// The square root by the table of square roots.
     #[inline(always)]
     pub(crate) fn sqrt(a: u64) -> u64 {
-        linear(Self::ROOTS, a)
+        Self::ROOTS.get(a as usize).copied().map_or(0, u64::from)
+    }
+
+    /// `a^(2^k)` for `k` up to 16, by the constant-time linear map of the Frobenius power. Degrees
+    /// up to 16.
+    #[inline(always)]
+    pub(crate) fn frobenius(a: u64, k: usize) -> u64 {
+        match Self::FROBENIUS.get(k) {
+            Some(map) => apply(map, a, Plan::<P>::DEGREE),
+            None => 0,
+        }
     }
 
     /// The inverse, `0` for `0`, by the table of inverses.
     #[inline(always)]
     pub(crate) fn invert(a: u64) -> u64 {
         Self::INVERSES.get(a as usize).copied().map_or(0, u64::from)
-    }
-}
-
-/// The image of `a` under a linear map given by the images of the bytes, of the low byte alone
-/// for degrees up to 8.
-#[inline(always)]
-fn linear(tables: &'static [[u16; 256]; 2], a: u64) -> u64 {
-    let [low, high] = tables;
-    let image = |table: &'static [u16; 256], byte: u64| -> u64 {
-        table.get(byte as usize).copied().map_or(0, u64::from)
-    };
-    if a >> 8 == 0 {
-        image(low, a)
-    } else {
-        image(low, a & 0xFF) ^ image(high, a >> 8)
     }
 }
 
@@ -109,14 +105,6 @@ const fn sqrt_x<P: Polynomial>() -> GenericArray<u64, Limbs<P>> {
         count += 1;
     }
     power
-}
-
-/// The low limb of `limbs`.
-const fn word(limbs: &[u64]) -> u64 {
-    match limbs {
-        [low, ..] => *low,
-        [] => 0,
-    }
 }
 
 /// `a b` in a field of degree up to 16, bit by bit: the multiple of `a` doubles and reduces once
@@ -258,46 +246,64 @@ const fn inverses(degree: usize, taps: &[usize]) -> [u16; ELEMENTS] {
     table
 }
 
-/// The tables of a linear map of a field of degree up to 16: the images of the bytes, and of the
-/// bytes times `x^8`. The map is squaring, or the square root when `root` holds.
+/// The blocks of `a -> a^(2^k)` for `k` up to 16, of a field of degree up to 16; zero above.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn frobenius_maps(degree: usize, taps: &[usize]) -> [Blocks; 17] {
+    let mut maps = [[[0; 2]; 2]; 17];
+    if degree > 16 {
+        return maps;
+    }
+    let mut images = [0u64; 16];
+    let mut index = 0;
+    while index < degree {
+        images[index] = 1 << index;
+        index += 1;
+    }
+    let mut k = 0;
+    while k <= 16 {
+        maps[k] = blocks(&images);
+        index = 0;
+        while index < degree {
+            images[index] = small_mul(images[index], images[index], degree, taps);
+            index += 1;
+        }
+        k += 1;
+    }
+    maps
+}
+
+/// The image of every element of a field of degree up to 16 under `a -> a^(2^k)`: each element is
+/// a smaller one plus its lowest basis element, whose image is a power of that element. Empty above
+/// degree 16.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its table's length"
 )]
-const fn linear_tables(degree: usize, taps: &[usize], root: bool) -> [[u16; 256]; 2] {
-    let mut tables = [[0; 256]; 2];
+const fn linear_table(degree: usize, taps: &[usize], k: usize) -> [u16; ELEMENTS] {
+    let mut table = [0; ELEMENTS];
     if degree > 16 {
-        return tables;
+        return table;
     }
-    // The image of each basis element `x^i`: its square, or its root `x^(i 2^(n-1))`.
     let mut images = [0u64; 16];
     let mut index = 0;
     while index < degree {
-        let basis = 1 << index;
-        images[index] = if root {
-            let mut power = basis;
-            let mut step = 1;
-            while step < degree {
-                power = small_mul(power, power, degree, taps);
-                step += 1;
-            }
-            power
-        } else {
-            small_mul(basis, basis, degree, taps)
-        };
+        let mut power = 1 << index;
+        let mut step = 0;
+        while step < k {
+            power = small_mul(power, power, degree, taps);
+            step += 1;
+        }
+        images[index] = power;
         index += 1;
     }
-    let mut half = 0;
-    while half < 2 {
-        let mut byte: usize = 1;
-        while byte < 256 {
-            let low = byte & byte.wrapping_neg();
-            let bit = low.trailing_zeros() as usize + 8 * half;
-            let image = if bit < degree { images[bit] } else { 0 };
-            tables[half][byte] = tables[half][byte ^ low] ^ image as u16;
-            byte += 1;
-        }
-        half += 1;
+    let mut value: usize = 1;
+    while value < 1 << degree {
+        let low = value & value.wrapping_neg();
+        table[value] = table[value ^ low] ^ images[low.trailing_zeros() as usize] as u16;
+        value += 1;
     }
-    tables
+    table
 }

@@ -131,6 +131,13 @@ pub(crate) fn clmul(a: Register, i: usize, b: Register, j: usize) -> Register {
     }
 }
 
+/// The squares of the two words of `a`, `(a0^2, a1^2)`, by the carry-less product of each word with
+/// itself.
+#[inline(always)]
+pub(crate) fn spread(a: Register) -> (Register, Register) {
+    (clmul(a, 0, a, 0), clmul(a, 1, a, 1))
+}
+
 #[inline(always)]
 pub(crate) fn clmul64(a: u64, b: u64) -> u128 {
     from_limbs(words(product(a, b)))

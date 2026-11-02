@@ -7,7 +7,7 @@ use core::ops::{
 };
 
 use biguint::generic_array::{ArrayLength, GenericArray};
-use biguint::typenum::{Quot, Sum, U127, U128, Unsigned};
+use biguint::typenum::{Quot, Sum, U1, U127, U128, Unsigned};
 use biguint::{Bits, OutOfRange, Uint};
 use const_default::ConstDefault;
 
@@ -360,7 +360,7 @@ impl<N: Width> Poly<N> {
     }
 
     /// The whole square `self * self`, in `2N` bits: the cross terms cancel, so each word squares
-    /// alone onto its register.
+    /// alone onto its register, bit `i` at bit `2 i`.
     #[inline(always)]
     #[must_use]
     pub fn widening_square(self) -> Poly<Sum<N, N>>
@@ -369,9 +369,10 @@ impl<N: Width> Poly<N> {
         Sum<N, N>: Width,
     {
         let mut out = Poly::<Sum<N, N>>::ZERO;
-        each!(word < N::LIMBS => {
-            let lane = self.lane(word / 2);
-            out.set(word, backend::clmul(lane, word % 2, lane, word % 2));
+        each!(index < N::LANES => {
+            let (first, second) = backend::spread(self.lane(index));
+            out.set(2 * index, first);
+            out.set(2 * index + 1, second);
         });
         out
     }
@@ -453,6 +454,31 @@ impl<N: Width> Poly<N> {
             out.set(k, value);
         });
         out
+    }
+}
+
+impl<N: Width<Lanes = U1>> Poly<N> {
+    /// The polynomial of the bits of `lane` below `N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn from_lane(lane: Lane) -> Self {
+        let poly = Self {
+            lanes: GenericArray::<Lane, U1>::from_array([lane]),
+        };
+        if N::BITS < 128 {
+            poly.truncated()
+        } else {
+            poly
+        }
+    }
+
+    /// The register of the polynomial. A one-register value passes between functions in a vector
+    /// register, where a `Poly` passes in memory.
+    #[inline(always)]
+    #[must_use]
+    pub const fn into_lane(self) -> Lane {
+        let [lane] = self.lanes.into_array::<1>();
+        lane
     }
 }
 

@@ -72,6 +72,30 @@ pub(crate) const fn clmul(a: Register, i: usize, b: Register, j: usize) -> Regis
     to_limbs(clmul64(x, y))
 }
 
+/// The squares of the two words of `a`, `(a0^2, a1^2)`: bit `i` of a word moves to bit `2 i`.
+#[inline(always)]
+pub(crate) const fn spread(a: Register) -> (Register, Register) {
+    (spread_word(a[0]), spread_word(a[1]))
+}
+
+/// The square of `word`, its bits at twice their positions, as two words.
+#[inline(always)]
+const fn spread_word(word: u64) -> Register {
+    [spread_half(word as u32), spread_half((word >> 32) as u32)]
+}
+
+/// Bit `i` of `half` at bit `2 i`: each step moves the upper half of every block up by half the
+/// block (Warren, Hacker's Delight, 7-2).
+#[inline(always)]
+const fn spread_half(half: u32) -> u64 {
+    let mut x = half as u64;
+    x = (x | (x << 16)) & 0x0000_FFFF_0000_FFFF;
+    x = (x | (x << 8)) & 0x00FF_00FF_00FF_00FF;
+    x = (x | (x << 4)) & 0x0F0F_0F0F_0F0F_0F0F;
+    x = (x | (x << 2)) & 0x3333_3333_3333_3333;
+    (x | (x << 1)) & 0x5555_5555_5555_5555
+}
+
 /// The unreduced sum `low + middle * x^64 + high * x^128`.
 pub(crate) struct Accumulator {
     low: u128,

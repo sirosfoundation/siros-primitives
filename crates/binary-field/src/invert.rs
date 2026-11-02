@@ -13,12 +13,13 @@ pub(crate) fn declassify<T>(invertible: bool, inverse: T) -> Option<T> {
 }
 
 /// `a^(2^n - 2) = (a^(2^(n-1) - 1))^2`, with `a^(2^k - 1)` built along the bits of `n - 1`: a
-/// doubling of `k` costs `k` squarings and one product, an increment one squaring and one product.
-/// The sequence depends on the degree alone; `0` maps to `0`.
+/// doubling of `k` costs the Frobenius power `x -> x^(2^k)` and one product, an increment one
+/// squaring and one product. `frobenius(x, k)` is `x^(2^k)`. The sequence depends on the degree
+/// alone; `0` maps to `0`.
 #[inline(always)]
 pub(crate) fn itoh_tsujii<P: Polynomial, T: Copy>(
     a: T,
-    square: impl Fn(T) -> T,
+    frobenius: impl Fn(T, usize) -> T,
     mul: impl Fn(T, T) -> T,
 ) -> T {
     let exponent = Plan::<P>::DEGREE - 1;
@@ -27,18 +28,12 @@ pub(crate) fn itoh_tsujii<P: Polynomial, T: Copy>(
     let mut k = 1;
     each!(step < bits - 1 => {
         let index = bits - 2 - step;
-        let mut doubled = power;
-        let mut count = 0;
-        while count < k {
-            doubled = square(doubled);
-            count += 1;
-        }
-        power = mul(doubled, power);
+        power = mul(frobenius(power, k), power);
         k *= 2;
         if (exponent >> index) & 1 == 1 {
-            power = mul(square(power), a);
+            power = mul(frobenius(power, 1), a);
             k += 1;
         }
     });
-    square(power)
+    frobenius(power, 1)
 }

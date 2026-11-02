@@ -78,8 +78,12 @@ impl<P: Polynomial> Plan<P> {
 
     /// The elements live in a general register and the default operations index tables.
     pub(crate) const SMALL: bool = cfg!(feature = "precomputed") && Self::DEGREE <= 16;
-    /// The default product indexes tables of logarithms.
+    /// The default product indexes a table of products.
     pub(crate) const MUL_BY_TABLE: bool = Self::SMALL && Self::DEGREE <= 8;
+    /// The default inverse of a field of one register runs its Itoh–Tsujii chain on tables of the
+    /// Frobenius powers.
+    pub(crate) const INVERT_BY_TABLES: bool =
+        cfg!(feature = "precomputed") && Self::DEGREE > 16 && Self::DEGREE <= 128;
 
     /// The overflow of `h r` for `h` below `x^n` folds once without spilling again: `2d <= n`.
     pub(crate) const ONE_SPILL: bool = 2 * Self::R_DEGREE <= Self::DEGREE;

@@ -13,6 +13,8 @@ use core::arch::x86_64::{
     __m128i, _mm_and_si128, _mm_clmulepi64_si128, _mm_or_si128, _mm_sll_epi64, _mm_slli_si128,
     _mm_srl_epi64, _mm_srli_si128, _mm_xor_si128,
 };
+#[cfg(target_feature = "ssse3")]
+use core::arch::x86_64::{_mm_shuffle_epi8, _mm_srli_epi16, _mm_unpackhi_epi8, _mm_unpacklo_epi8};
 
 use crate::{REDUCTION, from_limbs, to_limbs};
 
@@ -99,6 +101,37 @@ pub(crate) fn clmul(a: Register, i: usize, b: Register, j: usize) -> Register {
         // SAFETY: as above.
         _ => unsafe { _mm_clmulepi64_si128::<0x11>(a, b) },
     }
+}
+
+/// The squares of the two words of `a`, `(a0^2, a1^2)`: bit `i` of a word moves to bit `2 i`.
+/// Each byte's square is the spread of its two nibbles, which a byte shuffle reads from a
+/// 16-entry table, interleaved.
+#[cfg(target_feature = "ssse3")]
+#[inline(always)]
+pub(crate) fn spread(a: Register) -> (Register, Register) {
+    /// The spread of every nibble value, byte `n` holding `n` with bit `i` at bit `2 i`.
+    const NIBBLES: Register = register([0x1514_1110_0504_0100, 0x5554_5150_4544_4140]);
+    /// The low nibble of every byte.
+    const LOW: Register = register([0x0F0F_0F0F_0F0F_0F0F; 2]);
+    // SAFETY: SSE2.
+    let shifted = unsafe { _mm_srli_epi16::<4>(a) };
+    // SAFETY: SSSE3, which the `cfg` of this function requires.
+    let low = unsafe { _mm_shuffle_epi8(NIBBLES, and(a, LOW)) };
+    // SAFETY: as above.
+    let high = unsafe { _mm_shuffle_epi8(NIBBLES, and(shifted, LOW)) };
+    // SAFETY: SSE2.
+    let first = unsafe { _mm_unpacklo_epi8(low, high) };
+    // SAFETY: SSE2.
+    let second = unsafe { _mm_unpackhi_epi8(low, high) };
+    (first, second)
+}
+
+/// The squares of the two words of `a`, `(a0^2, a1^2)`, by the carry-less product of each word with
+/// itself.
+#[cfg(not(target_feature = "ssse3"))]
+#[inline(always)]
+pub(crate) fn spread(a: Register) -> (Register, Register) {
+    (clmul(a, 0, a, 0), clmul(a, 1, a, 1))
 }
 
 #[inline(always)]

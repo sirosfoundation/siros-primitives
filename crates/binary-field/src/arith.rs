@@ -9,6 +9,7 @@ use clmul::Poly;
 use const_default::ConstDefault;
 use typenum::{U64, U128};
 
+use crate::frobenius::ChainStep;
 use crate::plan::{Plan, Polynomial, Shape, Wide};
 use crate::representation::{Representation, Storage};
 use crate::table::Tables;
@@ -159,8 +160,8 @@ impl<P: Polynomial> Field<P> {
             }
             Shape::Words => Self::fold_words(a.clmul_words(0, a, 0)),
             Shape::Lane => {
-                let a = a.resize::<U128>();
-                Self::fold_lane(a.clmul_words(0, a, 0), a.clmul_words(1, a, 1)).resize()
+                let square = a.resize::<U128>().widening_square();
+                Self::fold_lane(square.resize(), (square >> 128).resize()).resize()
             }
             Shape::Lanes => Self::reduce_lanes(a.widening_square()),
         }
@@ -271,17 +272,43 @@ impl<P: Polynomial> Field<P> {
         Self::reduce_word(clmul::clmul64(a, b) as u64)
     }
 
-    /// `a^2 mod f`.
+    /// `a^2 mod f`: the constant-time linear map of squaring up to degree 8, a carry-less square
+    /// above, where the map takes four parity gathers.
     #[inline(always)]
     pub(crate) fn word_square(a: u64) -> u64 {
-        Self::reduce_word(clmul::clmul64(a, a) as u64)
+        if Plan::<P>::DEGREE <= 8 {
+            Tables::<P>::frobenius(a, 1)
+        } else {
+            Self::reduce_word(clmul::clmul64(a, a) as u64)
+        }
     }
 
-    /// The square root.
+    /// `a^(2^k)`: squarings for `k = 1`, the constant-time linear map of the power above.
+    #[inline(always)]
+    fn word_frobenius(a: u64, k: usize) -> u64 {
+        if k == 1 {
+            Self::word_square(a)
+        } else {
+            Tables::<P>::frobenius(a, k)
+        }
+    }
+
+    /// The square root `a^(2^(n-1))`, by the constant-time linear map.
     #[inline(always)]
     pub(crate) fn word_sqrt(a: u64) -> u64 {
-        let (even, odd) = (gather_word(a), gather_word(a >> 1));
-        even ^ Self::word_mul(odd, Tables::<P>::SQRT_X_WORD)
+        Tables::<P>::frobenius(a, Plan::<P>::DEGREE - 1)
+    }
+
+    /// `a^(2^k)` by `k` squarings.
+    #[inline(always)]
+    fn lanes_frobenius(a: Lanes<P>, k: usize) -> Lanes<P> {
+        let mut power = a;
+        let mut step = 0;
+        while step < k {
+            power = Self::lanes_square(power);
+            step += 1;
+        }
+        power
     }
 
     // ---------------------------------------------------------------------------------------
@@ -352,29 +379,59 @@ impl<P: Polynomial> Field<P> {
     pub(crate) fn invert(a: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {
             Element::<P>::from_word(Tables::<P>::invert(a.word()))
+        } else if Plan::<P>::INVERT_BY_TABLES {
+            Element::<P>::from_poly(Self::lanes_invert(a.poly()))
         } else {
             Self::ct_invert(a)
         }
+    }
+
+    /// The chain of Itoh and Tsujii of a field of one register, whose powers from `x^(2^3)` on
+    /// read the tables of the chain's steps. The tables cover degrees up to 128, so the chain has
+    /// at most seven steps.
+    #[inline(always)]
+    fn lanes_invert(a: Lanes<P>) -> Lanes<P> {
+        let bits = Plan::<P>::CHAIN_BITS;
+        let exponent = Plan::<P>::DEGREE - 1;
+        let mut power = a;
+        macro_rules! steps {
+            ($($step:literal)*) => {$(
+                if $step + 1 < bits {
+                    let index = bits - 2 - $step;
+                    let doubled = if ChainStep::<P, $step>::TABULATED {
+                        ChainStep::<P, $step>::apply(power)
+                    } else {
+                        Self::lanes_frobenius(power, ChainStep::<P, $step>::K)
+                    };
+                    power = Self::lanes_mul(doubled, power);
+                    if (exponent >> index) & 1 == 1 {
+                        power = Self::lanes_mul(Self::lanes_square(power), a);
+                    }
+                }
+            )*};
+        }
+        steps!(0 1 2 3 4 5 6);
+        Self::lanes_square(power)
     }
 
     /// The inverse of a nonzero `a`, and `0` for `0`, in constant time: `a^(2^n - 2)` by the chain
     /// of Itoh and Tsujii.
     #[inline(always)]
     pub(crate) fn ct_invert(a: Element<P>) -> Element<P> {
-        crate::invert::itoh_tsujii::<P, _>(a, Self::ct_square, Self::ct_mul)
+        if Plan::<P>::SMALL {
+            Element::<P>::from_word(crate::invert::itoh_tsujii::<P, _>(
+                a.word(),
+                Self::word_frobenius,
+                Self::word_mul,
+            ))
+        } else {
+            Element::<P>::from_poly(crate::invert::itoh_tsujii::<P, _>(
+                a.poly(),
+                Self::lanes_frobenius,
+                Self::lanes_mul,
+            ))
+        }
     }
-}
-
-/// The coefficients at the even positions of each 64-bit word moved to half their position,
-/// in the low half of the word (Warren, Hacker's Delight, 7-2).
-#[inline(always)]
-const fn gather_word(word: u64) -> u64 {
-    let mut x = word & 0x5555_5555_5555_5555;
-    x = (x | (x >> 1)) & 0x3333_3333_3333_3333;
-    x = (x | (x >> 2)) & 0x0F0F_0F0F_0F0F_0F0F;
-    x = (x | (x >> 4)) & 0x00FF_00FF_00FF_00FF;
-    x = (x | (x >> 8)) & 0x0000_FFFF_0000_FFFF;
-    (x | (x >> 16)) & 0x0000_0000_FFFF_FFFF
 }
 
 /// The masks of [`gather`] at the width `N`.
