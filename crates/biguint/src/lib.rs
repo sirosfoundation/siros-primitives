@@ -26,6 +26,7 @@ mod fmt;
 mod kernel;
 mod limb;
 mod modular;
+mod modulus;
 mod mul;
 mod nonzero;
 mod num;
@@ -44,6 +45,7 @@ pub use typenum;
 
 pub use bits::{Bits, Bits8, Bits16, Bits32, Bits64, Bits128, Bits256, Bits384, Bits512};
 pub use convert::OutOfRange;
+pub use modulus::{Modulus, NotReduced, Residue, Ring};
 pub use mul::WideningMul;
 pub use nonzero::NonZeroUint;
 pub use num::{Exponent, One, Pow, Square};

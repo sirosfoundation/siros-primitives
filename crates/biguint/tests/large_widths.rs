@@ -5,7 +5,7 @@
 
 use core::ops::Add;
 
-use biguint::{Bits, Uint, WideningMul};
+use biguint::{Bits, Modulus, Uint, WideningMul};
 use generic_array::GenericArray;
 use generic_array::sequence::GenericSequence;
 use typenum::{Sum, U64, U128, U1024, U2048, U4096, U8192};
@@ -150,6 +150,41 @@ fn divide_and_conquer_mul_mod_matches_reference() {
     check_mul_mod::<U4096, U4096, U2048>();
     // A 48-limb divisor, whose halves divide by schoolbook.
     check_mul_mod::<U3072, U3072, U3072>();
+}
+
+/// Products and reductions of the residues of every odd and even modulus sample.
+fn check_modulus<N: Bits>()
+where
+    Uint<N>: Copy,
+{
+    let operands: Vec<Uint<N>> = samples::<N>(8).into_iter().take(4).collect();
+    for modulus in samples::<N>(9).into_iter().take(4) {
+        let Some(context) = Modulus::new(modulus) else {
+            continue;
+        };
+        let wide_modulus = wide(modulus);
+        context.scope(|ring| {
+            for &a in &operands {
+                let residue = ring.reduce(a);
+                assert_eq!(wide(residue.get()), wide(a).reduce_mod(wide_modulus));
+                for &b in &operands {
+                    let expected = wide(a).mul_mod(wide(b), wide_modulus);
+                    assert_eq!(
+                        wide((residue * ring.reduce(b)).get()),
+                        expected,
+                        "{a:?} * {b:?}"
+                    );
+                }
+            }
+        });
+    }
+}
+
+#[test]
+fn modulus_context_at_large_widths_matches_reference() {
+    // Rows past the unrolled length and Karatsuba products; divide-and-conquer reduction.
+    check_modulus::<U1088>();
+    check_modulus::<U2048>();
 }
 
 #[test]

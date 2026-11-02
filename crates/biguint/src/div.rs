@@ -160,9 +160,7 @@ fn wide(limbs: &[u64]) -> u128 {
 }
 
 /// `dividend mod divisor` in `M` bits for a divisor whose low `len` limbs hold its value, the top
-/// one nonzero. The divisor shifts left until its top bit is set, the dividend with it, and the
-/// remainder shifts back; a divisor whose top bit is set runs a copy of each path without shifts.
-/// Divisors of one or two significant limbs divide in registers.
+/// one nonzero.
 #[inline(always)]
 fn long<L: ArrayLength, W: ArrayLength, M: Bits>(
     dividend: &[u64],
@@ -170,127 +168,152 @@ fn long<L: ArrayLength, W: ArrayLength, M: Bits>(
     len: usize,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) -> Uint<M> {
-    match split(divisor, len).0 {
-        [low] => {
-            if low.leading_zeros() == 0 {
-                Uint::from_u64(by_limb(dividend, *low, 0, quotient))
-            } else {
-                Uint::from_u64(by_limb(dividend, *low, low.leading_zeros(), quotient))
-            }
-        }
-        [low, high] => {
-            if high.leading_zeros() == 0 {
-                Uint::from_u128(by_two_limbs(dividend, *low, *high, 0, quotient))
-            } else {
-                let shift = high.leading_zeros();
-                Uint::from_u128(by_two_limbs(dividend, *low, *high, shift, quotient))
-            }
-        }
-        [.., top] => by_limbs::<L, W, M>(dividend, divisor, len, top.leading_zeros(), quotient),
-        // The divisor has a significant limb.
-        [] => Uint::ZERO,
-    }
+    Invariant::new(divisor, len).remainder::<W, M>(dividend, quotient)
 }
 
-/// `dividend mod divisor` for the one-limb divisor `low`, `shift` its leading zeros.
-#[inline(always)]
-fn by_limb(
-    dividend: &[u64],
-    low: u64,
-    shift: u32,
-    quotient: &mut (impl QuotientSink + ?Sized),
-) -> u64 {
-    let divisor = Reciprocal::new(NormalizedLimb::top_set(low << shift));
-    divide_by_limb(dividend, shift, divisor, quotient) >> shift
-}
-
-/// `dividend mod divisor` for the two-limb divisor `high:low`, `shift` the leading zeros of `high`.
-#[inline(always)]
-fn by_two_limbs(
-    dividend: &[u64],
-    low: u64,
-    high: u64,
-    shift: u32,
-    quotient: &mut (impl QuotientSink + ?Sized),
-) -> u128 {
-    let divisor = Reciprocal3By2::new(
-        NormalizedLimb::top_set(funnel_left(high, low, shift)),
-        low << shift,
-    );
-    let remainder = divide_by_two_limbs(dividend, shift, divisor, quotient);
-    let (low, high) = (remainder as u64, (remainder >> 64) as u64);
-    join(high >> shift, funnel_right(low, high, shift))
-}
-
-/// `dividend mod divisor` for a divisor whose low `len` limbs hold its value, `len >= 3`, and
-/// `shift` the leading zeros of its top significant limb.
-#[inline(always)]
-fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
-    dividend: &[u64],
-    divisor: &GenericArray<u64, L>,
+/// A divisor prepared for division: shifted left until the top bit of its top significant limb is
+/// set, with the reciprocal of its leading limbs. A division prepares its divisor; a modulus keeps
+/// it. The dividend shifts with the divisor and the remainder shifts back; a divisor whose top bit
+/// is set runs a copy of each path without shifts. Divisors of one or two significant limbs divide
+/// in registers.
+pub(crate) struct Invariant<L: ArrayLength> {
+    /// The divisor shifted left by `shift`.
+    normalized: GenericArray<u64, L>,
+    /// The limbs up to its top significant one.
     len: usize,
+    /// The leading zeros of its top significant limb.
     shift: u32,
-    quotient: &mut (impl QuotientSink + ?Sized),
-) -> Uint<M> {
-    let (normalized, mut window) = if shift == 0 {
-        normalize::<L, W>(dividend, divisor, 0)
-    } else {
-        normalize::<L, W>(dividend, divisor, shift)
-    };
-    let (significant, _) = split(&normalized, len);
-    let [.., next, top] = significant else {
-        // The divisor has three significant limbs and more.
-        return Uint::ZERO;
-    };
-    let leading = Reciprocal3By2::new(NormalizedLimb::top_set(*top), *next);
-    if len == L::USIZE {
-        // A divisor that fills its limbs passes its length as a constant, so the compiler
-        // unrolls the division as it does the multiplication.
-        if Shape::<W, L>::DIVIDE_AND_CONQUER {
-            let mut scratch = GenericArray::<u64, M::DivisionScratch>::default();
-            dc::divide_window::<Halvings>(
-                &mut window,
-                normalized.as_slice(),
-                leading,
-                quotient,
-                &mut scratch,
-            );
+    /// The reciprocal of its leading limbs.
+    leading: Leading,
+}
+
+/// The reciprocal of a divisor's leading limbs.
+#[derive(Clone, Copy)]
+enum Leading {
+    /// The divisor has one significant limb.
+    Limb(Reciprocal),
+    /// The divisor has two significant limbs and more.
+    Limbs(Reciprocal3By2),
+}
+
+impl<L: ArrayLength> Invariant<L> {
+    /// The divisor whose low `len >= 1` limbs hold its value, the top one nonzero.
+    #[inline(always)]
+    pub(crate) fn new(divisor: &GenericArray<u64, L>, len: usize) -> Self {
+        let limb = |index: usize| divisor.get(index).copied().unwrap_or(0);
+        let (top, next) = (limb(len.wrapping_sub(1)), limb(len.wrapping_sub(2)));
+        let shift = top.leading_zeros();
+        let normalized = if shift == 0 {
+            divisor.clone()
         } else {
-            divide_by_limbs(&mut window, normalized.as_slice(), leading, quotient);
+            let mut shifted = ShlBits::new(ZeroExtended::new(divisor), shift);
+            GenericArray::generate(|_| shifted.next_limb())
+        };
+        let leading = if len == 1 {
+            Leading::Limb(Reciprocal::new(NormalizedLimb::top_set(top << shift)))
+        } else {
+            // The bits shifted out of the limb below the top one fill the top one.
+            let high = funnel_left(top, next, shift);
+            let below = funnel_left(next, limb(len.wrapping_sub(3)), shift);
+            Leading::Limbs(Reciprocal3By2::new(NormalizedLimb::top_set(high), below))
+        };
+        Self {
+            normalized,
+            len,
+            shift,
+            leading,
         }
-    } else {
-        divide_by_limbs(&mut window, significant, leading, quotient);
     }
-    if shift == 0 {
-        Uint::from_stream(ZeroExtended::new(&window), usize::MAX)
-    } else {
-        Uint::from_stream(ShrBits::new(ZeroExtended::new(&window), shift), usize::MAX)
+
+    /// `dividend mod divisor` in `M` bits. The quotient limbs go to `quotient`. `W` holds the
+    /// dividend's limbs and one more. An unoptimized build calls it, as it does the product
+    /// kernels.
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    pub(crate) fn remainder<W: ArrayLength, M: Bits>(
+        &self,
+        dividend: &[u64],
+        quotient: &mut (impl QuotientSink + ?Sized),
+    ) -> Uint<M> {
+        match self.leading {
+            Leading::Limb(divisor) => Uint::from_u64(if self.shift == 0 {
+                divide_by_limb(dividend, 0, divisor, quotient)
+            } else {
+                divide_by_limb(dividend, self.shift, divisor, quotient) >> self.shift
+            }),
+            Leading::Limbs(divisor) if self.len == 2 => {
+                if self.shift == 0 {
+                    Uint::from_u128(divide_by_two_limbs(dividend, 0, divisor, quotient))
+                } else {
+                    let remainder = divide_by_two_limbs(dividend, self.shift, divisor, quotient);
+                    let (low, high) = (remainder as u64, (remainder >> 64) as u64);
+                    Uint::from_u128(join(
+                        high >> self.shift,
+                        funnel_right(low, high, self.shift),
+                    ))
+                }
+            }
+            Leading::Limbs(leading) => self.by_limbs::<W, M>(dividend, leading, quotient),
+        }
+    }
+
+    /// [`Self::remainder`] by three significant limbs and more.
+    #[inline(always)]
+    fn by_limbs<W: ArrayLength, M: Bits>(
+        &self,
+        dividend: &[u64],
+        leading: Reciprocal3By2,
+        quotient: &mut (impl QuotientSink + ?Sized),
+    ) -> Uint<M> {
+        let mut window = if self.shift == 0 {
+            shifted_window::<W>(dividend, 0)
+        } else {
+            shifted_window::<W>(dividend, self.shift)
+        };
+        if self.len == L::USIZE {
+            // A divisor that fills its limbs passes its length as a constant, so the compiler
+            // unrolls the division as it does the multiplication.
+            if Shape::<W, L>::DIVIDE_AND_CONQUER {
+                let mut scratch = GenericArray::<u64, M::DivisionScratch>::default();
+                dc::divide_window::<Halvings>(
+                    &mut window,
+                    self.normalized.as_slice(),
+                    leading,
+                    quotient,
+                    &mut scratch,
+                );
+            } else {
+                divide_by_limbs(&mut window, self.normalized.as_slice(), leading, quotient);
+            }
+        } else {
+            let (significant, _) = split(&self.normalized, self.len);
+            divide_by_limbs(&mut window, significant, leading, quotient);
+        }
+        if self.shift == 0 {
+            Uint::from_stream(ZeroExtended::new(&window), usize::MAX)
+        } else {
+            Uint::from_stream(
+                ShrBits::new(ZeroExtended::new(&window), self.shift),
+                usize::MAX,
+            )
+        }
     }
 }
 
-/// The divisor and the dividend shifted left by `shift`, the dividend in a window of `W` limbs.
-/// The divisor's top significant limb sheds no bits, so its limbs above it stay zero; the bits
-/// shifted out of the dividend's top limb fill the window's limb above it.
+/// The dividend shifted left by `shift` in a window of `W` limbs: the bits shifted out of its top
+/// limb fill the window's limb above it.
 #[inline(always)]
-fn normalize<L: ArrayLength, W: ArrayLength>(
-    dividend: &[u64],
-    divisor: &GenericArray<u64, L>,
-    shift: u32,
-) -> (GenericArray<u64, L>, GenericArray<u64, W>) {
-    let mut shifted = ShlBits::new(ZeroExtended::new(divisor), shift);
-    let normalized = GenericArray::<u64, L>::generate(|_| shifted.next_limb());
+fn shifted_window<W: ArrayLength>(dividend: &[u64], shift: u32) -> GenericArray<u64, W> {
     let mut window = GenericArray::<u64, W>::default();
-    {
-        let (body, above) = split_mut(&mut window, dividend.len());
-        let mut shifted = ShlBits::new(ZeroExtended::new(dividend), shift);
-        for slot in body {
-            *slot = shifted.next_limb();
-        }
-        if let Some(slot) = above.first_mut() {
-            *slot = dividend.last().map_or(0, |&top| funnel_left(0, top, shift));
-        }
+    let (body, above) = split_mut(&mut window, dividend.len());
+    let mut shifted = ShlBits::new(ZeroExtended::new(dividend), shift);
+    for slot in body {
+        *slot = shifted.next_limb();
     }
-    (normalized, window)
+    if let Some(slot) = above.first_mut() {
+        *slot = dividend.last().map_or(0, |&top| funnel_left(0, top, shift));
+    }
+    window
 }
 
 /// The division of a `W`-limb window by a divisor that fills its `L` limbs, decided at compile

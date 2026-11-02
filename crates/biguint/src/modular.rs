@@ -6,8 +6,7 @@ use generic_array::GenericArray;
 use generic_array::sequence::GenericSequence;
 
 use crate::bits::Bits;
-use crate::div::{DiscardQuotient, QuotientSink};
-use crate::kernel::{add_assign, fits, sub_assign, subtract_if_above};
+use crate::kernel::{add_assign, fits, reduced, sub_assign, subtract_if_above};
 use crate::nonzero::NonZeroUint;
 use crate::stream::{AddOp, LimbStream, Op2CarryIter, TwosComplement, ZeroExtended, for_each_slot};
 use crate::uint::Uint;
@@ -19,8 +18,8 @@ impl<N: Bits> Uint<N> {
     pub fn add_mod(self, rhs: Self, modulus: NonZeroUint<N>) -> Self {
         let value = modulus.get();
         let (a, b) = (
-            reduced(self, modulus, &value),
-            reduced(rhs, modulus, &value),
+            reduce_operand(self, modulus, &value),
+            reduce_operand(rhs, modulus, &value),
         );
         sum_mod(&a, b.stream(), &value)
     }
@@ -31,8 +30,8 @@ impl<N: Bits> Uint<N> {
     pub fn sub_mod(self, rhs: Self, modulus: NonZeroUint<N>) -> Self {
         let value = modulus.get();
         let (a, b) = (
-            reduced(self, modulus, &value),
-            reduced(rhs, modulus, &value),
+            reduce_operand(self, modulus, &value),
+            reduce_operand(rhs, modulus, &value),
         );
         sum_mod(&a, TwosComplement(b.stream()), &value)
     }
@@ -42,7 +41,7 @@ impl<N: Bits> Uint<N> {
     #[must_use]
     pub fn neg_mod(self, modulus: NonZeroUint<N>) -> Self {
         let value = modulus.get();
-        let a = reduced(self, modulus, &value);
+        let a = reduce_operand(self, modulus, &value);
         sum_mod(&Self::ZERO, TwosComplement(a.stream()), &value)
     }
 }
@@ -50,7 +49,11 @@ impl<N: Bits> Uint<N> {
 /// `value mod modulus`, whose value is `modulus_value`: `value` itself when its top limb is below
 /// the modulus's, the remainder of the division otherwise.
 #[inline(always)]
-fn reduced<N: Bits>(value: Uint<N>, modulus: NonZeroUint<N>, modulus_value: &Uint<N>) -> Uint<N> {
+fn reduce_operand<N: Bits>(
+    value: Uint<N>,
+    modulus: NonZeroUint<N>,
+    modulus_value: &Uint<N>,
+) -> Uint<N> {
     if top(&value) < top(modulus_value) {
         value
     } else {
@@ -84,8 +87,7 @@ impl Addend for ZeroExtended<'_> {
             // The sum is at least `2^(64 * k)`, above the modulus; the borrow cancels the carry.
             fits(sub_assign(sum, modulus));
         } else {
-            // The quotient of the sum by the modulus, `0` or `1`.
-            DiscardQuotient.put(0, u64::from(subtract_if_above(sum, modulus)));
+            reduced(subtract_if_above(sum, modulus));
         }
     }
 }

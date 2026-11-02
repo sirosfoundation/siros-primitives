@@ -205,6 +205,11 @@ pub(crate) fn split_mut(slice: &mut [u64], mid: usize) -> (&mut [u64], &mut [u64
     slice.split_at_mut(mid)
 }
 
+/// Drops the quotient, `0` or `1`, of a value below twice the divisor that [`subtract_if_above`]
+/// brought below the divisor.
+#[inline(always)]
+pub(crate) fn reduced(_quotient: bool) {}
+
 /// Drops the carry or borrow out of the top of a result that is known to fit: the carries out of
 /// the steps that build it cancel.
 #[inline(always)]

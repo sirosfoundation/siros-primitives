@@ -3,14 +3,18 @@
 
 use core::ops::Add;
 
-use biguint::{Bits, NonZeroUint, OutOfRange, Pow, Uint, WideningMul};
+use biguint::{Bits, Modulus, NonZeroUint, NotReduced, OutOfRange, Pow, Uint, WideningMul};
 use generic_array::GenericArray;
 use generic_array::sequence::GenericSequence;
 use typenum::{
-    Sum, U1, U7, U8, U28, U63, U64, U65, U100, U128, U129, U192, U256, U384, U512, U521,
+    Sum, U1, U7, U8, U28, U63, U64, U65, U100, U128, U129, U130, U192, U256, U384, U512, U521,
+    U1024,
 };
 
 type Reference<const B: usize, const L: usize> = ruint::Uint<B, L>;
+
+/// 1152 bits: twice the widest width here, with room.
+type U1152 = Sum<U1024, U128>;
 
 /// Calls `$check::<N, B, L>()` for every width `B` with `L` limbs.
 macro_rules! for_each_width {
@@ -316,6 +320,75 @@ fn modular_sums_match_reference() {
                     );
                 }
             }
+        }
+    }
+    for_each_width!(check);
+}
+
+#[test]
+fn modulus_context_matches_reference() {
+    /// Residues of odd and even moduli: reduction of narrower, equal and wider values, the
+    /// residue check, the ring operations and the way back out.
+    fn check<N: Bits, const B: usize, const L: usize>()
+    where
+        Uint<N>: Copy,
+    {
+        type Wide = ruint::Uint<1152, 18>;
+        fn wide<W: Bits>(value: Uint<W>) -> Wide {
+            Wide::from_limbs(core::array::from_fn(|index| {
+                value.as_limbs().get(index).copied().unwrap_or(0)
+            }))
+        }
+        let values: Vec<Uint<N>> = samples::<N>().into_iter().rev().take(10).collect();
+        let exponent = Uint::<U130>::from_limbs([0x9e37_79b9_7f4a_7c15, 0xbf58_476d_1ce4_e5b9, 3]);
+        for modulus in moduli::<N>() {
+            let Some(context) = Modulus::new(modulus) else {
+                continue;
+            };
+            let rm = reference::<N, B, L>(modulus);
+            context.scope(|ring| {
+                for &x in &values {
+                    let rx = reference::<N, B, L>(x).reduce_mod(rm);
+                    let a = ring.reduce(x);
+                    assert_eq!(reference(a.get()), rx, "{B}: {x:?} mod {modulus:?}");
+                    let accepted = ring.residue(x).map(|residue| reference(residue.get()));
+                    let expected = if x < modulus { Ok(rx) } else { Err(NotReduced) };
+                    assert_eq!(accepted, expected, "{B}: residue {x:?} of {modulus:?}");
+                    // A value twice as wide, and a 64-bit one.
+                    let double = (x.resize::<U1152>() << N::BITS) | values[0].resize::<U1152>();
+                    let expected = (wide(x) << N::BITS | wide(values[0])).reduce_mod(wide(modulus));
+                    assert_eq!(
+                        wide(ring.reduce(double).get()),
+                        expected,
+                        "{B}: wide reduce"
+                    );
+                    let low = Uint::<U64>::from_u64(x.as_limbs()[0]);
+                    let expected = wide(low).reduce_mod(wide(modulus));
+                    assert_eq!(wide(ring.reduce(low).get()), expected, "{B}: narrow reduce");
+                    assert_eq!(
+                        reference((-a).get()),
+                        (rm - rx).reduce_mod(rm),
+                        "{B}: -{x:?}"
+                    );
+                    assert_eq!(
+                        reference(a.square().get()),
+                        rx.mul_mod(rx, rm),
+                        "{B}: {x:?}^2"
+                    );
+                    assert_eq!(
+                        wide(a.pow(exponent).get()),
+                        wide(x).pow_mod(wide(exponent), wide(modulus)),
+                        "{B}: {x:?}^e mod {modulus:?}"
+                    );
+                    for &y in &values {
+                        let ry = reference::<N, B, L>(y).reduce_mod(rm);
+                        let b = ring.reduce(y);
+                        assert_eq!(reference((a + b).get()), rx.add_mod(ry, rm), "{B}: +");
+                        assert_eq!(reference((a - b).get()), rx.add_mod(rm - ry, rm), "{B}: -");
+                        assert_eq!(reference((a * b).get()), rx.mul_mod(ry, rm), "{B}: *");
+                    }
+                }
+            });
         }
     }
     for_each_width!(check);
