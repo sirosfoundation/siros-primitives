@@ -7,9 +7,10 @@
 use core::cmp::Ordering;
 use core::hint::select_unpredictable;
 
-use crate::limb::{BorrowingSub, CarryingAdd};
+use crate::limb::{BorrowingSub, CarryingAdd, mask_below};
 use crate::stream::{
-    LimbSource, LimbStream, ZeroExtended, for_each_slot, funnel_left, funnel_right,
+    LimbSource, LimbStream, Op2CarryIter, SubOp, ZeroExtended, for_each_slot, funnel_left,
+    funnel_right,
 };
 
 /// `a * b + c + d` as `(low, high)`, as one `u128` expression: the form that LLVM schedules best in
@@ -140,27 +141,66 @@ pub(crate) fn sub_masked(out: &mut [u64], b: &[u64], mask: u64) -> u64 {
 }
 
 /// Subtracts `divisor` from the equally long `part` when `part >= divisor`, and returns whether
-/// it did. The top limbs decide when they differ; equal top limbs take the subtraction unless it
-/// borrows, without a branch.
+/// it did. The top limbs decide when they differ, and the limbs below them when they are equal,
+/// which is rare. The subtraction runs under a mask ([`mask_below`]).
 #[inline(always)]
 pub(crate) fn subtract_if_above(part: &mut [u64], divisor: &[u64]) -> bool {
     let (Some(&top), Some(&divisor_top)) = (part.last(), divisor.last()) else {
         return false;
     };
-    if top < divisor_top {
-        false
-    } else if top > divisor_top {
-        fits(sub_assign(part, divisor));
-        true
+    let above = if top == divisor_top {
+        // No borrow: the borrow is below one.
+        mask_below(borrow_of(part, divisor), 1)
     } else {
-        let above = borrow_of(part, divisor) == 0;
-        fits(sub_masked(
-            part,
-            divisor,
-            select_unpredictable(above, u64::MAX, 0),
-        ));
-        above
+        mask_below(divisor_top, top)
+    };
+    fits(sub_masked(part, divisor, above));
+    above != 0
+}
+
+/// Writes `part - divisor` to `out` when `carry` is set or `part >= divisor`, `part` otherwise, and
+/// returns whether it subtracted: the difference runs into `out`, and its borrow decides whether
+/// `out` takes `part` back, by an unpredictable select of every limb. A set `carry` stands for a
+/// part of at least `2^(64 * k)`, whose borrow cancels it. `out` sets `k`; `part` and `divisor` are
+/// at least as long.
+#[inline(always)]
+pub(crate) fn subtract_when_above(
+    out: &mut [u64],
+    part: &[u64],
+    divisor: &[u64],
+    carry: u64,
+) -> bool {
+    let borrow = sub_into(out, part, divisor);
+    let take = (carry != 0) | (borrow == 0);
+    for (slot, &limb) in out.iter_mut().zip(part) {
+        // A conditional move: the unpredictable select keeps LLVM from branching inside a loop.
+        *slot = select_unpredictable(take, *slot, limb);
     }
+    take
+}
+
+/// Writes `(part + (addend & mask)) mod 2^(64 * k)` to `out`. `out` sets `k`; `part` and `addend`
+/// are at least as long.
+#[inline(always)]
+pub(crate) fn add_masked(out: &mut [u64], part: &[u64], addend: &[u64], mask: u64) {
+    let (mut part, mut addend) = (
+        ZeroExtended::new(part).pull(),
+        ZeroExtended::new(addend).pull(),
+    );
+    let mut carry = 0;
+    for_each_slot(out, |slot| {
+        (*slot, carry) = part.next_limb().add_carry(addend.next_limb() & mask, carry);
+    });
+}
+
+/// Writes `a - b` to `out` and returns the borrow out of its top limb. `out` sets the length; `a`
+/// and `b` are at least as long.
+#[inline(always)]
+fn sub_into(out: &mut [u64], a: &[u64], b: &[u64]) -> u64 {
+    let mut difference =
+        Op2CarryIter::<_, _, SubOp>::new(ZeroExtended::new(a).pull(), ZeroExtended::new(b).pull());
+    for_each_slot(out, |slot| *slot = difference.next_limb());
+    difference.carry()
 }
 
 /// Writes `limbs * 2^shift` to `out`, for `shift < 64`: each limb takes the bits that the limb
@@ -211,11 +251,17 @@ pub(crate) fn add_to(out: &mut [u64], a: &[u64], b: &[u64]) -> u64 {
 }
 
 /// Adds `carry` to the bottom limb of `out`, ripples it up until it is absorbed, and returns the
-/// carry out of the top.
+/// carry out of the top. The bottom limb takes the carry whatever its value, so only the rare
+/// overflow branches: a test for a zero carry mispredicts on carries that the values decide.
 #[inline(always)]
 pub(crate) fn add_limb(out: &mut [u64], carry: u64) -> u64 {
-    let mut carry = carry;
-    for slot in out {
+    let Some((bottom, rest)) = out.split_first_mut() else {
+        return carry;
+    };
+    let (sum, overflow) = bottom.overflowing_add(carry);
+    *bottom = sum;
+    let mut carry = u64::from(overflow);
+    for slot in rest {
         if carry == 0 {
             break;
         }
@@ -227,11 +273,17 @@ pub(crate) fn add_limb(out: &mut [u64], carry: u64) -> u64 {
 }
 
 /// Subtracts `borrow` from the bottom limb of `out`, ripples it up until it is absorbed, and
-/// returns the borrow out of the top.
+/// returns the borrow out of the top. The bottom limb takes the borrow whatever its value, as in
+/// [`add_limb`].
 #[inline(always)]
 pub(crate) fn sub_limb(out: &mut [u64], borrow: u64) -> u64 {
-    let mut borrow = borrow;
-    for slot in out {
+    let Some((bottom, rest)) = out.split_first_mut() else {
+        return borrow;
+    };
+    let (difference, underflow) = bottom.overflowing_sub(borrow);
+    *bottom = difference;
+    let mut borrow = u64::from(underflow);
+    for slot in rest {
         if borrow == 0 {
             break;
         }
