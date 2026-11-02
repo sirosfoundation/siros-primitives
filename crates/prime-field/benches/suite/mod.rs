@@ -166,6 +166,11 @@ impl Suite for PrimeField {
             .collect()
     }
 
+    fn operands(op: Op, key: &Field, rng: &mut Rng) -> Vec<Limbs> {
+        let spec = spec(key);
+        op.kind.operands(&big(spec.modulus), spec.modulus, rng)
+    }
+
     fn offer<V: Visitor<Op, Field>>(row: Row<Op, Field, V>) -> Row<Op, Field, V> {
         libs::offer(row)
     }
@@ -277,6 +282,24 @@ impl Kind {
                 let r = big(&nonzero(rng));
                 let a = &r * &r % p;
                 (vec![limbs(&a, modulus.len())], vec![p - &r, r])
+            }
+        }
+    }
+
+    /// One operand set over the field of `p`, drawn as [`sample`](Self::sample) draws it.
+    fn operands(self, p: &BigUint, modulus: &[u64], rng: &mut Rng) -> Vec<Limbs> {
+        let nonzero = |rng: &mut Rng| loop {
+            let value = rng.below(modulus);
+            if value.iter().any(|limb| *limb != 0) {
+                return value;
+            }
+        };
+        match self {
+            Self::Add | Self::Sub | Self::Mul => vec![rng.below(modulus), rng.below(modulus)],
+            Self::Square | Self::Invert => vec![nonzero(rng)],
+            Self::Sqrt => {
+                let r = big(&nonzero(rng));
+                vec![limbs(&(&r * &r % p), modulus.len())]
             }
         }
     }

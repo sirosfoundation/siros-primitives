@@ -5,7 +5,7 @@
 use std::process::ExitCode;
 
 use bench_compare::run_batch;
-use binary_field::{Aes, B233, B571, Gcm, Gf2, Poly16, Poly64, Poly256, Polynomial, Pow, Secret};
+use binary_field::{Aes, B233, B571, Gcm, Gf2, Poly16, Poly64, Poly256, Polynomial, Pow};
 use prime_field::biguint::Uint;
 use prime_field::biguint::typenum::{U31, U64, U254, U256, U381, U521};
 use prime_field::{Fp, Modulus, Secret};
@@ -170,13 +170,13 @@ fn prime<M: Modulus>() -> Result<usize, Unhandled> {
         + run_batch(&single, |a| a.sqrt()))
 }
 
-/// Runs every operation of `Secret` over the field of `P`: the sum, the difference and the
-/// product of two secrets and of a secret and a public element on either side, the negation,
-/// `square`, `sqrt` and `invert`.
+/// Runs every operation of `binary_field::Secret` over the field of `P`: the sum, the difference
+/// and the product of two secrets and of a secret and a public element on either side, the
+/// negation, `square`, `sqrt` and `invert`.
 fn binary<P: Polynomial>() -> Result<usize, Unhandled> {
     let (a, b) = (
-        Secret::new(Gf2::<P>::X.pow(A)),
-        Secret::new(Gf2::<P>::X.pow(B)),
+        binary_field::Secret::new(Gf2::<P>::X.pow(A)),
+        binary_field::Secret::new(Gf2::<P>::X.pow(B)),
     );
     let public = Gf2::<P>::X.pow(B);
     let mut pair = [(a, b)];

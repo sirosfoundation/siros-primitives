@@ -1,20 +1,62 @@
-//! The bench executable: without arguments it counts every case of a [`Suite`] under Valgrind's
-//! Callgrind, on all the threads that the run may use, and prints every cell as one JSON line.
-//! Each count runs the executable again with `--count <case>`, which checks the results of the
-//! case and then runs its batch once through [`run_batch`]. Callgrind counts the instructions from
-//! the entry of `run_batch` to its exit.
+//! The bench executable: it checks every case of a [`Suite`], measures every case with the
+//! counters of one pinned CPU, and prints every cell as one JSON line, then the sweep.
+//!
+//! A sweep first checks every case and sizes its runs: `n` starts at 16 operations and doubles
+//! until a run of `n` operations, counted after an uncounted run of as many, takes [`TARGET`]
+//! cycles, or until the operand sets of a run of `2n` would outgrow 256 KiB. It then
+//! runs [`REPETITIONS`] repetitions of every case, interleaved: repetition `r` of every case runs
+//! before repetition `r + 1` of any case. A repetition of a case draws fresh operand sets for
+//! every run, outside the counted region; it runs `n` operations uncounted, then counts a run of
+//! `n` operations and a run of `2n` through [`run_batch`]. A case with a chain form does the same
+//! through [`run_chain`] once per [`Barrier`], each with its own `n`: in general-purpose and in
+//! vector registers on x86-64 for a result of at most
+//! [`REGISTERS`](crate::barrier::REGISTERS) bytes, through memory otherwise. The figure per operation of an event is the median, over the repetitions, of the
+//! `2n` count less the `n` count, divided by `n`: the fixed cost of a run cancels, and each
+//! difference pairs two runs taken back to back. The latency of a case is its chain with the
+//! fewest cycles. A case whose `2n` runs count no more cycles than its `n` runs stops the sweep,
+//! and so does a chain step under one cycle.
 
 use std::fs;
-use std::num::NonZero;
+use std::mem::size_of;
 use std::path::Path;
-use std::process::{Command, ExitCode};
-use std::thread;
+use std::process::ExitCode;
 
-use crate::record::{Cell, Count as Counted, Outcome};
-use crate::run::valgrind;
-use crate::suite::{BATCH, Call, CaseId, Suite, Visitor, run_batch, visit};
+use crate::barrier::{Barrier, Memory};
+#[cfg(target_arch = "x86_64")]
+use crate::barrier::{Gpr, REGISTERS, Xmm};
+use crate::counters::{Counters, Counts, pin};
+use crate::error::Error;
+use crate::record::{Cell, Class, Count, Events, Latency, Line, Load, Outcome, Sibling, Sweep};
+use crate::suite::{
+    Call, CaseId, Chain, Function, Inputs, Rng, Suite, Visitor, run_batch, run_chain, visit,
+};
 
-/// Runs the bench executable of `S`, named `name` in its messages, with the process arguments.
+/// The counted repetitions of every case.
+pub const REPETITIONS: usize = 31;
+
+/// The cycles that a short run takes at least, unless its operations reach their cap.
+pub const TARGET: u64 = 1 << 20;
+
+/// The CPU of the measuring thread, unless `--cpu` names another.
+const CPU: usize = 15;
+
+/// The seed of the operand sets of a sweep.
+const SEED: u64 = 0x5eed_0fc0_ffee;
+
+/// The most memory that the operand sets of a long run take.
+const FOOTPRINT: usize = 256 * 1024;
+
+/// The operations of the first sizing run, and the fewest of a short run.
+const FEWEST: usize = 16;
+
+/// The load average of the machine.
+const LOADAVG: &str = "/proc/loadavg";
+
+/// The time that each CPU spent in each state, in ticks.
+const STAT: &str = "/proc/stat";
+
+/// Runs the bench executable of `S`, named `name` in its messages, with the process arguments:
+/// `--cpu <cpu>` names the CPU of the measuring thread.
 #[must_use]
 pub fn main<S: Suite>(name: &str) -> ExitCode {
     // `cargo bench` passes `--bench`.
@@ -22,22 +64,24 @@ pub fn main<S: Suite>(name: &str) -> ExitCode {
         .skip(1)
         .filter(|arg| arg != "--bench")
         .collect();
-    match args.as_slice() {
-        [] => match count_all::<S>(name) {
-            Ok(lines) => {
-                for line in lines {
-                    println!("{line}");
-                }
-                ExitCode::SUCCESS
+    let cpu = match args.as_slice() {
+        [] => Ok(CPU),
+        [flag, cpu] if flag == "--cpu" => cpu
+            .parse::<usize>()
+            .map_err(|source| Error::number("CPU", cpu, source)),
+        _ => Err(Error::BenchUsage {
+            program: name.to_owned(),
+        }),
+    };
+    match cpu.and_then(sweep::<S>) {
+        Ok(lines) => {
+            for line in lines {
+                println!("{line}");
             }
-            Err(error) => {
-                eprintln!("{name}: {error}");
-                ExitCode::FAILURE
-            }
-        },
-        [flag, case] if flag == "--count" => count::<S>(name, case),
-        _ => {
-            eprintln!("usage: {name} [--count <op/row/crate>]");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("{name}: {error}");
             ExitCode::FAILURE
         }
     }
@@ -60,173 +104,506 @@ impl<O: Clone, K: Clone> Visitor<O, K> for AllCells<O, K> {
     fn measure<I, R>(
         self,
         _id: &CaseId<O, K>,
-        _batch: &[I],
+        _inputs: &Inputs<'_, I>,
         _run: impl Fn(&I) -> R + Copy,
     ) -> Self {
         self
     }
 }
 
-/// Counts every case and returns the line of every cell, in the order of [`visit`].
-fn count_all<S: Suite>(name: &str) -> Result<Vec<String>, String> {
+/// Checks and measures every case on `cpu`; returns the line of every cell, in the order of
+/// [`visit`], then the line of the sweep.
+fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
     let cells = visit::<S, _>(AllCells { cells: Vec::new() }).cells;
-    let valgrind = valgrind().map_err(|error| error.to_string())?;
-    let program =
-        std::env::current_exe().map_err(|error| format!("the bench executable: {error}"))?;
-    let directory = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
-    fs::create_dir_all(&directory).map_err(|error| format!("{}: {error}", directory.display()))?;
-    let workers = thread::available_parallelism().map_or(1, NonZero::get);
-    let counter = Counter {
-        valgrind: &valgrind,
-        program: &program,
-        directory: &directory,
+    pin(cpu)?;
+    let mut counters = Counters::open()?;
+    let siblings = siblings(cpu)?;
+    let before = load()?;
+    let ticks_before = siblings
+        .iter()
+        .map(|sibling| ticks(*sibling))
+        .collect::<Result<Vec<_>, _>>()?;
+    // Pass 0 checks and sizes the cases; pass `r` runs repetition `r`.
+    let mut measuring = Measuring {
+        counters: &mut counters,
+        pass: 0,
+        rng: Rng(SEED),
+        cases: Vec::new(),
+        next: 0,
+        error: None,
     };
-    // Worker `w` takes the cells `w`, `w + workers`, `w + 2 × workers`, and so on.
-    let lines = thread::scope(|scope| {
-        let handles: Vec<_> = (0..workers)
-            .map(|worker| {
-                let (cells, counter) = (&cells, &counter);
-                scope.spawn(move || {
-                    cells
-                        .iter()
-                        .enumerate()
-                        .skip(worker)
-                        .step_by(workers)
-                        .map(|(index, (id, call))| Ok((index, counter.line(index, id, call)?)))
-                        .collect::<Result<Vec<_>, String>>()
-                })
+    for pass in 0..=REPETITIONS {
+        measuring = visit::<S, _>(Measuring {
+            pass,
+            next: 0,
+            ..measuring
+        });
+        if let Some(error) = measuring.error.take() {
+            return Err(error);
+        }
+    }
+    let after = load()?;
+    let siblings = siblings
+        .iter()
+        .zip(ticks_before)
+        .map(|(sibling, before)| {
+            Ok(Sibling {
+                cpu: *sibling,
+                busy: ticks(*sibling)?.busy_since(&before, *sibling)?,
             })
-            .collect();
-        handles
-            .into_iter()
-            .map(|handle| {
-                handle
-                    .join()
-                    .map_err(|panic| format!("a counting thread panicked: {panic:?}"))?
-            })
-            .collect::<Result<Vec<_>, String>>()
-    })?;
-    fs::remove_dir_all(&directory).map_err(|error| format!("{}: {error}", directory.display()))?;
-    let mut lines: Vec<(usize, String)> = lines.into_iter().flatten().collect();
-    lines.sort_unstable_by_key(|(index, _)| *index);
-    Ok(lines.into_iter().map(|(_, line)| line).collect())
-}
-
-/// Runs the bench under Callgrind.
-struct Counter<'a> {
-    valgrind: &'a Path,
-    program: &'a Path,
-    /// Where Callgrind writes its profiles.
-    directory: &'a Path,
-}
-
-impl Counter<'_> {
-    /// The JSON line of the cell `index`: its operation, row and crate, then either the function
-    /// with the instructions of its batch or the reason for its absence.
-    fn line<O: std::fmt::Display, K: crate::record::Key>(
-        &self,
-        index: usize,
-        id: &CaseId<O, K>,
-        call: &Call,
-    ) -> Result<String, String> {
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    let mut lines = Vec::with_capacity(cells.len() + 1);
+    for (id, call) in &cells {
+        let name = id.to_string();
         let outcome = match call {
-            Call::Api(function) => Outcome::Counted(Counted {
-                function: (*function).to_owned(),
-                operations: BATCH as u32,
-                instructions: self.instructions(index, id)?,
-            }),
+            Call::Case(function) => {
+                let case = measuring
+                    .cases
+                    .iter()
+                    .find(|case| case.id == name)
+                    .ok_or_else(|| Error::missing(&name, "the measured cases"))?;
+                Outcome::Counted(case.count(function)?)
+            }
             Call::Absent(reason) => Outcome::Absent((*reason).to_owned()),
         };
-        let cell = Cell {
+        let line = Line::Cell(Cell {
             op: id.op.to_string(),
             key: id.key.clone(),
             library: id.lib.to_owned(),
             outcome,
-        };
-        serde_json::to_string(&cell).map_err(|error| format!("{id}: {error}"))
+        });
+        lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
     }
-
-    /// The instructions of the batch of the case `id`, from the entry of [`run_batch`] to its
-    /// exit, counted by Callgrind in a run of `--count <id>`.
-    fn instructions<O: std::fmt::Display, K: std::fmt::Display>(
-        &self,
-        index: usize,
-        id: &CaseId<O, K>,
-    ) -> Result<u64, String> {
-        let profile = self.directory.join(format!("{index}.callgrind"));
-        // The counted run starts with an empty environment: the caller's variables would shift
-        // its stack, and the alignment of a copy can change the instructions it takes.
-        let output = Command::new(self.valgrind)
-            .env_clear()
-            .arg("--tool=callgrind")
-            .arg("--toggle-collect=*run_batch*")
-            .arg(format!("--callgrind-out-file={}", profile.display()))
-            .arg(self.program)
-            .args(["--count", &id.to_string()])
-            .output()
-            .map_err(|error| format!("{}: {error}", self.valgrind.display()))?;
-        if !output.status.success() {
-            return Err(format!(
-                "{id}: valgrind: {}\n{}",
-                output.status,
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-        let text = fs::read_to_string(&profile)
-            .map_err(|error| format!("{}: {error}", profile.display()))?;
-        fs::remove_file(&profile).map_err(|error| format!("{}: {error}", profile.display()))?;
-        if !text.lines().any(|line| line == "events: Ir") {
-            return Err(format!("{id}: the profile counts other events than Ir"));
-        }
-        let total = text
-            .lines()
-            .find_map(|line| line.strip_prefix("totals: "))
-            .ok_or_else(|| format!("{id}: the profile has no totals"))?;
-        match total.trim().parse::<u64>() {
-            Ok(0) => Err(format!(
-                "{id}: Callgrind counted no instruction in run_batch"
-            )),
-            Ok(instructions) => Ok(instructions),
-            Err(error) => Err(format!("{id}: totals {total:?}: {error}")),
-        }
-    }
-}
-
-/// Runs the case `wanted` once through [`run_batch`], after its check.
-struct CountOne<'a> {
-    wanted: &'a str,
-    /// The operations that `run_batch` ran.
-    operations: Option<usize>,
-}
-
-impl<O: std::fmt::Display, K: std::fmt::Display> Visitor<O, K> for CountOne<'_> {
-    fn wants(&self, id: &CaseId<O, K>) -> bool {
-        id.to_string() == self.wanted
-    }
-
-    fn measure<I, R>(self, _id: &CaseId<O, K>, batch: &[I], run: impl Fn(&I) -> R + Copy) -> Self {
-        Self {
-            operations: Some(run_batch(batch, run)),
-            ..self
-        }
-    }
-}
-
-/// Runs the case `wanted` for Callgrind; fails unless it ran the whole batch.
-fn count<S: Suite>(name: &str, wanted: &str) -> ExitCode {
-    let count = visit::<S, _>(CountOne {
-        wanted,
-        operations: None,
+    let line = Line::<S::Key>::Sweep(Sweep {
+        cpu,
+        load: Load { before, after },
+        siblings,
     });
-    match count.operations {
-        Some(BATCH) => ExitCode::SUCCESS,
-        Some(operations) => {
-            eprintln!("{name}: {wanted} ran {operations} operations of {BATCH}");
-            ExitCode::FAILURE
+    lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
+    Ok(lines)
+}
+
+/// The 1-minute load average.
+fn load() -> Result<f64, Error> {
+    let path = Path::new(LOADAVG);
+    let text = fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
+    let field = text
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| Error::missing("load average", LOADAVG))?;
+    field.parse::<f64>().map_err(|source| Error::Load {
+        text: field.to_owned(),
+        source,
+    })
+}
+
+/// The SMT siblings of `cpu`, which share its core.
+fn siblings(cpu: usize) -> Result<Vec<usize>, Error> {
+    let path = format!("/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list");
+    let text = fs::read_to_string(&path).map_err(|source| Error::io(Path::new(&path), source))?;
+    let mut siblings = Vec::new();
+    // A list such as `15,31` or `14-15`.
+    for item in text.trim().split(',') {
+        let (first, last) = item.split_once('-').unwrap_or((item, item));
+        let parse = |text: &str| {
+            text.parse::<usize>()
+                .map_err(|source| Error::number("CPU", text, source))
+        };
+        siblings.extend((parse(first)?..=parse(last)?).filter(|sibling| *sibling != cpu));
+    }
+    Ok(siblings)
+}
+
+/// The ticks of one CPU in `/proc/stat`.
+struct Ticks {
+    busy: u64,
+    total: u64,
+}
+
+/// The ticks of `cpu` so far.
+fn ticks(cpu: usize) -> Result<Ticks, Error> {
+    let path = Path::new(STAT);
+    let text = fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
+    let name = format!("cpu{cpu}");
+    let fields = text
+        .lines()
+        .find_map(|line| {
+            let mut words = line.split_whitespace();
+            (words.next() == Some(name.as_str())).then(|| words.collect::<Vec<_>>())
+        })
+        .ok_or_else(|| Error::missing(&name, STAT))?;
+    let numbers = fields
+        .iter()
+        .map(|field| {
+            field
+                .parse::<u64>()
+                .map_err(|source| Error::number(&name, field, source))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    // user, nice, system, idle, iowait, irq, softirq, steal; guest time is part of user time.
+    let [user, nice, system, idle, iowait, irq, softirq, steal, ..] = numbers.as_slice() else {
+        return Err(Error::missing("eight states", &name));
+    };
+    let busy = user + nice + system + irq + softirq + steal;
+    Ok(Ticks {
+        busy,
+        total: busy + idle + iowait,
+    })
+}
+
+impl Ticks {
+    /// The busy share of `cpu` since `before`.
+    fn busy_since(&self, before: &Self, cpu: usize) -> Result<f64, Error> {
+        let missing = || Error::missing("ticks during the sweep", &format!("CPU {cpu}"));
+        let busy = self.busy.checked_sub(before.busy).ok_or_else(missing)?;
+        match self.total.checked_sub(before.total) {
+            None | Some(0) => Err(missing()),
+            Some(total) => Ok(busy as f64 / total as f64),
         }
-        None => {
-            eprintln!("{name}: no case {wanted}");
-            ExitCode::FAILURE
+    }
+}
+
+/// The most operations of a short run of a case whose operand sets are `I`: as many as fill
+/// [`FOOTPRINT`] with the operand sets of a long run, and at least [`FEWEST`].
+fn cap<I>() -> usize {
+    (FOOTPRINT / (2 * size_of::<I>().max(1))).max(FEWEST)
+}
+
+/// The counted runs of one form of a case.
+struct Form {
+    /// The operations of a short run.
+    operations: usize,
+    /// The counts of the short run and of the long run of every repetition.
+    repetitions: Vec<[Counts; 2]>,
+}
+
+/// The median of `values`, which it sorts.
+fn median(values: &mut [f64]) -> Option<f64> {
+    values.sort_unstable_by(f64::total_cmp);
+    values.get(values.len() / 2).copied()
+}
+
+impl Form {
+    /// The events per operation of the form `name`: the median, over the repetitions, of the long
+    /// run less the short run, over the operations of a short run. Long runs that count no more
+    /// cycles than short runs, by their medians or by the median of their differences, are an
+    /// [`Error::Flat`].
+    fn events(&self, name: &str) -> Result<Events, Error> {
+        let median_of = |value: &dyn Fn(&[Counts; 2]) -> f64| -> Result<f64, Error> {
+            let mut values: Vec<f64> = self.repetitions.iter().map(value).collect();
+            median(&mut values).ok_or_else(|| Error::missing("repetitions", name))
+        };
+        let per = |event: fn(&Counts) -> u64| -> Result<f64, Error> {
+            let difference = median_of(&|[short, long]| event(long) as f64 - event(short) as f64)?;
+            Ok(difference / self.operations as f64)
+        };
+        let short = median_of(&|[short, _]| short.cycles as f64)?;
+        let long = median_of(&|[_, long]| long.cycles as f64)?;
+        let cycles = per(|counts| counts.cycles)?;
+        if long <= short || cycles <= 0.0 {
+            return Err(Error::Flat {
+                case: name.to_owned(),
+                operations: self.operations,
+            });
         }
+        Ok(Events {
+            operations: self.operations,
+            cycles,
+            instructions: per(|counts| counts.instructions)?,
+            branch_misses: per(|counts| counts.branch_misses)?,
+        })
+    }
+}
+
+/// The counted runs of one chain form of a case.
+struct ChainForm {
+    /// Where the chain holds its value between steps.
+    class: Class,
+    form: Form,
+}
+
+/// One measured case.
+struct Case {
+    id: String,
+    batch: Form,
+    /// The chain forms, one per barrier; none for a case without a chain form.
+    chains: Vec<ChainForm>,
+}
+
+impl Case {
+    /// The cell of the case, which runs `function`: its latency is its chain form with the fewest
+    /// cycles per step. A chain step under one cycle, in any form, is an
+    /// [`Error::Reassociated`].
+    fn count(&self, function: &Function) -> Result<Count, Error> {
+        let latencies = self
+            .chains
+            .iter()
+            .map(|chain| {
+                let name = format!("{} chain in {}", self.id, chain.class);
+                let events = chain.form.events(&name)?;
+                if events.cycles < 1.0 {
+                    return Err(Error::Reassociated {
+                        case: name,
+                        cycles: events.cycles,
+                    });
+                }
+                Ok(Latency {
+                    class: chain.class,
+                    events,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        Ok(Count {
+            function: function.name.to_owned(),
+            deviation: function.deviation.map(str::to_owned),
+            batch: self.batch.events(&self.id)?,
+            chain: latencies
+                .into_iter()
+                .min_by(|a, b| a.events.cycles.total_cmp(&b.events.cycles)),
+        })
+    }
+}
+
+/// The visitor of one pass of a sweep: pass 0 checks and sizes every case; pass `r` measures
+/// repetition `r` of every case.
+struct Measuring<'a> {
+    counters: &'a mut Counters,
+    pass: usize,
+    /// The generator of the sweep's operand sets.
+    rng: Rng,
+    cases: Vec<Case>,
+    /// The case that the pass visits next.
+    next: usize,
+    /// The first failure of the pass, which ends it.
+    error: Option<Error>,
+}
+
+/// Fails unless a run of `count` operations of the case `id` ran `runs`.
+fn ran(id: &str, runs: usize, count: usize) -> Result<(), Error> {
+    if runs == count {
+        Ok(())
+    } else {
+        Err(Error::Runs {
+            case: id.to_owned(),
+            runs,
+            count,
+        })
+    }
+}
+
+impl Measuring<'_> {
+    /// Runs `region` on `count` fresh inputs, uncounted.
+    fn warm<I>(
+        &mut self,
+        inputs: &Inputs<'_, I>,
+        count: usize,
+        region: impl Fn(&[I]) -> usize,
+        id: &str,
+    ) -> Result<(), Error> {
+        let batch = inputs.draw(&mut self.rng, count);
+        ran(id, region(&batch), count)
+    }
+
+    /// The counts of `region` on `count` fresh inputs.
+    fn counted<I>(
+        &mut self,
+        inputs: &Inputs<'_, I>,
+        count: usize,
+        region: impl Fn(&[I]) -> usize,
+        id: &str,
+    ) -> Result<Counts, Error> {
+        let batch = inputs.draw(&mut self.rng, count);
+        let (runs, counts) = self.counters.count(|| region(&batch))?;
+        ran(id, runs, count)?;
+        Ok(counts)
+    }
+
+    /// The form of a case that `region` runs, with the operations of its short run: 16, doubled
+    /// until a counted run after an uncounted run of as many operations counts [`TARGET`] cycles,
+    /// or until `cap`.
+    fn size<I>(
+        &mut self,
+        inputs: &Inputs<'_, I>,
+        cap: usize,
+        region: impl Fn(&[I]) -> usize,
+        id: &str,
+    ) -> Result<Form, Error> {
+        let mut operations = FEWEST;
+        loop {
+            self.warm(inputs, operations, &region, id)?;
+            let counts = self.counted(inputs, operations, &region, id)?;
+            if counts.cycles >= TARGET || operations >= cap {
+                return Ok(Form {
+                    operations,
+                    repetitions: Vec::new(),
+                });
+            }
+            operations = (2 * operations).min(cap);
+        }
+    }
+
+    /// Runs one repetition of `form` through `region`: its operations uncounted, then its
+    /// operations and twice as many counted, each run on fresh inputs.
+    fn repetition<I>(
+        &mut self,
+        inputs: &Inputs<'_, I>,
+        operations: usize,
+        region: impl Fn(&[I]) -> usize,
+        id: &str,
+    ) -> Result<[Counts; 2], Error> {
+        self.warm(inputs, operations, &region, id)?;
+        Ok([
+            self.counted(inputs, operations, &region, id)?,
+            self.counted(inputs, 2 * operations, &region, id)?,
+        ])
+    }
+
+    /// The index of the case `id` in this pass, which pass 0 took note of.
+    fn case(&mut self, id: &str) -> Result<usize, Error> {
+        let index = self.next;
+        self.next += 1;
+        match self.cases.get(index) {
+            Some(case) if case.id == id => Ok(index),
+            Some(_) | None => Err(Error::missing(id, "the cases of the first pass")),
+        }
+    }
+
+    /// Keeps the first failure.
+    fn fail(self, result: Result<(), Error>) -> Self {
+        match result {
+            Ok(()) => self,
+            Err(error) => Self {
+                error: Some(error),
+                ..self
+            },
+        }
+    }
+}
+
+impl<O: std::fmt::Display, K: std::fmt::Display> Visitor<O, K> for Measuring<'_> {
+    fn wants(&self, _id: &CaseId<O, K>) -> bool {
+        self.error.is_none()
+    }
+
+    fn checks(&self, _id: &CaseId<O, K>) -> bool {
+        self.pass == 0
+    }
+
+    fn measure<I, R>(
+        mut self,
+        id: &CaseId<O, K>,
+        inputs: &Inputs<'_, I>,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self {
+        let name = id.to_string();
+        let region = |batch: &[I]| run_batch(batch, run);
+        let result = if self.pass == 0 {
+            self.size(inputs, cap::<I>(), region, &name).map(|batch| {
+                self.cases.push(Case {
+                    id: name.clone(),
+                    batch,
+                    chains: Vec::new(),
+                });
+            })
+        } else {
+            self.case(&name).and_then(|index| {
+                let operations = self.cases[index].batch.operations;
+                let counts = self.repetition(inputs, operations, region, &name)?;
+                self.cases[index].batch.repetitions.push(counts);
+                Ok(())
+            })
+        };
+        self.fail(result)
+    }
+
+    fn measure_chain<I: Chain<R>, R>(
+        mut self,
+        id: &CaseId<O, K>,
+        inputs: &Inputs<'_, I>,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self {
+        if self.error.is_some() {
+            return self;
+        }
+        let name = id.to_string();
+        // `measure` took note of the case just before.
+        let index = if self.pass == 0 {
+            self.cases.len().checked_sub(1)
+        } else {
+            self.next.checked_sub(1)
+        }
+        .filter(|index| self.cases.get(*index).is_some_and(|case| case.id == name))
+        .ok_or_else(|| Error::missing(&name, "the cases of the first pass"));
+        let result = index.and_then(|index| self.chains(index, inputs, run, &name));
+        self.fail(result)
+    }
+}
+
+impl Measuring<'_> {
+    /// Sizes or runs one repetition of the chain forms of the case `index`: one per register class
+    /// for a result of at most [`REGISTERS`] bytes, one through memory for a larger result.
+    #[cfg(target_arch = "x86_64")]
+    fn chains<I: Chain<R>, R>(
+        &mut self,
+        index: usize,
+        inputs: &Inputs<'_, I>,
+        run: impl Fn(&I) -> R + Copy,
+        name: &str,
+    ) -> Result<(), Error> {
+        if size_of::<R>() > REGISTERS {
+            return self.chain::<I, R, Memory>(index, inputs, run, name);
+        }
+        self.chain::<I, R, Gpr>(index, inputs, run, name)?;
+        self.chain::<I, R, Xmm>(index, inputs, run, name)
+    }
+
+    /// Sizes or runs one repetition of the chain form of the case `index`, through memory.
+    #[cfg(not(target_arch = "x86_64"))]
+    fn chains<I: Chain<R>, R>(
+        &mut self,
+        index: usize,
+        inputs: &Inputs<'_, I>,
+        run: impl Fn(&I) -> R + Copy,
+        name: &str,
+    ) -> Result<(), Error> {
+        self.chain::<I, R, Memory>(index, inputs, run, name)
+    }
+
+    /// Sizes, in pass 0, the chain form of the case `index` whose value `B` holds; in pass `r`,
+    /// runs its repetition `r`.
+    fn chain<I: Chain<R>, R, B: Barrier>(
+        &mut self,
+        index: usize,
+        inputs: &Inputs<'_, I>,
+        run: impl Fn(&I) -> R + Copy,
+        name: &str,
+    ) -> Result<(), Error> {
+        let region = |batch: &[I]| run_chain::<I, R, B>(batch, run);
+        if self.pass == 0 {
+            let form = self.size(inputs, cap::<I>(), region, name)?;
+            self.cases[index].chains.push(ChainForm {
+                class: B::CLASS,
+                form,
+            });
+            return Ok(());
+        }
+        let missing = || Error::missing(&format!("chain in {}", B::CLASS), name);
+        let operations = self.cases[index]
+            .chains
+            .iter()
+            .find(|chain| chain.class == B::CLASS)
+            .map(|chain| chain.form.operations)
+            .ok_or_else(missing)?;
+        let counts = self.repetition(inputs, operations, region, name)?;
+        self.cases[index]
+            .chains
+            .iter_mut()
+            .find(|chain| chain.class == B::CLASS)
+            .ok_or_else(missing)?
+            .form
+            .repetitions
+            .push(counts);
+        Ok(())
     }
 }

@@ -3,7 +3,7 @@
 use core::fmt;
 use std::process::ExitCode;
 
-use bench_compare::{Layout, Measured, Paths, markdown_table, sentence};
+use bench_compare::{BATCH, Layout, Measured, NATIVE, Paths, markdown_table, sentence};
 use serde::{Deserialize, Serialize};
 
 /// A row: a field, by name.
@@ -44,6 +44,10 @@ const MEASURED: Measured = Measured {
         "runtime-algebra",
         "compile-algebra",
     ],
+    features: &[],
+    // It strips the lookup tables of `biguint`.
+    forbidden: &["not-precomputed"],
+    builds: &[NATIVE],
 };
 
 const LAYOUT: Layout<'static, Field> = Layout {
@@ -99,7 +103,7 @@ const LAYOUT: Layout<'static, Field> = Layout {
     lines: false,
 };
 
-fn method(batch: u32) -> Vec<String> {
+fn method() -> Vec<String> {
     let operands = [
         ["add, sub, mul", "`a` and `b` uniform below `p`"],
         ["square, invert", "`a` uniform in `[1, p)`"],
@@ -114,16 +118,14 @@ fn method(batch: u32) -> Vec<String> {
         .collect();
     let mut lines = vec![
         format!(
-            "Each case runs one crate's function over {batch} operand sets, the same canonical \
-             residues for every crate in both rows of an operation, with operands and results behind \
-             `core::hint::black_box`. Callgrind counts the instructions of the loop over the \
-             batch, including the functions it calls, such as the allocator of \
-             `compile-algebra`; each count is that total divided by {batch}. The loop's own \
-             loads and stores are part of every count. Every instruction counts as one, \
-             whatever its latency. The counts are exact at any machine load. Before a case is \
-             counted, every result is checked against `num-bigint`: the exact residue, \
+            "The operands are canonical residues, drawn from one distribution for every crate in \
+             both rows of an operation. Before a case is measured, its results on {BATCH} \
+             operand sets are checked against `num-bigint`: the exact residue, \
              `a^(p - 2)` for the inverses, and either root for `sqrt`. Elements enter and leave \
-             each crate in its own representation; the conversions lie outside the count."
+             each crate in its own representation; the conversions lie outside the counted \
+             region. The functions that a case calls, such as the allocator of \
+             `compile-algebra`, are part of its counts. The chains are those of add, sub, mul \
+             and square, except `compile-algebra`'s, whose step would copy an allocated operand."
         ),
         String::new(),
     ];

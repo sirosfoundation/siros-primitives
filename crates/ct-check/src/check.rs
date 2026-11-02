@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use bench_compare::{cargo, output, valgrind};
+use bench_compare::{cargo, output};
 use serde::Deserialize;
 
 /// A build of the operations: the code that a target CPU and its features select.
@@ -52,11 +52,23 @@ enum Failure {
     /// `cargo build` named no executable of this package.
     #[error("cargo build named no executable of {}", env!("CARGO_PKG_NAME"))]
     Executable,
+    /// No directory of `PATH` holds `valgrind`.
+    #[error("PATH has no valgrind")]
+    Valgrind,
+}
+
+/// The path of `valgrind` in `PATH`.
+fn valgrind() -> Result<PathBuf, Failure> {
+    let path = std::env::var_os("PATH").ok_or(Failure::Valgrind)?;
+    std::env::split_paths(&path)
+        .map(|directory| directory.join("valgrind"))
+        .find(|candidate| candidate.is_file())
+        .ok_or(Failure::Valgrind)
 }
 
 /// Checks every build; fails when memcheck reports an error in one.
 pub(crate) fn main() -> ExitCode {
-    let checked = valgrind().map_err(Failure::from).and_then(|valgrind| {
+    let checked = valgrind().and_then(|valgrind| {
         BUILDS
             .iter()
             .try_fold(true, |clean, build| Ok(check(&valgrind, build)? && clean))

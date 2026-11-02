@@ -6,8 +6,8 @@
 
 Big-integer, prime-field, carry-less and binary-field arithmetic in pure Rust. Every crate is
 `no_std` and free of allocation and panics. `unsafe` appears only in `clmul`, at the calls into its
-PCLMULQDQ and PMULL backends, and in the unpublished `ct-check`, at the inline assembly of
-Valgrind's client requests.
+PCLMULQDQ and PMULL backends, and at the inline assembly of two unpublished tools: Valgrind's
+client requests in `ct-check`, the barriers of the latency chains in `bench-compare`.
 
 ## Crates
 
