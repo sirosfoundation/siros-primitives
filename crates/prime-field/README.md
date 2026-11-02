@@ -123,9 +123,9 @@ x86-64. The `const_*` twins run the loops of the constant-evaluable kernels.
 | mul | other Montgomery moduli | Coarsely integrated operand scanning; the accumulator drops its second carry limb when the modulus leaves the top bit clear |
 | square | several limbs | The product with each cross term once and doubled, then the reduction |
 | invert, `Fp` | one limb | The extended Euclidean algorithm with one hardware division per step, then for a Montgomery residue a product by `R^3` |
-| invert, `Fp` | wider moduli | Bernstein–Yang safegcd (*Fast constant-time gcd computation and modular inversion*, 2019) in the half-delta formulation of libsecp256k1, in batches of 62 division steps on the low limbs; the even steps of a batch skip at once by the trailing zeros of `g`, and the loop stops when `g` reaches zero |
+| invert, `Fp` | wider moduli | Bernstein–Yang safegcd (*Fast constant-time gcd computation and modular inversion*, 2019) in batches of 62 division steps on the low limbs, as libsecp256k1's `divsteps_62_var`: a run of trailing zeros of `g` halves it at once, and the steps that add `f` to `g` combine into one multiple of `f` that clears up to 6 low bits; the loop stops when `g` reaches zero |
 | invert, `Secret` | one limb | Fermat: `x^(p - 2)` by an addition chain |
-| invert, `Secret` | wider moduli | The same batches for the proven `(45907 k + 26313) / 19929` steps of a `k`-bit modulus, with masked selections |
+| invert, `Secret` | wider moduli | The half-delta division steps of libsecp256k1's `divsteps_59`, with masked selections, for the proven `(45907 k + 26313) / 19929` steps of a `k`-bit modulus, in batches of two halves of 30 steps; a row `(a, b)` of a half's matrix is held as the one word `a + 2^32 b` |
 | sqrt | `p = 3 mod 4` | `x^((p + 1) / 4)` by an addition chain, checked by squaring |
 | sqrt, `Fp` | `p = 1 mod 4` | Tonelli–Shanks from `x^((t - 1) / 2)` by an addition chain; the two-adic root `z^t` of the least non-residue `z`, found by the Jacobi symbol at compile time, and its first 64 repeated squares form a table, so each round costs the squarings that find the order of the residue and two multiplications |
 | sqrt, `Secret` | `p = 1 mod 4` | The constant-time Tonelli–Shanks of the `ff` crate: every round runs every squaring a round may need and keeps the results by conditional moves |
