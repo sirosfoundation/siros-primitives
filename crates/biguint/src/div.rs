@@ -176,52 +176,66 @@ fn long<L: ArrayLength, W: ArrayLength, M: Bits>(
 /// it. The dividend shifts with the divisor and the remainder shifts back; a divisor whose top bit
 /// is set runs a copy of each path without shifts. Divisors of one or two significant limbs divide
 /// in registers.
-pub(crate) struct Invariant<L: ArrayLength> {
-    /// The divisor shifted left by `shift`.
-    normalized: GenericArray<u64, L>,
-    /// The limbs up to its top significant one.
-    len: usize,
-    /// The leading zeros of its top significant limb.
-    shift: u32,
-    /// The reciprocal of its leading limbs.
-    leading: Leading,
-}
-
-/// The reciprocal of a divisor's leading limbs.
-#[derive(Clone, Copy)]
-enum Leading {
-    /// The divisor has one significant limb.
-    Limb(Reciprocal),
-    /// The divisor has two significant limbs and more.
-    Limbs(Reciprocal3By2),
+pub(crate) enum Invariant<L: ArrayLength> {
+    /// One significant limb, with its leading zeros.
+    Limb { divisor: Reciprocal, shift: u32 },
+    /// Two significant limbs, with the leading zeros of the top one.
+    TwoLimbs { divisor: Reciprocal3By2, shift: u32 },
+    /// Three significant limbs and more.
+    Limbs {
+        /// The divisor shifted left by `shift`.
+        normalized: GenericArray<u64, L>,
+        /// The limbs up to its top significant one.
+        len: usize,
+        /// The leading zeros of its top significant limb.
+        shift: u32,
+        /// The reciprocal of its top two limbs.
+        leading: Reciprocal3By2,
+    },
 }
 
 impl<L: ArrayLength> Invariant<L> {
     /// The divisor whose low `len >= 1` limbs hold its value, the top one nonzero.
     #[inline(always)]
     pub(crate) fn new(divisor: &GenericArray<u64, L>, len: usize) -> Self {
+        let top = divisor.get(len.wrapping_sub(1)).copied().unwrap_or(0);
+        if top.leading_zeros() == 0 {
+            Self::prepare(divisor, len, top, 0)
+        } else {
+            Self::prepare(divisor, len, top, top.leading_zeros())
+        }
+    }
+
+    /// [`Self::new`] for the top significant limb `top` and its leading zeros `shift`.
+    #[inline(always)]
+    fn prepare(divisor: &GenericArray<u64, L>, len: usize, top: u64, shift: u32) -> Self {
         let limb = |index: usize| divisor.get(index).copied().unwrap_or(0);
-        let (top, next) = (limb(len.wrapping_sub(1)), limb(len.wrapping_sub(2)));
-        let shift = top.leading_zeros();
-        let normalized = if shift == 0 {
-            divisor.clone()
-        } else {
-            let mut shifted = ShlBits::new(ZeroExtended::new(divisor), shift);
-            GenericArray::generate(|_| shifted.next_limb())
-        };
-        let leading = if len == 1 {
-            Leading::Limb(Reciprocal::new(NormalizedLimb::top_set(top << shift)))
-        } else {
-            // The bits shifted out of the limb below the top one fill the top one.
-            let high = funnel_left(top, next, shift);
-            let below = funnel_left(next, limb(len.wrapping_sub(3)), shift);
-            Leading::Limbs(Reciprocal3By2::new(NormalizedLimb::top_set(high), below))
-        };
-        Self {
-            normalized,
-            len,
-            shift,
-            leading,
+        let next = limb(len.wrapping_sub(2));
+        // The bits shifted out of the limb below the top one fill the top one.
+        let high = NormalizedLimb::top_set(funnel_left(top, next, shift));
+        match len {
+            1 => Self::Limb {
+                divisor: Reciprocal::new(high),
+                shift,
+            },
+            2 => Self::TwoLimbs {
+                divisor: Reciprocal3By2::new(high, next << shift),
+                shift,
+            },
+            _ => Self::Limbs {
+                normalized: if shift == 0 {
+                    divisor.clone()
+                } else {
+                    let mut shifted = ShlBits::new(ZeroExtended::new(divisor), shift);
+                    GenericArray::generate(|_| shifted.next_limb())
+                },
+                len,
+                shift,
+                leading: Reciprocal3By2::new(
+                    high,
+                    funnel_left(next, limb(len.wrapping_sub(3)), shift),
+                ),
+            },
         }
     }
 
@@ -235,68 +249,69 @@ impl<L: ArrayLength> Invariant<L> {
         dividend: &[u64],
         quotient: &mut (impl QuotientSink + ?Sized),
     ) -> Uint<M> {
-        match self.leading {
-            Leading::Limb(divisor) => Uint::from_u64(if self.shift == 0 {
-                divide_by_limb(dividend, 0, divisor, quotient)
+        match self {
+            Self::Limb { divisor, shift } => Uint::from_u64(if *shift == 0 {
+                divide_by_limb(dividend, 0, *divisor, quotient)
             } else {
-                divide_by_limb(dividend, self.shift, divisor, quotient) >> self.shift
+                divide_by_limb(dividend, *shift, *divisor, quotient) >> *shift
             }),
-            Leading::Limbs(divisor) if self.len == 2 => {
-                if self.shift == 0 {
-                    Uint::from_u128(divide_by_two_limbs(dividend, 0, divisor, quotient))
+            Self::TwoLimbs { divisor, shift } => {
+                if *shift == 0 {
+                    Uint::from_u128(divide_by_two_limbs(dividend, 0, *divisor, quotient))
                 } else {
-                    let remainder = divide_by_two_limbs(dividend, self.shift, divisor, quotient);
+                    let remainder = divide_by_two_limbs(dividend, *shift, *divisor, quotient);
                     let (low, high) = (remainder as u64, (remainder >> 64) as u64);
-                    Uint::from_u128(join(
-                        high >> self.shift,
-                        funnel_right(low, high, self.shift),
-                    ))
+                    Uint::from_u128(join(high >> *shift, funnel_right(low, high, *shift)))
                 }
             }
-            Leading::Limbs(leading) => self.by_limbs::<W, M>(dividend, leading, quotient),
+            Self::Limbs {
+                normalized,
+                len,
+                shift,
+                leading,
+            } => by_limbs::<L, W, M>(dividend, normalized, *len, *shift, *leading, quotient),
         }
     }
+}
 
-    /// [`Self::remainder`] by three significant limbs and more.
-    #[inline(always)]
-    fn by_limbs<W: ArrayLength, M: Bits>(
-        &self,
-        dividend: &[u64],
-        leading: Reciprocal3By2,
-        quotient: &mut (impl QuotientSink + ?Sized),
-    ) -> Uint<M> {
-        let mut window = if self.shift == 0 {
-            shifted_window::<W>(dividend, 0)
+/// [`Invariant::remainder`] by the divisor `normalized`, of three significant limbs and more.
+#[inline(always)]
+fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
+    dividend: &[u64],
+    normalized: &GenericArray<u64, L>,
+    len: usize,
+    shift: u32,
+    leading: Reciprocal3By2,
+    quotient: &mut (impl QuotientSink + ?Sized),
+) -> Uint<M> {
+    let mut window = if shift == 0 {
+        shifted_window::<W>(dividend, 0)
+    } else {
+        shifted_window::<W>(dividend, shift)
+    };
+    if len == L::USIZE {
+        // A divisor that fills its limbs passes its length as a constant, so the compiler unrolls
+        // the division as it does the multiplication.
+        if Shape::<W, L>::DIVIDE_AND_CONQUER {
+            let mut scratch = GenericArray::<u64, M::DivisionScratch>::default();
+            dc::divide_window::<Halvings>(
+                &mut window,
+                normalized.as_slice(),
+                leading,
+                quotient,
+                &mut scratch,
+            );
         } else {
-            shifted_window::<W>(dividend, self.shift)
-        };
-        if self.len == L::USIZE {
-            // A divisor that fills its limbs passes its length as a constant, so the compiler
-            // unrolls the division as it does the multiplication.
-            if Shape::<W, L>::DIVIDE_AND_CONQUER {
-                let mut scratch = GenericArray::<u64, M::DivisionScratch>::default();
-                dc::divide_window::<Halvings>(
-                    &mut window,
-                    self.normalized.as_slice(),
-                    leading,
-                    quotient,
-                    &mut scratch,
-                );
-            } else {
-                divide_by_limbs(&mut window, self.normalized.as_slice(), leading, quotient);
-            }
-        } else {
-            let (significant, _) = split(&self.normalized, self.len);
-            divide_by_limbs(&mut window, significant, leading, quotient);
+            divide_by_limbs(&mut window, normalized.as_slice(), leading, quotient);
         }
-        if self.shift == 0 {
-            Uint::from_stream(ZeroExtended::new(&window), usize::MAX)
-        } else {
-            Uint::from_stream(
-                ShrBits::new(ZeroExtended::new(&window), self.shift),
-                usize::MAX,
-            )
-        }
+    } else {
+        let (significant, _) = split(normalized, len);
+        divide_by_limbs(&mut window, significant, leading, quotient);
+    }
+    if shift == 0 {
+        Uint::from_stream(ZeroExtended::new(&window), usize::MAX)
+    } else {
+        Uint::from_stream(ShrBits::new(ZeroExtended::new(&window), shift), usize::MAX)
     }
 }
 

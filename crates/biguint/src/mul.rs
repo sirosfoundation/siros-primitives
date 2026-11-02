@@ -83,7 +83,7 @@ pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength>(
 ) -> GenericArray<u64, P::Limbs> {
     let mut product = GenericArray::<u64, P::Limbs>::default();
     if !Shape::<A, B, P::Limbs>::KARATSUBA {
-        basecase(&mut product, a, b);
+        basecase::product(&mut product, a, b);
     } else if A::USIZE == B::USIZE {
         // The difference products need about seven eighths of the product's limbs.
         karatsuba_into::<P>(
@@ -130,7 +130,7 @@ fn truncated_product<N: Bits, B: ArrayLength>(
         let mut scratch = GenericArray::<u64, N::TruncatedScratch>::default();
         Halvings::truncated(&mut product, a, b, &mut scratch);
     } else {
-        basecase(&mut product, a, b);
+        basecase::product(&mut product, a, b);
     }
     product
 }

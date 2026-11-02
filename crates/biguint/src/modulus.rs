@@ -20,6 +20,7 @@ use crate::bits::Bits;
 use crate::div::{DiscardQuotient, Invariant};
 use crate::kernel::split_mut;
 use crate::modular::sum_mod;
+use crate::mul::{basecase, karatsuba};
 use crate::nonzero::NonZeroUint;
 use crate::recursion::{Depth, Halvings};
 use crate::stream::TwosComplement;
@@ -224,19 +225,45 @@ impl<'id, N: Bits> Ring<'id, N> {
     #[cfg_attr(not(debug_assertions), inline(always))]
     fn product(self, a: &Uint<N>, b: &Uint<N>) -> Uint<N> {
         let mut t = GenericArray::<u64, N::ProductWindow>::default();
-        {
+        if N::LIMBS < karatsuba::THRESHOLD {
+            basecase::product(&mut t, &a.limbs, &b.limbs);
+        } else {
             let (product, _) = split_mut(&mut t, 2 * N::LIMBS);
             let mut scratch = GenericArray::<u64, N::ProductScratch>::default();
             Halvings::product(product, &a.limbs, &b.limbs, &mut scratch);
         }
+        self.reduce_product(&mut t)
+    }
+
+    /// The square of the residue `a`. An unoptimized build calls it, as it does the product
+    /// kernels.
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    fn square(self, a: &Uint<N>) -> Uint<N> {
+        let mut t = GenericArray::<u64, N::ProductWindow>::default();
+        {
+            let (square, _) = split_mut(&mut t, 2 * N::LIMBS);
+            if N::LIMBS < karatsuba::THRESHOLD {
+                basecase::square(square, &a.limbs);
+            } else {
+                let mut scratch = GenericArray::<u64, N::ProductScratch>::default();
+                Halvings::product(square, &a.limbs, &a.limbs, &mut scratch);
+            }
+        }
+        self.reduce_product(&mut t)
+    }
+
+    /// The residue of the product of two residues in the low `2 * N::LIMBS` limbs of `t`.
+    #[inline(always)]
+    fn reduce_product(self, t: &mut GenericArray<u64, N::ProductWindow>) -> Uint<N> {
         match &self.modulus.form {
             Form::Montgomery { inverse, .. } => {
                 let mut out = Uint::<N>::ZERO;
-                montgomery::reduce(&mut out.limbs, &mut t, &self.modulus.value.limbs, *inverse);
+                montgomery::reduce(&mut out.limbs, t, &self.modulus.value.limbs, *inverse);
                 out
             }
             Form::Plain => {
-                let (product, _) = split_mut(&mut t, 2 * N::LIMBS);
+                let (product, _) = split_mut(t, 2 * N::LIMBS);
                 self.modulus
                     .divisor
                     .remainder::<N::ProductWindow, N>(product, &mut DiscardQuotient)
@@ -288,7 +315,10 @@ where
     #[inline(always)]
     #[must_use]
     pub fn square(self) -> Self {
-        self * self
+        Self {
+            value: self.ring.square(&self.value),
+            ring: self.ring,
+        }
     }
 
     /// `self^exponent`, by sliding windows of odd powers over the exponent bits from the most

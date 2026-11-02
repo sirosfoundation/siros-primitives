@@ -2,6 +2,8 @@
 //! `t * R^-1 mod m` for `t < m * R`. Each of the `k` rows adds the multiple `q * m` that clears the
 //! row's bottom limb, `q = t_i * (-m^-1) mod 2^64`; the top `k` limbs then hold a value below `2m`.
 
+use generic_array::{ArrayLength, GenericArray};
+
 use crate::kernel::{add_mul_row, fits, reduced, split, split_mut, sub_assign, subtract_if_above};
 use crate::limb::CarryingAdd;
 use crate::unroll::{UNROLLED, unroll};
@@ -26,8 +28,13 @@ pub(crate) const fn negated_inverse(low: u64) -> u64 {
 /// An unoptimized build calls the kernel, as it does [`crate::mul::basecase`].
 #[cfg_attr(debug_assertions, inline(never))]
 #[cfg_attr(not(debug_assertions), inline(always))]
-pub(crate) fn reduce(out: &mut [u64], t: &mut [u64], modulus: &[u64], inverse: u64) {
-    let k = modulus.len();
+pub(crate) fn reduce<L: ArrayLength>(
+    out: &mut [u64],
+    t: &mut [u64],
+    modulus: &GenericArray<u64, L>,
+    inverse: u64,
+) {
+    let k = L::USIZE;
     // The carry out of the limb above each row: the rows' sums reach `2^(64 * (2k)) + ...`, one
     // bit above the `2k` limbs.
     let mut above = 0;

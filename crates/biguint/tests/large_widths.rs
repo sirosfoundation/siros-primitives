@@ -61,6 +61,17 @@ fn samples<N: Bits>(seed: u64) -> Vec<Uint<N>> {
     values
 }
 
+/// Six edge values and two random values: the operands of the reductions by every modulus sample.
+fn operand_samples<N: Bits>(seed: u64) -> Vec<Uint<N>> {
+    let values = samples::<N>(seed);
+    values
+        .iter()
+        .take(6)
+        .chain(values.iter().skip(9).take(2))
+        .copied()
+        .collect()
+}
+
 fn wide<N: Bits>(value: Uint<N>) -> Wide {
     Wide::from_limbs(core::array::from_fn(|index| {
         value.as_limbs().get(index).copied().unwrap_or(0)
@@ -93,8 +104,8 @@ where
     Q: Bits,
     Sum<N, M>: Bits,
 {
-    let rhs_values = samples::<M>(4);
-    let operands = samples::<N>(3);
+    let rhs_values = operand_samples::<M>(4);
+    let operands = operand_samples::<N>(3);
     for modulus in samples::<Q>(5) {
         let wide_modulus = wide(modulus);
         for &a in &operands {

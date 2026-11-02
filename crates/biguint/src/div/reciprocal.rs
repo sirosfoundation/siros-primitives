@@ -148,7 +148,7 @@ impl NormalizedLimb {
 
 /// A normalized limb `d` with its reciprocal `floor((2^128 - 1) / d) - 2^64`.
 #[derive(Clone, Copy)]
-pub(super) struct Reciprocal {
+pub(crate) struct Reciprocal {
     divisor: u64,
     reciprocal: u64,
 }

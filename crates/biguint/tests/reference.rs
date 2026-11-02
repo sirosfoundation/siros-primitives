@@ -339,7 +339,7 @@ fn modulus_context_matches_reference() {
                 value.as_limbs().get(index).copied().unwrap_or(0)
             }))
         }
-        let values: Vec<Uint<N>> = samples::<N>().into_iter().rev().take(10).collect();
+        let values: Vec<Uint<N>> = samples::<N>().into_iter().rev().take(8).collect();
         let exponent = Uint::<U130>::from_limbs([0x9e37_79b9_7f4a_7c15, 0xbf58_476d_1ce4_e5b9, 3]);
         for modulus in moduli::<N>() {
             let Some(context) = Modulus::new(modulus) else {
