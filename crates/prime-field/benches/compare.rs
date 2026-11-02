@@ -1,5 +1,5 @@
 //! Compares `prime-field` with other Rust prime-field crates: add, sub, mul, square, invert,
-//! invert_vartime and sqrt over fields from 31 to 521 bits, in cycles and instructions per
+//! invert_vartime and sqrt over fields from 31 to 521 bits, in cycles per
 //! operation. `bench-compare` runs the comparison and `prime-field-bench-report` writes
 //! `BENCHMARKS.md` from its lines.
 

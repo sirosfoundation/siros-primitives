@@ -147,9 +147,6 @@ struct Table<'a, K> {
     cells: HashMap<(&'a str, &'a K, &'a str), &'a Cell<K>>,
 }
 
-/// A figure per operation that the result tables show, by its row label.
-type Metric = (&'static str, fn(&Count) -> Option<f64>);
-
 impl<'a, K: Key> Table<'a, K> {
     /// Fails unless `cells` hold exactly one cell for every operation, row and crate, and every
     /// operation has a formula.
@@ -205,16 +202,6 @@ impl<'a, K: Key> Table<'a, K> {
             Some(Outcome::Counted(count)) => Some(count),
             Some(Outcome::Absent(_)) | None => None,
         }
-    }
-
-    /// Whether a case of `op` has a chain form.
-    fn chained(&self, op: &str) -> bool {
-        self.keys.iter().any(|key| {
-            self.crates.iter().any(|library| {
-                self.count(op, key, library)
-                    .is_some_and(|count| count.chain.is_some())
-            })
-        })
     }
 
     /// The chart points of `op` for `crates`: the throughput cycles of each counted case.
@@ -292,7 +279,7 @@ fn header<K: Key>(record: &Record<K>, layout: &Layout<'_, K>, table: &Table<'_, 
         "# Benchmarks".to_owned(),
         String::new(),
         format!(
-            "`{}` at commit `{}` against {}: {} {}, in cycles and instructions per operation, \
+            "`{}` at commit `{}` against {}: {} {}, in cycles per operation, \
              measured on {}.{state}",
             layout.subject,
             short(&record.library_commit),
@@ -360,7 +347,7 @@ fn setup<K>(record: &Record<K>) -> Vec<String> {
     }
     rows.push(vec![
         "Counters".to_owned(),
-        "one Linux perf_event group: user-mode cycles, instructions and branch misses".to_owned(),
+        "one Linux perf_event group: user-mode cycles and branch misses".to_owned(),
     ]);
     for build in &record.builds {
         rows.push(vec![label("Load", build), load(&build.sweep)]);
@@ -453,13 +440,13 @@ fn protocol() -> Vec<String> {
         String::new(),
         format!(
             "One perf_event group on the measuring thread, pinned to one CPU, counts user-mode \
-             cycles, instructions and branch misses; a run during which the kernel shares the \
+             cycles and branch misses; a run during which the kernel shares the \
              counters with other groups stops the sweep. A figure per operation is the median, \
              over the {REPETITIONS} repetitions, of the long run less the short run, divided by \
              n: the fixed cost of a run cancels, as in nanoBench's differencing, and each \
              difference pairs two runs taken back to back. A case whose long runs count no more \
              cycles than its short runs stops the sweep, and so does a chain step under one \
-             cycle, the latency of a single instruction."
+             cycle."
         ),
         String::new(),
         format!(
@@ -627,6 +614,21 @@ fn describe<K: Key>(
     text
 }
 
+/// The legend above every results table.
+const LEGEND: &str = "Each cell: throughput cycles / latency cycles per operation. \
+                      Bold: the fewest of the row. –: no such function or no chain form.";
+
+/// The two parts of a cell are joined by a slash between no-break spaces, so a cell never wraps.
+const SEPARATOR: &str = "\u{a0}/\u{a0}";
+
+/// The figures of one cell, in the order of its two parts.
+fn parts(count: &Count) -> [Option<f64>; 2] {
+    [
+        Some(count.batch.cycles),
+        count.chain.map(|latency| latency.events.cycles),
+    ]
+}
+
 /// The results of `build`: per operation, its chart and its table.
 fn results<K: Key>(
     layout: &Layout<'_, K>,
@@ -638,28 +640,7 @@ fn results<K: Key>(
     } else {
         format!("## Results {}", build.name)
     };
-    let deviating = table.cells.values().any(|cell| match &cell.outcome {
-        Outcome::Counted(count) => count.deviation.is_some(),
-        Outcome::Absent(_) => false,
-    });
-    let marks = if deviating {
-        format!(
-            " among the functions that meet the row's definition. A `\\*` marks the figure of a \
-             function that deviates from it where the figure is below `{}`'s; the note under the \
-             table says how the function deviates.",
-            layout.subject
-        )
-    } else {
-        ".".to_owned()
-    };
-    let mut lines = vec![
-        heading,
-        String::new(),
-        format!(
-            "Per operation, each row gives throughput cycles, latency cycles for the operations \
-             that have chains, and instructions. Bold marks the fewest in each row{marks}"
-        ),
-    ];
+    let mut lines = vec![heading];
     if let Some(unplotted) = table.crates.get(CHARTED..).filter(|rest| !rest.is_empty()) {
         let names: Vec<String> = unplotted.iter().map(|name| format!("`{name}`")).collect();
         let verb = if names.len() == 1 {
@@ -667,84 +648,90 @@ fn results<K: Key>(
         } else {
             "appear"
         };
-        lines.push(format!(
-            "The charts show the first {CHARTED} crates; {} {verb} in the tables only.",
-            sentence(&names)
-        ));
+        lines.extend([
+            String::new(),
+            format!(
+                "The charts show the first {CHARTED} crates; {} {verb} in the tables only.",
+                sentence(&names)
+            ),
+        ]);
     }
     for (op, formula) in &table.ops {
-        let mut metrics: Vec<Metric> =
-            vec![("throughput cycles", |count| Some(count.batch.cycles))];
-        if table.chained(op) {
-            metrics.push(("latency cycles", |count| {
-                count.chain.map(|latency| latency.events.cycles)
-            }));
-        }
-        metrics.push(("instructions", |count| Some(count.batch.instructions)));
         let mut rows = Vec::new();
         // Each starred cell: its crate, its deviation and its row.
         let mut starred: Vec<(&str, &str, &K)> = Vec::new();
         for key in &table.keys {
-            let ours = table.count(op, key, layout.subject);
-            for (index, (label, metric)) in metrics.iter().enumerate() {
-                let figures: Vec<Option<(f64, Option<&str>)>> = table
-                    .crates
-                    .iter()
-                    .map(|library| {
-                        table.count(op, key, library).and_then(|count| {
-                            metric(count).map(|figure| (figure, count.deviation.as_deref()))
-                        })
-                    })
-                    .collect();
-                let fewest = figures
+            let counts: Vec<Option<&Count>> = table
+                .crates
+                .iter()
+                .map(|library| table.count(op, key, library))
+                .collect();
+            let ours = table.count(op, key, layout.subject).map(parts);
+            let fewest: [Option<f64>; 2] = std::array::from_fn(|part| {
+                counts
                     .iter()
                     .flatten()
-                    .filter(|(_, deviation)| deviation.is_none())
-                    .map(|(figure, _)| *figure)
-                    .reduce(f64::min);
-                let our_figure = ours.and_then(metric);
-                let mut row = vec![
-                    if index == 0 {
-                        key.to_string()
-                    } else {
-                        String::new()
-                    },
-                    (*label).to_owned(),
-                ];
-                for (library, figure) in table.crates.iter().zip(&figures) {
-                    row.push(match figure {
-                        Some((figure, Some(deviation)))
-                            if our_figure.is_some_and(|ours| *figure < ours) =>
+                    .filter(|count| count.deviation.is_none())
+                    .filter_map(|count| parts(count)[part])
+                    .reduce(f64::min)
+            });
+            let mut row = vec![key.to_string()];
+            for (library, count) in table.crates.iter().zip(&counts) {
+                let Some(count) = count else {
+                    row.push("–".to_owned());
+                    continue;
+                };
+                let cell: Vec<String> = parts(count)
+                    .iter()
+                    .enumerate()
+                    .map(|(part, figure)| match (figure, &count.deviation) {
+                        (None, _) => "–".to_owned(),
+                        (Some(figure), Some(deviation))
+                            if ours.is_some_and(|ours| {
+                                ours[part].is_some_and(|ours| *figure < ours)
+                            }) =>
                         {
-                            if !starred.contains(&(library, deviation, key)) {
+                            if !starred.contains(&(library, deviation.as_str(), key)) {
                                 starred.push((library, deviation, key));
                             }
                             format!("{}\\*", value(*figure))
                         }
-                        Some((figure, None)) if Some(*figure) == fewest => {
+                        (Some(figure), None) if Some(*figure) == fewest[part] => {
                             format!("**{}**", value(*figure))
                         }
-                        Some((figure, _)) => value(*figure),
-                        None => "–".to_owned(),
-                    });
-                }
-                rows.push(row);
+                        (Some(figure), _) => value(*figure),
+                    })
+                    .collect();
+                row.push(cell.join(SEPARATOR));
             }
+            rows.push(row);
         }
-        let mut header = vec![layout.row_header.to_owned(), "Per operation".to_owned()];
+        let mut header = vec![layout.row_header.to_owned()];
         header.extend(table.crates.iter().map(|library| (*library).to_owned()));
         let title = title(op, formula, build);
+        let legend = if starred.is_empty() {
+            LEGEND.to_owned()
+        } else {
+            format!(
+                "{LEGEND} A `\\*` marks the figure of a function that deviates from the row's \
+                 definition where the figure is below `{}`'s; the note under the table says how \
+                 the function deviates.",
+                layout.subject
+            )
+        };
         lines.extend([
             String::new(),
             format!("### {title}"),
             String::new(),
             format!("![{title}](benchmarks/{})", chart_file(op, build)),
             String::new(),
+            legend,
+            String::new(),
         ]);
         lines.extend(markdown_table(
             &header,
             &rows,
-            &("rl".to_owned() + &"r".repeat(table.crates.len())),
+            &("l".to_owned() + &"r".repeat(table.crates.len())),
         ));
         lines.extend(deviations(layout, &starred));
     }

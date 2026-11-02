@@ -19,7 +19,7 @@ and with `-C target-feature=-pclmulqdq,-vpclmulqdq --cfg polyval_backend="soft"`
 second flag selects the software backend of `polyval`, which otherwise selects PCLMULQDQ at run
 time. It runs each build on one CPU, CPU 15 unless `--cpu` names another: every case is
 checked against a bit-serial reference, then measured. The record goes to
-`target/benchmarks/binary-field.json`; `--machine` adds a description of the machine. `report`
+`benchmarks/record.json` of the crate; `--machine` adds a description of the machine. `report`
 reads the record and writes the document and the charts.
 
 `bench` needs Linux with `kernel.perf_event_paranoid` at 2 or below.

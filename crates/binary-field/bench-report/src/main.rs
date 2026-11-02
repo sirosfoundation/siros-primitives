@@ -172,7 +172,7 @@ fn method() -> Vec<String> {
 fn main() -> ExitCode {
     bench_compare::execute(
         "binary-field-bench-report",
-        &Paths::new(env!("CARGO_MANIFEST_DIR"), "binary-field.json"),
+        &Paths::new(env!("CARGO_MANIFEST_DIR")),
         &MEASURED,
         &LAYOUT,
     )

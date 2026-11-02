@@ -3,9 +3,13 @@
 //! below 2^64, Mersenne, pseudo-Mersenne, Montgomery with and without a spare bit, `p = 1 mod 4`
 //! and `p = 3 mod 4`, one and nine limbs.
 
-use biguint::typenum::{U7, U31, U64, U127, U254, U256, U381, U521};
+use biguint::typenum::{U7, U127, U256};
 use biguint::{Bits, Uint};
 use num_bigint::BigUint;
+use prime_field::standard::{
+    BabyBear, Bls12381Base, Bn254Scalar, Goldilocks, Mersenne31, P256Base, P256Scalar, P521Base,
+    Secp256k1Base, Tom256Base, Tom256Scalar,
+};
 use prime_field::{Fp, Modulus, NotCanonical, Secret};
 
 /// Declares one modulus marker per line: the name, the width and the little-endian limbs.
@@ -20,62 +24,25 @@ macro_rules! moduli {
                 const MODULUS: Uint<$width> = Uint::from_limbs([$($limb),*]);
             }
         )*
-
-        /// Runs the sweep on every modulus.
-        fn each_modulus(sweep: impl Fn(&str, &BigUint, &dyn Fn(&mut Rng))) {
-            $(sweep(stringify!($name), &big(<$name>::MODULUS.as_limbs()), &|rng| check::<$name>(rng));)*
-        }
     };
 }
 
 moduli! {
     Seven: U7 = [7];
-    Mersenne31: U31 = [0x7fff_ffff];
-    BabyBear: U31 = [0x7800_0001];
-    Goldilocks: U64 = [0xffff_ffff_0000_0001];
     Mersenne127: U127 = [0xffff_ffff_ffff_ffff, 0x7fff_ffff_ffff_ffff];
-    Bn254Scalar: U254 = [
-        0x43e1_f593_f000_0001,
-        0x2833_e848_79b9_7091,
-        0xb850_45b6_8181_585d,
-        0x3064_4e72_e131_a029,
-    ];
-    Secp256k1Base: U256 = [
-        0xffff_fffe_ffff_fc2f,
-        0xffff_ffff_ffff_ffff,
-        0xffff_ffff_ffff_ffff,
-        0xffff_ffff_ffff_ffff,
-    ];
     Secp256k1Scalar: U256 = [
         0xbfd2_5e8c_d036_4141,
         0xbaae_dce6_af48_a03b,
         0xffff_ffff_ffff_fffe,
         0xffff_ffff_ffff_ffff,
     ];
-    P256Base: U256 = [
-        0xffff_ffff_ffff_ffff,
-        0x0000_0000_ffff_ffff,
-        0x0000_0000_0000_0000,
-        0xffff_ffff_0000_0001,
-    ];
-    P256Scalar: U256 = [
-        0xf3b9_cac2_fc63_2551,
-        0xbce6_faad_a717_9e84,
-        0xffff_ffff_ffff_ffff,
-        0xffff_ffff_0000_0000,
-    ];
-    Bls12381Base: U381 = [
-        0xb9fe_ffff_ffff_aaab,
-        0x1eab_fffe_b153_ffff,
-        0x6730_d2a0_f6b0_f624,
-        0x6477_4b84_f385_12bf,
-        0x4b1b_a7b6_434b_acd7,
-        0x1a01_11ea_397f_e69a,
-    ];
-    P521Base: U521 = [
-        u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX,
-        0x1ff,
-    ];
+}
+
+/// Runs the sweep on each modulus marker.
+macro_rules! each_modulus {
+    ($sweep:expr, $($name:ident),* $(,)?) => {
+        $($sweep(stringify!($name), &big(<$name>::MODULUS.as_limbs()), &|rng: &mut Rng| check::<$name>(rng));)*
+    };
 }
 
 /// SplitMix64.
@@ -313,11 +280,77 @@ fn check<M: Modulus>(rng: &mut Rng) {
 
 #[test]
 fn every_operation_matches_num_bigint() {
-    each_modulus(|name, p, sweep| {
+    let sweep = |name: &str, p: &BigUint, sweep: &dyn Fn(&mut Rng)| {
         let mut rng = Rng(p.bits());
         eprintln!("{name}");
         sweep(&mut rng);
-    });
+    };
+    each_modulus!(
+        sweep,
+        Seven,
+        Mersenne31,
+        BabyBear,
+        Goldilocks,
+        Mersenne127,
+        Bn254Scalar,
+        Secp256k1Base,
+        Secp256k1Scalar,
+        P256Base,
+        P256Scalar,
+        Tom256Base,
+        Bls12381Base,
+        P521Base,
+    );
+}
+
+/// Each modulus of `standard` against its definition or the modulus of an independent crate.
+#[test]
+fn standard_moduli_are_the_standards() {
+    use halo2curves::ff::PrimeField;
+    let power = |exponent: u32| BigUint::from(1u8) << exponent;
+    let halo2 = |modulus: &str| {
+        BigUint::parse_bytes(modulus.trim_start_matches("0x").as_bytes(), 16).expect("hex")
+    };
+    let table = [
+        (big(Mersenne31::MODULUS.as_limbs()), power(31) - 1u8),
+        (big(BabyBear::MODULUS.as_limbs()), power(27) * 15u8 + 1u8),
+        (
+            big(Goldilocks::MODULUS.as_limbs()),
+            power(64) - power(32) + 1u8,
+        ),
+        (
+            big(Bn254Scalar::MODULUS.as_limbs()),
+            halo2(halo2curves::bn256::Fr::MODULUS),
+        ),
+        (
+            big(Secp256k1Base::MODULUS.as_limbs()),
+            power(256) - power(32) - 977u16,
+        ),
+        (
+            big(P256Base::MODULUS.as_limbs()),
+            power(256) - power(224) + power(192) + power(96) - 1u8,
+        ),
+        (
+            big(P256Scalar::MODULUS.as_limbs()),
+            halo2(halo2curves::secp256r1::Fq::MODULUS),
+        ),
+        (
+            big(Tom256Base::MODULUS.as_limbs()),
+            halo2(halo2curves::t256::Fp::MODULUS),
+        ),
+        (
+            big(Tom256Scalar::MODULUS.as_limbs()),
+            halo2(halo2curves::t256::Fq::MODULUS),
+        ),
+        (
+            big(Bls12381Base::MODULUS.as_limbs()),
+            halo2(halo2curves::bls12381::Fq::MODULUS),
+        ),
+        (big(P521Base::MODULUS.as_limbs()), power(521) - 1u8),
+    ];
+    for (index, (ours, expected)) in table.iter().enumerate() {
+        assert_eq!(ours, expected, "modulus {index}");
+    }
 }
 
 /// The generators of secp256k1 and P-256 satisfy their curve equations, as the standards give
