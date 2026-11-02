@@ -291,5 +291,5 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ```sh
 cargo run -p prime-field-bench-report -- bench    # the CPU's counts of the native build
-cargo run -p prime-field-bench-report -- report   # this file and benchmarks/*.svg
+cargo run -p prime-field-bench-report -- report   # this file
 ```
