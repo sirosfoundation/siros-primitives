@@ -13,13 +13,22 @@ use crate::plan::{Plan, Polynomial};
 /// The inverse of `a`, or `None` for `0`.
 #[inline]
 pub(crate) fn invert<P: Polynomial>(a: Gf2<P>) -> Option<Gf2<P>> {
-    if a.is_zero() {
+    if Plan::<P>::INVERT_BY_ITOH_TSUJII {
+        declassify(!a.is_zero(), itoh_tsujii(a))
+    } else if a.is_zero() {
         None
-    } else if Plan::<P>::INVERT_BY_ITOH_TSUJII {
-        Some(itoh_tsujii(a))
     } else {
         euclid(a)
     }
+}
+
+/// `Some(inverse)` when `invertible`, else `None`. The `Option` discloses `invertible`, so the
+/// branch on it is the one decision of an inversion by Itoh and Tsujii that may depend on the
+/// value. The function keeps a symbol of its own, by which the constant-time check of `ct-check`
+/// exempts that branch; it would exempt any other code here too.
+#[inline(never)]
+fn declassify<T>(invertible: bool, inverse: T) -> Option<T> {
+    if invertible { Some(inverse) } else { None }
 }
 
 /// `a^(2^n - 2) = (a^(2^(n-1) - 1))^2`, with `a^(2^k - 1)` built along the bits of `n - 1`: a

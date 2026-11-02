@@ -12,7 +12,7 @@ pub use count::main;
 pub use document::{Layout, markdown_table, report, sentence};
 pub use error::Error;
 pub use record::{Cell, Count, Key, Outcome, Record, Version};
-pub use run::{Measured, Paths, bench, execute};
+pub use run::{Measured, Paths, bench, cargo, execute, output, valgrind};
 pub use suite::{
     BATCH, Call, CaseId, Cells, Limbs, Rng, Row, Sample, Suite, Visitor, run_batch, trim, visit,
 };

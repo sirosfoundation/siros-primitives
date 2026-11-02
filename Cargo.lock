@@ -407,6 +407,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ct-check"
+version = "0.0.0"
+dependencies = [
+ "bench-compare",
+ "binary-field",
+ "clmul",
+ "prime-field",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ctutils"
 version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

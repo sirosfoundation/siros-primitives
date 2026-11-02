@@ -6,11 +6,12 @@
 
 use std::fs;
 use std::num::NonZero;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, ExitCode};
 use std::thread;
 
 use crate::record::{Cell, Count as Counted, Outcome};
+use crate::run::valgrind;
 use crate::suite::{BATCH, Call, CaseId, Suite, Visitor, run_batch, visit};
 
 /// Runs the bench executable of `S`, named `name` in its messages, with the process arguments.
@@ -69,7 +70,7 @@ impl<O: Clone, K: Clone> Visitor<O, K> for AllCells<O, K> {
 /// Counts every case and returns the line of every cell, in the order of [`visit`].
 fn count_all<S: Suite>(name: &str) -> Result<Vec<String>, String> {
     let cells = visit::<S, _>(AllCells { cells: Vec::new() }).cells;
-    let valgrind = valgrind()?;
+    let valgrind = valgrind().map_err(|error| error.to_string())?;
     let program =
         std::env::current_exe().map_err(|error| format!("the bench executable: {error}"))?;
     let directory = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
@@ -109,15 +110,6 @@ fn count_all<S: Suite>(name: &str) -> Result<Vec<String>, String> {
     let mut lines: Vec<(usize, String)> = lines.into_iter().flatten().collect();
     lines.sort_unstable_by_key(|(index, _)| *index);
     Ok(lines.into_iter().map(|(_, line)| line).collect())
-}
-
-/// The path of `valgrind` in `PATH`.
-fn valgrind() -> Result<PathBuf, String> {
-    let path = std::env::var_os("PATH").ok_or("PATH is not set")?;
-    std::env::split_paths(&path)
-        .map(|directory| directory.join("valgrind"))
-        .find(|candidate| candidate.is_file())
-        .ok_or_else(|| "the counts need Valgrind, and PATH has no valgrind".to_owned())
 }
 
 /// Runs the bench under Callgrind.

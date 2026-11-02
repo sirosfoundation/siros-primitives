@@ -6,7 +6,8 @@
 
 Big-integer, prime-field, carry-less and binary-field arithmetic in pure Rust. Every crate is
 `no_std` and free of allocation and panics. `unsafe` appears only in `clmul`, at the calls into its
-PCLMULQDQ and PMULL backends.
+PCLMULQDQ and PMULL backends, and in the unpublished `ct-check`, at the inline assembly of
+Valgrind's client requests.
 
 ## Crates
 
@@ -27,6 +28,7 @@ Every crate builds with Rust 1.93 or newer.
 cargo test --workspace --all-features
 RUSTFLAGS="-C target-feature=+pclmulqdq,+sse4.1" cargo test -p clmul -p binary-field --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo run -p ct-check   # constant time under Valgrind's memcheck
 ```
 
 ## License

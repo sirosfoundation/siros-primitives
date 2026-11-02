@@ -1,7 +1,8 @@
 # bench-compare
 
-The machinery behind the `BENCHMARKS.md` of `biguint` and `prime-field`: a comparison of one
-crate's operations with other crates, in instructions per operation that Callgrind counts.
+The machinery behind the `BENCHMARKS.md` of `biguint`, `prime-field` and `binary-field`: a
+comparison of one crate's operations with other crates, in instructions per operation that
+Callgrind counts.
 
 A library's `compare` bench declares a `Suite`: its operations, its rows (widths or fields), the
 operand sets of each row with their accepted results, and one adapter per crate that offers the

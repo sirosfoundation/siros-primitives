@@ -75,7 +75,10 @@ kept. secp256k1's `(p + 1) / 4` takes libsecp256k1's 253 squarings and 13 multip
 Timing: `add`, `sub`, `neg`, `mul` and `square` take one path for every operand value, and
 `invert` for every nonzero value; an addition chain's steps depend on the exponent alone. Each
 selection by a secret condition is a mask that passes through `core::hint::black_box`, which
-keeps the compiler from turning it into a branch.
+keeps the compiler from turning it into a branch. CI runs these operations on secret operands
+under Valgrind's memcheck with
+[`ct-check`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/ct-check),
+which fails on a branch or a memory address that depends on them.
 `invert_vartime`, `pow` and `sqrt` take time that depends on the values.
 
 ## Benchmarks
