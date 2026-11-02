@@ -89,9 +89,9 @@ branch.
 
 [BENCHMARKS.md](https://github.com/sirosfoundation/siros-primitives/blob/main/crates/binary-field/BENCHMARKS.md)
 compares `binary-field` with gf256, galois_field_2pm, g2p, reed-solomon-erasure, hekate-math,
-Plonky3, longfellow-zk's `runtime-algebra`, `compile-algebra` and `core-algebra`, polyval and
-ghash on add, mul, square, invert and sqrt over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³),
-GF(2²⁵⁶) and GF(2⁵⁷¹), in instructions per operation that Callgrind counts. The unpublished
+Plonky3, longfellow-zk's `runtime-algebra`, `compile-algebra` and `core-algebra`, and polyval on
+add, mul, square, invert and sqrt over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and
+GF(2⁵⁷¹), in instructions per operation that Callgrind counts. The unpublished
 [`binary-field-bench-report`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/binary-field/bench-report)
 regenerates it:
 

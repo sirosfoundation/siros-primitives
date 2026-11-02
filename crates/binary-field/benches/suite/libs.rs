@@ -37,7 +37,6 @@ pub fn offer<V: Visitor<Op, Field>>(row: Row<Op, Field, V>) -> Row<Op, Field, V>
         .lib("core-algebra", core_algebra)
         .lib("polyval", polyval)
         .lib("galois_field_2pm lut", galois_field_2pm_lut)
-        .lib("ghash", ghash)
 }
 
 /// The reasons for absent cells that several crates share.
@@ -685,7 +684,7 @@ fn core_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// polyval and ghash
+// polyval
 
 /// POLYVAL's representation of GF(2¹²⁸) (RFC 8452): the element `a` is the block of the bit
 /// reversal of `a·x⁻¹`, the map under which POLYVAL's product is the GCM field's.
@@ -732,9 +731,4 @@ fn polyval<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             .cells(),
         _ => cells.none(GF128_ONLY),
     }
-}
-
-/// `ghash`.
-fn ghash<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
-    cells.none("block hashing only")
 }

@@ -46,7 +46,6 @@ const MEASURED: Measured = Measured {
         "compile-algebra",
         "core-algebra",
         "polyval",
-        "ghash",
     ],
 };
 
