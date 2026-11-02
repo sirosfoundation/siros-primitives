@@ -48,11 +48,10 @@ impl<M: Modulus> Fp<M> {
     #[inline(always)]
     fn invert_with<const VARTIME: bool>(self) -> Option<Self> {
         if Shape::<M>::BITS <= FERMAT_BITS {
-            return if self.is_zero() {
-                None
-            } else {
-                Some(self.pow_limbs(Shape::<M>::P_MINUS_TWO.as_slice()))
-            };
+            return disclose::<VARTIME, _>(
+                !self.is_zero(),
+                self.pow_limbs(Shape::<M>::P_MINUS_TWO.as_slice()),
+            );
         }
         // `f = d y` and `g = e y` modulo `p` throughout, with `f` odd; `d` and `e` carry the
         // representation's seed, so that `d` ends as the representation of `±y^-1`.
@@ -106,8 +105,28 @@ impl<M: Modulus> Fp<M> {
             Shape::<M>::P.as_slice(),
         );
         let inverse = Self::select(negative, Self::from_limbs(negated), Self::from_limbs(d));
-        (positive | negative).then_some(inverse)
+        disclose::<VARTIME, _>(positive | negative, inverse)
     }
+}
+
+/// `Some(inverse)` when `invertible`, else `None`; the constant-time inversion builds it in
+/// [`declassify`].
+#[inline(always)]
+fn disclose<const VARTIME: bool, T>(invertible: bool, inverse: T) -> Option<T> {
+    if VARTIME {
+        invertible.then_some(inverse)
+    } else {
+        declassify(invertible, inverse)
+    }
+}
+
+/// `Some(inverse)` when `invertible`, else `None`. The `Option` of [`Fp::invert`] discloses
+/// `invertible`, so the branch on it is the one decision of the constant-time inversion that may
+/// depend on the value. The function keeps a symbol of its own, by which the constant-time check
+/// of `ct-check` exempts that branch; it would exempt any other code here too.
+#[inline(never)]
+fn declassify<T>(invertible: bool, inverse: T) -> Option<T> {
+    if invertible { Some(inverse) } else { None }
 }
 
 /// The masks of one inversion, all ones or zero: a sign spread by a shift of 63 that passes through
