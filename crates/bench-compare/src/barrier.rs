@@ -262,7 +262,9 @@ mod registers {
             result = run(&opaque(input).chain(through::<C, R>(result)));
             runs += 1;
         }
-        sink(&result);
+        // The sink takes the address of a value of its own: an address of `result` would keep
+        // `result` in memory, with one store per step.
+        sink(&through::<C, R>(result));
         runs
     }
 
