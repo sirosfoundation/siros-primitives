@@ -516,7 +516,8 @@ fn halo2curves<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
-/// A field through the `ff::Field` trait, whose `invert` is constant-time.
+/// A field of halo2curves through the `ff::Field` trait. Its `invert` runs the variable-time
+/// division steps of halo2curves' `BYInverter`, which branch on the trailing zeros of `g`.
 fn ff_field<F: halo2curves::ff::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
     cells: Crate<V>,
 ) -> Crate<V> {
@@ -526,8 +527,8 @@ fn ff_field<F: halo2curves::ff::Field + FromLimbs + ToLimbs, V: Visitor<Op, Fiel
         mul: |&(a, b)| a * b,
         square: |a| a.square(),
     )
-    .case(Op::Invert, "invert", one::<F>, |a| a.invert())
-    .absent(Op::InvertVartime, NO_VARTIME_INVERSE)
+    .absent(Op::Invert, VARTIME_INVERT)
+    .case(Op::InvertVartime, "invert", one::<F>, |a| a.invert())
     .case(Op::Sqrt, "sqrt", one::<F>, |a| a.sqrt())
 }
 
