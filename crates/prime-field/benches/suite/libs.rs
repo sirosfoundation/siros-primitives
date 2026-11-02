@@ -4,7 +4,7 @@
 //! field, gets an absent cell with the reason. Elements enter and leave each crate in its own
 //! representation; the conversions run before and after the counted batch.
 
-use bench_compare::{Cells, Limbs, Row, Visitor};
+use bench_compare::{Barrier, Cells, Chain, Gpr, Limbs, Row, Visitor};
 use biguint::generic_array::GenericArray;
 use biguint::typenum::{U31, U64, U254, U256, U381, U521};
 use biguint::{Bits, Uint};
@@ -68,6 +68,16 @@ trait Offer<V> {
         run: impl Fn(&I) -> R + Copy,
     ) -> Self;
 
+    /// Offers the case with its chain form, `x = op(x, y)`, whose results pass through `barrier`.
+    fn chained<I: Chain<R>, R: ToLimbs, B: Barrier>(
+        self,
+        op: Op,
+        function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I,
+        run: impl Fn(&I) -> R + Copy,
+        barrier: B,
+    ) -> Self;
+
     /// Records the same reason for every operation.
     fn none(self, reason: &'static str) -> Self;
 }
@@ -81,6 +91,17 @@ impl<V: Visitor<Op, Field>> Offer<V> for Crate<V> {
         run: impl Fn(&I) -> R + Copy,
     ) -> Self {
         self.api(op, function, prepare, run, ToLimbs::to_limbs)
+    }
+
+    fn chained<I: Chain<R>, R: ToLimbs, B: Barrier>(
+        self,
+        op: Op,
+        function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I,
+        run: impl Fn(&I) -> R + Copy,
+        barrier: B,
+    ) -> Self {
+        self.chain(op, function, prepare, run, ToLimbs::to_limbs, barrier)
     }
 
     fn none(self, reason: &'static str) -> Self {
@@ -131,14 +152,18 @@ fn array8(chunk: &[u8]) -> [u8; 8] {
     <[u8; 8]>::try_from(chunk).expect("eight bytes")
 }
 
-/// Offers add, sub, mul and square of `$t` through the given closures.
+/// Offers add, sub, mul and square of `$t` through the given closures, with their chain forms
+/// through `$barrier`.
 macro_rules! ops {
-    ($cells:expr, $t:ty, add: $add:expr, sub: $sub:expr, mul: $mul:expr, square: $square:expr $(,)?) => {
+    (
+        $cells:expr, $t:ty, $barrier:expr,
+        add: $add:expr, sub: $sub:expr, mul: $mul:expr, square: $square:expr $(,)?
+    ) => {
         $cells
-            .case(Op::Add, "+", pair::<$t>, $add)
-            .case(Op::Sub, "-", pair::<$t>, $sub)
-            .case(Op::Mul, "*", pair::<$t>, $mul)
-            .case(Op::Square, "square", one::<$t>, $square)
+            .chained(Op::Add, "+", pair::<$t>, $add, $barrier)
+            .chained(Op::Sub, "-", pair::<$t>, $sub, $barrier)
+            .chained(Op::Mul, "*", pair::<$t>, $mul, $barrier)
+            .chained(Op::Square, "square", one::<$t>, $square, $barrier)
     };
 }
 
@@ -203,7 +228,7 @@ fn this_crate<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 }
 
 fn ours<M: Modulus, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
-    ops!(cells, Fp<M>,
+    ops!(cells, Fp<M>, Gpr,
         add: |&(a, b)| a + b,
         sub: |&(a, b)| a - b,
         mul: |&(a, b)| a * b,
@@ -245,10 +270,10 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
     let read = |e: &F| Some(from_le_bytes(&e.into_bigint().to_bytes_le()));
     let read_option = |e: &Option<F>| e.as_ref().and_then(read);
     cells
-        .api(Op::Add, "+", two, |&(a, b)| a + b, read)
-        .api(Op::Sub, "-", two, |&(a, b)| a - b, read)
-        .api(Op::Mul, "*", two, |&(a, b)| a * b, read)
-        .api(Op::Square, "square", single, |a| a.square(), read)
+        .chain(Op::Add, "+", two, |&(a, b)| a + b, read, Gpr)
+        .chain(Op::Sub, "-", two, |&(a, b)| a - b, read, Gpr)
+        .chain(Op::Mul, "*", two, |&(a, b)| a * b, read, Gpr)
+        .chain(Op::Square, "square", single, |a| a.square(), read, Gpr)
         .absent(Op::Invert, VARTIME_INVERT)
         .api(
             Op::InvertVartime,
@@ -357,7 +382,7 @@ fn monty<
     cells: Crate<V>,
 ) -> Crate<V> {
     type Form<MOD, const L: usize> = crypto_bigint::modular::ConstMontyForm<MOD, L>;
-    ops!(cells, Form<MOD, L>,
+    ops!(cells, Form<MOD, L>, Gpr,
         add: |(a, b)| a + b,
         sub: |(a, b)| a - b,
         mul: |(a, b)| a * b,
@@ -438,7 +463,7 @@ const NO_VARTIME_INVERSE: &str = "no variable-time inverse";
 /// The RustCrypto curve crates: `k256` for secp256k1, `p256` for P-256.
 fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
-        "secp256k1 base" => ops!(cells, k256::FieldElement,
+        "secp256k1 base" => ops!(cells, k256::FieldElement, Gpr,
             add: |&(a, b)| a + b,
             sub: |&(a, b)| a - b,
             mul: |&(a, b)| a * b,
@@ -449,7 +474,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         })
         .absent(Op::InvertVartime, NO_VARTIME_INVERSE)
         .case(Op::Sqrt, "sqrt", one::<k256::FieldElement>, |a| a.sqrt()),
-        "P-256 base" => ops!(cells, p256::FieldElement,
+        "P-256 base" => ops!(cells, p256::FieldElement, Gpr,
             add: |&(a, b)| a + b,
             sub: |&(a, b)| a - b,
             mul: |&(a, b)| a * b,
@@ -462,7 +487,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         .case(Op::Sqrt, "sqrt", one::<p256::FieldElement>, |a| a.sqrt()),
         "P-256 scalar" => {
             use p256::elliptic_curve::ff::Field;
-            ops!(cells, p256::Scalar,
+            ops!(cells, p256::Scalar, Gpr,
                 add: |&(a, b)| a + b,
                 sub: |&(a, b)| a - b,
                 mul: |&(a, b)| a * b,
@@ -521,7 +546,7 @@ fn halo2curves<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 fn ff_field<F: halo2curves::ff::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
     cells: Crate<V>,
 ) -> Crate<V> {
-    ops!(cells, F,
+    ops!(cells, F, Gpr,
         add: |&(a, b)| a + b,
         sub: |&(a, b)| a - b,
         mul: |&(a, b)| a * b,
@@ -571,7 +596,7 @@ fn plonky3<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 fn p3<F: p3_field::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
     cells: Crate<V>,
 ) -> Crate<V> {
-    ops!(cells, F,
+    ops!(cells, F, Gpr,
         add: |&(a, b)| a + b,
         sub: |&(a, b)| a - b,
         mul: |&(a, b)| a * b,
@@ -605,7 +630,7 @@ fn winter_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     use winter_math::FieldElement;
     use winter_math::fields::f64::BaseElement;
     match cells.key().field.as_str() {
-        "Goldilocks" => ops!(cells, BaseElement,
+        "Goldilocks" => ops!(cells, BaseElement, Gpr,
             add: |&(a, b)| a + b,
             sub: |&(a, b)| a - b,
             mul: |&(a, b)| a * b,
@@ -677,9 +702,9 @@ fn runtime<const W: usize, F: RuntimeSerializableField<W>, V: Visitor<Op, Field>
     };
     let read = |e: &F::E| Some(field.to_words64(e).to_vec());
     cells
-        .api(Op::Add, "addf", two, |(a, b)| field.addf(a, b), read)
-        .api(Op::Sub, "subf", two, |(a, b)| field.subf(a, b), read)
-        .api(Op::Mul, "mulf", two, |(a, b)| field.mulf(a, b), read)
+        .chain(Op::Add, "addf", two, |(a, b)| field.addf(a, b), read, Gpr)
+        .chain(Op::Sub, "subf", two, |(a, b)| field.subf(a, b), read, Gpr)
+        .chain(Op::Mul, "mulf", two, |(a, b)| field.mulf(a, b), read, Gpr)
         .absent(Op::Square, NO_SQUARE)
         .absent(Op::Invert, VARTIME_INVERT)
         .api(
@@ -727,9 +752,9 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
         Some(value)
     };
     cells
-        .api(Op::Add, "addf", two, |(a, b)| field.addf(a, b), read)
-        .api(Op::Sub, "subf", two, |(a, b)| field.subf(a, b), read)
-        .api(Op::Mul, "mulf", two, |(a, b)| field.mulf(a, b), read)
+        .chain(Op::Add, "addf", two, |(a, b)| field.addf(a, b), read, Gpr)
+        .chain(Op::Sub, "subf", two, |(a, b)| field.subf(a, b), read, Gpr)
+        .chain(Op::Mul, "mulf", two, |(a, b)| field.mulf(a, b), read, Gpr)
         .absent(Op::Square, NO_SQUARE)
         .absent(Op::Invert, "the inverse is a variable-time `modpow`")
         .api(

@@ -87,13 +87,13 @@ which fails on a branch or a memory address that depends on them.
 compares `prime-field` with ark-ff, crypto-bigint, k256/p256, halo2curves, Plonky3, winter-math
 and longfellow-zk's `runtime-algebra` and `compile-algebra` on add, sub, mul, square, invert,
 invert_vartime and sqrt over Mersenne-31, BabyBear, Goldilocks, the BN254 scalar field, the
-secp256k1, P-256, BLS12-381 and P-521 base fields and the P-256 scalar field, in instructions per
-operation that Callgrind counts. The unpublished
+secp256k1, P-256, BLS12-381 and P-521 base fields and the P-256 scalar field, in cycles and
+instructions per operation that the CPU's performance counters count. The unpublished
 [`prime-field-bench-report`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/prime-field/bench-report)
 regenerates it:
 
 ```sh
-cargo run -p prime-field-bench-report -- bench    # Callgrind counts of the native build
+cargo run -p prime-field-bench-report -- bench    # the CPU's counts of the native build
 cargo run -p prime-field-bench-report -- report   # BENCHMARKS.md and benchmarks/*.svg
 ```
 

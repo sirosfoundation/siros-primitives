@@ -2,16 +2,19 @@
 //!
 //! [`visit`] walks the rows of a [`Suite`] (one operation on one row key, such as a width or a
 //! field) and offers every crate's cell of the row to a [`Visitor`]. A cell either runs one case
-//! (the crate's function over a batch of operand sets) or records why the crate has no case.
-//! Before a case is measured, its result on every operand set is checked against the accepted
-//! results that the suite computed independently.
+//! (the crate's function on operand sets that the suite draws) or records why the crate has no
+//! case. Before a case is measured, its result on the checking operand sets is compared with
+//! the accepted results that the suite computed independently. A case with a chain form also
+//! runs as the chain `x = op(x, y)`, where each result is the first operand of the next
+//! operation.
 
 use core::fmt;
 use std::hint::black_box;
 
+use crate::barrier::Barrier;
 use crate::record::Key;
 
-/// The number of operand sets in the batch of each case.
+/// The number of operand sets that check each case.
 pub const BATCH: usize = 256;
 
 /// Little-endian `u64` limbs.
@@ -48,9 +51,13 @@ pub trait Suite {
     /// Every row key, in measurement order.
     fn keys() -> Vec<Self::Key>;
 
-    /// The operand sets of `op` on the row `key`, with their accepted results. Every crate in
-    /// the row sees the same operands.
+    /// The [`BATCH`] operand sets that check the cases of `op` on the row `key`, with their
+    /// accepted results. Every crate in the row sees the same operands.
     fn samples(op: Self::Op, key: &Self::Key) -> Vec<Sample>;
+
+    /// One operand set of `op` on the row `key`, drawn with `rng` from the distribution of
+    /// [`samples`](Self::samples).
+    fn operands(op: Self::Op, key: &Self::Key, rng: &mut Rng) -> Vec<Limbs>;
 
     /// Offers the cells of every crate in `row`.
     fn offer<V: Visitor<Self::Op, Self::Key>>(
@@ -80,8 +87,51 @@ impl<O: fmt::Display, K: fmt::Display> fmt::Display for CaseId<O, K> {
 pub enum Call {
     /// The crate's function for the operation, by name.
     Api(&'static str),
+    /// The crate's function for the operation, by name, which also runs as a chain.
+    Chained(&'static str),
     /// No case; the reason.
     Absent(&'static str),
+}
+
+/// An input whose first operand the result of the operation can replace: one step of the chain
+/// `x = op(x, y)`. The chain applies where the result has the type of the first operand.
+pub trait Chain<R> {
+    /// This input with `result` as its first operand.
+    #[must_use]
+    fn chain(&self, result: R) -> Self;
+}
+
+/// One operand: the result is the next operand.
+impl<T> Chain<T> for T {
+    fn chain(&self, result: T) -> Self {
+        result
+    }
+}
+
+impl<A, B: Clone> Chain<A> for (A, B) {
+    fn chain(&self, result: A) -> Self {
+        (result, self.1.clone())
+    }
+}
+
+impl<A, B: Clone, C: Clone> Chain<A> for (A, B, C) {
+    fn chain(&self, result: A) -> Self {
+        (result, self.1.clone(), self.2.clone())
+    }
+}
+
+/// The inputs of a case: operand sets drawn fresh from the row's distribution, in the crate's
+/// representation.
+pub struct Inputs<'a, I> {
+    fresh: &'a dyn Fn(&mut Rng) -> I,
+}
+
+impl<I> Inputs<'_, I> {
+    /// `count` inputs drawn with `rng`.
+    #[must_use]
+    pub fn draw(&self, rng: &mut Rng, count: usize) -> Vec<I> {
+        (0..count).map(|_| (self.fresh)(rng)).collect()
+    }
 }
 
 /// Receives every cell of the comparison.
@@ -89,12 +139,34 @@ pub trait Visitor<O, K>: Sized {
     /// Takes note of the cell `id`, which runs `call`.
     fn note(&mut self, _id: &CaseId<O, K>, _call: &Call) {}
 
-    /// Whether to check and measure the case `id`.
+    /// Whether to measure the case `id`.
     fn wants(&self, id: &CaseId<O, K>) -> bool;
 
-    /// Measures `run` over `batch`, the inputs of the case `id`.
+    /// Whether to check the case `id` against the accepted results before it is measured.
+    fn checks(&self, _id: &CaseId<O, K>) -> bool {
+        true
+    }
+
+    /// Measures `run` on the inputs that `inputs` draws for the case `id`.
     #[must_use]
-    fn measure<I, R>(self, id: &CaseId<O, K>, batch: &[I], run: impl Fn(&I) -> R + Copy) -> Self;
+    fn measure<I, R>(
+        self,
+        id: &CaseId<O, K>,
+        inputs: &Inputs<'_, I>,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self;
+
+    /// Measures `run` as a chain on the inputs that `inputs` draws, for a case with a chain
+    /// form, after [`measure`](Self::measure).
+    #[must_use]
+    fn measure_chain<I: Chain<R>, R, B: Barrier>(
+        self,
+        _id: &CaseId<O, K>,
+        _inputs: &Inputs<'_, I>,
+        _run: impl Fn(&I) -> R + Copy,
+    ) -> Self {
+        self
+    }
 }
 
 /// Offers every cell of `S` to `visitor`: operation by operation, row by row, crate by crate.
@@ -108,6 +180,7 @@ pub fn visit<S: Suite, V: Visitor<S::Op, S::Key>>(visitor: V) -> V {
                 samples: None,
                 visitor,
                 draw: S::samples,
+                operands: S::operands,
             })
             .visitor
         })
@@ -116,8 +189,7 @@ pub fn visit<S: Suite, V: Visitor<S::Op, S::Key>>(visitor: V) -> V {
 
 /// Runs `run` on each input of `batch` and returns the number of runs. Each input and each
 /// result passes through [`black_box`], so the compiler can neither precompute a result nor skip
-/// one. Callgrind counts the instructions from the entry of this function to its exit, so it
-/// keeps a symbol of its own.
+/// one.
 #[inline(never)]
 pub fn run_batch<I, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
     batch
@@ -126,14 +198,32 @@ pub fn run_batch<I, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
         .fold(0, |runs, _result| runs + 1)
 }
 
+/// Runs `run` on the inputs of `batch` as the chain `x = B::hide(op(x, y))` and returns the number
+/// of runs: from the second input on, the result of the previous run replaces the first operand.
+/// Each input passes through [`black_box`], each result through the barrier `B`, and the last
+/// result through [`black_box`]: each run waits for the one before it, in order.
+#[inline(never)]
+pub fn run_chain<I: Chain<R>, R, B: Barrier>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
+    let Some((first, rest)) = batch.split_first() else {
+        return 0;
+    };
+    // The last result passes through `black_box` with the number of runs.
+    black_box(rest.iter().fold(
+        (B::hide(run(black_box(first))), 1),
+        |(result, runs), input| (B::hide(run(&black_box(input).chain(result))), runs + 1),
+    ))
+    .1
+}
+
 /// One operation on one row, with the visitor that receives its cells.
 pub struct Row<O, K, V> {
     op: O,
     key: K,
-    /// The operand sets, drawn when the first case of the row is checked.
+    /// The checking operand sets, drawn when the first case of the row is checked.
     samples: Option<Vec<Sample>>,
     visitor: V,
     draw: fn(O, &K) -> Vec<Sample>,
+    operands: fn(O, &K, &mut Rng) -> Vec<Limbs>,
 }
 
 impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Row<O, K, V> {
@@ -203,10 +293,10 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
 
     /// Offers the case that runs the crate's `function` for `op`, as [`api`](Self::api) does,
     /// with `setup` building what `prepare` and `read` share, such as a change of basis. `setup`
-    /// runs once, before the case is checked, and only for a case that is checked.
+    /// runs once each time the visitor wants the case, before the case is checked and measured.
     #[must_use]
     pub fn api_with<S, I, R>(
-        mut self,
+        self,
         op: O,
         function: &'static str,
         setup: impl FnOnce() -> S,
@@ -214,22 +304,111 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
         run: impl Fn(&I) -> R + Copy,
         read: impl Fn(&S, &R) -> Option<Limbs>,
     ) -> Self {
+        self.case(
+            op,
+            Call::Api(function),
+            Case {
+                setup,
+                prepare,
+                run,
+                read,
+            },
+            |visitor, _id, _inputs| visitor,
+        )
+    }
+
+    /// Offers the case of [`api`](Self::api) with its chain form: the case also runs as the chain
+    /// `x = op(x, y)`, where each result is the first operand of the next operation.
+    #[must_use]
+    pub fn chain<I: Chain<R>, R, B: Barrier>(
+        self,
+        op: O,
+        function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I,
+        run: impl Fn(&I) -> R + Copy,
+        read: impl Fn(&R) -> Option<Limbs>,
+        barrier: B,
+    ) -> Self {
+        self.chain_with(
+            op,
+            function,
+            || (),
+            |&(), set| prepare(set),
+            run,
+            |&(), result| read(result),
+            barrier,
+        )
+    }
+
+    /// Offers the case of [`api_with`](Self::api_with) with its chain form, as
+    /// [`chain`](Self::chain) does. `barrier` names the registers where the result's type lives.
+    #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the closures of a case and its barrier"
+    )]
+    pub fn chain_with<S, I: Chain<R>, R, B: Barrier>(
+        self,
+        op: O,
+        function: &'static str,
+        setup: impl FnOnce() -> S,
+        prepare: impl Fn(&S, &[Limbs]) -> I,
+        run: impl Fn(&I) -> R + Copy,
+        read: impl Fn(&S, &R) -> Option<Limbs>,
+        _barrier: B,
+    ) -> Self {
+        self.case(
+            op,
+            Call::Chained(function),
+            Case {
+                setup,
+                prepare,
+                run,
+                read,
+            },
+            |visitor: V, id, inputs| visitor.measure_chain::<I, R, B>(id, inputs, run),
+        )
+    }
+
+    /// Offers `case` for `op`: when the visitor wants it, checks it if the visitor asks, measures
+    /// it, and hands its inputs to `chain`.
+    fn case<S, I, R, Setup, Prepare, Run, Read>(
+        mut self,
+        op: O,
+        call: Call,
+        case: Case<Setup, Prepare, Run, Read>,
+        chain: impl FnOnce(V, &CaseId<O, K>, &Inputs<'_, I>) -> V,
+    ) -> Self
+    where
+        Setup: FnOnce() -> S,
+        Prepare: Fn(&S, &[Limbs]) -> I,
+        Run: Fn(&I) -> R + Copy,
+        Read: Fn(&S, &R) -> Option<Limbs>,
+    {
         if op != self.row.op {
             return self;
         }
         self.offered += 1;
         let id = self.id();
-        self.row.visitor.note(&id, &Call::Api(function));
+        self.row.visitor.note(&id, &call);
         if self.row.visitor.wants(&id) {
-            let shared = setup();
-            let draw = self.row.draw;
-            let samples = self.row.samples.get_or_insert_with(|| draw(id.op, &id.key));
-            let batch: Vec<I> = samples
-                .iter()
-                .map(|sample| prepare(&shared, &sample.operands))
-                .collect();
-            check(&id, samples, &batch, run, |result| read(&shared, result));
-            self.row.visitor = self.row.visitor.measure(&id, &batch, run);
+            let shared = (case.setup)();
+            if self.row.visitor.checks(&id) {
+                let draw = self.row.draw;
+                let samples = self.row.samples.get_or_insert_with(|| draw(id.op, &id.key));
+                let batch: Vec<I> = samples
+                    .iter()
+                    .map(|sample| (case.prepare)(&shared, &sample.operands))
+                    .collect();
+                check(&id, samples, &batch, case.run, |result| {
+                    (case.read)(&shared, result)
+                });
+            }
+            let operands = self.row.operands;
+            let fresh = |rng: &mut Rng| (case.prepare)(&shared, &operands(id.op, &id.key, rng));
+            let inputs = Inputs { fresh: &fresh };
+            let measured = self.row.visitor.measure(&id, &inputs, case.run);
+            self.row.visitor = chain(measured, &id, &inputs);
         }
         self
     }
@@ -252,6 +431,15 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
             lib: self.lib,
         }
     }
+}
+
+/// The closures of a case: `setup` builds what the inputs share, `prepare` one input, `run` is
+/// the operation, and `read` its result as limbs.
+struct Case<Setup, Prepare, Run, Read> {
+    setup: Setup,
+    prepare: Prepare,
+    run: Run,
+    read: Read,
 }
 
 /// Panics unless `run` returns an accepted result on every input of `batch`.

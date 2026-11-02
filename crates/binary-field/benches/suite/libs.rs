@@ -6,7 +6,7 @@
 
 use core::ops::{Add, Mul};
 
-use bench_compare::{Cells, Limbs, Row, Visitor};
+use bench_compare::{Barrier, Cells, Gpr, Limbs, Row, Visitor};
 use binary_field::generic_array::GenericArray;
 use binary_field::{Gf2, Square};
 use core_algebra::{AlgebraicField, SerializableField, SupportsU128Conversions};
@@ -108,13 +108,15 @@ struct Carried<V, F> {
 }
 
 impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
-    /// The case of `op` on two operands: `function`, as `run`; `read` reads its result.
-    fn binary<T, R>(
+    /// The case of `op` on two operands, with its chain form through `barrier`: `function`, as
+    /// `run`; `read` reads its result.
+    fn binary<T: Clone, B: Barrier>(
         self,
         op: Op,
         function: &'static str,
-        run: impl Fn(&(T, T)) -> R + Copy,
-        read: fn(&C, &R) -> Option<Limbs>,
+        run: impl Fn(&(T, T)) -> T + Copy,
+        read: fn(&C, &T) -> Option<Limbs>,
+        barrier: B,
     ) -> Self
     where
         C: Carrier<T>,
@@ -126,7 +128,32 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
         Self {
             cells: self
                 .cells
-                .api_with(op, function, self.carrier, prepare, run, read),
+                .chain_with(op, function, self.carrier, prepare, run, read, barrier),
+            carrier: self.carrier,
+        }
+    }
+
+    /// The case of `op` on one operand whose result has its type, with its chain form through
+    /// `barrier`.
+    fn chained_unary<T, B: Barrier>(
+        self,
+        op: Op,
+        function: &'static str,
+        run: impl Fn(&T) -> T + Copy,
+        read: fn(&C, &T) -> Option<Limbs>,
+        barrier: B,
+    ) -> Self
+    where
+        C: Carrier<T>,
+    {
+        let prepare = |carrier: &C, set: &[Limbs]| match set {
+            [a] => carrier.to_crate(a),
+            _ => panic!("{} operands where one was drawn", set.len()),
+        };
+        Self {
+            cells: self
+                .cells
+                .chain_with(op, function, self.carrier, prepare, run, read, barrier),
             carrier: self.carrier,
         }
     }
@@ -229,16 +256,18 @@ macro_rules! raw_word {
     };
 }
 
-/// Add and mul by the operators of a type that holds the row's elements.
-fn operators<T, V>(cells: Crate<V>) -> Carried<V, impl Fn() -> Same + Copy>
+/// Add and mul by the operators of a type that holds the row's elements, with their chain forms
+/// through `barrier`.
+fn operators<T, B, V>(cells: Crate<V>, barrier: B) -> Carried<V, impl Fn() -> Same + Copy>
 where
     T: Raw + Copy + Add<Output = T> + Mul<Output = T>,
+    B: Barrier + Copy,
     V: Visitor<Op, Field>,
 {
     cells
         .carry(same)
-        .binary(Op::Add, "+", |&(a, b): &(T, T)| a + b, element)
-        .binary(Op::Mul, "*", |&(a, b): &(T, T)| a * b, element)
+        .binary(Op::Add, "+", |&(a, b): &(T, T)| a + b, element, barrier)
+        .binary(Op::Mul, "*", |&(a, b): &(T, T)| a * b, element, barrier)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -271,8 +300,8 @@ fn this_crate<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 }
 
 fn ours<P: binary_field::Polynomial, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
-    operators::<Gf2<P>, V>(cells)
-        .unary(Op::Square, "square", |&a: &Gf2<P>| a.square(), element)
+    operators::<Gf2<P>, _, V>(cells, Gpr)
+        .chained_unary(Op::Square, "square", |&a: &Gf2<P>| a.square(), element, Gpr)
         .unary(Op::Invert, "invert", |&a: &Gf2<P>| a.invert(), maybe)
         .unary(Op::Sqrt, "sqrt", |&a: &Gf2<P>| a.sqrt(), element)
         .cells()
@@ -306,7 +335,7 @@ raw_word! {
 /// Offers the operations of the `gf256` type `$t`.
 macro_rules! gf256_ops {
     ($cells:expr, $t:ty) => {
-        operators::<$t, V>($cells)
+        operators::<$t, _, V>($cells, Gpr)
             .absent(Op::Square, NO_SQUARE)
             .unary(
                 Op::Invert,
@@ -350,7 +379,7 @@ where
     T: galois_field_2pm::GaloisField + Raw + Add<Output = T> + Mul<Output = T>,
     V: Visitor<Op, Field>,
 {
-    operators::<T, V>(cells)
+    operators::<T, _, V>(cells, Gpr)
         .absent(Op::Square, NO_SQUARE)
         .unary(Op::Invert, "inverse", |a: &T| a.inverse(), element)
         .absent(Op::Sqrt, NO_SQRT)
@@ -395,7 +424,7 @@ where
     T: Raw + Copy + Add<Output = T> + Mul<Output = T>,
     V: Visitor<Op, Field>,
 {
-    operators::<T, V>(cells)
+    operators::<T, _, V>(cells, Gpr)
         .absent(Op::Square, NO_SQUARE)
         .absent(Op::Invert, NO_INVERSE)
         .absent(Op::Sqrt, NO_SQRT)
@@ -484,8 +513,20 @@ fn rs_erasure<T: Raw + Copy, V: Visitor<Op, Field>>(
     mul: impl Fn(T, T) -> T + Copy,
 ) -> Crate<V> {
     cells
-        .binary(Op::Add, "add", move |&(a, b): &(T, T)| add(a, b), element)
-        .binary(Op::Mul, "mul", move |&(a, b): &(T, T)| mul(a, b), element)
+        .binary(
+            Op::Add,
+            "add",
+            move |&(a, b): &(T, T)| add(a, b),
+            element,
+            Gpr,
+        )
+        .binary(
+            Op::Mul,
+            "mul",
+            move |&(a, b): &(T, T)| mul(a, b),
+            element,
+            Gpr,
+        )
         .absent(Op::Square, NO_SQUARE)
         .absent(Op::Invert, NO_INVERSE)
         .absent(Op::Sqrt, NO_SQRT)
@@ -544,8 +585,8 @@ fn hekate_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     let modulus = spec(cells.key()).1.modulus;
     let tower = move || Basis::new(&modulus, &hekate_tower(modulus.degree));
     match cells.key().field.as_str() {
-        GF8 => operators::<Block8, V>(cells)
-            .unary(Op::Square, "square", |&a: &Block8| a.square(), element)
+        GF8 => operators::<Block8, _, V>(cells, Gpr)
+            .chained_unary(Op::Square, "square", |&a: &Block8| a.square(), element, Gpr)
             .unary(Op::Invert, "invert", |a: &Block8| a.invert(), element)
             .absent(Op::Sqrt, NO_SQRT)
             .cells(),
@@ -561,9 +602,9 @@ fn hekate<T: BinaryFieldExtras + Raw, V: Visitor<Op, Field>>(
     cells: Carried<V, impl Fn() -> Basis + Copy>,
 ) -> Crate<V> {
     cells
-        .binary(Op::Add, "+", |&(a, b): &(T, T)| a + b, element)
-        .binary(Op::Mul, "*", |&(a, b): &(T, T)| a * b, element)
-        .unary(Op::Square, "square", |a: &T| a.square(), element)
+        .binary(Op::Add, "+", |&(a, b): &(T, T)| a + b, element, Gpr)
+        .binary(Op::Mul, "*", |&(a, b): &(T, T)| a * b, element, Gpr)
+        .chained_unary(Op::Square, "square", |a: &T| a.square(), element, Gpr)
         .unary(Op::Invert, "invert", |a: &T| a.invert(), element)
         .absent(Op::Sqrt, NO_SQRT)
         .cells()
@@ -616,9 +657,9 @@ fn p3<T: p3_field::Field, C: Carrier<T>, V: Visitor<Op, Field>>(
     cells: Carried<V, impl Fn() -> C + Copy>,
 ) -> Crate<V> {
     cells
-        .binary(Op::Add, "+", |&(a, b): &(T, T)| a + b, element)
-        .binary(Op::Mul, "*", |&(a, b): &(T, T)| a * b, element)
-        .unary(Op::Square, "square", |a: &T| a.square(), element)
+        .binary(Op::Add, "+", |&(a, b): &(T, T)| a + b, element, Gpr)
+        .binary(Op::Mul, "*", |&(a, b): &(T, T)| a * b, element, Gpr)
+        .chained_unary(Op::Square, "square", |a: &T| a.square(), element, Gpr)
         .unary(Op::Invert, "try_inverse", |a: &T| a.try_inverse(), maybe)
         .unary(Op::Sqrt, "try_sqrt", |a: &T| a.try_sqrt(), maybe)
         .cells()
@@ -643,42 +684,56 @@ impl<F: SupportsU128Conversions + SerializableField> Carrier<F::E> for Longfello
     }
 }
 
-/// The operations of a longfellow-zk `Gf2_128Field`.
-fn longfellow<F, V>(field: &F, cells: Crate<V>) -> Crate<V>
+/// The operations of a longfellow-zk `Gf2_128Field`, whose elements live in the registers of
+/// `barrier`.
+fn longfellow<F, B, V>(field: &F, cells: Crate<V>, barrier: B) -> Crate<V>
 where
     F: AlgebraicField + SupportsU128Conversions + SerializableField,
+    B: Barrier + Copy,
     V: Visitor<Op, Field>,
 {
     cells
         .carry(|| Longfellow(field))
-        .binary(Op::Add, "addf", |(a, b)| field.addf(a, b), element)
-        .binary(Op::Mul, "mulf", |(a, b)| field.mulf(a, b), element)
+        .binary(Op::Add, "addf", |(a, b)| field.addf(a, b), element, barrier)
+        .binary(Op::Mul, "mulf", |(a, b)| field.mulf(a, b), element, barrier)
         .absent(Op::Square, NO_SQUARE)
         .unary(Op::Invert, "invert", |a| field.invert(a), element)
         .absent(Op::Sqrt, NO_SQRT)
         .cells()
 }
 
+/// The registers of `runtime-algebra`'s `Gf2_128`, an `__m128i` under PCLMULQDQ.
+#[cfg(all(target_arch = "x86_64", target_feature = "pclmulqdq"))]
+const RUNTIME_REGISTERS: bench_compare::Xmm = bench_compare::Xmm;
+
+/// The registers of `runtime-algebra`'s `Gf2_128`, a `u128` without PCLMULQDQ.
+#[cfg(not(all(target_arch = "x86_64", target_feature = "pclmulqdq")))]
+const RUNTIME_REGISTERS: Gpr = Gpr;
+
 /// longfellow-zk's prover-side `Gf2_128Field`.
 fn runtime_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
-        GF128 => longfellow(&runtime_algebra::gf2_128::Gf2_128Field::new(), cells),
+        GF128 => longfellow(
+            &runtime_algebra::gf2_128::Gf2_128Field::new(),
+            cells,
+            RUNTIME_REGISTERS,
+        ),
         _ => cells.none(GF128_ONLY),
     }
 }
 
-/// longfellow-zk's compile-side `Gf2_128Field`.
+/// longfellow-zk's compile-side `Gf2_128Field`, whose elements are `u128`.
 fn compile_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
-        GF128 => longfellow(&compile_algebra::gf2_128::Gf2_128Field::new(), cells),
+        GF128 => longfellow(&compile_algebra::gf2_128::Gf2_128Field::new(), cells, Gpr),
         _ => cells.none(GF128_ONLY),
     }
 }
 
-/// longfellow-zk's reference `Gf2_128Field`.
+/// longfellow-zk's reference `Gf2_128Field`, whose elements are `u128`.
 fn core_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
-        GF128 => longfellow(&core_algebra::gf2_128::Gf2_128Field::new(), cells),
+        GF128 => longfellow(&core_algebra::gf2_128::Gf2_128Field::new(), cells, Gpr),
         _ => cells.none(GF128_ONLY),
     }
 }
@@ -723,8 +778,20 @@ fn polyval<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
         GF128 => cells
             .carry(move || Polyval::new(modulus))
-            .binary(Op::Add, "+", |&(a, b): &(FieldElement, _)| a + b, element)
-            .binary(Op::Mul, "*", |&(a, b): &(FieldElement, _)| a * b, element)
+            .binary(
+                Op::Add,
+                "+",
+                |&(a, b): &(FieldElement, _)| a + b,
+                element,
+                Gpr,
+            )
+            .binary(
+                Op::Mul,
+                "*",
+                |&(a, b): &(FieldElement, _)| a * b,
+                element,
+                Gpr,
+            )
             .absent(Op::Square, NO_SQUARE)
             .absent(Op::Invert, NO_INVERSE)
             .absent(Op::Sqrt, NO_SQRT)

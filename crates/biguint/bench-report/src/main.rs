@@ -3,7 +3,7 @@
 use core::fmt;
 use std::process::ExitCode;
 
-use bench_compare::{Layout, Measured, Paths, markdown_table, sentence};
+use bench_compare::{BATCH, Layout, Measured, NATIVE, Paths, markdown_table, sentence};
 use serde::{Deserialize, Serialize};
 
 /// A row: a width in bits.
@@ -33,6 +33,7 @@ const MEASURED: Measured = Measured {
         ":(exclude)crates/biguint/benchmarks",
     ],
     versions: &["ruint", "crypto-bigint", "bnum", "uint", "num-bigint"],
+    builds: &[NATIVE],
 };
 
 const LAYOUT: Layout<'static, Width> = Layout {
@@ -60,7 +61,7 @@ const LAYOUT: Layout<'static, Width> = Layout {
     lines: true,
 };
 
-fn method(batch: u32) -> Vec<String> {
+fn method() -> Vec<String> {
     let operands = [
         ["add, mul", "`a` and `b` uniform below 2^N"],
         [
@@ -79,15 +80,16 @@ fn method(batch: u32) -> Vec<String> {
         .collect();
     let mut lines = vec![
         format!(
-            "Each case runs one crate's function over {batch} operand sets, the same for every \
-             crate in a row, with operands and results behind `core::hint::black_box`. Callgrind \
-             counts the instructions of the loop over the batch, including the functions it \
-             calls, such as the allocator of `num-bigint`; each count is that total divided by \
-             {batch}. The loop's own loads and stores are part of every count. Every instruction \
-             counts as one, whatever its latency: a hardware divide weighs as much as an \
-             addition. The counts are exact at any machine load. Every result equals \
-             `num-bigint`'s, reduced modulo 2^N for the crates that wrap."
+            "Before a case is measured, its results on {BATCH} operand sets equal `num-bigint`'s, \
+             reduced modulo 2^N for the crates that wrap. The functions that a case calls, such \
+             as the allocator of `num-bigint`, are part of its counts."
         ),
+        String::new(),
+        "The chains are those of add, of the native mul, whose hardware multiply takes the same \
+         time on all operands, and of the mulmod functions that return the type of their \
+         operands. A chain of products modulo 2^N gathers trailing zeros and a chain of \
+         quotients falls to zero, so the other cases of mul, div and mod have no chain."
+            .to_owned(),
         String::new(),
     ];
     lines.extend(markdown_table(

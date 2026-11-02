@@ -3,7 +3,7 @@
 use core::fmt;
 use std::process::ExitCode;
 
-use bench_compare::{Layout, Measured, Paths, markdown_table, sentence};
+use bench_compare::{BATCH, Build, Layout, Measured, NATIVE, Paths, markdown_table, sentence};
 use serde::{Deserialize, Serialize};
 
 /// A row: a field, by name.
@@ -46,6 +46,19 @@ const MEASURED: Measured = Measured {
         "compile-algebra",
         "core-algebra",
         "polyval",
+    ],
+    builds: &[
+        Build {
+            name: "with carry-less multiplication",
+            ..NATIVE
+        },
+        Build {
+            name: "without carry-less multiplication",
+            slug: "without-clmul",
+            // polyval selects its PCLMULQDQ backend at run time unless its backend is "soft".
+            rustflags: "-C target-cpu=native -C target-feature=-pclmulqdq,-vpclmulqdq \
+                        -C codegen-units=1 --cfg polyval_backend=\"soft\"",
+        },
     ],
 };
 
@@ -92,7 +105,7 @@ const LAYOUT: Layout<'static, Field> = Layout {
     lines: false,
 };
 
-fn method(batch: u32) -> Vec<String> {
+fn method() -> Vec<String> {
     let table = |header: [&str; 2], rows: &[[&str; 2]]| {
         markdown_table(
             &header.map(str::to_owned),
@@ -105,26 +118,22 @@ fn method(batch: u32) -> Vec<String> {
     };
     let mut lines = vec![
         format!(
-            "Each case runs one crate's function over {batch} operand sets, the same elements \
-             for every crate in a row, with operands and results behind `core::hint::black_box`. \
-             Callgrind counts the instructions of the loop over the batch, including the \
-             functions it calls; each count is that total divided by {batch}. The loop's own \
-             loads and stores are part of every count. Every instruction counts as one, whatever \
-             its latency: a table lookup weighs as much as an exclusive or, whatever the cache \
-             does with it. The build leaves out VPCLMULQDQ, whose 256-bit `vpclmulqdq` Valgrind \
-             cannot run. A native build may fuse two carry-less products into one such \
-             instruction. The counts are exact at any machine load. Before a case is counted, \
-             every result is checked against a bit-serial reference in the bench: the \
-             shift-and-add product reduced bit by bit, the extended Euclidean inverse confirmed \
-             by that product, and the root `r` of `a = r²`. Elements enter and leave each crate \
-             in its own representation; the conversions lie outside the count."
+            "Before a case is measured, its results on {BATCH} operand sets are checked against \
+             a bit-serial reference in the bench: the shift-and-add product reduced bit by bit, \
+             the extended Euclidean inverse confirmed by that product, and the root `r` of \
+             `a = r²`. Elements enter and leave each crate in its own representation; the \
+             conversions lie outside the counted region. The chains are those of add, mul and \
+             square. The build without carry-less multiplication drops PCLMULQDQ and VPCLMULQDQ \
+             and selects the software backend of `polyval`, so every crate takes its portable \
+             product."
         ),
         String::new(),
     ];
     lines.extend(table(
         ["Operation", "Operands"],
         &[
-            ["add, mul", "`a` and `b` uniform"],
+            ["add", "`a` and `b` uniform"],
+            ["mul", "`a` and `b` uniform and nonzero"],
             ["square, invert", "`a` uniform and nonzero"],
             ["sqrt", "`a = r²` for `r` uniform and nonzero"],
         ],

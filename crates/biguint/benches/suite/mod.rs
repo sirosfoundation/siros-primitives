@@ -63,6 +63,10 @@ impl Suite for Biguint {
             .collect()
     }
 
+    fn operands(op: Op, key: &Width, rng: &mut Rng) -> Vec<Limbs> {
+        op.operands(key.bits as usize, rng)
+    }
+
     fn offer<V: Visitor<Op, Width>>(row: Row<Op, Width, V>) -> Row<Op, Width, V> {
         libs::offer(row)
     }
