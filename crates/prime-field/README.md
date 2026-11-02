@@ -96,7 +96,7 @@ x86-64. The `const_*` twins run the loops of the constant-evaluable kernels.
 | representation | `2^k - c` of several limbs, `c < 2^64`, at most three folds to land below `2p` (secp256k1, P-521) | Plain residues |
 | representation | every other modulus | Montgomery residues `x R mod p`, `R = 2^(64 L)` |
 | add, double | several limbs | `a + b - p`, then `a + b` back by conditional moves on the borrow; for a modulus whose limbs are mostly all ones (P-521), `p` back under the mask of the borrow |
-| sub, neg | several limbs | `a - b`, then `p` added under the mask of the borrow; for a modulus of arbitrary limbs with a spare top bit (BN254, BLS12-381), `a - b + p` chosen by conditional moves on the carry |
+| sub, neg | several limbs | `a - b`, then `p` added under the mask of the borrow; for a modulus of at most four arbitrary limbs with a spare top bit (BN254), `a - b + p` chosen by conditional moves on the carry |
 | add, sub, neg, double | one limb | `a + b - p` or `a - b + p`, chosen by a conditional move on the borrow |
 | mul | one limb, `2^k - 1` | The product folded once, `low + high`, and one conditional subtraction |
 | mul | one limb, Montgomery | One Montgomery step `(x + m p) / 2^64`; when the product fits the limb and the modulus is prime the step lands below `p`; for `p = 2^64 - 2^32 + 1`, whose inverse modulo `2^64` is `1 + 2^32`, the multiplier is a shift and an addition, as in winter-math |

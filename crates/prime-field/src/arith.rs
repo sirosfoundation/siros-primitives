@@ -411,10 +411,12 @@ impl<M: Modulus> Shape<M> {
 
     /// A difference adds `p` under the mask of its borrow where masking `p` costs fewer
     /// instructions than the conditional form's copy, carry chain and conditional move per limb,
-    /// with its `sbb` and `adc` that keep the borrow without a spare bit. Every modulus gains
-    /// but those of arbitrary limbs with a spare bit (BN254, BLS12-381).
+    /// with its `sbb` and `adc` that keep the borrow without a spare bit, and beyond four limbs,
+    /// where the conditional form's `3 L` live values (both chains and the limbs of `p`) spill:
+    /// on BLS12-381 the masked form measures half a cycle to a cycle below it in throughput and
+    /// latency. Only BN254, of arbitrary limbs with a spare bit, keeps the conditional form.
     pub(crate) const SUB_MASKED: bool =
-        Self::MASK_COST + 1 < 2 * Self::LIMBS + if Self::SPARE { 0 } else { 2 };
+        Self::MASK_COST + 1 < 2 * Self::LIMBS + if Self::SPARE { 0 } else { 2 } || Self::LIMBS > 4;
 
     /// A product's final subtraction is a branch in the variable-time form: a Montgomery product
     /// reaches `p` with probability about `p / 4R` (Walter, *Montgomery exponentiation needs no
