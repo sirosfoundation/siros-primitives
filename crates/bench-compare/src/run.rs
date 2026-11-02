@@ -9,8 +9,11 @@ use crate::error::Error;
 use crate::record::{Cell, Key, Record, Version};
 
 /// The `RUSTFLAGS` of the build: code for the CPU that runs the bench, without SSE4a and
-/// VPCLMULQDQ, whose `extrq` and 256-bit `vpclmulqdq` Valgrind 3.22 cannot execute.
-const RUSTFLAGS: &str = "-C target-cpu=native -C target-feature=-sse4a,-vpclmulqdq";
+/// VPCLMULQDQ, whose `extrq` and 256-bit `vpclmulqdq` Valgrind 3.22 cannot execute. One codegen
+/// unit makes the code of each crate independent of the rest of the bench: with sixteen, a change
+/// to the measured crate moved the counts of others by up to 14%.
+const RUSTFLAGS: &str =
+    "-C target-cpu=native -C target-feature=-sse4a,-vpclmulqdq -C codegen-units=1";
 
 /// The locations that a report tool reads and writes.
 pub struct Paths {
