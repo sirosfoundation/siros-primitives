@@ -9,6 +9,7 @@ use biguint::Uint;
 use clmul::{NibbleMap, Poly};
 use const_default::ConstDefault;
 use generic_array::GenericArray;
+use typenum::{U8, U128};
 
 use crate::arith::Lanes;
 use crate::element::Limbs;
@@ -37,6 +38,13 @@ impl<P: Polynomial> Tables<P> {
     /// `x^n`, at `x^(n-4)`: `t = r x^(k-4)` rounded down for bit `k` of the nibble. Read when the
     /// plan's `SPILL_BY_NIBBLES` holds, where `d` is at most 4.
     pub(crate) const SPILL: NibbleMap = NibbleMap::from_images(spill_images(Plan::<P>::R_WORD));
+
+    /// [`SPILL`](Self::SPILL) for a square, indexed by the top two bits of the element: they square
+    /// to bits 0 and 2 of the top nibble of `h`.
+    pub(crate) const SQUARE_SPILL: NibbleMap = {
+        let [low, _, high, _] = spill_images(Plan::<P>::R_WORD);
+        NibbleMap::from_images([low, high, 0, 0])
+    };
 
     /// `sqrt(x)`.
     #[inline(always)]
@@ -229,14 +237,41 @@ impl<P: Polynomial> Tables<P> {
         map_by_bytes(Self::ROOT_BYTES, a)
     }
 
+    /// The Frobenius maps `a -> a^(2^k)` for `k` up to 16 of a field up to degree 8 as nibble
+    /// maps of the low and the high nibble.
+    const FROBENIUS_NIBBLES: [[NibbleMap; 2]; 17] =
+        frobenius_nibbles(Plan::<P>::DEGREE, Plan::<P>::TAPS);
+
+    /// The fold `h x^n mod f` of the part `h`, below `x^(n-1)`, of a product of two elements of a
+    /// field up to degree 8, as nibble maps of the low and the high nibble of `h`.
+    const FOLD_NIBBLES: [NibbleMap; 2] = fold_nibbles(Plan::<P>::DEGREE, Plan::<P>::TAPS);
+
     /// `a^(2^k)` for `k` up to 16, by the constant-time linear map of the Frobenius power. Degrees
-    /// up to 16.
+    /// up to 16; up to 8, two nibble maps in a vector register where the plan says so.
     #[inline(always)]
     pub(crate) fn frobenius(a: u64, k: usize) -> u64 {
+        if Plan::<P>::NIBBLE_MAPS
+            && let Some(&[low, high]) = Self::FROBENIUS_NIBBLES.get(k)
+        {
+            let byte = Poly::<U8>::from_uint(Uint::from_u64(a));
+            return word(byte.map_low_nibbles(low) ^ byte.map_high_nibbles(high));
+        }
         match Self::FROBENIUS.get(k) {
             Some(map) => apply(map, a, Plan::<P>::DEGREE),
             None => 0,
         }
+    }
+
+    /// `p mod f` for a product `p` of two elements of a field up to degree 8, in the low word of a
+    /// register: the low `n` bits plus the nibble maps of the part at and above `x^n`.
+    #[inline(always)]
+    pub(crate) fn fold_byte(product: Poly<U128>) -> u64 {
+        let [low, high] = Self::FOLD_NIBBLES;
+        let degree = Plan::<P>::DEGREE;
+        let part = (product >> degree).resize::<U8>();
+        let folded =
+            product.resize::<U8>() ^ part.map_low_nibbles(low) ^ part.map_high_nibbles(high);
+        word(folded) & ((1 << degree) - 1)
     }
 }
 
@@ -269,6 +304,61 @@ const fn sqrt_x<P: Polynomial>() -> GenericArray<u64, Limbs<P>> {
         count += 1;
     }
     power
+}
+
+/// The polynomial of `byte` as a word.
+#[inline(always)]
+fn word(byte: Poly<U8>) -> u64 {
+    byte.to_uint().as_limbs().first().copied().unwrap_or(0)
+}
+
+/// The nibble maps of the low and the high nibble of a byte under the map that sends `x^j` to
+/// `images[j]`, for `j` below 8.
+const fn nibble_pair(images: &[u64; 16]) -> [NibbleMap; 2] {
+    let [i0, i1, i2, i3, i4, i5, i6, i7, ..] = *images;
+    [
+        NibbleMap::from_images([i0 as u8, i1 as u8, i2 as u8, i3 as u8]),
+        NibbleMap::from_images([i4 as u8, i5 as u8, i6 as u8, i7 as u8]),
+    ]
+}
+
+/// The nibble maps of `a -> a^(2^k)` for `k` up to 16, of a field up to degree 8; zero above.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn frobenius_nibbles(degree: usize, taps: &[usize]) -> [[NibbleMap; 2]; 17] {
+    let zero = NibbleMap::from_images([0; 4]);
+    let mut maps = [[zero; 2]; 17];
+    if degree > 8 {
+        return maps;
+    }
+    let mut k = 0;
+    while k <= 16 {
+        maps[k] = nibble_pair(&images(degree, taps, k));
+        k += 1;
+    }
+    maps
+}
+
+/// The nibble maps of `h -> h x^n mod f` for `h` below `x^8`, of a field up to degree 8; zero
+/// above.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn fold_nibbles(degree: usize, taps: &[usize]) -> [NibbleMap; 2] {
+    let mut images = [0u64; 16];
+    if degree > 8 {
+        return nibble_pair(&images);
+    }
+    let r = r_bits(taps);
+    let mut j = 0;
+    while j < 8 {
+        images[j] = small_mul(r, 1 << j, degree, taps);
+        j += 1;
+    }
+    nibble_pair(&images)
 }
 
 /// The images of the bits `k` of the top nibble of `h` under `h -> t r`: `t = (r << k) >> 4`, the
