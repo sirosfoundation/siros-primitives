@@ -1,6 +1,6 @@
 # Benchmarks
 
-`binary-field` at commit `28eaba0` against `gf256`, `galois_field_2pm`, `g2p`, `reed-solomon-erasure`, `hekate-math`, `plonky3`, `runtime-algebra`, `compile-algebra`, `core-algebra`, `polyval`, `galois_field_2pm lut` and `ghash`: add, mul, square, invert and sqrt over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹), in instructions per operation, counted on 2026-11-02.
+`binary-field` at commit `19a8636` against `gf256`, `galois_field_2pm`, `g2p`, `reed-solomon-erasure`, `hekate-math`, `plonky3`, `runtime-algebra`, `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut`: add, mul, square, invert and sqrt over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹), in instructions per operation, counted on 2026-11-02.
 
 ## Setup
 
@@ -9,7 +9,7 @@
 | CPU | AMD Ryzen 9 5950X 16-Core Processor (`znver3`) |
 | Compiler | rustc 1.99.1 (58cf8f9c3 2026-10-13), LLVM 23.1.1, `bench` profile, `-C target-cpu=native -C target-feature=-sse4a,-vpclmulqdq` |
 | Counter | Valgrind 3.22.0, Callgrind |
-| Crates | gf256 0.3.1, galois_field_2pm 0.1.0, g2p 1.2.2, reed-solomon-erasure 6.0.0, hekate-math 0.12.1, p3-binary-field 0.9.0-rc.2, runtime-algebra 0.1.0, compile-algebra 0.1.0, core-algebra 0.1.0, polyval 0.7.3, ghash 0.6.0 |
+| Crates | gf256 0.3.1, galois_field_2pm 0.1.0, g2p 1.2.2, reed-solomon-erasure 6.0.0, hekate-math 0.12.1, p3-binary-field 0.9.0-rc.2, runtime-algebra 0.1.0, compile-algebra 0.1.0, core-algebra 0.1.0, polyval 0.7.3 |
 
 ## Method
 
@@ -37,13 +37,13 @@ Each row is a field in the polynomial basis of its modulus: bit `i` of an elemen
 
 Each cell counts the crate's own function:
 
-| Operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut | ghash |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| add | `+` | `+` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `+` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `+` over GF(2⁸) and GF(2¹⁶) | `add` over GF(2⁸) and GF(2¹⁶) | `+` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `+` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `+` over GF(2¹²⁸) | `+` over GF(2¹⁶) | – |
-| mul | `*` | `*` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `*` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `*` over GF(2⁸) and GF(2¹⁶) | `mul` over GF(2⁸) and GF(2¹⁶) | `*` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `*` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | `*` over GF(2¹²⁸) | `*` over GF(2¹⁶) | – |
-| square | `square` | – | – | – | – | `square` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `square` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | – | – | – | – | – | – |
-| invert | `invert` | `checked_recip` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `inverse` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | – | – | `invert` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `try_inverse` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | `invert` over GF(2¹²⁸) | `invert` over GF(2¹²⁸) | `invert` over GF(2¹²⁸) | – | `inverse` over GF(2¹⁶) | – |
-| sqrt | `sqrt` | – | – | – | – | – | `try_sqrt` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | – | – | – | – | – | – |
+| Operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| add | `+` | `+` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `+` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `+` over GF(2⁸) and GF(2¹⁶) | `add` over GF(2⁸) and GF(2¹⁶) | `+` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `+` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `+` over GF(2¹²⁸) | `+` over GF(2¹⁶) |
+| mul | `*` | `*` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `*` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `*` over GF(2⁸) and GF(2¹⁶) | `mul` over GF(2⁸) and GF(2¹⁶) | `*` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `*` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | `*` over GF(2¹²⁸) | `*` over GF(2¹⁶) |
+| square | `square` | – | – | – | – | `square` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `square` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | – | – | – | – | – |
+| invert | `invert` | `checked_recip` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `inverse` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | – | – | `invert` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `try_inverse` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | `invert` over GF(2¹²⁸) | `invert` over GF(2¹²⁸) | `invert` over GF(2¹²⁸) | – | `inverse` over GF(2¹⁶) |
+| sqrt | `sqrt` | – | – | – | – | – | `try_sqrt` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | – | – | – | – | – |
 
 - `gf256` is its `gf2p16` and `gf2p64`, and at 8 bits the AES field that its `gf` macro declares; the macro's default modes are log and antilog tables up to 8 bits and Barrett reduction above.
 - `galois_field_2pm` is its `gf2` module, which multiplies by carry-less products; `galois_field_2pm lut` is its `gf2_lut` module, with log and antilog tables for a primitive polynomial.
@@ -66,82 +66,81 @@ Each cell counts the crate's own function:
 - GF(2¹²⁸) only: `runtime-algebra` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹), `compile-algebra` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹), `core-algebra` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹) and `polyval` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹).
 - The AES polynomial is not primitive: `galois_field_2pm lut` over GF(2⁸).
 - Tables of at most 16 bits: `galois_field_2pm lut` over GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹).
-- Block hashing only: `ghash`.
 
 ## Results
 
 Each cell: instructions per operation. Bold marks the fewest in each row.
-The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`, `galois_field_2pm lut` and `ghash` appear in the tables only.
+The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut` appear in the tables only.
 
 ### add: a + b
 
 ![add: a + b](benchmarks/add.svg)
 
-| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut | ghash |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 9.0 | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | – | – |
-| GF(2¹⁶) | 9.0 | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | **8.0** | – |
-| GF(2⁶⁴) | **8.0** | **8.0** | **8.0** | – | – | **8.0** | **8.0** | – | – | – | – | – | – |
-| GF(2¹²⁸) | **8.0** | – | – | – | – | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – |
-| GF(2²³³) | **13.0** | – | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **8.0** | – | – | – | – | 11.1 | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **15.0** | – | – | – | – | – | – | – | – | – | – | – | – |
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | – |
+| GF(2¹⁶) | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | **8.0** |
+| GF(2⁶⁴) | **8.0** | **8.0** | **8.0** | – | – | **8.0** | **8.0** | – | – | – | – | – |
+| GF(2¹²⁸) | **8.0** | – | – | – | – | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – |
+| GF(2²³³) | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **8.0** | – | – | – | – | 11.1 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **14.0** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul: a × b
 
 ![mul: a × b](benchmarks/mul.svg)
 
-| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut | ghash |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 21.0 | 20.0 | 323 | **11.0** | **11.0** | 67.1 | 59.1 | – | – | – | – | – | – |
-| GF(2¹⁶) | 21.0 | **17.0** | 627 | 22.1 | 31.1 | 235 | 69.1 | – | – | – | – | 31.0 | – |
-| GF(2⁶⁴) | 17.0 | 13.0 | 1,353 | – | – | 2,480 | **13.0** | – | – | – | – | – | – |
-| GF(2¹²⁸) | 26.0 | – | – | – | – | 7,935 | **21.0** | **21.0** | 78.1 | 2,068 | 526 | – | – |
-| GF(2²³³) | **106** | – | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **76.0** | – | – | – | – | 25,496 | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **478** | – | – | – | – | – | – | – | – | – | – | – | – |
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | 21.0 | 20.0 | 323 | **11.0** | **11.0** | 67.1 | 59.1 | – | – | – | – | – |
+| GF(2¹⁶) | 21.0 | **17.0** | 627 | 22.1 | 31.1 | 235 | 69.1 | – | – | – | – | 31.0 |
+| GF(2⁶⁴) | 17.0 | 13.0 | 1,353 | – | – | 2,480 | **13.0** | – | – | – | – | – |
+| GF(2¹²⁸) | 26.0 | – | – | – | – | 7,935 | **21.0** | **21.0** | 78.1 | 2,068 | 526 | – |
+| GF(2²³³) | **106** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **76.0** | – | – | – | – | 25,496 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **478** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square: a²
 
 ![square: a²](benchmarks/square.svg)
 
-| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut | ghash |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **20.0** | – | – | – | – | 33.0 | 34.1 | – | – | – | – | – | – |
-| GF(2¹⁶) | 20.0 | – | – | – | – | 88.1 | **11.0** | – | – | – | – | – | – |
-| GF(2⁶⁴) | **16.0** | – | – | – | – | 583 | 22.0 | – | – | – | – | – | – |
-| GF(2¹²⁸) | 20.0 | – | – | – | – | 1,236 | **16.0** | – | – | – | – | – | – |
-| GF(2²³³) | **52.1** | – | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **34.0** | – | – | – | – | 3,936 | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **97.1** | – | – | – | – | – | – | – | – | – | – | – | – |
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **20.0** | – | – | – | – | 33.0 | 34.1 | – | – | – | – | – |
+| GF(2¹⁶) | 20.0 | – | – | – | – | 88.1 | **11.0** | – | – | – | – | – |
+| GF(2⁶⁴) | **16.0** | – | – | – | – | 583 | 22.0 | – | – | – | – | – |
+| GF(2¹²⁸) | 20.0 | – | – | – | – | 1,236 | **16.0** | – | – | – | – | – |
+| GF(2²³³) | **52.1** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **34.0** | – | – | – | – | 3,936 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **97.1** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert: a⁻¹
 
 ![invert: a⁻¹](benchmarks/invert.svg)
 
-| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut | ghash |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 172 | **15.0** | 1,407 | – | – | 807 | 518 | – | – | – | – | – | – |
-| GF(2¹⁶) | 312 | 386 | 4,284 | – | – | 1,052 | 95.1 | – | – | – | – | **25.1** | – |
-| GF(2⁶⁴) | **985** | 1,025 | 28,264 | – | – | 4,786 | 1,081 | – | – | – | – | – | – |
-| GF(2¹²⁸) | 2,041 | – | – | – | – | 13,511 | **493** | 6,368 | 13,665 | 533,598 | – | – | – |
-| GF(2²³³) | **12,320** | – | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **7,569** | – | – | – | – | 41,386 | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **62,012** | – | – | – | – | – | – | – | – | – | – | – | – |
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | 172 | **15.0** | 1,407 | – | – | 807 | 518 | – | – | – | – | – |
+| GF(2¹⁶) | 312 | 386 | 4,284 | – | – | 1,052 | 95.1 | – | – | – | – | **25.1** |
+| GF(2⁶⁴) | **985** | 1,025 | 28,264 | – | – | 4,786 | 1,081 | – | – | – | – | – |
+| GF(2¹²⁸) | 2,041 | – | – | – | – | 13,511 | **493** | 6,368 | 13,665 | 533,598 | – | – |
+| GF(2²³³) | **12,320** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **7,569** | – | – | – | – | 41,386 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **62,012** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt: √a
 
 ![sqrt: √a](benchmarks/sqrt.svg)
 
-| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut | ghash |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 49.1 | – | – | – | – | – | **35.1** | – | – | – | – | – | – |
-| GF(2¹⁶) | 57.1 | – | – | – | – | – | **12.0** | – | – | – | – | – | – |
-| GF(2⁶⁴) | 61.1 | – | – | – | – | – | **58.1** | – | – | – | – | – | – |
-| GF(2¹²⁸) | **55.1** | – | – | – | – | – | 81.1 | – | – | – | – | – | – |
-| GF(2²³³) | **231** | – | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **169** | – | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **659** | – | – | – | – | – | – | – | – | – | – | – | – |
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | 49.1 | – | – | – | – | – | **35.1** | – | – | – | – | – |
+| GF(2¹⁶) | 57.1 | – | – | – | – | – | **12.0** | – | – | – | – | – |
+| GF(2⁶⁴) | 61.1 | – | – | – | – | – | **58.1** | – | – | – | – | – |
+| GF(2¹²⁸) | **55.1** | – | – | – | – | – | 81.1 | – | – | – | – | – |
+| GF(2²³³) | **231** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **169** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **659** | – | – | – | – | – | – | – | – | – | – | – |
 
 ## Reproduce
 

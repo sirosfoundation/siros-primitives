@@ -44,15 +44,15 @@
 <text class="tick" x="880.9" y="432" text-anchor="middle">P-521 base</text>
 <text class="tick" x="504.0" y="448" text-anchor="middle">field</text>
 <g class="c0">
-<path class="marker" transform="translate(127.1,415.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Mersenne-31: 870 instructions per operation</title></path>
-<path class="marker" transform="translate(221.3,415.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BabyBear: 808 instructions per operation</title></path>
-<path class="marker" transform="translate(315.6,413.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Goldilocks: 1,858 instructions per operation</title></path>
-<path class="marker" transform="translate(409.8,399.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BN254 scalar: 14,162 instructions per operation</title></path>
-<path class="marker" transform="translate(504.0,398.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, secp256k1 base: 14,737 instructions per operation</title></path>
-<path class="marker" transform="translate(598.2,397.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 base: 15,180 instructions per operation</title></path>
-<path class="marker" transform="translate(692.4,398.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 scalar: 14,992 instructions per operation</title></path>
-<path class="marker" transform="translate(786.7,384.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BLS12-381 base: 25,958 instructions per operation</title></path>
-<path class="marker" transform="translate(880.9,365.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-521 base: 42,491 instructions per operation</title></path>
+<path class="marker" transform="translate(127.1,414.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Mersenne-31: 1,023 instructions per operation</title></path>
+<path class="marker" transform="translate(221.3,414.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BabyBear: 901 instructions per operation</title></path>
+<path class="marker" transform="translate(315.6,412.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Goldilocks: 2,747 instructions per operation</title></path>
+<path class="marker" transform="translate(409.8,397.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BN254 scalar: 15,044 instructions per operation</title></path>
+<path class="marker" transform="translate(504.0,398.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, secp256k1 base: 14,612 instructions per operation</title></path>
+<path class="marker" transform="translate(598.2,398.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 base: 14,821 instructions per operation</title></path>
+<path class="marker" transform="translate(692.4,397.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 scalar: 15,205 instructions per operation</title></path>
+<path class="marker" transform="translate(786.7,382.1)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BLS12-381 base: 28,245 instructions per operation</title></path>
+<path class="marker" transform="translate(880.9,363.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-521 base: 43,625 instructions per operation</title></path>
 </g>
 <g class="c1">
 <path class="marker" transform="translate(409.8,387.1)" d="M-4,-4H4V4H-4Z"><title>ark-ff, BN254 scalar: 24,120 instructions per operation</title></path>
@@ -84,11 +84,11 @@
 <path class="marker" transform="translate(127.1,414.7)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, Mersenne-31: 1,062 instructions per operation</title></path>
 <path class="marker" transform="translate(221.3,414.7)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, BabyBear: 1,064 instructions per operation</title></path>
 <path class="marker" transform="translate(315.6,413.4)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, Goldilocks: 2,131 instructions per operation</title></path>
-<path class="marker" transform="translate(409.8,375.6)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, BN254 scalar: 33,637 instructions per operation</title></path>
-<path class="marker" transform="translate(504.0,375.2)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, secp256k1 base: 34,025 instructions per operation</title></path>
+<path class="marker" transform="translate(409.8,375.6)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, BN254 scalar: 33,631 instructions per operation</title></path>
+<path class="marker" transform="translate(504.0,375.2)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, secp256k1 base: 34,019 instructions per operation</title></path>
 <path class="marker" transform="translate(598.2,375.4)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, P-256 base: 33,834 instructions per operation</title></path>
-<path class="marker" transform="translate(692.4,375.2)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, P-256 scalar: 33,964 instructions per operation</title></path>
-<path class="marker" transform="translate(786.7,303.2)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, BLS12-381 base: 94,003 instructions per operation</title></path>
-<path class="marker" transform="translate(880.9,168.1)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, P-521 base: 206,553 instructions per operation</title></path>
+<path class="marker" transform="translate(692.4,375.3)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, P-256 scalar: 33,958 instructions per operation</title></path>
+<path class="marker" transform="translate(786.7,303.2)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, BLS12-381 base: 94,028 instructions per operation</title></path>
+<path class="marker" transform="translate(880.9,168.0)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, P-521 base: 206,658 instructions per operation</title></path>
 </g>
 </svg>

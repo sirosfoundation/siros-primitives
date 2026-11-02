@@ -49,7 +49,7 @@
 <path class="marker" transform="translate(557.0,414.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 512 bits: 1,177 instructions per operation</title></path>
 <path class="marker" transform="translate(663.0,411.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 1024 bits: 3,384 instructions per operation</title></path>
 <path class="marker" transform="translate(769.0,400.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 2048 bits: 12,726 instructions per operation</title></path>
-<path class="marker" transform="translate(875.0,359.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 4096 bits: 47,497 instructions per operation</title></path>
+<path class="marker" transform="translate(875.0,359.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>biguint, 4096 bits: 47,483 instructions per operation</title></path>
 </g>
 <g class="c1">
 </g>

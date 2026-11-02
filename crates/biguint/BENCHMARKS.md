@@ -1,13 +1,13 @@
 # Benchmarks
 
-`biguint` at commit `74a96d3` against `native`, `ruint`, `crypto-bigint`, `bnum`, `uint` and `num-bigint`: add, mul, div, mod and mulmod at 64, 128, 256, 384, 512, 1024, 2048 and 4096 bits, in instructions per operation, counted on 2026-11-02.
+`biguint` at commit `d068959` against `native`, `ruint`, `crypto-bigint`, `bnum`, `uint` and `num-bigint`: add, mul, div, mod and mulmod at 64, 128, 256, 384, 512, 1024, 2048 and 4096 bits, in instructions per operation, counted on 2026-11-02.
 
 ## Setup
 
 |  |  |
 |---|---|
 | CPU | AMD Ryzen 9 5950X 16-Core Processor (`znver3`) |
-| Compiler | rustc 1.99.1 (58cf8f9c3 2026-10-13), LLVM 23.1.1, `bench` profile, `-C target-cpu=native -C target-feature=-sse4a` |
+| Compiler | rustc 1.99.1 (58cf8f9c3 2026-10-13), LLVM 23.1.1, `bench` profile, `-C target-cpu=native -C target-feature=-sse4a,-vpclmulqdq` |
 | Counter | Valgrind 3.22.0, Callgrind |
 | Crates | ruint 1.21.1, crypto-bigint 0.7.10, bnum 0.14.4, uint 0.10.2, num-bigint 0.5.1 |
 
@@ -117,7 +117,7 @@ Each cell: instructions per operation. Bold marks the fewest in each row.
 | 512 | **1,177** | – | 1,203 | 5,758 | – | – | – |
 | 1024 | **3,384** | – | 4,023 | 18,088 | – | – | – |
 | 2048 | **12,726** | – | 16,230 | 62,988 | – | – | – |
-| 4096 | **47,497** | – | 63,849 | 240,958 | – | – | – |
+| 4096 | **47,483** | – | 63,849 | 240,958 | – | – | – |
 
 ## Reproduce
 
