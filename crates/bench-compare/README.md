@@ -7,12 +7,17 @@ operation that the CPU's performance counters count.
 A library's `compare` bench declares a `Suite`: its operations, its rows (widths or fields), a
 generator of operand sets per row, a fixed checking batch with the accepted results, and one
 adapter per crate that offers the crate's function for each operation or the reason it has none.
-A case whose result has the type of its first operand can offer a chain form, which measures
-latency as the chain `x = op(x, y)`. Between two operations, an empty inline-assembly block holds
-the result, which keeps the compiler from regrouping the chain into a tree. The chain runs twice,
-with the result in general-purpose registers and in vector registers; the block can only add moves
-between the two, so the latency is the faster chain, and the record names its class. A result of
-more than 64 bytes goes through memory, in a single chain.
+A case whose result has the type of its first operand, and whose other operands are `Copy`, can
+offer a chain form, which measures latency as the chain `x = op(x, y)`. Between two operations, an
+empty inline-assembly block holds the result, which keeps the compiler from regrouping the chain
+into a tree. The chain runs twice, with the result in general-purpose registers and in vector
+registers; the block can only add moves between the two, so the latency is the faster chain, and
+the record names its class. A result of more than 64 bytes goes through memory, in a single chain.
+
+`Cells::deviating` declares, in one phrase, how the next case's function deviates from the row's
+definition, such as a skipped final reduction. The case's read applies the crate's own
+normalization before the check. In the document, a deviating figure below the measured crate's
+gets a `*` and a note under its table, and never counts as the fewest of its row.
 
 `bench_compare::main` runs the bench. It checks every case against the accepted results, pins
 itself to one CPU (`--cpu`, CPU 15 by default), and counts every case with one perf_event group of
