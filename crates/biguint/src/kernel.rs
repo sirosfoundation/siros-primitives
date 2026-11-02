@@ -5,9 +5,12 @@
 //! the carry stays an ordinary register and each step consumes its own flags.
 
 use core::cmp::Ordering;
+use core::hint::select_unpredictable;
 
 use crate::limb::{BorrowingSub, CarryingAdd};
-use crate::stream::{LimbStream, ZeroExtended, for_each_slot};
+use crate::stream::{
+    LimbSource, LimbStream, ZeroExtended, for_each_slot, funnel_left, funnel_right,
+};
 
 /// `a * b + c + d` as `(low, high)`, as one `u128` expression: the form that LLVM schedules best in
 /// straight-line code, where it sees every step of an unrolled product at once.
@@ -66,7 +69,7 @@ pub(crate) fn sub_mul_row(out: &mut [u64], a: &[u64], m: u64) -> u64 {
 /// Adds the equally long `a` to `out` and returns the carry out of the top limb.
 #[inline(always)]
 pub(crate) fn add_assign(out: &mut [u64], a: &[u64]) -> u64 {
-    let mut source = ZeroExtended::new(a);
+    let mut source = ZeroExtended::new(a).pull();
     let mut carry = 0;
     for_each_slot(out, |slot| {
         (*slot, carry) = slot.add_carry(source.next_limb(), carry);
@@ -77,7 +80,7 @@ pub(crate) fn add_assign(out: &mut [u64], a: &[u64]) -> u64 {
 /// Subtracts the equally long `a` from `out` and returns the borrow out of the top limb.
 #[inline(always)]
 pub(crate) fn sub_assign(out: &mut [u64], a: &[u64]) -> u64 {
-    let mut source = ZeroExtended::new(a);
+    let mut source = ZeroExtended::new(a).pull();
     let mut borrow = 0;
     for_each_slot(out, |slot| {
         (*slot, borrow) = slot.sub_borrow(source.next_limb(), borrow);
@@ -85,10 +88,90 @@ pub(crate) fn sub_assign(out: &mut [u64], a: &[u64]) -> u64 {
     borrow
 }
 
+/// The borrow out of `a - b` for equally long `a` and `b`, without storing the difference.
+#[inline(always)]
+pub(crate) fn borrow_of(a: &[u64], b: &[u64]) -> u64 {
+    let mut source = ZeroExtended::new(b).pull();
+    a.iter().fold(0, |borrow, &limb| {
+        limb.sub_borrow(source.next_limb(), borrow).1
+    })
+}
+
+/// Subtracts `b & mask` from the equally long `out` and returns the borrow out of the top limb.
+#[inline(always)]
+pub(crate) fn sub_masked(out: &mut [u64], b: &[u64], mask: u64) -> u64 {
+    let mut source = ZeroExtended::new(b).pull();
+    let mut borrow = 0;
+    for_each_slot(out, |slot| {
+        (*slot, borrow) = slot.sub_borrow(source.next_limb() & mask, borrow);
+    });
+    borrow
+}
+
+/// Subtracts `divisor` from the equally long `part` when `part >= divisor`, and returns whether
+/// it did. The top limbs decide when they differ; equal top limbs take the subtraction unless it
+/// borrows, without a branch.
+#[inline(always)]
+pub(crate) fn subtract_if_above(part: &mut [u64], divisor: &[u64]) -> bool {
+    let (Some(&top), Some(&divisor_top)) = (part.last(), divisor.last()) else {
+        return false;
+    };
+    if top < divisor_top {
+        false
+    } else if top > divisor_top {
+        fits(sub_assign(part, divisor));
+        true
+    } else {
+        let above = borrow_of(part, divisor) == 0;
+        fits(sub_masked(
+            part,
+            divisor,
+            select_unpredictable(above, u64::MAX, 0),
+        ));
+        above
+    }
+}
+
+/// Writes `limbs * 2^shift` to `out`, for `shift < 64`: each limb takes the bits that the limb
+/// below it sheds, and the limb above the top one takes the top one's bits when `out` reaches it.
+/// The limbs of `out` above those keep their values. Slices pair the limbs, so the loop reads
+/// without bounds checks and vectorizes.
+#[inline(always)]
+pub(crate) fn shl_bits_into(out: &mut [u64], limbs: &[u64], shift: u32) {
+    let (Some((bottom, above)), Some((&first, upper))) =
+        (out.split_first_mut(), limbs.split_first())
+    else {
+        return;
+    };
+    *bottom = first << shift;
+    for ((slot, &limb), &below) in above.iter_mut().zip(upper).zip(limbs) {
+        *slot = funnel_left(limb, below, shift);
+    }
+    if let (Some(slot), Some(&top)) = (above.get_mut(upper.len()), limbs.last()) {
+        *slot = funnel_left(0, top, shift);
+    }
+}
+
+/// Writes `floor(limbs / 2^shift)` to `out`, for `shift < 64`: each limb takes the bits that the
+/// limb above it sheds. The limbs of `out` past the top one keep their values. Slices pair the
+/// limbs, so the loop reads without bounds checks and vectorizes.
+#[inline(always)]
+pub(crate) fn shr_bits_into(out: &mut [u64], limbs: &[u64], shift: u32) {
+    let (Some((&top, lower)), Some((_, upper))) = (limbs.split_last(), limbs.split_first()) else {
+        return;
+    };
+    for ((slot, &limb), &above) in out.iter_mut().zip(lower).zip(upper) {
+        *slot = funnel_right(limb, above, shift);
+    }
+    if let Some(slot) = out.get_mut(lower.len()) {
+        *slot = top >> shift;
+    }
+}
+
 /// Writes `a + b` to `out`, all equally long, and returns the carry out of the top limb.
 #[inline(always)]
 pub(crate) fn add_to(out: &mut [u64], a: &[u64], b: &[u64]) -> u64 {
-    let (mut a, mut b) = (ZeroExtended::new(a), ZeroExtended::new(b));
+    let (mut a, mut b) = (ZeroExtended::new(a).pull(), ZeroExtended::new(b).pull());
     let mut carry = 0;
     for_each_slot(out, |slot| {
         (*slot, carry) = a.next_limb().add_carry(b.next_limb(), carry);
@@ -159,6 +242,11 @@ pub(crate) fn split_mut(slice: &mut [u64], mid: usize) -> (&mut [u64], &mut [u64
     let mid = mid.min(slice.len());
     slice.split_at_mut(mid)
 }
+
+/// Drops the quotient, `0` or `1`, of a value below twice the divisor that [`subtract_if_above`]
+/// brought below the divisor.
+#[inline(always)]
+pub(crate) fn reduced(_quotient: bool) {}
 
 /// Drops the carry or borrow out of the top of a result that is known to fit: the carries out of
 /// the steps that build it cancel.

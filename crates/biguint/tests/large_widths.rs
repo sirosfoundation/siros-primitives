@@ -5,7 +5,7 @@
 
 use core::ops::Add;
 
-use biguint::{Bits, Uint, WideningMul};
+use biguint::{Bits, Modulus, NonZeroUint, Uint, WideningMul};
 use generic_array::GenericArray;
 use generic_array::sequence::GenericSequence;
 use typenum::{Sum, U64, U128, U1024, U2048, U4096, U8192};
@@ -61,6 +61,17 @@ fn samples<N: Bits>(seed: u64) -> Vec<Uint<N>> {
     values
 }
 
+/// Six edge values and two random values: the operands of the reductions by every modulus sample.
+fn operand_samples<N: Bits>(seed: u64) -> Vec<Uint<N>> {
+    let values = samples::<N>(seed);
+    values
+        .iter()
+        .take(6)
+        .chain(values.iter().skip(9).take(2))
+        .copied()
+        .collect()
+}
+
 fn wide<N: Bits>(value: Uint<N>) -> Wide {
     Wide::from_limbs(core::array::from_fn(|index| {
         value.as_limbs().get(index).copied().unwrap_or(0)
@@ -93,8 +104,8 @@ where
     Q: Bits,
     Sum<N, M>: Bits,
 {
-    let rhs_values = samples::<M>(4);
-    let operands = samples::<N>(3);
+    let rhs_values = operand_samples::<M>(4);
+    let operands = operand_samples::<N>(3);
     for modulus in samples::<Q>(5) {
         let wide_modulus = wide(modulus);
         for &a in &operands {
@@ -113,7 +124,7 @@ fn check_div_rem<N: Bits, M: Bits>() {
     for a in samples::<N>(6) {
         for &divisor in &divisors {
             let expected = (!divisor.is_zero()).then(|| wide(a).div_rem(wide(divisor)));
-            let result = a.div_rem(divisor).map(|(q, r)| (wide(q), wide(r)));
+            let result = a.checked_div_rem(divisor).map(|(q, r)| (wide(q), wide(r)));
             assert_eq!(result, expected, "{a:?} / {divisor:?}");
         }
     }
@@ -152,6 +163,41 @@ fn divide_and_conquer_mul_mod_matches_reference() {
     check_mul_mod::<U3072, U3072, U3072>();
 }
 
+/// Products and reductions of the residues of every odd and even modulus sample.
+fn check_modulus<N: Bits>()
+where
+    Uint<N>: Copy,
+{
+    let operands: Vec<Uint<N>> = samples::<N>(8).into_iter().take(4).collect();
+    for modulus in samples::<N>(9).into_iter().take(4) {
+        let Some(context) = Modulus::new(modulus) else {
+            continue;
+        };
+        let wide_modulus = wide(modulus);
+        context.scope(|ring| {
+            for &a in &operands {
+                let residue = ring.reduce(a);
+                assert_eq!(wide(residue.get()), wide(a).reduce_mod(wide_modulus));
+                for &b in &operands {
+                    let expected = wide(a).mul_mod(wide(b), wide_modulus);
+                    assert_eq!(
+                        wide((residue * ring.reduce(b)).get()),
+                        expected,
+                        "{a:?} * {b:?}"
+                    );
+                }
+            }
+        });
+    }
+}
+
+#[test]
+fn modulus_context_at_large_widths_matches_reference() {
+    // Rows past the unrolled length and Karatsuba products; divide-and-conquer reduction.
+    check_modulus::<U1088>();
+    check_modulus::<U2048>();
+}
+
 #[test]
 fn mixed_width_division_matches_reference() {
     // A one-limb first block, then a divide-and-conquer block.
@@ -163,4 +209,28 @@ fn mixed_width_division_matches_reference() {
     check_div_rem::<U4096, U64>();
     // A divisor wider than the dividend: the quotient is zero.
     check_div_rem::<U2048, U4096>();
+}
+
+#[test]
+fn scans_past_sixty_four_limbs_find_the_set_bit() {
+    // Above 65 limbs, the scans read the limbs in groups of 64.
+    type U = Uint<U8192>;
+    for bit in [0, 1, 63, 64, 4095, 4096, 4159, 4160, 8127, 8128, 8191] {
+        let value = U::ONE << bit;
+        assert_eq!(value.bit_len(), bit + 1, "bit {bit}");
+        assert_eq!(value.trailing_zeros(), bit, "bit {bit}");
+        assert!(!value.is_zero(), "bit {bit}");
+        assert!(value != U::ZERO && value == U::ONE << bit, "bit {bit}");
+    }
+    assert_eq!(U::ZERO.bit_len(), 0);
+    assert_eq!(U::ZERO.trailing_zeros(), 8192);
+    // A divisor whose top limb lies in the second group of 64: the quotient and the remainder of
+    // a power of two are a shift and a mask.
+    let power = U::ONE << 6500usize;
+    let divisor = NonZeroUint::new(power).expect("a nonzero divisor");
+    let max = !U::ZERO;
+    assert_eq!(
+        max.div_rem(divisor),
+        (max >> 6500usize, max & (power - U::ONE))
+    );
 }

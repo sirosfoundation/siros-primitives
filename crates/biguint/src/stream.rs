@@ -1,69 +1,97 @@
-//! The limb-stream algebra that every multi-limb operation is written in.
+//! The limb algebra that every multi-limb operation is written in.
 //!
-//! An operation is a lazy, infinite stream of little-endian limbs ([`LimbStream`]). A source
-//! yields the limbs of a slice and then `0` forever ([`ZeroExtended`]). The zero fill is the end
-//! marker, so the hot loop handles plain `u64` limbs. Carries fall out of the algebra: [`AddOp`] on
-//! two exhausted operands with a pending carry yields the carry limb. `Uint::from_stream` pulls
-//! exactly `ceil(N / 64)` limbs and masks the top one when the operation may set bits above `N`.
-//! Every combinator inlines. The compiler unrolls a short pull into straight-line code; a long one
-//! runs four limbs per iteration ([`for_each_slot`]).
+//! A carry-free operation is a [`LimbSource`]: its little-endian limb at an index, from that index
+//! alone. [`ZeroExtended`] yields the limbs of a slice and `0` past its end; the bitwise operations,
+//! the complement and the left bit shift combine sources limb by limb. `Uint::from_source` writes
+//! each output limb from its index, which is a plain loop over arrays: the compiler vectorizes it.
+//! A bit shift into a slice runs the slice kernels of `kernel`, which pair the limbs without
+//! bounds checks.
+//!
+//! A carry chain is a [`LimbStream`], pulled from the bottom limb up. [`Pull`] reads a source in
+//! order, and [`Op2CarryIter`] threads a carry or borrow through two streams. Carries fall out of
+//! the algebra: [`AddOp`] on two exhausted operands with a pending carry yields the carry limb.
+//! `Uint::from_stream` pulls exactly `ceil(N / 64)` limbs, four per loop iteration
+//! ([`for_each_slot`]), and masks the top one when the operation may set bits above `N`. Every
+//! combinator inlines.
 
 use core::marker::PhantomData;
 
+use generic_array::sequence::GenericSequence;
+use generic_array::{ArrayLength, GenericArray};
+
 use crate::limb::{BorrowingSub, CarryingAdd};
+
+/// A little-endian value read by limb index.
+pub(crate) trait LimbSource {
+    /// Limb `index`; past the limbs of the operands, the fill of the operation.
+    fn limb(&self, index: usize) -> u64;
+
+    /// The limbs in order from the bottom.
+    #[inline(always)]
+    fn pull(self) -> Pull<Self>
+    where
+        Self: Sized,
+    {
+        Pull {
+            source: self,
+            index: 0,
+        }
+    }
+}
 
 /// An infinite little-endian limb iterator.
 pub(crate) trait LimbStream {
-    /// The next limb; `0` once the source is exhausted.
+    /// The next limb.
     fn next_limb(&mut self) -> u64;
 }
 
-/// The limbs of a slice, then `0` forever.
-///
-/// It reads by index: the index advances with the consumer's loop, so the compiler proves the
-/// reads in bounds and drops the zero fill when the slice is at least as long as the output.
+/// The limbs of a slice, then `0`.
 pub(crate) struct ZeroExtended<'a> {
     limbs: &'a [u64],
-    index: usize,
 }
 
 impl<'a> ZeroExtended<'a> {
     #[inline(always)]
     pub(crate) const fn new(limbs: &'a [u64]) -> Self {
-        Self { limbs, index: 0 }
+        Self { limbs }
     }
 }
 
-impl LimbStream for ZeroExtended<'_> {
+impl LimbSource for ZeroExtended<'_> {
+    #[inline(always)]
+    fn limb(&self, index: usize) -> u64 {
+        self.limbs.get(index).copied().unwrap_or(0)
+    }
+}
+
+/// The limbs of a source in order from the bottom.
+///
+/// The index advances with the consumer's loop, so the compiler proves the reads of a slice in
+/// bounds and drops the zero fill when the slice is at least as long as the output.
+pub(crate) struct Pull<S> {
+    source: S,
+    index: usize,
+}
+
+impl<S: LimbSource> LimbStream for Pull<S> {
     #[inline(always)]
     fn next_limb(&mut self) -> u64 {
-        let limb = self.limbs.get(self.index).copied().unwrap_or(0);
+        let limb = self.source.limb(self.index);
         self.index += 1;
         limb
     }
 }
 
-/// The limbs of a slice, then `0` forever, read through the slice iterator.
-///
-/// Inside a product that the compiler unrolls completely, the iterator's end test folds as early
-/// as the unroll; the indexed [`ZeroExtended`] leaves the rows of such a product rolled.
-pub(crate) struct Unrolled<'a> {
-    limbs: core::slice::Iter<'a, u64>,
-}
-
-impl<'a> Unrolled<'a> {
-    #[inline(always)]
-    pub(crate) fn new(limbs: &'a [u64]) -> Self {
-        Self {
-            limbs: limbs.iter(),
-        }
-    }
-}
-
-impl LimbStream for Unrolled<'_> {
-    #[inline(always)]
-    fn next_limb(&mut self) -> u64 {
-        self.limbs.next().copied().unwrap_or(0)
+/// The next `L` limbs of `stream`. Up to four limbs the pull unrolls; longer pulls run in groups of
+/// four.
+#[inline(always)]
+pub(crate) fn pull_limbs<L: ArrayLength>(stream: &mut impl LimbStream) -> GenericArray<u64, L> {
+    if L::USIZE <= 4 {
+        GenericArray::generate(|_| stream.next_limb())
+    } else {
+        let mut limbs = GenericArray::<u64, L>::default();
+        for_each_slot(&mut limbs, |slot| *slot = stream.next_limb());
+        limbs
     }
 }
 
@@ -99,12 +127,24 @@ pub(crate) struct Op2CarryIter<A, B, O> {
 impl<A, B, O> Op2CarryIter<A, B, O> {
     #[inline(always)]
     pub(crate) const fn new(a: A, b: B) -> Self {
+        Self::with_carry(a, b, 0)
+    }
+
+    /// The streams combined from `carry` into the bottom limb.
+    #[inline(always)]
+    pub(crate) const fn with_carry(a: A, b: B, carry: u64) -> Self {
         Self {
             a,
             b,
-            carry: 0,
+            carry,
             _op: PhantomData,
         }
+    }
+
+    /// The carry or borrow into the next limb.
+    #[inline(always)]
+    pub(crate) const fn carry(&self) -> u64 {
+        self.carry
     }
 }
 
@@ -146,14 +186,14 @@ pub(crate) trait Op2Op {
     fn op(a: u64, b: u64) -> u64;
 }
 
-/// Two streams combined limb by limb under `O`.
-pub(crate) struct Op2Iter<A, B, O> {
+/// Two sources combined limb by limb under `O`.
+pub(crate) struct Op2<A, B, O> {
     a: A,
     b: B,
     _op: PhantomData<O>,
 }
 
-impl<A, B, O> Op2Iter<A, B, O> {
+impl<A, B, O> Op2<A, B, O> {
     #[inline(always)]
     pub(crate) const fn new(a: A, b: B) -> Self {
         Self {
@@ -164,10 +204,10 @@ impl<A, B, O> Op2Iter<A, B, O> {
     }
 }
 
-impl<A: LimbStream, B: LimbStream, O: Op2Op> LimbStream for Op2Iter<A, B, O> {
+impl<A: LimbSource, B: LimbSource, O: Op2Op> LimbSource for Op2<A, B, O> {
     #[inline(always)]
-    fn next_limb(&mut self) -> u64 {
-        O::op(self.a.next_limb(), self.b.next_limb())
+    fn limb(&self, index: usize) -> u64 {
+        O::op(self.a.limb(index), self.b.limb(index))
     }
 }
 
@@ -201,43 +241,17 @@ impl Op2Op for XorOp {
     }
 }
 
-/// A limb operation on one operand.
-pub(crate) trait Op1Op {
-    /// Maps one limb.
-    fn op(a: u64) -> u64;
-}
+/// The limbs of `!inner`, the two's complement `2^(64 * k) - inner` of `k` limbs once a carry of one
+/// enters the bottom limb of the sum that takes them: `a + TwosComplement(b)` with that carry is
+/// `a - b + 2^(64 * k)`, whose carry out of the top limb is set exactly when `a >= b`. Past the
+/// operand the fill is `u64::MAX`; the collector reads only `ceil(N / 64)` limbs and masks the top
+/// one.
+pub(crate) struct TwosComplement<S>(pub(crate) S);
 
-/// A stream mapped limb by limb under `O`.
-pub(crate) struct Op1Iter<A, O> {
-    a: A,
-    _op: PhantomData<O>,
-}
-
-impl<A, O> Op1Iter<A, O> {
+impl<S: LimbSource> LimbSource for TwosComplement<S> {
     #[inline(always)]
-    pub(crate) const fn new(a: A) -> Self {
-        Self {
-            a,
-            _op: PhantomData,
-        }
-    }
-}
-
-impl<A: LimbStream, O: Op1Op> LimbStream for Op1Iter<A, O> {
-    #[inline(always)]
-    fn next_limb(&mut self) -> u64 {
-        O::op(self.a.next_limb())
-    }
-}
-
-/// Bitwise complement. Past the operand the fill becomes `u64::MAX`; the collector reads only
-/// `ceil(N / 64)` limbs and masks the top one.
-pub(crate) struct NotOp;
-
-impl Op1Op for NotOp {
-    #[inline(always)]
-    fn op(a: u64) -> u64 {
-        !a
+    fn limb(&self, index: usize) -> u64 {
+        !self.0.limb(index)
     }
 }
 
@@ -261,60 +275,25 @@ pub(crate) const fn funnel_right(limb: u64, above: u64, shift: u32) -> u64 {
 }
 
 /// The limbs of `inner * 2^shift` for `shift < 64`: each limb takes the bits shifted out of the
-/// limb below it.
-pub(crate) struct ShlBits<I> {
-    inner: I,
+/// limb below it, and the bottom limb takes zeros.
+pub(crate) struct ShlBits<S> {
+    inner: S,
     shift: u32,
-    below: u64,
 }
 
-impl<I> ShlBits<I> {
+impl<S> ShlBits<S> {
     #[inline(always)]
-    pub(crate) const fn new(inner: I, shift: u32) -> Self {
-        Self {
-            inner,
-            shift,
-            below: 0,
-        }
+    pub(crate) const fn new(inner: S, shift: u32) -> Self {
+        Self { inner, shift }
     }
 }
 
-impl<I: LimbStream> LimbStream for ShlBits<I> {
+impl<S: LimbSource> LimbSource for ShlBits<S> {
     #[inline(always)]
-    fn next_limb(&mut self) -> u64 {
-        let limb = self.inner.next_limb();
-        let out = funnel_left(limb, self.below, self.shift);
-        self.below = limb;
-        out
-    }
-}
-
-/// The limbs of `floor(inner / 2^shift)` for `shift < 64`: each limb takes the bits shifted out of
-/// the limb above it.
-pub(crate) struct ShrBits<I> {
-    inner: I,
-    shift: u32,
-    current: u64,
-}
-
-impl<I: LimbStream> ShrBits<I> {
-    #[inline(always)]
-    pub(crate) fn new(mut inner: I, shift: u32) -> Self {
-        let current = inner.next_limb();
-        Self {
-            inner,
-            shift,
-            current,
-        }
-    }
-}
-
-impl<I: LimbStream> LimbStream for ShrBits<I> {
-    #[inline(always)]
-    fn next_limb(&mut self) -> u64 {
-        let above = self.inner.next_limb();
-        let out = funnel_right(self.current, above, self.shift);
-        self.current = above;
-        out
+    fn limb(&self, index: usize) -> u64 {
+        let below = index
+            .checked_sub(1)
+            .map_or(0, |below| self.inner.limb(below));
+        funnel_left(self.inner.limb(index), below, self.shift)
     }
 }

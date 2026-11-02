@@ -1,19 +1,37 @@
-//! `bench`: builds a `compare` bench for the native CPU, runs it, and records the counts.
+//! `bench`: builds a `compare` bench for the native CPU, runs it, and records what the CPU's
+//! counters counted.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::error::Error;
-use crate::record::{Cell, Key, Record, Version};
+use serde::Deserialize;
 
-/// The `RUSTFLAGS` of the build: code for the CPU that runs the bench, without SSE4a and
-/// VPCLMULQDQ, whose `extrq` and 256-bit `vpclmulqdq` Valgrind 3.22 cannot execute. One codegen
-/// unit makes the code of each crate independent of the rest of the bench: with sixteen, a change
-/// to the measured crate moved the counts of others by up to 14%.
-const RUSTFLAGS: &str =
-    "-C target-cpu=native -C target-feature=-sse4a,-vpclmulqdq -C codegen-units=1";
+use crate::error::Error;
+use crate::record::{Cell, Key, Line, Measurement, Record, Sweep, Version};
+
+/// A build of the bench.
+pub struct Build {
+    /// The name of the build in the document; empty for the only build of a bench.
+    pub name: &'static str,
+    /// The suffix of the build's charts and target directory; empty for the first build.
+    pub slug: &'static str,
+    /// The `RUSTFLAGS` of the build.
+    pub rustflags: &'static str,
+}
+
+/// The build for the CPU that runs the bench. One codegen unit makes the code of each crate
+/// independent of the rest of the bench: with sixteen, a change to the measured crate moved the
+/// counts of others by up to 14%.
+pub const NATIVE: Build = Build {
+    name: "",
+    slug: "",
+    rustflags: "-C target-cpu=native -C codegen-units=1",
+};
+
+/// The CPUs of the machine.
+const CPUINFO: &str = "/proc/cpuinfo";
 
 /// The locations that a report tool reads and writes.
 pub struct Paths {
@@ -39,9 +57,14 @@ impl Paths {
         }
     }
 
-    /// The target directory of the bench build.
-    fn results(&self) -> PathBuf {
-        self.root.join("target").join("benchmarks")
+    /// The target directory of `build`.
+    fn results(&self, build: &Build) -> PathBuf {
+        let name = if build.slug.is_empty() {
+            "benchmarks".to_owned()
+        } else {
+            format!("benchmarks-{}", build.slug)
+        };
+        self.root.join("target").join(name)
     }
 }
 
@@ -58,10 +81,49 @@ pub struct Measured {
     pub pathspecs: &'static [&'static str],
     /// The crates whose versions the record keeps.
     pub versions: &'static [&'static str],
+    /// The features of the package that every build enables beside its default ones.
+    pub features: &'static [&'static str],
+    /// The features that no crate of a build may have.
+    pub forbidden: &'static [&'static str],
+    /// The builds of the bench, measured one after the other.
+    pub builds: &'static [Build],
 }
 
-/// Runs the report tool `tool` with the process arguments: `bench [--machine <description>]`
-/// counts and records; `report` writes the document from the record.
+/// The options of `bench`.
+#[derive(Default)]
+pub struct Options {
+    /// The CPU of the measuring thread; the bench's own default when absent.
+    pub cpu: Option<String>,
+    /// The operator's description of the machine.
+    pub machine: Option<String>,
+}
+
+impl Options {
+    /// The options of `args`: `--cpu <cpu>` and `--machine <description>`, each at most once.
+    fn parse(args: &[String]) -> Option<Self> {
+        match args {
+            [] => Some(Self::default()),
+            [flag, value, rest @ ..] => {
+                let options = Self::parse(rest)?;
+                match flag.as_str() {
+                    "--cpu" if options.cpu.is_none() => Some(Self {
+                        cpu: Some(value.clone()),
+                        ..options
+                    }),
+                    "--machine" if options.machine.is_none() => Some(Self {
+                        machine: Some(value.clone()),
+                        ..options
+                    }),
+                    _ => None,
+                }
+            }
+            [_] => None,
+        }
+    }
+}
+
+/// Runs the report tool `tool` with the process arguments: `bench [--cpu <cpu>] [--machine
+/// <description>]` measures and records; `report` writes the document from the record.
 #[must_use]
 pub fn execute<K: Key>(
     tool: &str,
@@ -70,16 +132,16 @@ pub fn execute<K: Key>(
     layout: &crate::document::Layout<'_, K>,
 ) -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let usage = || Error::Usage {
+        tool: tool.to_owned(),
+    };
     let result = match args.as_slice() {
-        [command] if command == "bench" => bench::<K>(paths, measured, None),
-        [command, flag, machine] if command == "bench" && flag == "--machine" => {
-            bench::<K>(paths, measured, Some(machine.clone()))
-        }
+        [command, options @ ..] if command == "bench" => Options::parse(options)
+            .ok_or_else(usage)
+            .and_then(|options| bench::<K>(paths, measured, options)),
         [command] if command == "report" => Record::read(&paths.record)
             .and_then(|record| crate::document::report(paths, layout, &record)),
-        _ => Err(Error::Usage {
-            tool: tool.to_owned(),
-        }),
+        _ => Err(usage()),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -90,12 +152,8 @@ pub fn execute<K: Key>(
     }
 }
 
-/// Counts every case of the bench and writes the record. `machine` describes the machine.
-pub fn bench<K: Key>(
-    paths: &Paths,
-    measured: &Measured,
-    machine: Option<String>,
-) -> Result<(), Error> {
+/// Measures every case of the bench and writes the record.
+pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Result<(), Error> {
     let started = now()?;
     let rustc = output(Command::new("rustc").arg("-vV").current_dir(&paths.root))?;
     let target_cpus = output(
@@ -103,8 +161,23 @@ pub fn bench<K: Key>(
             .args(["--print", "target-cpus"])
             .current_dir(&paths.root),
     )?;
-    let valgrind = output(Command::new("valgrind").arg("--version"))?;
     let status_lines = git(paths, &["status", "--porcelain", "--"], measured.pathspecs)?;
+    let builds = measured
+        .builds
+        .iter()
+        .map(|build| {
+            let target_features = target_features(paths, build)?;
+            let (cells, sweep) = cells(paths, measured, build, options.cpu.as_deref())?;
+            Ok(Measurement {
+                name: build.name.to_owned(),
+                slug: build.slug.to_owned(),
+                rustflags: build.rustflags.to_owned(),
+                target_features,
+                sweep,
+                cells,
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
     let record = Record::<K> {
         date: date(started),
         head: git(paths, &["rev-parse", "HEAD"], &[])?,
@@ -122,11 +195,16 @@ pub fn bench<K: Key>(
         llvm: field(&rustc, "LLVM version: ", "rustc -vV")?,
         host: field(&rustc, "host: ", "rustc -vV")?,
         native_cpu: native_cpu(&target_cpus)?,
-        machine,
-        rustflags: RUSTFLAGS.to_owned(),
-        valgrind: valgrind.trim_end().to_owned(),
+        cpu_model: cpu_model()?,
+        machine: options.machine,
+        package: measured.package.to_owned(),
+        features: measured
+            .features
+            .iter()
+            .map(|&feature| feature.to_owned())
+            .collect(),
         versions: versions(paths, measured.package, measured.versions)?,
-        cells: cells(paths, measured)?,
+        builds,
     };
     if let Some(directory) = paths.record.parent() {
         fs::create_dir_all(directory).map_err(|source| Error::io(directory, source))?;
@@ -134,26 +212,119 @@ pub fn bench<K: Key>(
     record.write(&paths.record)
 }
 
-/// Every cell of the comparison with its count: the lines that the bench prints.
-fn cells<K: Key>(paths: &Paths, measured: &Measured) -> Result<Vec<Cell<K>>, Error> {
-    let lines = cargo(
+/// Every cell of the comparison in `build` with its counts, and the sweep: the lines that the
+/// bench prints, measuring on `cpu`. The bench is built first, and the features of its build
+/// must pass [`check_features`].
+fn cells<K: Key>(
+    paths: &Paths,
+    measured: &Measured,
+    build: &Build,
+    cpu: Option<&str>,
+) -> Result<(Vec<Cell<K>>, Sweep), Error> {
+    let features = measured.features.join(",");
+    let mut args = vec![
+        "bench",
+        "--locked",
+        "-p",
+        measured.package,
+        "--bench",
+        measured.bench,
+    ];
+    if !features.is_empty() {
+        args.extend(["--features", &features]);
+    }
+    let mut build_args = args.clone();
+    build_args.extend(["--no-run", "--message-format=json"]);
+    let messages = cargo(
         &paths.root,
-        &paths.results(),
-        RUSTFLAGS,
-        &[
-            "bench",
-            "--locked",
-            "-p",
-            measured.package,
-            "--bench",
-            measured.bench,
-        ],
+        &paths.results(build),
+        build.rustflags,
+        &build_args,
     )?;
-    lines
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| serde_json::from_str(line).map_err(Error::Cells))
-        .collect()
+    check_features(measured, &messages)?;
+    if let Some(cpu) = cpu {
+        args.extend(["--", "--cpu", cpu]);
+    }
+    let text = cargo(&paths.root, &paths.results(build), build.rustflags, &args)?;
+    let mut cells = Vec::new();
+    let mut sweeps = Vec::new();
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        match serde_json::from_str(line).map_err(Error::Cells)? {
+            Line::Cell(cell) => cells.push(cell),
+            Line::Sweep(sweep) => sweeps.push(sweep),
+        }
+    }
+    match <[Sweep; 1]>::try_from(sweeps) {
+        Ok([sweep]) => Ok((cells, sweep)),
+        Err(sweeps) => Err(Error::missing(
+            &format!("single sweep among its {}", sweeps.len()),
+            "the lines of the bench",
+        )),
+    }
+}
+
+/// One JSON message of a cargo build: the fields that [`check_features`] reads.
+#[derive(Deserialize)]
+struct Message {
+    reason: String,
+    package_id: Option<String>,
+    target: Option<Target>,
+    #[serde(default)]
+    features: Vec<String>,
+}
+
+/// The target of a compiled unit.
+#[derive(Deserialize)]
+struct Target {
+    name: String,
+    kind: Vec<String>,
+}
+
+/// Checks the units of a build from its JSON `messages`: the bench of `measured` has every feature
+/// in [`Measured::features`], and no unit has a feature in [`Measured::forbidden`].
+fn check_features(measured: &Measured, messages: &str) -> Result<(), Error> {
+    let mut bench = None;
+    for line in messages.lines().filter(|line| !line.trim().is_empty()) {
+        let message: Message = serde_json::from_str(line).map_err(Error::Messages)?;
+        if message.reason != "compiler-artifact" {
+            continue;
+        }
+        let unit = message
+            .package_id
+            .ok_or_else(|| Error::missing("package_id", "a compiler-artifact message"))?;
+        if let Some(feature) = message
+            .features
+            .iter()
+            .find(|feature| measured.forbidden.contains(&feature.as_str()))
+        {
+            return Err(Error::Forbidden {
+                unit,
+                feature: feature.clone(),
+            });
+        }
+        if message.target.as_ref().is_some_and(|target| {
+            target.name == measured.bench && target.kind.iter().any(|kind| kind == "bench")
+        }) {
+            bench = Some(message.features);
+        }
+    }
+    let bench = bench.ok_or_else(|| {
+        Error::missing(
+            &format!("bench {}", measured.bench),
+            "the messages of the build",
+        )
+    })?;
+    match measured
+        .features
+        .iter()
+        .find(|feature| !bench.iter().any(|built| built == *feature))
+    {
+        Some(feature) => Err(Error::Unbuilt {
+            package: measured.package.to_owned(),
+            feature: (*feature).to_owned(),
+        }),
+        None => Ok(()),
+    }
 }
 
 /// The standard output of `cargo` with `args` in the workspace at `root`, which must succeed. The
@@ -175,13 +346,39 @@ pub fn cargo(
     )
 }
 
-/// The path of `valgrind` in `PATH`.
-pub fn valgrind() -> Result<PathBuf, Error> {
-    let path = std::env::var_os("PATH").ok_or_else(|| Error::missing("PATH", "the environment"))?;
-    std::env::split_paths(&path)
-        .map(|directory| directory.join("valgrind"))
-        .find(|candidate| candidate.is_file())
-        .ok_or_else(|| Error::missing("valgrind", "PATH"))
+/// The target features that `rustc --print cfg` reports under the flags of `build`. A build
+/// without AVX2 is a [`Error::NoAvx2`].
+fn target_features(paths: &Paths, build: &Build) -> Result<Vec<String>, Error> {
+    let text = output(
+        Command::new("rustc")
+            .args(["--print", "cfg"])
+            .args(build.rustflags.split_whitespace())
+            .current_dir(&paths.root),
+    )?;
+    let features: Vec<String> = text
+        .lines()
+        .filter_map(|line| line.strip_prefix("target_feature=\""))
+        .filter_map(|rest| rest.strip_suffix('"'))
+        .map(str::to_owned)
+        .collect();
+    if features.iter().any(|feature| feature == "avx2") {
+        Ok(features)
+    } else {
+        Err(Error::NoAvx2 {
+            rustflags: build.rustflags.to_owned(),
+        })
+    }
+}
+
+/// The model name of the machine's CPU.
+fn cpu_model() -> Result<String, Error> {
+    let path = Path::new(CPUINFO);
+    let text = fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
+    text.lines()
+        .find_map(|line| line.strip_prefix("model name"))
+        .and_then(|rest| rest.split_once(':'))
+        .map(|(_, name)| name.trim().to_owned())
+        .ok_or_else(|| Error::missing("model name", CPUINFO))
 }
 
 /// The standard output of `command`, which must succeed. Its standard error goes to the terminal.

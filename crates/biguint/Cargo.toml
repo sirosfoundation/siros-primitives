@@ -12,9 +12,9 @@ authors.workspace = true
 rust-version.workspace = true
 
 [features]
-default = ["precomputed"]
-# A 512-byte table seeds the division reciprocal; without it, a 32-bit division computes the seed.
-precomputed = []
+# Removes the 512-byte table that seeds the division reciprocal off x86-64: a 32-bit division
+# computes the seed.
+not-precomputed = []
 
 [dependencies]
 const-default.workspace = true

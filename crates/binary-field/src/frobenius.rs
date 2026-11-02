@@ -397,18 +397,16 @@ fn add_word_rows<const ENTRIES: usize>(
         row.get(index).copied().unwrap_or(0)
     };
     let [first, second, third, fourth] = sums;
-    let mut chunks = rows.chunks_exact(4);
+    let (chunks, remainder) = rows.as_chunks::<4>();
     let mut position = 0;
-    for chunk in &mut chunks {
-        if let [a, b, c, d] = chunk {
-            *first ^= image(a, position);
-            *second ^= image(b, position + 1);
-            *third ^= image(c, position + 2);
-            *fourth ^= image(d, position + 3);
-        }
+    for [a, b, c, d] in chunks {
+        *first ^= image(a, position);
+        *second ^= image(b, position + 1);
+        *third ^= image(c, position + 2);
+        *fourth ^= image(d, position + 3);
         position += 4;
     }
-    for row in chunks.remainder() {
+    for row in remainder {
         *first ^= image(row, position);
         position += 1;
     }
@@ -446,18 +444,16 @@ fn add_lane_rows<const ENTRIES: usize>(
             .map_or(Poly::<U128>::ZERO, |&lane| Poly::<U128>::from_lane(lane))
     };
     let [first, second, third, fourth] = sums;
-    let mut chunks = rows.chunks_exact(4);
+    let (chunks, remainder) = rows.as_chunks::<4>();
     let mut position = 0;
-    for chunk in &mut chunks {
-        if let [a, b, c, d] = chunk {
-            *first ^= image(a, position);
-            *second ^= image(b, position + 1);
-            *third ^= image(c, position + 2);
-            *fourth ^= image(d, position + 3);
-        }
+    for [a, b, c, d] in chunks {
+        *first ^= image(a, position);
+        *second ^= image(b, position + 1);
+        *third ^= image(c, position + 2);
+        *fourth ^= image(d, position + 3);
         position += 4;
     }
-    for row in chunks.remainder() {
+    for row in remainder {
         *first ^= image(row, position);
         position += 1;
     }

@@ -92,13 +92,18 @@ fn check_field<P: Polynomial>(rounds: usize) {
     for _ in 0..rounds {
         let a = stream.element::<P>();
         let b = stream.element::<P>();
-        let expected = reference_mul(&a.as_limbs(), &b.as_limbs(), degree, P::TAPS);
+        let expected = reference_mul(&a.into_limbs(), &b.into_limbs(), degree, P::TAPS);
         assert_eq!(
-            (a * b).as_limbs().as_slice(),
+            (a * b).into_limbs().as_slice(),
             &expected[..],
             "mul at degree {degree}"
         );
         check_secret(a, b);
+        assert_eq!(
+            Gf2::from_poly(a.into_poly()),
+            a,
+            "poly round trip at degree {degree}"
+        );
         assert_eq!(a.square(), a * a, "square at degree {degree}");
         assert_eq!(a.sqrt().square(), a, "sqrt at degree {degree}");
         assert_eq!(

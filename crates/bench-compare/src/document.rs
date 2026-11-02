@@ -3,14 +3,32 @@
 use std::collections::HashMap;
 use std::fs;
 
-use crate::chart::{self, CHARTED, Category, Chart, Point, instructions};
+use crate::barrier::REGISTERS;
+use crate::chart::{self, CHARTED, Category, Chart, Point, value};
+use crate::count::{REPETITIONS, TARGET};
 use crate::error::Error;
-use crate::record::{Cell, Count, Key, Outcome, Record};
+use crate::record::{Cell, Count, Key, Measurement, Outcome, Record, Sweep};
 use crate::run::Paths;
 
+/// The 1-minute load average from which a sweep ran under load.
+pub const LOAD: f64 = 2.0;
+
+/// The target features that name no vector or arithmetic extension: state saving, atomics and
+/// random numbers.
+const SYSTEM_FEATURES: [&str; 8] = [
+    "cmpxchg16b",
+    "fxsr",
+    "rdrand",
+    "rdseed",
+    "xsave",
+    "xsavec",
+    "xsaveopt",
+    "xsaves",
+];
+
 /// The line under the title of every chart.
-const CHART_SUBTITLE: &str =
-    "Instructions per operation, counted by Callgrind. BENCHMARKS.md lists the values.";
+const CHART_SUBTITLE: &str = "Cycles per operation in a loop of independent operations, counted by \
+                              the CPU. BENCHMARKS.md lists the values.";
 
 /// The words of a comparison: what its rows are and how the document names them.
 pub struct Layout<'a, K> {
@@ -24,8 +42,8 @@ pub struct Layout<'a, K> {
     pub row_header: &'a str,
     /// A phrase that names rows, after an operation or a function: `at 64 and 128 bits`.
     pub rows_phrase: fn(&[K]) -> String,
-    /// The body of the `Method` section for a batch of the given size.
-    pub method: fn(u32) -> Vec<String>,
+    /// The lines of the `Method` section that describe the operands and the checks.
+    pub method: fn() -> Vec<String>,
     /// The bullet lines under the `Functions` table, before the absences.
     pub notes: &'a [&'a str],
     /// The title of the horizontal axis of the charts.
@@ -36,16 +54,31 @@ pub struct Layout<'a, K> {
     pub lines: bool,
 }
 
-/// Writes the document and one chart per operation from `record`.
+/// Writes the document and one chart per operation and build from `record`.
 pub fn report<K: Key>(
     paths: &Paths,
     layout: &Layout<'_, K>,
     record: &Record<K>,
 ) -> Result<(), Error> {
-    let table = Table::new(record, layout)?;
+    let tables = record
+        .builds
+        .iter()
+        .map(|build| Ok((build, Table::new(&build.cells, layout)?)))
+        .collect::<Result<Vec<_>, Error>>()?;
+    let [(_, first), ..] = tables.as_slice() else {
+        return Err(Error::missing("build", "the run record"));
+    };
+    for (build, table) in &tables {
+        if table.ops != first.ops || table.keys != first.keys || table.crates != first.crates {
+            return Err(Error::missing(
+                &format!("the cells of the first build in the build {}", build.name),
+                "the run record",
+            ));
+        }
+    }
     let charts = paths.library.join("benchmarks");
     fs::create_dir_all(&charts).map_err(|source| Error::io(&charts, source))?;
-    let categories: Vec<Category> = table
+    let categories: Vec<Category> = first
         .keys
         .iter()
         .map(|key| Category {
@@ -54,56 +87,74 @@ pub fn report<K: Key>(
         })
         .collect();
     // The palette has one slot per crate up to `CHARTED`; further crates stay in the tables.
-    let charted = &table.crates[..table.crates.len().min(CHARTED)];
-    for (op, formula) in &table.ops {
-        let svg = chart::svg(&Chart {
-            title: format!("{op}: {formula}"),
-            subtitle: CHART_SUBTITLE,
-            categories: &categories,
-            axis_title: layout.axis_title,
-            crates: charted,
-            points: table.points(op, charted),
-            lines: layout.lines,
-        })?;
-        let path = charts.join(format!("{op}.svg"));
-        fs::write(&path, svg).map_err(|source| Error::io(&path, source))?;
+    let charted = &first.crates[..first.crates.len().min(CHARTED)];
+    for (build, table) in &tables {
+        for (op, formula) in &table.ops {
+            let svg = chart::svg(&Chart {
+                title: title(op, formula, build),
+                subtitle: CHART_SUBTITLE,
+                categories: &categories,
+                axis_title: layout.axis_title,
+                crates: charted,
+                points: table.points(op, charted),
+                lines: layout.lines,
+            })?;
+            let path = charts.join(chart_file(op, build));
+            fs::write(&path, svg).map_err(|source| Error::io(&path, source))?;
+        }
     }
-    let mut lines = header(record, layout, &table);
+    let mut lines = header(record, layout, first);
     lines.extend(setup(record));
-    lines.extend(method(layout, &table));
-    lines.extend(functions(layout, &table));
-    lines.extend(results(layout, &table));
+    lines.extend(method(layout, record));
+    lines.extend(functions(layout, first));
+    for (build, table) in &tables {
+        lines.extend(results(layout, table, build));
+    }
     lines.extend(reproduce(layout.tool));
     let path = paths.library.join("BENCHMARKS.md");
     fs::write(&path, lines.join("\n") + "\n").map_err(|source| Error::io(&path, source))
 }
 
-/// The cells of a run, indexed by operation, row and crate.
+/// The title of the chart and the table of `op` in `build`.
+fn title<K>(op: &str, formula: &str, build: &Measurement<K>) -> String {
+    if build.name.is_empty() {
+        format!("{op}: {formula}")
+    } else {
+        format!("{op}: {formula}, {}", build.name)
+    }
+}
+
+/// The file of the chart of `op` in `build`, in `benchmarks/`.
+fn chart_file<K>(op: &str, build: &Measurement<K>) -> String {
+    if build.slug.is_empty() {
+        format!("{op}.svg")
+    } else {
+        format!("{op}-{}.svg", build.slug)
+    }
+}
+
+/// Whether `sweep` ran under load.
+fn loaded(sweep: &Sweep) -> bool {
+    sweep.load.before >= LOAD || sweep.load.after >= LOAD
+}
+
+/// The cells of a build, indexed by operation, row and crate.
 struct Table<'a, K> {
     /// Each operation with its formula.
     ops: Vec<(&'a str, &'a str)>,
     keys: Vec<K>,
     crates: Vec<&'a str>,
     cells: HashMap<(&'a str, &'a K, &'a str), &'a Cell<K>>,
-    /// The operand sets of every counted batch.
-    batch: u32,
 }
 
+/// A figure per operation that the result tables show, by its row label.
+type Metric = (&'static str, fn(&Count) -> Option<f64>);
+
 impl<'a, K: Key> Table<'a, K> {
-    /// Fails unless the record has exactly one cell for every operation, row and crate, its
-    /// batches have one size, and every operation has a formula.
-    fn new(record: &'a Record<K>, layout: &Layout<'a, K>) -> Result<Self, Error> {
-        let batches = unique(record.cells.iter().filter_map(|cell| match &cell.outcome {
-            Outcome::Counted(count) => Some(count.operations),
-            Outcome::Absent(_) => None,
-        }));
-        let [batch] = batches.as_slice() else {
-            return Err(Error::missing(
-                "single batch size",
-                "the cells of the run record",
-            ));
-        };
-        let ops = unique(record.cells.iter().map(|cell| cell.op.as_str()))
+    /// Fails unless `cells` hold exactly one cell for every operation, row and crate, and every
+    /// operation has a formula.
+    fn new(cells: &'a [Cell<K>], layout: &Layout<'a, K>) -> Result<Self, Error> {
+        let ops = unique(cells.iter().map(|cell| cell.op.as_str()))
             .into_iter()
             .map(|op| {
                 layout
@@ -116,16 +167,14 @@ impl<'a, K: Key> Table<'a, K> {
             .collect::<Result<Vec<_>, _>>()?;
         let table = Self {
             ops,
-            keys: unique(record.cells.iter().map(|cell| cell.key.clone())),
-            crates: unique(record.cells.iter().map(|cell| cell.library.as_str())),
-            cells: record
-                .cells
+            keys: unique(cells.iter().map(|cell| cell.key.clone())),
+            crates: unique(cells.iter().map(|cell| cell.library.as_str())),
+            cells: cells
                 .iter()
                 .map(|cell| ((cell.op.as_str(), &cell.key, cell.library.as_str()), cell))
                 .collect(),
-            batch: *batch,
         };
-        if table.cells.len() != record.cells.len() {
+        if table.cells.len() != cells.len() {
             return Err(Error::missing(
                 "single cell per operation, row and crate",
                 "the run record",
@@ -158,7 +207,17 @@ impl<'a, K: Key> Table<'a, K> {
         }
     }
 
-    /// The chart points of `op` for `crates`: one per counted case.
+    /// Whether a case of `op` has a chain form.
+    fn chained(&self, op: &str) -> bool {
+        self.keys.iter().any(|key| {
+            self.crates.iter().any(|library| {
+                self.count(op, key, library)
+                    .is_some_and(|count| count.chain.is_some())
+            })
+        })
+    }
+
+    /// The chart points of `op` for `crates`: the throughput cycles of each counted case.
     fn points(&self, op: &str, crates: &[&'a str]) -> Vec<Point<'a>> {
         let mut points = Vec::new();
         for library in crates {
@@ -167,7 +226,7 @@ impl<'a, K: Key> Table<'a, K> {
                     points.push(Point {
                         library,
                         category,
-                        instructions: count.per_operation(),
+                        cycles: count.batch.cycles,
                     });
                 }
             }
@@ -221,22 +280,36 @@ fn header<K: Key>(record: &Record<K>, layout: &Layout<'_, K>, table: &Table<'_, 
         .map(|library| format!("`{library}`"))
         .collect();
     let state = if record.dirty {
-        " The counted files had uncommitted changes."
+        " The measured files had uncommitted changes."
     } else {
         ""
     };
+    let cpus: Vec<String> = unique(record.builds.iter().map(|build| build.sweep.cpu))
+        .iter()
+        .map(ToString::to_string)
+        .collect();
     vec![
         "# Benchmarks".to_owned(),
         String::new(),
         format!(
-            "`{}` at commit `{}` against {}: {} {}, in instructions per operation, counted on \
-             {}.{state}",
+            "`{}` at commit `{}` against {}: {} {}, in cycles and instructions per operation, \
+             measured on {}.{state}",
             layout.subject,
             short(&record.library_commit),
             sentence(&others),
             sentence(&table.ops.iter().map(|(op, _)| *op).collect::<Vec<_>>()),
             (layout.rows_phrase)(&table.keys),
             record.date
+        ),
+        String::new(),
+        format!(
+            "The CPU is an {}, measured on its CPU {}.",
+            record.cpu_model,
+            sentence(&cpus)
+        ),
+        format!(
+            "Its counters give each figure per operation as the median, over {REPETITIONS} \
+             repetitions, of a run of 2n operations on fresh operands less a run of n, over n."
         ),
         String::new(),
     ]
@@ -248,42 +321,161 @@ fn short(commit: &str) -> &str {
 }
 
 fn setup<K>(record: &Record<K>) -> Vec<String> {
-    let cpu = match &record.machine {
-        Some(machine) => format!("{machine} (`{}`)", record.native_cpu),
-        None => format!("`{}`", record.native_cpu),
-    };
-    let counter = match record.valgrind.strip_prefix("valgrind-") {
-        Some(version) => format!("Valgrind {version}, Callgrind"),
-        None => format!("{}, Callgrind", record.valgrind),
-    };
+    let mut cpu = format!("{} (`{}`)", record.cpu_model, record.native_cpu);
+    if let Some(machine) = &record.machine {
+        cpu += &format!("; {machine}");
+    }
     let crates: Vec<String> = record
         .versions
         .iter()
         .map(|entry| format!("{} {}", entry.name, entry.version))
         .collect();
-    let rows = vec![
+    let mut rows = vec![
         vec!["CPU".to_owned(), cpu],
         vec![
             "Compiler".to_owned(),
-            format!(
-                "{}, LLVM {}, `bench` profile, `{}`",
-                record.rustc, record.llvm, record.rustflags
-            ),
+            format!("{}, LLVM {}, `bench` profile", record.rustc, record.llvm),
         ],
-        vec!["Counter".to_owned(), counter],
-        vec!["Crates".to_owned(), crates.join(", ")],
+        vec!["Features".to_owned(), features(record)],
     ];
+    let label = |what: &str, build: &Measurement<K>| {
+        if build.name.is_empty() {
+            what.to_owned()
+        } else {
+            format!("{what}, {}", build.name)
+        }
+    };
+    for build in &record.builds {
+        rows.push(vec![
+            label("RUSTFLAGS", build),
+            format!("`{}`", build.rustflags),
+        ]);
+        let extensions: Vec<&str> = build
+            .target_features
+            .iter()
+            .map(String::as_str)
+            .filter(|feature| !SYSTEM_FEATURES.contains(feature))
+            .collect();
+        rows.push(vec![label("Extensions", build), extensions.join(", ")]);
+    }
+    rows.push(vec![
+        "Counters".to_owned(),
+        "one Linux perf_event group: user-mode cycles, instructions and branch misses".to_owned(),
+    ]);
+    for build in &record.builds {
+        rows.push(vec![label("Load", build), load(&build.sweep)]);
+    }
+    rows.push(vec!["Crates".to_owned(), crates.join(", ")]);
     let mut lines = vec!["## Setup".to_owned(), String::new()];
     lines.extend(markdown_table(&[String::new(), String::new()], &rows, "ll"));
     lines.push(String::new());
     lines
 }
 
-fn method<K>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
+/// The features that the builds enable beside the default ones of the measured package.
+fn features<K>(record: &Record<K>) -> String {
+    if record.features.is_empty() {
+        format!("`{}` with its default features", record.package)
+    } else {
+        let names: Vec<String> = record
+            .features
+            .iter()
+            .map(|feature| format!("`{feature}`"))
+            .collect();
+        format!("`{}` built with {}", record.package, sentence(&names))
+    }
+}
+
+/// The load around `sweep` and the busy share of the measuring CPU's siblings.
+fn load(sweep: &Sweep) -> String {
+    let mut text = format!(
+        "1-minute load average {} before the sweep and {} after",
+        sweep.load.before, sweep.load.after
+    );
+    for sibling in &sweep.siblings {
+        text += &format!(
+            "; CPU {}, the SMT sibling of CPU {}, busy {:.0}% of the sweep",
+            sibling.cpu,
+            sweep.cpu,
+            100.0 * sibling.busy
+        );
+    }
+    text
+}
+
+fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
     let mut lines = vec!["## Method".to_owned(), String::new()];
-    lines.extend((layout.method)(table.batch));
+    lines.extend(protocol());
+    let loaded = record
+        .builds
+        .iter()
+        .filter(|build| loaded(&build.sweep))
+        .count();
+    let sentence = match (loaded, record.builds.len()) {
+        (0, _) => None,
+        (1, 1) => Some("The sweep ran at a 1-minute load of {LOAD} or more, so its cycles"),
+        (loaded, builds) if loaded == builds => {
+            Some("The sweeps ran at a 1-minute load of {LOAD} or more, so their cycles")
+        }
+        (_, _) => {
+            Some("A sweep ran at a 1-minute load of {LOAD} or more, so the cycles of its build")
+        }
+    };
+    if let Some(sentence) = sentence {
+        lines.extend([
+            String::new(),
+            format!(
+                "{} compare within each table only.",
+                sentence.replace("{LOAD}", &LOAD.to_string())
+            ),
+        ]);
+    }
+    lines.push(String::new());
+    lines.extend((layout.method)());
     lines.push(String::new());
     lines
+}
+
+/// How the counts are taken.
+fn protocol() -> Vec<String> {
+    vec![
+        format!(
+            "A sweep measures every case in {REPETITIONS} repetitions; repetition r of every case \
+             runs before repetition r + 1 of any case, so a drift of the machine reaches all \
+             cases alike. Each run draws fresh operand sets from the case's distribution, outside \
+             the counted region: no operand set runs twice, so the branch predictor never learns \
+             a sequence. A repetition runs n operations uncounted, then counts a run of n \
+             operations and a run of 2n. Before the repetitions, n starts at 16 operations and \
+             doubles until a run of n, counted after an uncounted run of as many, takes {} \
+             cycles; n stops earlier where the operand sets of 2n operations fill 256 KiB.",
+            chart::grouped(TARGET)
+        ),
+        String::new(),
+        format!(
+            "One perf_event group on the measuring thread, pinned to one CPU, counts user-mode \
+             cycles, instructions and branch misses; a run during which the kernel shares the \
+             counters with other groups stops the sweep. A figure per operation is the median, \
+             over the {REPETITIONS} repetitions, of the long run less the short run, divided by \
+             n: the fixed cost of a run cancels, as in nanoBench's differencing, and each \
+             difference pairs two runs taken back to back. A case whose long runs count no more \
+             cycles than its short runs stops the sweep, and so does a chain step under one \
+             cycle, the latency of a single instruction."
+        ),
+        String::new(),
+        format!(
+            "Throughput runs independent operations, with operands and results behind \
+             `core::hint::black_box`. Latency runs the chain `x = op(x, y)`: from the second \
+             operand set on, each result is the first operand of the next operation, so each \
+             operation waits for the one before. Each result passes through an empty \
+             inline-assembly block, which keeps the compiler from regrouping the chain. The block \
+             holds a result of up to {REGISTERS} bytes in general-purpose registers in one chain \
+             and in vector registers in another, each chain a case of its own in the sweep; it \
+             can only add moves between the two, so the latency is the chain with fewer cycles. \
+             A larger result passes through memory, in a single chain. The chain applies where \
+             the result has the type of the first operand and the other operands are plain \
+             values: a step copies them, and the copy of an allocated value would allocate."
+        ),
+    ]
 }
 
 fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
@@ -328,7 +520,7 @@ fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String
     let mut lines = vec![
         "## Functions".to_owned(),
         String::new(),
-        "Each cell counts the crate's own function:".to_owned(),
+        "Each cell measures the crate's own function:".to_owned(),
         String::new(),
     ];
     lines.extend(markdown_table(&header, &rows, &"l".repeat(header.len())));
@@ -390,7 +582,7 @@ fn absences<'a, K: Key>(layout: &Layout<'_, K>, table: &'a Table<'a, K>) -> Vec<
 }
 
 /// The absent `cells` of `library`: its name, the operations unless all of them, and the rows
-/// unless all of them.
+/// unless all of them. Operations whose rows differ name their rows each.
 fn describe<K: Key>(
     layout: &Layout<'_, K>,
     table: &Table<'_, K>,
@@ -398,22 +590,75 @@ fn describe<K: Key>(
     cells: &[(&str, &K)],
 ) -> String {
     let ops = unique(cells.iter().map(|(op, _)| *op));
-    let keys: Vec<K> = unique(cells.iter().map(|(_, key)| (*key).clone()));
+    let rows_of = |op: &str| -> Vec<K> {
+        unique(
+            cells
+                .iter()
+                .filter(|(other, _)| *other == op)
+                .map(|(_, key)| (*key).clone()),
+        )
+    };
+    let rows_phrase = |keys: &[K]| {
+        if keys.len() < table.keys.len() {
+            format!(" {}", (layout.rows_phrase)(keys))
+        } else {
+            String::new()
+        }
+    };
+    let per_op: Vec<Vec<K>> = ops.iter().map(|op| rows_of(op)).collect();
     let mut text = format!("`{library}`");
-    if ops.len() < table.ops.len() {
-        text += &format!(" {}", sentence(&ops));
-    }
-    if keys.len() < table.keys.len() {
-        text += &format!(" {}", (layout.rows_phrase)(&keys));
+    match per_op.split_first() {
+        Some((first, rest)) if rest.iter().any(|keys| keys != first) => {
+            let parts: Vec<String> = ops
+                .iter()
+                .zip(&per_op)
+                .map(|(op, keys)| format!("{op}{}", rows_phrase(keys)))
+                .collect();
+            text += &format!(" {}", sentence(&parts));
+        }
+        _ => {
+            if ops.len() < table.ops.len() {
+                text += &format!(" {}", sentence(&ops));
+            }
+            let keys: Vec<K> = unique(cells.iter().map(|(_, key)| (*key).clone()));
+            text += &rows_phrase(&keys);
+        }
     }
     text
 }
 
-fn results<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
+/// The results of `build`: per operation, its chart and its table.
+fn results<K: Key>(
+    layout: &Layout<'_, K>,
+    table: &Table<'_, K>,
+    build: &Measurement<K>,
+) -> Vec<String> {
+    let heading = if build.name.is_empty() {
+        "## Results".to_owned()
+    } else {
+        format!("## Results {}", build.name)
+    };
+    let deviating = table.cells.values().any(|cell| match &cell.outcome {
+        Outcome::Counted(count) => count.deviation.is_some(),
+        Outcome::Absent(_) => false,
+    });
+    let marks = if deviating {
+        format!(
+            " among the functions that meet the row's definition. A `\\*` marks the figure of a \
+             function that deviates from it where the figure is below `{}`'s; the note under the \
+             table says how the function deviates.",
+            layout.subject
+        )
+    } else {
+        ".".to_owned()
+    };
     let mut lines = vec![
-        "## Results".to_owned(),
+        heading,
         String::new(),
-        "Each cell: instructions per operation. Bold marks the fewest in each row.".to_owned(),
+        format!(
+            "Per operation, each row gives throughput cycles, latency cycles for the operations \
+             that have chains, and instructions. Bold marks the fewest in each row{marks}"
+        ),
     ];
     if let Some(unplotted) = table.crates.get(CHARTED..).filter(|rest| !rest.is_empty()) {
         let names: Vec<String> = unplotted.iter().map(|name| format!("`{name}`")).collect();
@@ -428,48 +673,117 @@ fn results<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> 
         ));
     }
     for (op, formula) in &table.ops {
-        let mut rows = Vec::new();
-        for key in &table.keys {
-            let counts: Vec<Option<f64>> = table
-                .crates
-                .iter()
-                .map(|library| table.count(op, key, library).map(Count::per_operation))
-                .collect();
-            let fewest = counts.iter().flatten().copied().reduce(f64::min);
-            let mut row = vec![key.to_string()];
-            row.extend(counts.iter().map(|count| match count {
-                Some(count) if Some(*count) == fewest => format!("**{}**", instructions(*count)),
-                Some(count) => instructions(*count),
-                None => "–".to_owned(),
+        let mut metrics: Vec<Metric> =
+            vec![("throughput cycles", |count| Some(count.batch.cycles))];
+        if table.chained(op) {
+            metrics.push(("latency cycles", |count| {
+                count.chain.map(|latency| latency.events.cycles)
             }));
-            rows.push(row);
         }
-        let mut header = vec![layout.row_header.to_owned()];
+        metrics.push(("instructions", |count| Some(count.batch.instructions)));
+        let mut rows = Vec::new();
+        // Each starred cell: its crate, its deviation and its row.
+        let mut starred: Vec<(&str, &str, &K)> = Vec::new();
+        for key in &table.keys {
+            let ours = table.count(op, key, layout.subject);
+            for (index, (label, metric)) in metrics.iter().enumerate() {
+                let figures: Vec<Option<(f64, Option<&str>)>> = table
+                    .crates
+                    .iter()
+                    .map(|library| {
+                        table.count(op, key, library).and_then(|count| {
+                            metric(count).map(|figure| (figure, count.deviation.as_deref()))
+                        })
+                    })
+                    .collect();
+                let fewest = figures
+                    .iter()
+                    .flatten()
+                    .filter(|(_, deviation)| deviation.is_none())
+                    .map(|(figure, _)| *figure)
+                    .reduce(f64::min);
+                let our_figure = ours.and_then(metric);
+                let mut row = vec![
+                    if index == 0 {
+                        key.to_string()
+                    } else {
+                        String::new()
+                    },
+                    (*label).to_owned(),
+                ];
+                for (library, figure) in table.crates.iter().zip(&figures) {
+                    row.push(match figure {
+                        Some((figure, Some(deviation)))
+                            if our_figure.is_some_and(|ours| *figure < ours) =>
+                        {
+                            if !starred.contains(&(library, deviation, key)) {
+                                starred.push((library, deviation, key));
+                            }
+                            format!("{}\\*", value(*figure))
+                        }
+                        Some((figure, None)) if Some(*figure) == fewest => {
+                            format!("**{}**", value(*figure))
+                        }
+                        Some((figure, _)) => value(*figure),
+                        None => "–".to_owned(),
+                    });
+                }
+                rows.push(row);
+            }
+        }
+        let mut header = vec![layout.row_header.to_owned(), "Per operation".to_owned()];
         header.extend(table.crates.iter().map(|library| (*library).to_owned()));
-        let title = format!("{op}: {formula}");
+        let title = title(op, formula, build);
         lines.extend([
             String::new(),
             format!("### {title}"),
             String::new(),
-            format!("![{title}](benchmarks/{op}.svg)"),
+            format!("![{title}](benchmarks/{})", chart_file(op, build)),
             String::new(),
         ]);
         lines.extend(markdown_table(
             &header,
             &rows,
-            &("r".to_owned() + &"r".repeat(table.crates.len())),
+            &("rl".to_owned() + &"r".repeat(table.crates.len())),
         ));
+        lines.extend(deviations(layout, &starred));
     }
+    lines.push(String::new());
     lines
+}
+
+/// The notes under a table on its starred cells: per crate and deviation, the rows of its stars.
+fn deviations<K: Key>(layout: &Layout<'_, K>, starred: &[(&str, &str, &K)]) -> Vec<String> {
+    let mut groups: Vec<(&str, &str, Vec<K>)> = Vec::new();
+    for (library, deviation, key) in starred {
+        match groups
+            .iter_mut()
+            .find(|(other, reason, _)| other == library && reason == deviation)
+        {
+            Some((_, _, keys)) => keys.push((*key).clone()),
+            None => groups.push((library, deviation, vec![(*key).clone()])),
+        }
+    }
+    groups
+        .into_iter()
+        .flat_map(|(library, deviation, keys)| {
+            [
+                String::new(),
+                format!(
+                    "\\* `{library}` {}: {deviation}.",
+                    (layout.rows_phrase)(&keys)
+                ),
+            ]
+        })
+        .collect()
 }
 
 fn reproduce(tool: &str) -> Vec<String> {
     vec![
-        String::new(),
         "## Reproduce".to_owned(),
         String::new(),
         "```sh".to_owned(),
-        format!("cargo run -p {tool} -- bench    # Callgrind counts of the native build"),
+        format!("cargo run -p {tool} -- bench    # the CPU's counts of the native build"),
         format!("cargo run -p {tool} -- report   # this file and benchmarks/*.svg"),
         "```".to_owned(),
     ]

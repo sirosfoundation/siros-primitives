@@ -77,6 +77,7 @@ const fn pack(squarings: u32, src: Register, mul: Option<Register>, dst: Registe
 }
 
 /// The register in byte `byte` of a packed step.
+#[inline(always)]
 const fn unpack(word: u64, byte: u32) -> Option<Register> {
     let value = (word >> (8 * byte)) & 0xff;
     if value == NO_REGISTER {
@@ -143,6 +144,7 @@ impl<M: Modulus> Program<M> {
     }
 
     /// The packed step at `index`.
+    #[inline(always)]
     const fn word(&self, index: usize) -> u64 {
         let row = index / Shape::<M>::LIMBS;
         if row < ROWS {
@@ -153,6 +155,7 @@ impl<M: Modulus> Program<M> {
     }
 
     /// The dictionary step at `index`, below [`Self::dictionary`].
+    #[inline(always)]
     const fn build(&self, index: usize) -> Build {
         let word = self.word(index);
         Build {
@@ -164,6 +167,7 @@ impl<M: Modulus> Program<M> {
     }
 
     /// The main step at `index`, at or above [`Self::dictionary`].
+    #[inline(always)]
     const fn climb(&self, index: usize) -> Climb {
         let word = self.word(index);
         Climb {
@@ -970,23 +974,18 @@ impl Map {
 }
 
 impl<M: Modulus> Fp<M> {
-    /// `self^e` for the exponent of `program`.
+    /// `self^e` for the exponent of `program`, by the constant-time arithmetic when `CT` holds.
     #[inline(always)]
-    pub(crate) fn pow_program(self, program: &Program<M>) -> Self {
+    pub(crate) fn pow_program<const CT: bool>(self, program: &Program<M>) -> Self {
         let mut registers = [self; REGISTERS];
         let mut index = 0;
         while index < program.dictionary {
             let step = program.build(index);
-            let mut value = registers[step.src as usize % REGISTERS];
-            let mut squaring = 0;
-            while squaring < step.squarings {
-                value = value.square();
-                squaring += 1;
-            }
-            if let Some(mul) = step.mul {
-                value = value.mul(registers[mul as usize % REGISTERS]);
-            }
-            registers[step.dst as usize % REGISTERS] = value;
+            let value = registers[step.src as usize % REGISTERS].square_times::<CT>(step.squarings);
+            registers[step.dst as usize % REGISTERS] = match step.mul {
+                Some(mul) => value.mul_with::<CT>(registers[mul as usize % REGISTERS]),
+                None => value,
+            };
             index += 1;
         }
         let mut acc = match program.first {
@@ -995,16 +994,27 @@ impl<M: Modulus> Fp<M> {
         };
         while index < program.len {
             let step = program.climb(index);
-            let mut squaring = 0;
-            while squaring < step.squarings {
-                acc = acc.square();
-                squaring += 1;
-            }
+            acc = acc.square_times::<CT>(step.squarings);
             if let Some(mul) = step.mul {
-                acc = acc.mul(registers[mul as usize % REGISTERS]);
+                acc = acc.mul_with::<CT>(registers[mul as usize % REGISTERS]);
             }
             index += 1;
         }
         acc
+    }
+
+    /// `self^(2^count)`, by `count` squarings, two per pass.
+    #[inline(always)]
+    pub(crate) fn square_times<const CT: bool>(self, count: u32) -> Self {
+        let mut value = self;
+        let mut remaining = count;
+        while remaining >= 2 {
+            value = value.square_with::<CT>().square_with::<CT>();
+            remaining -= 2;
+        }
+        if remaining == 1 {
+            value = value.square_with::<CT>();
+        }
+        value
     }
 }

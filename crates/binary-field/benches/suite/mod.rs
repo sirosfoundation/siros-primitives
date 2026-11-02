@@ -142,6 +142,10 @@ impl Suite for BinaryField {
             .collect()
     }
 
+    fn operands(op: Op, key: &Field, rng: &mut Rng) -> Vec<Limbs> {
+        op.operands(&spec(key).1.modulus, rng)
+    }
+
     fn offer<V: Visitor<Op, Field>>(row: Row<Op, Field, V>) -> Row<Op, Field, V> {
         libs::offer(row)
     }
@@ -213,7 +217,8 @@ impl Op {
     };
 
     /// One operand set over the field of `modulus`, with its result:
-    /// - add, mul: `a` and `b` uniform;
+    /// - add: `a` and `b` uniform;
+    /// - mul: `a` and `b` uniform and nonzero, so that a chain of products never reaches zero;
     /// - square, invert: `a` uniform and nonzero;
     /// - sqrt: `a = r²` for `r` uniform and nonzero, whose square root is `r` alone.
     fn sample(self, modulus: &Modulus, rng: &mut Rng) -> (Vec<Limbs>, Limbs) {
@@ -225,7 +230,7 @@ impl Op {
                 (vec![a, b], sum)
             }
             Kind::Mul => {
-                let (a, b) = (modulus.uniform(rng), modulus.uniform(rng));
+                let (a, b) = (modulus.nonzero(rng), modulus.nonzero(rng));
                 let product = modulus.mul(&a, &b);
                 (vec![a, b], product)
             }
@@ -243,6 +248,16 @@ impl Op {
                 let root = modulus.nonzero(rng);
                 (vec![modulus.square(&root)], root)
             }
+        }
+    }
+
+    /// One operand set over the field of `modulus`, drawn as [`sample`](Self::sample) draws it.
+    fn operands(self, modulus: &Modulus, rng: &mut Rng) -> Vec<Limbs> {
+        match self.kind {
+            Kind::Add => vec![modulus.uniform(rng), modulus.uniform(rng)],
+            Kind::Mul => vec![modulus.nonzero(rng), modulus.nonzero(rng)],
+            Kind::Square | Kind::Invert => vec![modulus.nonzero(rng)],
+            Kind::Sqrt => vec![modulus.square(&modulus.nonzero(rng))],
         }
     }
 }

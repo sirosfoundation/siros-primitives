@@ -4,6 +4,8 @@ use const_default::ConstDefault;
 use generic_array::ArrayLength;
 use typenum::{Gr, IsGreater, Mod, NonZero, Prod, Quot, Sum, U0, U1, U2, U3, U4, U8, Unsigned};
 
+use crate::nonzero::{NonZeroFor, NonZeroLimbs};
+
 type DivUp<A, B> = Sum<Quot<A, B>, Gr<Mod<A, B>, U0>>;
 type LimbsFor<N> = DivUp<N, typenum::U64>;
 type BytesFor<N> = DivUp<N, typenum::U8>;
@@ -27,6 +29,10 @@ pub(crate) mod sealed {
         type TruncatedScratch: ArrayLength;
         /// `4 * ceil(N / 64) + 8`: the work area of a division by an `N`-bit divisor.
         type DivisionScratch: ArrayLength;
+        /// `2 * ceil(N / 64) + 1`: the product of two `N`-bit values with the limb above it.
+        type ProductWindow: ArrayLength;
+        /// The representation of a nonzero `Uint<N>`.
+        type NonZeroLimbs: Copy + Eq + core::hash::Hash;
     }
 }
 
@@ -38,24 +44,29 @@ where
     LimbsFor<N>: Add<U1> + Add<U8> + Mul<U2> + Mul<U3> + Mul<U4>,
     Sum<LimbsFor<N>, U1>: ArrayLength,
     Sum<LimbsFor<N>, U8>: ArrayLength,
-    Prod<LimbsFor<N>, U2>: Add<U8>,
+    Prod<LimbsFor<N>, U2>: Add<U8> + Add<U1>,
+    Sum<Prod<LimbsFor<N>, U2>, U1>: ArrayLength,
     Prod<LimbsFor<N>, U3>: Add<U8>,
     Prod<LimbsFor<N>, U4>: Add<U8>,
     ScratchFor<N, U2>: ArrayLength,
     ScratchFor<N, U3>: ArrayLength,
     ScratchFor<N, U4>: ArrayLength,
+    LimbsFor<N>: NonZeroFor,
 {
     type Window = Sum<LimbsFor<N>, U1>;
     type BalancedScratch = Sum<LimbsFor<N>, U8>;
     type ProductScratch = ScratchFor<N, U2>;
     type TruncatedScratch = ScratchFor<N, U3>;
     type DivisionScratch = ScratchFor<N, U4>;
+    type ProductWindow = Sum<Prod<LimbsFor<N>, U2>, U1>;
+    type NonZeroLimbs = <LimbsFor<N> as NonZeroFor>::Repr;
 }
 
 /// A bit width `N >= 1`, given as a `typenum` unsigned integer, with its storage sizes.
 ///
 /// It is sealed: exactly the nonzero `typenum` unsigned integers implement it.
-pub trait Bits: sealed::Sealed + Unsigned + NonZero
+pub trait Bits:
+    sealed::Sealed<NonZeroLimbs: NonZeroLimbs<Self::Limbs>> + Unsigned + NonZero
 where
     <Self::Limbs as ArrayLength>::ArrayType<u64>: Copy + ConstDefault,
 {
@@ -76,7 +87,7 @@ where
 
 impl<N> Bits for N
 where
-    N: sealed::Sealed + Unsigned + NonZero,
+    N: sealed::Sealed<NonZeroLimbs: NonZeroLimbs<LimbsFor<N>>> + Unsigned + NonZero,
     N: Div<typenum::U64> + Rem<typenum::U64> + Div<typenum::U8> + Rem<typenum::U8>,
     Mod<N, typenum::U64>: IsGreater<U0>,
     Quot<N, typenum::U64>: Add<Gr<Mod<N, typenum::U64>, U0>>,

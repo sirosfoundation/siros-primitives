@@ -1,19 +1,20 @@
 # prime-field-bench-report
 
-Counts the instructions of the benchmarks that compare `prime-field` with other prime-field
-crates and writes `crates/prime-field/BENCHMARKS.md` with one SVG chart per operation.
+Measures `prime-field` against other prime-field crates with the CPU's performance counters and
+writes `crates/prime-field/BENCHMARKS.md` with one SVG chart per operation.
 
 ## Usage
 
 ```sh
-cargo run -p prime-field-bench-report -- bench [--machine <description>]
+cargo run -p prime-field-bench-report -- bench [--cpu <cpu>] [--machine <description>]
 cargo run -p prime-field-bench-report -- report
 ```
 
 `bench` builds the `compare` bench of `prime-field` with the flags of
 [`bench-compare`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/bench-compare)
-and runs it: every case is checked against an independent oracle and counted under Valgrind's
-Callgrind in its own process. The record goes to
-`target/benchmarks/prime-field.json`. `report` reads it and writes the document and the charts.
+and runs it on one CPU, CPU 15 unless `--cpu` names another: every case is checked against an
+independent oracle, then measured. The record goes to `target/benchmarks/prime-field.json`;
+`--machine` adds a description of the machine. `report` reads it and writes the document and the
+charts.
 
-`bench` needs Valgrind in `PATH`. The counts are exact at any machine load.
+`bench` needs Linux with `kernel.perf_event_paranoid` at 2 or below.

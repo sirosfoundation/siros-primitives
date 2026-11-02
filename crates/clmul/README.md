@@ -52,9 +52,10 @@ The comb multiplies five interleaved bit lanes of each word by integer multiplic
 `-C target-feature=+aes` enables PMULL, and `-C target-cpu=native` enables what the build machine
 has. The const functions run the comb on every target.
 
-A default `x86_64` build has neither PCLMULQDQ nor SSSE3, so it multiplies with the comb. Runtime
-selection belongs to the application: it compiles its hot loop once per feature set, with
-`#[target_feature]` or the `multiversion` crate, and dispatches around it.
+A default `x86_64` build has neither PCLMULQDQ nor SSSE3, so it multiplies with the comb. The
+backend is fixed when the crate compiles: a `#[target_feature]` function or a `multiversion` clone
+that calls it still runs the comb. Runtime selection belongs to the application, which builds once
+per feature set and loads the build that the CPU supports.
 
 `HARDWARE` is `true` in builds with one of the two instructions.
 

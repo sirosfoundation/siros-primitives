@@ -11,10 +11,15 @@ A field is declared by its polynomial. `Gf2<P>` holds an element, a polynomial o
 in the registers its plan chooses: a byte or a 16-bit word in a general register up to degree 16,
 one vector register up to degree 128, and `ceil(n / 128)` vector registers above. It provides
 addition, multiplication, squaring, inversion, powers by exponents of any width, square roots,
-traces, `x` and `x^-1` multiples, and conversions from and to bytes, little-endian `u64` limbs and
-`biguint::Uint`, bit `i` the coefficient of `x^i`. Its operations take the fastest path, which may
-index tables and take time that depends on the value. `Secret<P>` wraps an element whose operations
-take one path for every value, and reveals it on request.
+traces, and `x` and `x^-1` multiples. Its operations take the fastest path, which may index tables
+and take time that depends on the value. `Secret<P>` wraps an element whose operations take one
+path for every value, and reveals it on request.
+
+Bit `i` of an element's value is the coefficient of `x^i`. `from_poly` and `into_poly` convert it
+from and to `clmul::Poly<n>`, the vector registers it lives in above degree 16. `into_limbs`,
+`into_uint`, `to_le_bytes` and `to_be_bytes` give it as little-endian `u64` limbs, a
+`biguint::Uint` or bytes, and `from_limbs`, `from_uint`, `from_u64`, `from_u128`, `from_le_bytes`
+and `from_be_bytes` take them back, refusing a bit at or above `n`.
 
 `Gf2p8`, `Gf2p16`, `Gf2p64`, `Gf2p128`, `Gf2p233`, `Gf2p256` and `Gf2p571` are the fields of
 AES, GCM, the NIST curves B-233 and B-571 and three other low-weight polynomials; `Gf2p128` adds
@@ -65,25 +70,32 @@ loop bound folds to a constant, so each field compiles to straight-line code. Th
 and squares come from
 [`clmul`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/clmul):
 PCLMULQDQ, PMULL, or a const comb in builds without them, and its `Poly` of vector registers. The
-plan knows which through `clmul::HARDWARE`.
+plan knows which through `clmul::HARDWARE`. "With tables" means the default build or
+`precomputed` ([Tables](#tables)).
 
 | Operation | Case | Algorithm |
 |---|---|---|
-| Product | degree up to 8, with `precomputed` | The table of every product |
-| Product | degree up to 8, by default | Logarithm and antilogarithm tables of a generator |
-| Product | degree up to 16, and `Secret` | One carry-less product of the words |
+| Product | `Gf2`, degree up to 8, with `precomputed` | The table of every product |
+| Product | `Gf2`, degree up to 8, by default | Logarithm and antilogarithm tables of a generator |
+| Product | degree up to 64 | One carry-less product of the words |
 | Product | above | Karatsuba's three word products per pair of registers (Karatsuba and Ofman, 1962), schoolbook across registers |
-| Reduction | `2d <= n`, with `d` the degree of `r` | One fold of the overflow, with the overflow of the fold added first: two carry-less products with `r` when the word products are hardware and `d` is below 64 (Gueron and Kounavis, 2010), one shifted copy per tap otherwise |
+| Reduction | degree up to 64 and `2d <= n`, with `d` the degree of `r` | One shifted copy per tap, with the overflow of the fold added first |
+| Reduction | degree above 64, `2d <= n` and `d` below 64, with hardware word products | Two rounds of carry-less products with `r`, the second for the overflow of the first (Gueron and Kounavis, 2010); a square of degree 128 takes the shifted copies of the next row |
+| Reduction | degree 128 and `d` below 64 | One shifted copy per tap, with the overflow of the fold added first |
 | Reduction | otherwise, such as `x^233 + x^74 + 1` | Rounds of shifted copies per tap, as many as the taps need |
-| Square | degree up to 16, with tables | The table of every square, or the images of the two bytes |
-| Square | degree up to 8, `Secret` | A constant-time linear map: each output byte is the parities of an input byte under eight row masks, by two products (Warren, Hacker's Delight, 7-1 and 7-6) |
-| Square | above | The bits spread to twice their position, by a byte shuffle of a nibble table with SSSE3, PCLMULQDQ or interleaving otherwise; then the reduction |
-| Inverse | degree up to 8, and up to 16 with `precomputed` | The table of every inverse |
-| Inverse | otherwise | `a^(2^n - 2)` along a shortest addition chain for `n - 1` (Itoh and Tsujii, 1988; Knuth, TAOCP vol. 2, 4.6.3): one product and one Frobenius power per step, 10 products for GF(2¹²⁸) |
-| Frobenius power | degree 17 to 128, with tables | The sum of the images of the windows of the value: byte windows with `precomputed`, 3-bit or 4-bit windows within 16 KiB by default, composed with squarings |
+| Square | `Gf2` with tables, degree up to 8, and up to 16 with `precomputed` | The table of every square |
+| Square | `Gf2` with the default tables, degree 9 to 16 | The images of the two bytes |
+| Square | degree up to 8 | A constant-time linear map: each output byte is the parities of an input byte under eight row masks, by two products (Warren, Hacker's Delight, 7-1 and 7-6) |
+| Square | degree up to 16, and up to 64 with `2d <= n` | The carry-less product of the word with itself, then the reduction |
+| Square | otherwise | The bits spread to twice their position: a byte shuffle of a nibble table with SSSE3, the carry-less product of each word with itself with PCLMULQDQ or PMULL, interleaving otherwise; then the reduction |
+| Inverse | `Gf2` with tables, degree up to 8, and up to 16 with `precomputed` | The table of every inverse |
+| Inverse | otherwise | `a^(2^n - 2)` along a short addition chain for `n - 1` (Itoh and Tsujii, 1988; Knuth, TAOCP vol. 2, 4.6.3): one product and one Frobenius power per step, 10 products for GF(2¹²⁸) |
+| Frobenius power | `Gf2` with tables, degree 17 to 128 | The sum of the images of the windows of the value: byte windows with `precomputed`, 3-bit or 4-bit windows within 16 KiB by default, composed with squarings |
 | Frobenius power | otherwise | Squarings; up to degree 16, the constant-time linear map of the power |
 | Power | any exponent width | Square-and-multiply over `biguint::Exponent`, which `u32`, `u64` and `Uint<N>` implement |
-| Square root | degree up to 16, with tables | The table of every root, or the images of the two bytes |
+| Square root | `Gf2` with tables, degree up to 8, and up to 16 with `precomputed` | The table of every root |
+| Square root | `Gf2` with the default tables, degree 9 to 16 | The images of the two bytes |
+| Square root | degree up to 16 | The constant-time linear map of `a^(2^(n-1))` |
 | Square root | degree up to 1024 | Even and odd coefficient split: `sqrt(a) = e(x) + sqrt(x) o(x)`, with `sqrt(x) = x^(2^(n-1))` a compile-time constant |
 | Square root | larger degree | The Frobenius map, `n - 1` squarings at run time; the const evaluator refuses the longer chain |
 | Trace | any | The parity of `a & m`, where bit `k` of the compile-time mask `m` is the trace of `x^k` from Newton's identities on the coefficients of `f` |
@@ -146,12 +158,14 @@ batch figures differ by code placement.
 compares `binary-field` with gf256, galois_field_2pm, g2p, reed-solomon-erasure, hekate-math,
 Plonky3, longfellow-zk's `runtime-algebra`, `compile-algebra` and `core-algebra`, and polyval on
 add, mul, square, invert and sqrt over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and
-GF(2⁵⁷¹), in instructions per operation that Callgrind counts, with `precomputed`. The unpublished
+GF(2⁵⁷¹), each operation in a constant-time and a variable-time row, with `precomputed`. The
+figures are cycles and instructions per operation that the CPU's performance counters count, in
+builds with and without carry-less multiplication. The unpublished
 [`binary-field-bench-report`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/binary-field/bench-report)
 regenerates it:
 
 ```sh
-cargo run -p binary-field-bench-report -- bench    # Callgrind counts of the native build
+cargo run -p binary-field-bench-report -- bench    # the CPU's counts of both builds
 cargo run -p binary-field-bench-report -- report   # BENCHMARKS.md and benchmarks/*.svg
 ```
 

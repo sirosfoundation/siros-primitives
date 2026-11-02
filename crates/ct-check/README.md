@@ -30,15 +30,13 @@ instruction whose latency depends on its operands, such as a division.
 
 ## Coverage
 
-- `prime-field`: `add`, `sub`, `neg`, `double`, `mul`, `square` and `invert`, over the nine fields
-  of its `compare` bench.
+- `prime-field`: every operation of `Secret` (the sum, the difference and the product with a
+  `Secret` or a public `Fp` on either side and their assigning forms, `neg`, `square`, `double`,
+  `pow` with a public exponent, `invert` and `sqrt`), over the nine fields of its `compare` bench.
 - `binary-field`: the sum, the product, `square`, `sqrt`, `trace`, `times_x`, `over_x` and `invert`,
   over the seven fields of its `compare` bench. `invert` runs in the x86-64-v3 build alone. Without
   hardware carry-less products, every one of these fields inverts by the Euclidean algorithm, whose
   time depends on the value.
-
-The check leaves out `invert_vartime`, `pow` and `sqrt` of `prime-field`, whose time depends on the
-values.
 
 | Build | `RUSTFLAGS` |
 |---|---|
@@ -52,8 +50,9 @@ into each caller. The check covers the code of its own calls.
 
 ## The exemption
 
-The `Option` that `invert` returns discloses whether the input is zero. Each library builds that
-`Option` in `invert::declassify`, a function with a symbol of its own. `memcheck.supp` exempts a
+The `Option` that `invert` returns discloses whether the input is zero, and the one of
+`prime-field`'s `sqrt` whether the input is a square. Each library builds that `Option` in
+`invert::declassify`, a function with a symbol of its own. `memcheck.supp` exempts a
 conditional jump whose innermost frame is that function. In the `compare` benches the boundary
 changes an inversion by −150 to +63 instructions, at most 1.9%. Because LLVM merges the instances
 of `declassify` that compile to the same machine code, a report may name the other library's.
