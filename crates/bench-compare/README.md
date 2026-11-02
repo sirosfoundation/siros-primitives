@@ -1,7 +1,7 @@
 # bench-compare
 
 The machinery behind the `BENCHMARKS.md` of `biguint`, `prime-field` and `binary-field`: a
-comparison of one crate's operations with other crates, in user-mode cycles and instructions per
+comparison of one crate's operations with other crates, in user-mode cycles per
 operation that the CPU's performance counters count.
 
 A library's `compare` bench declares a `Suite`: its operations, its rows (widths or fields), a

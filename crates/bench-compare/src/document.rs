@@ -279,7 +279,7 @@ fn header<K: Key>(record: &Record<K>, layout: &Layout<'_, K>, table: &Table<'_, 
         "# Benchmarks".to_owned(),
         String::new(),
         format!(
-            "`{}` at commit `{}` against {}: {} {}, in cycles and instructions per operation, \
+            "`{}` at commit `{}` against {}: {} {}, in cycles per operation, \
              measured on {}.{state}",
             layout.subject,
             short(&record.library_commit),
@@ -347,7 +347,7 @@ fn setup<K>(record: &Record<K>) -> Vec<String> {
     }
     rows.push(vec![
         "Counters".to_owned(),
-        "one Linux perf_event group: user-mode cycles, instructions and branch misses".to_owned(),
+        "one Linux perf_event group: user-mode cycles and branch misses".to_owned(),
     ]);
     for build in &record.builds {
         rows.push(vec![label("Load", build), load(&build.sweep)]);
@@ -440,13 +440,13 @@ fn protocol() -> Vec<String> {
         String::new(),
         format!(
             "One perf_event group on the measuring thread, pinned to one CPU, counts user-mode \
-             cycles, instructions and branch misses; a run during which the kernel shares the \
+             cycles and branch misses; a run during which the kernel shares the \
              counters with other groups stops the sweep. A figure per operation is the median, \
              over the {REPETITIONS} repetitions, of the long run less the short run, divided by \
              n: the fixed cost of a run cancels, as in nanoBench's differencing, and each \
              difference pairs two runs taken back to back. A case whose long runs count no more \
              cycles than its short runs stops the sweep, and so does a chain step under one \
-             cycle, the latency of a single instruction."
+             cycle."
         ),
         String::new(),
         format!(
@@ -615,15 +615,17 @@ fn describe<K: Key>(
 }
 
 /// The legend above every results table.
-const LEGEND: &str = "Each cell: throughput cycles / latency cycles / instructions per operation. \
+const LEGEND: &str = "Each cell: throughput cycles / latency cycles per operation. \
                       Bold: the fewest of the row. –: no such function or no chain form.";
 
-/// The figures of one cell, in the order of its three parts.
-fn parts(count: &Count) -> [Option<f64>; 3] {
+/// The two parts of a cell are joined by a slash between no-break spaces, so a cell never wraps.
+const SEPARATOR: &str = "\u{a0}/\u{a0}";
+
+/// The figures of one cell, in the order of its two parts.
+fn parts(count: &Count) -> [Option<f64>; 2] {
     [
         Some(count.batch.cycles),
         count.chain.map(|latency| latency.events.cycles),
-        Some(count.batch.instructions),
     ]
 }
 
@@ -665,7 +667,7 @@ fn results<K: Key>(
                 .map(|library| table.count(op, key, library))
                 .collect();
             let ours = table.count(op, key, layout.subject).map(parts);
-            let fewest: [Option<f64>; 3] = std::array::from_fn(|part| {
+            let fewest: [Option<f64>; 2] = std::array::from_fn(|part| {
                 counts
                     .iter()
                     .flatten()
@@ -700,7 +702,7 @@ fn results<K: Key>(
                         (Some(figure), _) => value(*figure),
                     })
                     .collect();
-                row.push(cell.join(" / "));
+                row.push(cell.join(SEPARATOR));
             }
             rows.push(row);
         }

@@ -1,6 +1,6 @@
 # Benchmarks
 
-`binary-field` at commit `54b9917` against `gf256`, `galois_field_2pm`, `g2p`, `reed-solomon-erasure`, `hekate-math`, `plonky3`, `runtime-algebra`, `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut`: add, add_vartime, mul, mul_vartime, square, square_vartime, invert, invert_vartime, sqrt and sqrt_vartime over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹), in cycles and instructions per operation, measured on 2026-11-02.
+`binary-field` at commit `54b9917` against `gf256`, `galois_field_2pm`, `g2p`, `reed-solomon-erasure`, `hekate-math`, `plonky3`, `runtime-algebra`, `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut`: add, add_vartime, mul, mul_vartime, square, square_vartime, invert, invert_vartime, sqrt and sqrt_vartime over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹), in cycles per operation, measured on 2026-11-02.
 
 The CPU is an AMD Ryzen 9 5950X 16-Core Processor, measured on its CPU 15.
 Its counters give each figure per operation as the median, over 31 repetitions, of a run of 2n operations on fresh operands less a run of n, over n.
@@ -16,7 +16,7 @@ Its counters give each figure per operation as the median, over 31 repetitions, 
 | Extensions, with carry-less multiplication | adx, aes, avx, avx2, bmi1, bmi2, f16c, fma, lzcnt, movbe, pclmulqdq, popcnt, sha, sse, sse2, sse3, sse4.1, sse4.2, sse4a, ssse3, vaes, vpclmulqdq |
 | RUSTFLAGS, without carry-less multiplication | `-C target-cpu=native -C target-feature=-pclmulqdq,-vpclmulqdq -C codegen-units=1 --cfg polyval_backend="soft"` |
 | Extensions, without carry-less multiplication | adx, aes, avx, avx2, bmi1, bmi2, f16c, fma, lzcnt, movbe, popcnt, sha, sse, sse2, sse3, sse4.1, sse4.2, sse4a, ssse3, vaes |
-| Counters | one Linux perf_event group: user-mode cycles, instructions and branch misses |
+| Counters | one Linux perf_event group: user-mode cycles and branch misses |
 | Load, with carry-less multiplication | 1-minute load average 23.44 before the sweep and 16.61 after; CPU 31, the SMT sibling of CPU 15, busy 39% of the sweep |
 | Load, without carry-less multiplication | 1-minute load average 12.23 before the sweep and 17.17 after; CPU 31, the SMT sibling of CPU 15, busy 10% of the sweep |
 | Crates | gf256 0.3.1, galois_field_2pm 0.1.0, g2p 1.2.2, reed-solomon-erasure 6.0.0, hekate-math 0.12.1, p3-binary-field 0.9.0-rc.2, runtime-algebra 0.1.0, compile-algebra 0.1.0, core-algebra 0.1.0, polyval 0.7.3 |
@@ -25,7 +25,7 @@ Its counters give each figure per operation as the median, over 31 repetitions, 
 
 A sweep measures every case in 31 repetitions; repetition r of every case runs before repetition r + 1 of any case, so a drift of the machine reaches all cases alike. Each run draws fresh operand sets from the case's distribution, outside the counted region: no operand set runs twice, so the branch predictor never learns a sequence. A repetition runs n operations uncounted, then counts a run of n operations and a run of 2n. Before the repetitions, n starts at 16 operations and doubles until a run of n, counted after an uncounted run of as many, takes 1,048,576 cycles; n stops earlier where the operand sets of 2n operations fill 256 KiB.
 
-One perf_event group on the measuring thread, pinned to one CPU, counts user-mode cycles, instructions and branch misses; a run during which the kernel shares the counters with other groups stops the sweep. A figure per operation is the median, over the 31 repetitions, of the long run less the short run, divided by n: the fixed cost of a run cancels, as in nanoBench's differencing, and each difference pairs two runs taken back to back. A case whose long runs count no more cycles than its short runs stops the sweep, and so does a chain step under one cycle, the latency of a single instruction.
+One perf_event group on the measuring thread, pinned to one CPU, counts user-mode cycles and branch misses; a run during which the kernel shares the counters with other groups stops the sweep. A figure per operation is the median, over the 31 repetitions, of the long run less the short run, divided by n: the fixed cost of a run cancels, as in nanoBench's differencing, and each difference pairs two runs taken back to back. A case whose long runs count no more cycles than its short runs stops the sweep, and so does a chain step under one cycle.
 
 Throughput runs independent operations, with operands and results behind `core::hint::black_box`. Latency runs the chain `x = op(x, y)`: from the second operand set on, each result is the first operand of the next operation, so each operation waits for the one before. Each result passes through an empty inline-assembly block, which keeps the compiler from regrouping the chain. The block holds a result of up to 64 bytes in general-purpose registers in one chain and in vector registers in another, each chain a case of its own in the sweep; it can only add moves between the two, so the latency is the chain with fewer cycles. A larger result passes through memory, in a single chain. The chain applies where the result has the type of the first operand and the other operands are plain values: a step copies them, and the copy of an allocated value would allocate.
 
@@ -101,161 +101,161 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 ![add: a + b, constant time, with carry-less multiplication](benchmarks/add.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 5.0 / 3.1 / **8.0** | 5.0 / 3.1 / **8.0** | 5.1 / 3.1 / **8.0** | 5.0 / **3.0** / **8.0** | **2.2** / 3.5 / **8.0** | 5.1 / 3.0 / **8.0** | 5.0 / 3.0 / **8.0** | – | – | – | – | – |
-| GF(2¹⁶) | 5.1 / 3.0 / **8.0** | 2.2 / 3.0 / **8.0** | 2.2 / **3.0** / **8.0** | **2.1** / 3.0 / **8.0** | 2.6 / 3.3 / **8.0** | 2.5 / 3.7 / **8.0** | 2.9 / 3.3 / **8.0** | – | – | – | – | 2.7 / 3.1 / **8.0** |
-| GF(2⁶⁴) | 2.2 / 2.1 / **8.0** | 2.2 / **1.3** / **8.0** | 2.2 / 1.3 / **8.0** | – | – | 6.3 / 7.4 / **8.0** | **2.2** / 1.3 / **8.0** | – | – | – | – | – |
-| GF(2¹²⁸) | 2.2 / 2.1 / **8.0** | – | – | – | – | 8.9 / 9.0 / **8.0** | 2.3 / 2.1 / **8.0** | 2.2 / **1.5** / **8.0** | **2.2** / 2.0 / **8.0** | 2.3 / 2.0 / **8.0** | 13.5 / 9.9 / **8.0** | – |
-| GF(2²³³) | **4.3** / **2.3** / **11.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **3.5** / **2.6** / **11.0** | – | – | – | – | 16.6 / 19.2 / **11.0** | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **9.5** / **19.9** / **20.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | 5.0 / 3.1 | 5.0 / 3.1 | 5.1 / 3.1 | 5.0 / **3.0** | **2.2** / 3.5 | 5.1 / 3.0 | 5.0 / 3.0 | – | – | – | – | – |
+| GF(2¹⁶) | 5.1 / 3.0 | 2.2 / 3.0 | 2.2 / **3.0** | **2.1** / 3.0 | 2.6 / 3.3 | 2.5 / 3.7 | 2.9 / 3.3 | – | – | – | – | 2.7 / 3.1 |
+| GF(2⁶⁴) | 2.2 / 2.1 | 2.2 / **1.3** | 2.2 / 1.3 | – | – | 6.3 / 7.4 | **2.2** / 1.3 | – | – | – | – | – |
+| GF(2¹²⁸) | 2.2 / 2.1 | – | – | – | – | 8.9 / 9.0 | 2.3 / 2.1 | 2.2 / **1.5** | **2.2** / 2.0 | 2.3 / 2.0 | 13.5 / 9.9 | – |
+| GF(2²³³) | **4.3** / **2.3** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **3.5** / **2.6** | – | – | – | – | 16.6 / 19.2 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **9.5** / **19.9** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### add_vartime: a + b, variable time, with carry-less multiplication
 
 ![add_vartime: a + b, variable time, with carry-less multiplication](benchmarks/add_vartime.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **5.0** / **3.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | **5.0** / **3.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | **2.2** / **2.1** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | **2.3** / **2.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | **3.4** / **2.4** / **11.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **3.6** / **2.4** / **11.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **7.6** / **19.9** / **20.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **5.0** / **3.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | **5.0** / **3.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | **2.2** / **2.1** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **2.3** / **2.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **3.4** / **2.4** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **3.6** / **2.4** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **7.6** / **19.9** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul: a × b, constant time, with carry-less multiplication
 
 ![mul: a × b, constant time, with carry-less multiplication](benchmarks/mul.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **8.0** / **21.0** / **31.0** | – | – | – | – | 14.0 / 26.0 / 67.0 | 16.9 / 33.2 / 59.0 | – | – | – | – | – |
-| GF(2¹⁶) | 8.2 / **21.0** / 31.0 | **8.1** / 29.1 / **18.0** | – | – | – | 53.1 / 54.4 / 236 | – | – | – | – | – | – |
-| GF(2⁶⁴) | 6.1 / **14.8** / 23.0 | **6.0** / 20.1 / **13.0** | – | – | – | 548 / 554 / 2,489 | 6.0 / 19.1 / **13.0** | – | – | – | – | – |
-| GF(2¹²⁸) | **11.0** / 17.1 / 25.0 | – | – | – | – | 1,785 / 1,822 / 7,962 | 12.0 / **16.1** / **21.0** | 12.0 / 18.7 / **21.0** | 30.0 / 30.3 / 78.0 | – | 118 / 134 / 526 | – |
-| GF(2²³³) | **53.6** / **55.1** / **136** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **34.0** / **35.3** / **70.0** | – | – | – | – | 5,737 / 6,014 / 25,585 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **275** / **283** / **910** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **8.0** / **21.0** | – | – | – | – | 14.0 / 26.0 | 16.9 / 33.2 | – | – | – | – | – |
+| GF(2¹⁶) | 8.2 / **21.0** | **8.1** / 29.1 | – | – | – | 53.1 / 54.4 | – | – | – | – | – | – |
+| GF(2⁶⁴) | 6.1 / **14.8** | **6.0** / 20.1 | – | – | – | 548 / 554 | 6.0 / 19.1 | – | – | – | – | – |
+| GF(2¹²⁸) | **11.0** / 17.1 | – | – | – | – | 1,785 / 1,822 | 12.0 / **16.1** | 12.0 / 18.7 | 30.0 / 30.3 | – | 118 / 134 | – |
+| GF(2²³³) | **53.6** / **55.1** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **34.0** / **35.3** | – | – | – | – | 5,737 / 6,014 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **275** / **283** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul_vartime: a × b, variable time, with carry-less multiplication
 
 ![mul_vartime: a × b, variable time, with carry-less multiplication](benchmarks/mul_vartime.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 5.3 / **11.7** / **11.0** | 3.8 / 13.5 / 20.0 | 84.6 / 92.8 / 323 | 5.5 / 13.4 / **11.0** | **2.7** / 13.5 / **11.0** | – | – | – | – | – | – | – |
-| GF(2¹⁶) | **8.0** / **21.0** / 31.0 | – | 144 / 151 / 627 | 11.3 / 46.1 / **22.0** | 9.1 / 27.8 / 31.0 | – | 14.8 / 30.5 / 69.0 | – | – | – | – | 13.5 / 65.2 / 31.0 |
-| GF(2⁶⁴) | **6.2** / **14.8** / **23.0** | – | 546 / 568 / 1,354 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | **11.0** / **17.1** / **25.0** | – | – | – | – | – | – | – | – | 590 / 561 / 2,064 | – | – |
-| GF(2²³³) | **53.5** / **55.0** / **136** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **34.0** / **35.5** / **70.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **274** / **283** / **910** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | 5.3 / **11.7** | 3.8 / 13.5 | 84.6 / 92.8 | 5.5 / 13.4 | **2.7** / 13.5 | – | – | – | – | – | – | – |
+| GF(2¹⁶) | **8.0** / **21.0** | – | 144 / 151 | 11.3 / 46.1 | 9.1 / 27.8 | – | 14.8 / 30.5 | – | – | – | – | 13.5 / 65.2 |
+| GF(2⁶⁴) | **6.2** / **14.8** | – | 546 / 568 | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **11.0** / **17.1** | – | – | – | – | – | – | – | – | 590 / 561 | – | – |
+| GF(2²³³) | **53.5** / **55.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **34.0** / **35.5** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **274** / **283** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square: a², constant time, with carry-less multiplication
 
 ![square: a², constant time, with carry-less multiplication](benchmarks/square.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **4.7** / **17.0** / **21.0** | – | – | – | – | 8.4 / 21.1 / 34.0 | 8.6 / 25.1 / 34.0 | – | – | – | – | – |
-| GF(2¹⁶) | **7.0** / **21.0** / **29.0** | – | – | – | – | 22.4 / 35.2 / 90.0 | – | – | – | – | – | – |
-| GF(2⁶⁴) | 6.1 / **15.5** / 23.0 | – | – | – | – | 133 / 146 / 584 | **5.1** / 16.5 / **22.0** | – | – | – | – | – |
-| GF(2¹²⁸) | **6.7** / **14.5** / 28.0 | – | – | – | – | 306 / 297 / 1,271 | 8.0 / 16.6 / **16.0** | – | – | – | – | – |
-| GF(2²³³) | **34.8** / **44.5** / **102** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **13.1** / **19.7** / **37.0** | – | – | – | – | 1,082 / 1,127 / 4,090 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **41.3** / **56.2** / **118** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **4.7** / **17.0** | – | – | – | – | 8.4 / 21.1 | 8.6 / 25.1 | – | – | – | – | – |
+| GF(2¹⁶) | **7.0** / **21.0** | – | – | – | – | 22.4 / 35.2 | – | – | – | – | – | – |
+| GF(2⁶⁴) | 6.1 / **15.5** | – | – | – | – | 133 / 146 | **5.1** / 16.5 | – | – | – | – | – |
+| GF(2¹²⁸) | **6.7** / **14.5** | – | – | – | – | 306 / 297 | 8.0 / 16.6 | – | – | – | – | – |
+| GF(2²³³) | **34.8** / **44.5** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **13.1** / **19.7** | – | – | – | – | 1,082 / 1,127 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **41.3** / **56.2** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square_vartime: a², variable time, with carry-less multiplication
 
 ![square_vartime: a², variable time, with carry-less multiplication](benchmarks/square_vartime.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **5.1** / **7.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | 5.4 / **7.1** / **8.0** | – | – | – | – | – | **2.6** / 10.1 / 11.0 | – | – | – | – | – |
-| GF(2⁶⁴) | **6.2** / **15.5** / **23.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | **6.8** / **14.5** / **28.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | **34.8** / **44.6** / **102** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **13.2** / **19.8** / **37.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **41.3** / **56.3** / **118** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **5.1** / **7.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | 5.4 / **7.1** | – | – | – | – | – | **2.6** / 10.1 | – | – | – | – | – |
+| GF(2⁶⁴) | **6.2** / **15.5** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **6.8** / **14.5** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **34.8** / **44.6** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **13.2** / **19.8** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **41.3** / **56.3** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert: a⁻¹, constant time, with carry-less multiplication
 
 ![invert: a⁻¹, constant time, with carry-less multiplication](benchmarks/invert.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **88.5** / – / **182** | – | – | – | – | 260 / – / 804 | 317 / – / 518 | – | – | – | – | – |
-| GF(2¹⁶) | **204** / – / **361** | 421 / – / 415 | – | – | – | 339 / – / 1,072 | – | – | – | – | – | – |
-| GF(2⁶⁴) | 1,099 / – / 1,211 | 1,228 / – / **1,024** | – | – | – | 1,257 / – / 4,828 | **1,066** / – / 1,081 | – | – | – | – | – |
-| GF(2¹²⁸) | **2,039** / – / **3,003** | – | – | – | – | 3,420 / – / 13,595 | – | – | 5,211 / – / 13,665 | – | – | – |
-| GF(2²³³) | **11,071** / – / **23,596** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **5,496** / – / **8,549** | – | – | – | – | 9,766 / – / 41,587 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **28,828** / – / **73,741** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **88.5** / – | – | – | – | – | 260 / – | 317 / – | – | – | – | – | – |
+| GF(2¹⁶) | **204** / – | 421 / – | – | – | – | 339 / – | – | – | – | – | – | – |
+| GF(2⁶⁴) | 1,099 / – | 1,228 / – | – | – | – | 1,257 / – | **1,066** / – | – | – | – | – | – |
+| GF(2¹²⁸) | **2,039** / – | – | – | – | – | 3,420 / – | – | – | 5,211 / – | – | – | – |
+| GF(2²³³) | **11,071** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **5,496** / – | – | – | – | – | 9,766 / – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **28,828** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert_vartime: a⁻¹, variable time, with carry-less multiplication
 
 ![invert_vartime: a⁻¹, variable time, with carry-less multiplication](benchmarks/invert_vartime.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 5.0 / – / **13.0** | **3.5** / – / 15.0 | 385 / – / 1,362 | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | **3.7** / – / **12.0** | – | 1,284 / – / 3,481 | – | – | – | 20.7 / – / 95.0 | – | – | – | – | 14.4 / – / 25.0 |
-| GF(2⁶⁴) | **363** / – / **442** | – | 10,299 / – / 28,398 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | 623 / – / 727 | – | – | – | – | – | **557** / – / **493** | 6,035 / – / 6,373 | – | 144,796 / – / 533,598 | – | – |
-| GF(2²³³) | **11,081** / – / **23,592** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **5,296** / – / **8,550** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **28,802** / – / **73,758** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | 5.0 / – | **3.5** / – | 385 / – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | **3.7** / – | – | 1,284 / – | – | – | – | 20.7 / – | – | – | – | – | 14.4 / – |
+| GF(2⁶⁴) | **363** / – | – | 10,299 / – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | 623 / – | – | – | – | – | – | **557** / – | 6,035 / – | – | 144,796 / – | – | – |
+| GF(2²³³) | **11,081** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **5,296** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **28,802** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt: √a, constant time, with carry-less multiplication
 
 ![sqrt: √a, constant time, with carry-less multiplication](benchmarks/sqrt.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **4.7** / – / **21.0** | – | – | – | – | – | 9.0 / – / 35.0 | – | – | – | – | – |
-| GF(2¹⁶) | **13.8** / – / **53.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | 19.3 / – / **57.0** | – | – | – | – | – | **16.0** / – / 58.0 | – | – | – | – | – |
-| GF(2¹²⁸) | **16.1** / – / **44.0** | – | – | – | – | – | 19.9 / – / 81.0 | – | – | – | – | – |
-| GF(2²³³) | **79.1** / – / **209** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **48.3** / – / **125** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **318** / – / **1,085** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **4.7** / – | – | – | – | – | – | 9.0 / – | – | – | – | – | – |
+| GF(2¹⁶) | **13.8** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | 19.3 / – | – | – | – | – | – | **16.0** / – | – | – | – | – | – |
+| GF(2¹²⁸) | **16.1** / – | – | – | – | – | – | 19.9 / – | – | – | – | – | – |
+| GF(2²³³) | **79.1** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **48.3** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **318** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt_vartime: √a, variable time, with carry-less multiplication
 
 ![sqrt_vartime: √a, variable time, with carry-less multiplication](benchmarks/sqrt_vartime.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **5.1** / – / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | 5.1 / – / **8.0** | – | – | – | – | – | **3.2** / – / 12.0 | – | – | – | – | – |
-| GF(2⁶⁴) | **19.8** / – / **57.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | **16.5** / – / **44.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | **77.4** / – / **209** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **48.7** / – / **125** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **343** / – / **1,085** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **5.1** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | 5.1 / – | – | – | – | – | – | **3.2** / – | – | – | – | – | – |
+| GF(2⁶⁴) | **19.8** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **16.5** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **77.4** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **48.7** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **343** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ## Results without carry-less multiplication
 
@@ -265,161 +265,161 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 ![add: a + b, constant time, without carry-less multiplication](benchmarks/add-without-clmul.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 5.0 / 3.0 / **8.0** | 5.0 / 3.0 / **8.0** | 5.0 / 3.0 / **8.0** | 5.0 / **3.0** / **8.0** | **2.1** / 3.0 / **8.0** | 5.0 / 3.0 / **8.0** | 5.0 / 3.0 / **8.0** | – | – | – | – | – |
-| GF(2¹⁶) | 5.0 / 3.0 / **8.0** | **2.1** / **3.0** / **8.0** | 2.1 / 3.0 / **8.0** | 2.1 / 3.0 / **8.0** | 2.3 / 3.1 / **8.0** | 2.4 / 3.2 / **8.0** | 2.3 / 3.0 / **8.0** | – | – | – | – | 2.1 / 3.0 / **8.0** |
-| GF(2⁶⁴) | **2.2** / 1.3 / **8.0** | 2.2 / **1.3** / **8.0** | 2.2 / **1.3** / **8.0** | – | – | 2.9 / 2.2 / **8.0** | 2.2 / 1.3 / **8.0** | – | – | – | – | – |
-| GF(2¹²⁸) | **2.2** / **1.3** / **8.0** | – | – | – | – | 3.9 / 3.5 / **8.0** | 2.6 / 2.0 / **8.0** | 2.2 / 2.1 / **8.0** | 2.2 / 2.1 / **8.0** | 2.2 / 2.1 / **8.0** | 5.1 / 3.2 / **8.0** | – |
-| GF(2²³³) | **2.8** / **2.4** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **2.7** / **2.6** / **8.0** | – | – | – | – | 8.3 / 8.5 / 11.0 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **6.4** / **23.9** / **14.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | 5.0 / 3.0 | 5.0 / 3.0 | 5.0 / 3.0 | 5.0 / **3.0** | **2.1** / 3.0 | 5.0 / 3.0 | 5.0 / 3.0 | – | – | – | – | – |
+| GF(2¹⁶) | 5.0 / 3.0 | **2.1** / **3.0** | 2.1 / 3.0 | 2.1 / 3.0 | 2.3 / 3.1 | 2.4 / 3.2 | 2.3 / 3.0 | – | – | – | – | 2.1 / 3.0 |
+| GF(2⁶⁴) | **2.2** / 1.3 | 2.2 / **1.3** | 2.2 / **1.3** | – | – | 2.9 / 2.2 | 2.2 / 1.3 | – | – | – | – | – |
+| GF(2¹²⁸) | **2.2** / **1.3** | – | – | – | – | 3.9 / 3.5 | 2.6 / 2.0 | 2.2 / 2.1 | 2.2 / 2.1 | 2.2 / 2.1 | 5.1 / 3.2 | – |
+| GF(2²³³) | **2.8** / **2.4** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **2.7** / **2.6** | – | – | – | – | 8.3 / 8.5 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **6.4** / **23.9** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### add_vartime: a + b, variable time, without carry-less multiplication
 
 ![add_vartime: a + b, variable time, without carry-less multiplication](benchmarks/add_vartime-without-clmul.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **5.0** / **3.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | **5.0** / **3.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | **2.2** / **1.3** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | **2.2** / **1.4** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | **2.7** / **2.6** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **2.7** / **2.4** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **6.2** / **23.9** / **14.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **5.0** / **3.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | **5.0** / **3.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | **2.2** / **1.3** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **2.2** / **1.4** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **2.7** / **2.6** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **2.7** / **2.4** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **6.2** / **23.9** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul: a × b, constant time, without carry-less multiplication
 
 ![mul: a × b, constant time, without carry-less multiplication](benchmarks/mul-without-clmul.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 28.0 / 40.2 / 109 | – | – | – | – | **14.2** / **25.0** / 67.0 | 16.8 / 33.4 / **59.0** | – | – | – | – | – |
-| GF(2¹⁶) | 45.0 / **52.0** / 138 | **30.6** / 58.4 / **133** | – | – | – | 54.1 / 53.7 / 236 | – | – | – | – | – | – |
-| GF(2⁶⁴) | 66.0 / **78.4** / 247 | 104 / 121 / 259 | – | – | – | 550 / 548 / 2,489 | **47.3** / 84.7 / **153** | – | – | – | – | – |
-| GF(2¹²⁸) | 235 / 232 / 831 | – | – | – | – | 1,763 / 1,764 / 7,962 | 162 / 187 / **499** | 174 / 182 / 542 | 578 / 577 / 2,064 | – | **122** / **133** / 526 | – |
-| GF(2²³³) | **819** / **854** / **2,696** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **887** / **950** / **2,990** | – | – | – | – | 5,734 / 5,738 / 25,585 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **4,972** / **4,924** / **17,241** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | 28.0 / 40.2 | – | – | – | – | **14.2** / **25.0** | 16.8 / 33.4 | – | – | – | – | – |
+| GF(2¹⁶) | 45.0 / **52.0** | **30.6** / 58.4 | – | – | – | 54.1 / 53.7 | – | – | – | – | – | – |
+| GF(2⁶⁴) | 66.0 / **78.4** | 104 / 121 | – | – | – | 550 / 548 | **47.3** / 84.7 | – | – | – | – | – |
+| GF(2¹²⁸) | 235 / 232 | – | – | – | – | 1,763 / 1,764 | 162 / 187 | 174 / 182 | 578 / 577 | – | **122** / **133** | – |
+| GF(2²³³) | **819** / **854** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **887** / **950** | – | – | – | – | 5,734 / 5,738 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **4,972** / **4,924** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul_vartime: a × b, variable time, without carry-less multiplication
 
 ![mul_vartime: a × b, variable time, without carry-less multiplication](benchmarks/mul_vartime-without-clmul.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 5.3 / **10.5** / **11.0** | 3.7 / 13.4 / 20.0 | 81.9 / 83.9 / 323 | 5.3 / 12.5 / **11.0** | **2.9** / 12.7 / **11.0** | – | – | – | – | – | – | – |
-| GF(2¹⁶) | 45.0 / 52.0 / 138 | – | 143 / 148 / 627 | **8.4** / 38.1 / **22.0** | 8.8 / **25.9** / 31.0 | – | 14.6 / 30.1 / 69.0 | – | – | – | – | 11.4 / 56.0 / 31.0 |
-| GF(2⁶⁴) | **66.0** / **78.6** / **247** | – | 542 / 561 / 1,354 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | **235** / **232** / **831** | – | – | – | – | – | – | – | – | 547 / 546 / 2,064 | – | – |
-| GF(2²³³) | **819** / **852** / **2,696** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **886** / **940** / **2,990** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **4,982** / **4,926** / **17,241** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | 5.3 / **10.5** | 3.7 / 13.4 | 81.9 / 83.9 | 5.3 / 12.5 | **2.9** / 12.7 | – | – | – | – | – | – | – |
+| GF(2¹⁶) | 45.0 / 52.0 | – | 143 / 148 | **8.4** / 38.1 | 8.8 / **25.9** | – | 14.6 / 30.1 | – | – | – | – | 11.4 / 56.0 |
+| GF(2⁶⁴) | **66.0** / **78.6** | – | 542 / 561 | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **235** / **232** | – | – | – | – | – | – | – | – | 547 / 546 | – | – |
+| GF(2²³³) | **819** / **852** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **886** / **940** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **4,982** / **4,926** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square: a², constant time, without carry-less multiplication
 
 ![square: a², constant time, without carry-less multiplication](benchmarks/square-without-clmul.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **4.6** / **17.0** / **21.0** | – | – | – | – | 8.1 / 21.0 / 34.0 | 8.6 / 25.0 / 34.0 | – | – | – | – | – |
-| GF(2¹⁶) | 25.8 / **31.0** / **78.0** | – | – | – | – | **22.0** / 35.0 / 90.0 | – | – | – | – | – | – |
-| GF(2⁶⁴) | 49.3 / **23.0** / 214 | – | – | – | – | 129 / 143 / 584 | **27.0** / 45.0 / **92.0** | – | – | – | – | – |
-| GF(2¹²⁸) | **30.7** / 60.7 / 146 | – | – | – | – | 304 / 293 / 1,271 | 39.0 / **44.0** / **127** | – | – | – | – | – |
-| GF(2²³³) | **48.0** / **56.0** / **184** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **93.4** / **102** / **327** | – | – | – | – | 1,015 / 1,104 / 4,090 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **220** / **235** / **937** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **4.6** / **17.0** | – | – | – | – | 8.1 / 21.0 | 8.6 / 25.0 | – | – | – | – | – |
+| GF(2¹⁶) | 25.8 / **31.0** | – | – | – | – | **22.0** / 35.0 | – | – | – | – | – | – |
+| GF(2⁶⁴) | 49.3 / **23.0** | – | – | – | – | 129 / 143 | **27.0** / 45.0 | – | – | – | – | – |
+| GF(2¹²⁸) | **30.7** / 60.7 | – | – | – | – | 304 / 293 | 39.0 / **44.0** | – | – | – | – | – |
+| GF(2²³³) | **48.0** / **56.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **93.4** / **102** | – | – | – | – | 1,015 / 1,104 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **220** / **235** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square_vartime: a², variable time, without carry-less multiplication
 
 ![square_vartime: a², variable time, without carry-less multiplication](benchmarks/square_vartime-without-clmul.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **5.3** / **7.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | 5.3 / **7.0** / **8.0** | – | – | – | – | – | **2.6** / 10.0 / 11.0 | – | – | – | – | – |
-| GF(2⁶⁴) | **49.3** / **23.0** / **214** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | **30.7** / **63.6** / **146** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | **48.0** / **56.0** / **184** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **93.5** / **102** / **327** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **220** / **235** / **937** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **5.3** / **7.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | 5.3 / **7.0** | – | – | – | – | – | **2.6** / 10.0 | – | – | – | – | – |
+| GF(2⁶⁴) | **49.3** / **23.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **30.7** / **63.6** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **48.0** / **56.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **93.5** / **102** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **220** / **235** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert: a⁻¹, constant time, without carry-less multiplication
 
 ![invert: a⁻¹, constant time, without carry-less multiplication](benchmarks/invert-without-clmul.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **239** / – / 604 | – | – | – | – | 255 / – / 804 | 311 / – / **518** | – | – | – | – | – |
-| GF(2¹⁶) | 481 / – / 1,294 | 1,116 / – / 3,917 | – | – | – | **337** / – / **1,072** | – | – | – | – | – | – |
-| GF(2⁶⁴) | 2,202 / – / 6,675 | 14,020 / – / 32,533 | – | – | – | **1,249** / – / **4,828** | 3,247 / – / 6,830 | – | – | – | – | – |
-| GF(2¹²⁸) | 12,320 / – / 28,386 | – | – | – | – | **3,262** / – / **13,595** | – | – | 144,137 / – / 525,085 | – | – | – |
-| GF(2²³³) | **21,352** / – / **73,276** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | 40,729 / – / 123,663 | – | – | – | – | **9,625** / – / **41,587** | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **188,274** / – / **765,628** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **239** / – | – | – | – | – | 255 / – | 311 / – | – | – | – | – | – |
+| GF(2¹⁶) | 481 / – | 1,116 / – | – | – | – | **337** / – | – | – | – | – | – | – |
+| GF(2⁶⁴) | 2,202 / – | 14,020 / – | – | – | – | **1,249** / – | 3,247 / – | – | – | – | – | – |
+| GF(2¹²⁸) | 12,320 / – | – | – | – | – | **3,262** / – | – | – | 144,137 / – | – | – | – |
+| GF(2²³³) | **21,352** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | 40,729 / – | – | – | – | – | **9,625** / – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **188,274** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert_vartime: a⁻¹, variable time, without carry-less multiplication
 
 ![invert_vartime: a⁻¹, variable time, without carry-less multiplication](benchmarks/invert_vartime-without-clmul.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 5.3 / – / **13.0** | **3.0** / – / 15.0 | 380 / – / 1,361 | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | **3.4** / – / **12.0** | – | 1,197 / – / 3,474 | – | – | – | 20.3 / – / 95.0 | – | – | – | – | 9.8 / – / 25.0 |
-| GF(2⁶⁴) | **1,136** / – / **3,571** | – | 9,740 / – / 27,942 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | 3,608 / – / 11,364 | – | – | – | – | – | **976** / – / **3,897** | 11,574 / – / 31,431 | – | 147,346 / – / 533,598 | – | – |
-| GF(2²³³) | **21,314** / – / **73,264** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **40,768** / – / **123,661** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **189,244** / – / **765,630** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | 5.3 / – | **3.0** / – | 380 / – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | **3.4** / – | – | 1,197 / – | – | – | – | 20.3 / – | – | – | – | – | 9.8 / – |
+| GF(2⁶⁴) | **1,136** / – | – | 9,740 / – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | 3,608 / – | – | – | – | – | – | **976** / – | 11,574 / – | – | 147,346 / – | – | – |
+| GF(2²³³) | **21,314** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **40,768** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **189,244** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt: √a, constant time, without carry-less multiplication
 
 ![sqrt: √a, constant time, without carry-less multiplication](benchmarks/sqrt-without-clmul.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **4.6** / – / **21.0** | – | – | – | – | – | 8.6 / – / 35.0 | – | – | – | – | – |
-| GF(2¹⁶) | **13.6** / – / **53.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | 83.6 / – / 250 | – | – | – | – | – | **40.4** / – / **161** | – | – | – | – | – |
-| GF(2¹²⁸) | 180 / – / 603 | – | – | – | – | – | **124** / – / **444** | – | – | – | – | – |
-| GF(2²³³) | **108** / – / **523** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **140** / – / **663** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **5,073** / – / **17,072** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **4.6** / – | – | – | – | – | – | 8.6 / – | – | – | – | – | – |
+| GF(2¹⁶) | **13.6** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | 83.6 / – | – | – | – | – | – | **40.4** / – | – | – | – | – | – |
+| GF(2¹²⁸) | 180 / – | – | – | – | – | – | **124** / – | – | – | – | – | – |
+| GF(2²³³) | **108** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **140** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **5,073** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt_vartime: √a, variable time, without carry-less multiplication
 
 ![sqrt_vartime: √a, variable time, without carry-less multiplication](benchmarks/sqrt_vartime-without-clmul.svg)
 
-Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | **5.0** / – / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | 5.3 / – / **8.0** | – | – | – | – | – | **3.2** / – / 12.0 | – | – | – | – | – |
-| GF(2⁶⁴) | **85.8** / – / **250** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | **180** / – / **603** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | **108** / – / **523** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **141** / – / **663** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **5,072** / – / **17,072** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | **5.0** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | 5.3 / – | – | – | – | – | – | **3.2** / – | – | – | – | – | – |
+| GF(2⁶⁴) | **85.8** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **180** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **108** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **141** / – | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **5,072** / – | – | – | – | – | – | – | – | – | – | – | – |
 
 ## Reproduce
 
