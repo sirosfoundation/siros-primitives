@@ -12,6 +12,7 @@ panics.
 | Crate | Description |
 |---|---|
 | [`biguint`](crates/biguint) | Fixed-width unsigned integers of any bit width, with Karatsuba multiplication and divide-and-conquer division |
+| [`prime-field`](crates/prime-field) | Prime fields declared by their modulus; Montgomery or pseudo-Mersenne arithmetic chosen at compile time, constant-time inversion, square roots |
 
 ## Minimum supported Rust version
 

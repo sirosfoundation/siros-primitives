@@ -221,7 +221,9 @@ impl Op {
                 let result = match self {
                     Self::Add => (&x + &y) % p,
                     Self::Sub => (&x + p - &y) % p,
-                    _ => &x * &y % p,
+                    Self::Mul | Self::Square | Self::Invert | Self::InvertVartime | Self::Sqrt => {
+                        &x * &y % p
+                    }
                 };
                 (vec![a, b], vec![result])
             }

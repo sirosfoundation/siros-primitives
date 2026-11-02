@@ -515,6 +515,22 @@ pub(crate) const fn jacobi(a: u64, p: &[u64]) -> i32 {
     }
 }
 
+/// The first `len` limbs of `limbs`; all of them when `len` exceeds the length.
+#[inline(always)]
+pub(crate) const fn truncate(limbs: &[u64], len: usize) -> &[u64] {
+    match limbs.split_at_checked(len) {
+        Some((kept, _)) => kept,
+        None => limbs,
+    }
+}
+
+/// The first `len` limbs of `limbs`; all of them when `len` exceeds the length.
+#[inline(always)]
+pub(crate) const fn truncate_mut(limbs: &mut [u64], len: usize) -> &mut [u64] {
+    let len = if len < limbs.len() { len } else { limbs.len() };
+    limbs.split_at_mut(len).0
+}
+
 /// `-p^-1 mod 2^64` for odd `p`, by Newton's iteration from the inverse modulo `2^3`.
 pub(crate) const fn inv64(p: u64) -> u64 {
     // `p * p == 1 mod 8` for odd `p`, so `p` is its own inverse modulo `2^3`; each step doubles

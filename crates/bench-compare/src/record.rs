@@ -61,6 +61,7 @@ pub struct Count {
 
 impl Count {
     /// The mean instructions per operation.
+    #[must_use]
     pub fn per_operation(&self) -> f64 {
         self.instructions as f64 / f64::from(self.operations)
     }

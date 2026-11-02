@@ -212,25 +212,18 @@ impl<M: Modulus> Fp<M> {
     #[inline]
     #[must_use]
     pub fn pow<E: Bits>(self, exponent: Uint<E>) -> Self {
-        let exponent = exponent.as_limbs();
+        self.pow_limbs(exponent.as_limbs())
+    }
+
+    /// `self^exponent` over the limbs of the exponent, as [`Self::pow`].
+    #[inline]
+    pub(crate) fn pow_limbs(self, exponent: &[u64]) -> Self {
         let mut result = Self::ONE;
         for index in (0..bit_len(exponent)).rev() {
             result = result.square();
             if bit(exponent, index) {
                 result = result.mul(self);
             }
-        }
-        result
-    }
-
-    /// `self^exponent` for an exponent of the element's width, in constant time.
-    #[inline]
-    pub(crate) fn pow_fixed(self, exponent: &[u64]) -> Self {
-        let mut result = Self::ONE;
-        for index in (0..64 * Shape::<M>::LIMBS).rev() {
-            result = result.square();
-            let product = result.mul(self);
-            result = Self::select(bit(exponent, index), product, result);
         }
         result
     }

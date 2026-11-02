@@ -10,7 +10,7 @@ impl<M: Modulus> Fp<M> {
     #[must_use]
     pub fn sqrt(self) -> Option<Self> {
         if Shape::<M>::THREE_MOD_FOUR {
-            let root = self.pow_fixed(Shape::<M>::SQRT_EXPONENT.as_slice());
+            let root = self.pow_limbs(Shape::<M>::SQRT_EXPONENT.as_slice());
             return if root.square().equals(&self) {
                 Some(root)
             } else {
@@ -24,7 +24,7 @@ impl<M: Modulus> Fp<M> {
         // `r = w x` and `b = w r = x^t`, which lies in the 2-Sylow subgroup. Each round finds the
         // order `2^i` of `b` and multiplies `r` by the power of the subgroup generator that takes
         // `b` one step closer to `1`.
-        let w = self.pow_fixed(Shape::<M>::SQRT_EXPONENT.as_slice());
+        let w = self.pow_limbs(Shape::<M>::SQRT_EXPONENT.as_slice());
         let mut root = w.mul(self);
         let mut b = w.mul(root);
         let mut generator = Self::from_limbs(Shape::<M>::TWO_ADIC_ROOT);

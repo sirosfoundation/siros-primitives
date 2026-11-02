@@ -13,7 +13,8 @@ use generic_array::GenericArray;
 use crate::Modulus;
 use crate::kernel::{
     add, add_mod, below, bit, bit_len, cios, copy, fits, fold, inv64, is_zero, jacobi, limb,
-    mul_wide, redc, reduce_once, set, shr, square_wide, sub, trailing_zeros,
+    mul_wide, redc, reduce_once, set, shr, square_wide, sub, trailing_zeros, truncate,
+    truncate_mut,
 };
 use crate::width::Width;
 
@@ -201,6 +202,7 @@ impl<M: Modulus> Shape<M> {
     }
 
     /// The representation of the integer `value < p`.
+    #[inline(always)]
     pub(crate) const fn encode(value: &[u64]) -> Limbs<M> {
         let mut out = M::Width::ZERO;
         if Self::MONTGOMERY {
@@ -221,6 +223,7 @@ impl<M: Modulus> Shape<M> {
     }
 
     /// The integer `< p` that `value` represents.
+    #[inline(always)]
     pub(crate) const fn decode(value: &[u64]) -> Limbs<M> {
         let mut out = M::Width::ZERO;
         if Self::MONTGOMERY {
@@ -242,6 +245,7 @@ impl<M: Modulus> Shape<M> {
     }
 
     /// The product of two representations.
+    #[inline(always)]
     pub(crate) const fn mul_raw(a: &[u64], b: &[u64]) -> Limbs<M> {
         let mut out = M::Width::ZERO;
         let mut scratch = M::Width::ZERO;
@@ -264,6 +268,7 @@ impl<M: Modulus> Shape<M> {
     }
 
     /// The square of a representation.
+    #[inline(always)]
     pub(crate) const fn square_raw(a: &[u64]) -> Limbs<M> {
         let mut out = M::Width::ZERO;
         let mut scratch = M::Width::ZERO;
@@ -284,8 +289,12 @@ impl<M: Modulus> Shape<M> {
         out
     }
 
+    /// The limbs that the value needs after each fold, from the bound on its bit length.
+    const FOLD_LIMBS: [usize; MAX_FOLDS] = fold_limbs(Self::BITS, Self::DEFICIT);
+
     /// Reduces the full product `wide` into `out` by [`Self::FOLDS`] folds and one conditional
-    /// subtraction.
+    /// subtraction. Each fold writes the limbs that its bound needs.
+    #[inline(always)]
     const fn fold_raw(out: &mut Limbs<M>, scratch: &mut Limbs<M>, wide: &[u64]) {
         let deficit = match Self::DEFICIT {
             Some(deficit) => deficit,
@@ -293,13 +302,29 @@ impl<M: Modulus> Shape<M> {
         };
         let mut first = M::Width::EXTENDED_ZERO;
         let mut second = M::Width::EXTENDED_ZERO;
-        fold(first.as_mut_slice(), wide, Self::BITS, deficit);
+        fold(
+            truncate_mut(first.as_mut_slice(), Self::FOLD_LIMBS[0]),
+            wide,
+            Self::BITS,
+            deficit,
+        );
         let mut step = 1;
         while step < Self::FOLDS {
+            let limbs = Self::FOLD_LIMBS[step];
             if step % 2 == 1 {
-                fold(second.as_mut_slice(), first.as_slice(), Self::BITS, deficit);
+                fold(
+                    truncate_mut(second.as_mut_slice(), limbs),
+                    first.as_slice(),
+                    Self::BITS,
+                    deficit,
+                );
             } else {
-                fold(first.as_mut_slice(), second.as_slice(), Self::BITS, deficit);
+                fold(
+                    truncate_mut(first.as_mut_slice(), limbs),
+                    second.as_slice(),
+                    Self::BITS,
+                    deficit,
+                );
             }
             step += 1;
         }
@@ -308,6 +333,7 @@ impl<M: Modulus> Shape<M> {
         } else {
             second.as_slice()
         };
+        let folded = truncate(folded, Self::FOLD_LIMBS[Self::FOLDS - 1]);
         copy(out.as_mut_slice(), folded);
         reduce_once(
             out.as_mut_slice(),
@@ -339,9 +365,30 @@ impl<M: Modulus> Shape<M> {
     }
 
     /// Whether `value` is below the modulus.
+    #[inline(always)]
     pub(crate) const fn is_canonical(value: &[u64]) -> bool {
         below(value, Self::P.as_slice())
     }
+}
+
+/// The limbs of the value after each fold of the pseudo-Mersenne reduction, from the bound on
+/// its bit length: a product of two residues has `2 bits` bits; a fold of a value of `b` bits
+/// leaves at most `max(bits, b - bits + bits(deficit)) + 1` bits.
+const fn fold_limbs(bits: usize, deficit: Option<u64>) -> [usize; MAX_FOLDS] {
+    let deficit_bits = match deficit {
+        Some(deficit) => 64 - deficit.leading_zeros() as usize,
+        None => 64,
+    };
+    let mut limbs = [0; MAX_FOLDS];
+    let mut bound = 2 * bits;
+    let mut step = 0;
+    while step < MAX_FOLDS {
+        let high = bound - bits + deficit_bits;
+        bound = if high > bits { high } else { bits } + 1;
+        limbs[step] = bound.div_ceil(64);
+        step += 1;
+    }
+    limbs
 }
 
 /// The folds that bring a product of two residues modulo `2^bits - deficit` below twice the

@@ -470,7 +470,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             )
             .case(Op::Invert, "invert", one::<p256::Scalar>, |a| a.invert())
             .absent(Op::InvertVartime, NO_VARTIME_INVERSE)
-            .case(Op::Sqrt, "sqrt", one::<p256::Scalar>, |a| Field::sqrt(a))
+            .case(Op::Sqrt, "sqrt", one::<p256::Scalar>, Field::sqrt)
         }
         "P-521 base" => cells.none("p521 keeps its field element private"),
         _ => cells.none("no RustCrypto crate declares the field"),

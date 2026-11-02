@@ -18,6 +18,7 @@ pub const BATCH: usize = 256;
 pub type Limbs = Vec<u64>;
 
 /// `limbs` without its high zero limbs.
+#[must_use]
 pub fn trim(limbs: &[u64]) -> &[u64] {
     let len = limbs
         .iter()
@@ -97,6 +98,7 @@ pub trait Visitor<O, K>: Sized {
 }
 
 /// Offers every cell of `S` to `visitor`: operation by operation, row by row, crate by crate.
+#[must_use]
 pub fn visit<S: Suite, V: Visitor<S::Op, S::Key>>(visitor: V) -> V {
     S::OPS.iter().fold(visitor, |visitor, op| {
         S::keys().into_iter().fold(visitor, |visitor, key| {
@@ -136,12 +138,14 @@ pub struct Row<O, K, V> {
 
 impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Row<O, K, V> {
     /// The row key.
+    #[must_use]
     pub const fn key(&self) -> &K {
         &self.key
     }
 
     /// Offers the cells of `lib` through `adapter`. Panics unless the adapter offers exactly one
     /// cell for the row's operation.
+    #[must_use]
     pub fn lib(
         self,
         lib: &'static str,
@@ -178,6 +182,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
     /// Offers the case that runs the crate's `function` for `op`. `prepare` builds the input of
     /// one operand set; `run` is the operation on one input; `read` is the result as limbs, or
     /// `None` when the result holds no value.
+    #[must_use]
     pub fn api<I, R>(
         self,
         op: O,
@@ -190,6 +195,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
     }
 
     /// Records that the crate has no case for `op`, for `reason`.
+    #[must_use]
     pub fn absent(mut self, op: O, reason: &'static str) -> Self {
         if op == self.row.op {
             self.offered += 1;
@@ -262,6 +268,7 @@ pub struct Rng(pub u64);
 
 impl Rng {
     /// The next value.
+    #[must_use]
     pub fn next_u64(&mut self) -> u64 {
         self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
         let mut z = self.0;
@@ -271,11 +278,13 @@ impl Rng {
     }
 
     /// A uniform value of `limbs` limbs.
+    #[must_use]
     pub fn uniform(&mut self, limbs: usize) -> Limbs {
         (0..limbs).map(|_| self.next_u64()).collect()
     }
 
     /// A uniform value of exactly `bits` bits, in `limbs` limbs: bit `bits - 1` is set.
+    #[must_use]
     pub fn exact(&mut self, limbs: usize, bits: usize) -> Limbs {
         let mut value: Limbs = (0..limbs)
             .map(|index| {
@@ -293,6 +302,7 @@ impl Rng {
 
     /// A uniform value below `bound`, in as many limbs as `bound`: a draw of the bit length of
     /// `bound`, until one falls below it.
+    #[must_use]
     pub fn below(&mut self, bound: &[u64]) -> Limbs {
         let significant = trim(bound);
         let bits = significant.len() * 64

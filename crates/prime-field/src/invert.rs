@@ -1,20 +1,31 @@
-//! Inversion by Pornin's optimized binary GCD (*Optimized Binary GCD for Modular Inversion*,
-//! 2020, Algorithm 2).
+//! Inversion by the Bernstein–Yang safegcd (*Fast constant-time gcd computation and modular
+//! inversion*, 2019), in batches of 62 division steps as in libsecp256k1 and crypto-bigint.
 //!
-//! The extended binary GCD of `y` and `p` runs on 64-bit approximations of its two values for 31
-//! steps at a time: the low 31 bits and the top 33 bits of each value decide the steps exactly.
-//! The steps of a batch compose into a 2×2 matrix of 32-bit factors, which then updates the full
-//! values and the two Bézout coefficients modulo `p` once per batch. The constant-time variant
-//! runs the fixed `2 BITS - 1` steps with masked selections; the variable-time variant skips the
-//! even steps of a batch at once and stops when the first value reaches zero.
+//! A division step reads the parity of `g` and the sign of `delta`, so 62 steps run on the low
+//! 64 bits of `f` and `g` alone. The steps of a batch compose into a 2×2 matrix of 62-bit signed
+//! factors, which then updates the full `f` and `g` and the Bézout coefficients `d` and `e`
+//! modulo `p` once per batch. The steps track `zeta = -(delta + 1/2)`, the half-delta variant
+//! whose proven bound is `(45907 BITS + 26313) / 19929` steps. The constant-time variant runs
+//! that bound with masked selections, in the formulation of libsecp256k1's `divsteps_59`; the
+//! variable-time variant skips the even steps of a batch at once by the trailing zeros of `g`
+//! and stops when `g` reaches zero.
+//!
+//! For moduli of at most 64 bits a Fermat exponentiation `x^(p - 2)` is cheaper than the batches,
+//! and the exponent is public, so it runs in constant time with respect to `x`.
 
 use crate::field::{Fp, Modulus};
 use crate::kernel::{add, equal, fits, is_zero, limb, mul_add, neg_mod, set, sub};
 use crate::params::{ExtendedLimbs, Limbs, Shape};
 use crate::width::Width;
 
-/// The steps of one batch: 31 steps fit the 64-bit approximations with 33 exact top bits.
-const BATCH: usize = 31;
+/// The division steps of one batch.
+const BATCH: usize = 62;
+
+/// The mask of the low `BATCH` bits.
+const LOW: u64 = (1 << BATCH) - 1;
+
+/// The widest modulus whose inverse is a Fermat exponentiation.
+const FERMAT_BITS: usize = 64;
 
 impl<M: Modulus> Fp<M> {
     /// `self^-1`, or `None` for `0`, in time that depends on the modulus alone.
@@ -34,89 +45,61 @@ impl<M: Modulus> Fp<M> {
 
     #[inline(always)]
     fn invert_with<const VARTIME: bool>(self) -> Option<Self> {
-        // `a = u y 2^-k` and `b = v y 2^-k` modulo `p` after `k` steps, with `u` and `v` scaled
-        // by the representation's seed so that `v` ends as the representation of `y^-1`.
-        let mut a = M::Width::EXTENDED_ZERO;
-        a.as_mut_slice()
-            .iter_mut()
-            .zip(self.limbs())
-            .for_each(|(slot, &value)| *slot = value);
-        let mut b = M::Width::EXTENDED_ZERO;
-        b.as_mut_slice()
+        if Shape::<M>::BITS <= FERMAT_BITS {
+            return if self.is_zero() {
+                None
+            } else {
+                Some(self.pow_limbs(Shape::<M>::P_MINUS_TWO.as_slice()))
+            };
+        }
+        // `f = d y` and `g = e y` modulo `p` throughout, with `f` odd; `d` and `e` carry the
+        // representation's seed, so that `d` ends as the representation of `±y^-1`.
+        let mut f = M::Width::EXTENDED_ZERO;
+        f.as_mut_slice()
             .iter_mut()
             .zip(Shape::<M>::P.as_slice())
             .for_each(|(slot, &value)| *slot = value);
-        let mut u = Shape::<M>::INVERSE_SEED;
-        let mut v = M::Width::ZERO;
-        let batches = (2 * Shape::<M>::BITS - 1).div_ceil(BATCH);
+        let mut g = M::Width::EXTENDED_ZERO;
+        g.as_mut_slice()
+            .iter_mut()
+            .zip(self.limbs())
+            .for_each(|(slot, &value)| *slot = value);
+        let mut d = M::Width::ZERO;
+        let mut e = Shape::<M>::INVERSE_SEED;
+        let mut zeta: i64 = -1;
+        let batches = (45_907 * Shape::<M>::BITS + 26_313)
+            .div_ceil(19_929)
+            .div_ceil(BATCH);
         for _ in 0..batches {
-            if VARTIME && is_zero(a.as_slice()) {
+            if VARTIME && is_zero(g.as_slice()) {
                 break;
             }
-            let (approximate_a, approximate_b) = approximate(a.as_slice(), b.as_slice());
-            let matrix = Matrix::divsteps::<VARTIME>(approximate_a, approximate_b);
-            let (next_a, negated_a) =
-                combination_shifted::<M>(matrix.f0, a.as_slice(), matrix.g0, b.as_slice());
-            let (next_b, negated_b) =
-                combination_shifted::<M>(matrix.f1, a.as_slice(), matrix.g1, b.as_slice());
-            // A negated `a` or `b` keeps `a = u y 2^-k` through the same negation of `u` or `v`.
-            let next_u =
-                combination_mod::<M>(matrix.f0, u.as_slice(), matrix.g0, v.as_slice(), negated_a);
-            let next_v =
-                combination_mod::<M>(matrix.f1, u.as_slice(), matrix.g1, v.as_slice(), negated_b);
-            (a, b) = (next_a, next_b);
-            (u, v) = (next_u, next_v);
+            let matrix = Matrix::divsteps::<VARTIME>(
+                &mut zeta,
+                limb(f.as_slice(), 0),
+                limb(g.as_slice(), 0),
+            );
+            let next_f = combination_shifted::<M>(matrix.u, f.as_slice(), matrix.v, g.as_slice());
+            let next_g = combination_shifted::<M>(matrix.q, f.as_slice(), matrix.r, g.as_slice());
+            let next_d = combination_mod::<M>(matrix.u, d.as_slice(), matrix.v, e.as_slice());
+            let next_e = combination_mod::<M>(matrix.q, d.as_slice(), matrix.r, e.as_slice());
+            (f, g) = (next_f, next_g);
+            (d, e) = (next_d, next_e);
         }
+        // `f` is `±1` exactly when `y` is a unit; `-1` is all ones in two's complement.
         let mut one = M::Width::EXTENDED_ZERO;
         set(one.as_mut_slice(), 0, 1);
-        if equal(b.as_slice(), one.as_slice()) {
-            Some(Self::from_limbs(v))
-        } else {
-            None
-        }
+        let positive = equal(f.as_slice(), one.as_slice());
+        let negative = f.as_slice().iter().all(|limb| *limb == u64::MAX);
+        let mut negated = M::Width::ZERO;
+        neg_mod(
+            negated.as_mut_slice(),
+            d.as_slice(),
+            Shape::<M>::P.as_slice(),
+        );
+        let inverse = Self::select(negative, Self::from_limbs(negated), Self::from_limbs(d));
+        (positive | negative).then_some(inverse)
     }
-}
-
-/// The 64-bit approximations of `a` and `b`: their low 31 bits and the top 33 bits at the bit
-/// length of the larger one; the values themselves when both fit 64 bits. Every selection is
-/// masked.
-#[inline(always)]
-fn approximate(a: &[u64], b: &[u64]) -> (u64, u64) {
-    let len = bit_len_masked(a).max(bit_len_masked(b));
-    let shift = len.saturating_sub(33);
-    let small = mask(len <= 64);
-    let top = |value: &[u64]| {
-        let low = limb_masked(value, shift / 64);
-        let high = limb_masked(value, shift / 64 + 1);
-        (((u128::from(high) << 64) | u128::from(low)) >> (shift % 64)) as u64
-    };
-    let approximation = |value: &[u64]| {
-        let exact = limb(value, 0);
-        let folded = (exact & 0x7fff_ffff) | (top(value) << 31);
-        (exact & small) | (folded & !small)
-    };
-    (approximation(a), approximation(b))
-}
-
-/// The bit length, by one pass over every limb.
-#[inline(always)]
-fn bit_len_masked(value: &[u64]) -> usize {
-    value.iter().enumerate().fold(0, |len, (index, &limb)| {
-        let here = index * 64 + 64 - limb.leading_zeros() as usize;
-        let nonzero = mask(limb != 0) as usize;
-        (here & nonzero) | (len & !nonzero)
-    })
-}
-
-/// Limb `index`, by one pass over every limb; `0` beyond the length.
-#[inline(always)]
-fn limb_masked(value: &[u64], index: usize) -> u64 {
-    value
-        .iter()
-        .enumerate()
-        .fold(0, |found, (position, &limb)| {
-            found | (limb & mask(position == index))
-        })
 }
 
 /// All ones when `condition` holds, else zero.
@@ -125,67 +108,71 @@ const fn mask(condition: bool) -> u64 {
     0u64.wrapping_sub(condition as u64)
 }
 
-/// The factors of one batch: the new `a` is `(f0 a + g0 b) / 2^31` and the new `b` is
-/// `(f1 a + g1 b) / 2^31`, both exact.
+/// The factors of one batch: the new `f` is `(u f + v g) / 2^62` and the new `g` is
+/// `(q f + r g) / 2^62`, both exact.
 struct Matrix {
-    f0: i64,
-    g0: i64,
-    f1: i64,
-    g1: i64,
+    u: i64,
+    v: i64,
+    q: i64,
+    r: i64,
 }
 
 impl Matrix {
-    /// The 31 steps of a batch on the approximations: an odd `a` below `b` swaps the two, an odd
-    /// `a` subtracts `b`, and `a` halves while the factors of `b` double.
+    /// The 62 division steps of a batch on the low limbs of `f` and `g`. A step with `g` odd
+    /// adds `f` to `g`, or `-f` when `zeta` is negative, in which case `f` then takes the old
+    /// `g`; every step halves `g`, which doubles the factors of `f`, and lowers `zeta`.
     #[inline(always)]
-    fn divsteps<const VARTIME: bool>(mut a: u64, mut b: u64) -> Self {
-        let (mut f0, mut g0, mut f1, mut g1) = (1i64, 0i64, 0i64, 1i64);
+    fn divsteps<const VARTIME: bool>(zeta: &mut i64, mut f: u64, mut g: u64) -> Self {
+        let (mut u, mut v, mut q, mut r) = (1i64, 0i64, 0i64, 1i64);
         let mut remaining = BATCH as u32;
         while remaining > 0 {
             if VARTIME {
-                // Every trailing zero of `a` is a step that only halves `a`.
-                let zeros = a.trailing_zeros().min(remaining);
-                a >>= zeros;
-                f1 <<= zeros;
-                g1 <<= zeros;
+                // Every trailing zero of `g` is a step that only halves `g`.
+                let zeros = g.trailing_zeros().min(remaining);
+                g >>= zeros;
+                u <<= zeros;
+                v <<= zeros;
+                *zeta -= i64::from(zeros);
                 remaining -= zeros;
                 if remaining == 0 {
                     break;
                 }
-                if a < b {
-                    (a, b) = (b, a);
-                    (f0, g0, f1, g1) = (f1, g1, f0, g0);
+                if *zeta < 0 {
+                    *zeta = -*zeta - 2;
+                    (f, g) = (g, g.wrapping_sub(f));
+                    (u, v, q, r) = (q, r, q - u, r - v);
+                } else {
+                    *zeta -= 1;
+                    g = g.wrapping_add(f);
+                    q += u;
+                    r += v;
                 }
-                a -= b;
-                f0 -= f1;
-                g0 -= g1;
             } else {
-                let odd = mask(a & 1 != 0);
-                let swap = odd & mask(a < b);
-                let delta = (a ^ b) & swap;
-                a ^= delta;
-                b ^= delta;
-                let delta = (f0 ^ f1) & swap as i64;
-                f0 ^= delta;
-                f1 ^= delta;
-                let delta = (g0 ^ g1) & swap as i64;
-                g0 ^= delta;
-                g1 ^= delta;
-                a = a.wrapping_sub(b & odd);
-                f0 -= f1 & odd as i64;
-                g0 -= g1 & odd as i64;
+                let negate = (*zeta >> 63) as u64;
+                let odd = mask(g & 1 != 0);
+                let x = (f ^ negate).wrapping_sub(negate);
+                let y = (u ^ negate as i64).wrapping_sub(negate as i64);
+                let z = (v ^ negate as i64).wrapping_sub(negate as i64);
+                g = g.wrapping_add(x & odd);
+                q = q.wrapping_add(y & odd as i64);
+                r = r.wrapping_add(z & odd as i64);
+                let swap = negate & odd;
+                *zeta = (*zeta ^ swap as i64) - 1;
+                f = f.wrapping_add(g & swap);
+                u = u.wrapping_add(q & swap as i64);
+                v = v.wrapping_add(r & swap as i64);
             }
-            a >>= 1;
-            f1 <<= 1;
-            g1 <<= 1;
+            g >>= 1;
+            u <<= 1;
+            v <<= 1;
             remaining -= 1;
         }
-        Self { f0, g0, f1, g1 }
+        Self { u, v, q, r }
     }
 }
 
-/// `f a + g b` in two's complement over the length of `out`; returns whether it is negative.
-/// The magnitude fits the length.
+/// `f a + g b` in two's complement over the length of `out`, for `a` and `b` in two's
+/// complement; returns whether the result is negative. The result fits the length.
 #[inline(always)]
 fn combination(out: &mut [u64], f: i64, a: &[u64], g: i64, b: &[u64]) -> bool {
     let mut carry: i128 = 0;
@@ -196,40 +183,36 @@ fn combination(out: &mut [u64], f: i64, a: &[u64], g: i64, b: &[u64]) -> bool {
         *slot = sum as u64;
         carry = sum >> 64;
     }
-    carry < 0
+    // The limbs of `a` and `b` were read as unsigned; their sign terms vanish modulo `2^(64
+    // len)`, so the low limbs are right, and the sign is the top bit.
+    out.last().is_some_and(|top| (*top as i64) < 0)
 }
 
-/// `|f a + g b| / 2^31`, the division exact, and whether the combination was negative.
+/// `(f a + g b) / 2^62` in two's complement, the division exact.
 #[inline(always)]
-fn combination_shifted<M: Modulus>(
-    f: i64,
-    a: &[u64],
-    g: i64,
-    b: &[u64],
-) -> (ExtendedLimbs<M>, bool) {
+fn combination_shifted<M: Modulus>(f: i64, a: &[u64], g: i64, b: &[u64]) -> ExtendedLimbs<M> {
     let mut out = M::Width::EXTENDED_ZERO;
     let negative = combination(out.as_mut_slice(), f, a, g, b);
-    negate_masked(out.as_mut_slice(), negative);
-    shr_in_place(out.as_mut_slice(), BATCH);
-    (out, negative)
+    shr_in_place(out.as_mut_slice(), BATCH, mask(negative));
+    out
 }
 
-/// `(f u + g v) / 2^31 mod p` for `u, v < p`, negated when `negate` holds.
+/// `(f u + g v) / 2^62 mod p` for `u, v < p`.
 #[inline(always)]
-fn combination_mod<M: Modulus>(f: i64, u: &[u64], g: i64, v: &[u64], negate: bool) -> Limbs<M> {
+fn combination_mod<M: Modulus>(f: i64, u: &[u64], g: i64, v: &[u64]) -> Limbs<M> {
     let mut sum = M::Width::EXTENDED_ZERO;
-    let negative = combination(sum.as_mut_slice(), f, u, g, v) ^ negate;
-    negate_masked(sum.as_mut_slice(), negative ^ negate);
-    // `|sum| < 2^32 p`. Adding `z p` with `z = -sum p^-1 mod 2^31` makes the sum divisible by
-    // `2^31`; the quotient is below `3 p`.
-    let z = limb(sum.as_slice(), 0).wrapping_mul(Shape::<M>::INV) & ((1 << BATCH) - 1);
+    let negative = combination(sum.as_mut_slice(), f, u, g, v);
+    negate_masked(sum.as_mut_slice(), negative);
+    // `|sum| < 2^63 p`. Adding `z p` with `z = -sum p^-1 mod 2^62` makes the sum divisible by
+    // `2^62`; the quotient is below `3 p`.
+    let z = limb(sum.as_slice(), 0).wrapping_mul(Shape::<M>::INV) & LOW;
     let mut carry = 0;
     for (index, slot) in sum.as_mut_slice().iter_mut().enumerate() {
         let (low, high) = mul_add(z, limb(Shape::<M>::P.as_slice(), index), *slot, carry);
         *slot = low;
         carry = high;
     }
-    shr_in_place(sum.as_mut_slice(), BATCH);
+    shr_in_place(sum.as_mut_slice(), BATCH, 0);
     let mut reduced = M::Width::EXTENDED_ZERO;
     let borrow = sub(
         reduced.as_mut_slice(),
@@ -270,13 +253,18 @@ fn negate_masked(value: &mut [u64], condition: bool) {
     }
 }
 
-/// `value >>= shift` for `shift < 64`.
+/// `value >>= shift` for `0 < shift < 64`, with `fill` (all ones or zero) entering at the top.
 #[inline(always)]
-fn shr_in_place(value: &mut [u64], shift: usize) {
-    for index in 0..value.len() {
+fn shr_in_place(value: &mut [u64], shift: usize, fill: u64) {
+    let len = value.len();
+    for index in 0..len {
         let low = limb(value, index) >> shift;
-        let high = limb(value, index + 1) << (64 - shift);
-        set(value, index, low | high);
+        let above = if index + 1 < len {
+            limb(value, index + 1)
+        } else {
+            fill
+        };
+        set(value, index, low | (above << (64 - shift)));
     }
 }
 
@@ -290,8 +278,8 @@ fn select_in_place(value: &mut [u64], condition: bool, other: &[u64]) {
 }
 
 impl<M: Modulus> Shape<M> {
-    /// The `u` that the inversion starts from: `R^2` in Montgomery form, so that the Bézout
-    /// coefficient of `1` comes out as the representation of the inverse; `1` for plain
+    /// The `e` that the inversion starts from: `R^2` in Montgomery form, so that the Bézout
+    /// coefficient of `±1` comes out as the representation of the inverse; `1` for plain
     /// residues.
     pub(crate) const INVERSE_SEED: Limbs<M> = if Self::MONTGOMERY {
         Self::R2
@@ -307,6 +295,13 @@ impl<M: Modulus> Shape<M> {
             Self::P.as_slice(),
             Self::P.as_slice(),
         ));
+        out
+    };
+
+    /// `p - 2`, the Fermat exponent.
+    pub(crate) const P_MINUS_TWO: Limbs<M> = {
+        let mut out = M::Width::ZERO;
+        fits(sub(out.as_mut_slice(), Self::P.as_slice(), &[2]));
         out
     };
 }

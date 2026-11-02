@@ -188,6 +188,7 @@ fn unique<T: PartialEq>(items: impl Iterator<Item = T>) -> Vec<T> {
 }
 
 /// `values` joined as in a sentence: `a, b and c`.
+#[must_use]
 pub fn sentence<T: ToString>(values: &[T]) -> String {
     let words: Vec<String> = values.iter().map(ToString::to_string).collect();
     match words.split_last() {
@@ -198,6 +199,7 @@ pub fn sentence<T: ToString>(values: &[T]) -> String {
 }
 
 /// A Markdown table; `align` holds `l` or `r` per column.
+#[must_use]
 pub fn markdown_table(header: &[String], rows: &[Vec<String>], align: &str) -> Vec<String> {
     let rule: Vec<&str> = align
         .chars()

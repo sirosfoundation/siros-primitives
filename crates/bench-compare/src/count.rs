@@ -14,6 +14,7 @@ use crate::record::{Cell, Count as Counted, Outcome};
 use crate::suite::{BATCH, Call, CaseId, Suite, Visitor, run_batch, visit};
 
 /// Runs the bench executable of `S`, named `name` in its messages, with the process arguments.
+#[must_use]
 pub fn main<S: Suite>(name: &str) -> ExitCode {
     // `cargo bench` passes `--bench`.
     let args: Vec<String> = std::env::args()

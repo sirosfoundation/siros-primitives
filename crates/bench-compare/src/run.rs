@@ -8,8 +8,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::error::Error;
 use crate::record::{Cell, Key, Record, Version};
 
-/// The `RUSTFLAGS` of the build: code for the CPU that runs the bench.
-const RUSTFLAGS: &str = "-C target-cpu=native";
+/// The `RUSTFLAGS` of the build: code for the CPU that runs the bench, without SSE4a, whose
+/// `extrq` Valgrind 3.22 cannot execute.
+const RUSTFLAGS: &str = "-C target-cpu=native -C target-feature=-sse4a";
 
 /// The locations that a report tool reads and writes.
 pub struct Paths {
@@ -24,6 +25,7 @@ pub struct Paths {
 impl Paths {
     /// The paths of the tool at `manifest_dir`, which lives in the library's directory; the
     /// record is `target/benchmarks/<record>` under the workspace root.
+    #[must_use]
     pub fn new(manifest_dir: &str, record: &str) -> Self {
         let library = Path::new(manifest_dir).join("..");
         let root = library.join("..").join("..");
@@ -57,6 +59,7 @@ pub struct Measured {
 
 /// Runs the report tool `tool` with the process arguments: `bench [--machine <description>]`
 /// counts and records; `report` writes the document from the record.
+#[must_use]
 pub fn execute<K: Key>(
     tool: &str,
     paths: &Paths,
