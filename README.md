@@ -4,7 +4,7 @@
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
 ![Rust 1.88+](https://img.shields.io/badge/rustc-1.88+-blue.svg)
 
-Big-integer and carry-less arithmetic in pure Rust. Every crate is `no_std` and free of allocation
+Big-integer, carry-less and binary-field arithmetic in pure Rust. Every crate is `no_std` and free of allocation
 and panics. `unsafe` appears only in `clmul`, at the calls into its PCLMULQDQ and PMULL backends.
 
 ## Crates
@@ -13,6 +13,7 @@ and panics. `unsafe` appears only in `clmul`, at the calls into its PCLMULQDQ an
 |---|---|
 | [`biguint`](crates/biguint) | Fixed-width unsigned integers of any bit width, with Karatsuba multiplication and divide-and-conquer division |
 | [`clmul`](crates/clmul) | Carry-less multiplication of 64-bit words, limb slices and GF(2^128) elements, on PCLMULQDQ, PMULL or a const portable comb |
+| [`binary-field`](crates/binary-field) | Binary Galois fields GF(2^n) of any degree, declared by their polynomial, with every algorithm choice folded at compile time |
 
 ## Minimum supported Rust version
 
@@ -22,7 +23,7 @@ Every crate builds with Rust 1.88 or newer.
 
 ```sh
 cargo test --workspace --all-features
-RUSTFLAGS="-C target-feature=+pclmulqdq,+sse4.1" cargo test -p clmul --all-features
+RUSTFLAGS="-C target-feature=+pclmulqdq,+sse4.1" cargo test -p clmul -p binary-field --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 

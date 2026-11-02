@@ -34,7 +34,7 @@ jobs:
       - run: cargo test --locked --workspace --all-features
 
   test-clmul:
-    name: Test clmul with ${{ matrix.target-features }}
+    name: Test clmul and binary-field with ${{ matrix.target-features }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/rust-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo test --locked -p clmul --all-features
+      - run: cargo test --locked -p clmul -p binary-field --all-features
 
   fmt:
     name: Format
@@ -68,12 +68,12 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       # A 32-bit target without `std`, `adx` or carry-less instructions: the portable carry path,
       # the comb and the `no_std` build.
-      - run: cargo clippy --locked -p biguint -p clmul --target thumbv7em-none-eabi -- -D warnings
-      # The PCLMULQDQ and PMULL backends of `clmul`.
-      - run: cargo clippy --locked -p clmul --all-targets --all-features -- -D warnings
+      - run: cargo clippy --locked -p biguint -p clmul -p binary-field --target thumbv7em-none-eabi -- -D warnings
+      # The PCLMULQDQ and PMULL backends of `clmul`, and the plans of `binary-field` on them.
+      - run: cargo clippy --locked -p clmul -p binary-field --all-targets --all-features -- -D warnings
         env:
           RUSTFLAGS: -C target-feature=+pclmulqdq,+sse4.1
-      - run: cargo clippy --locked -p clmul --all-features --target aarch64-unknown-linux-gnu -- -D warnings
+      - run: cargo clippy --locked -p clmul -p binary-field --all-features --target aarch64-unknown-linux-gnu -- -D warnings
         env:
           RUSTFLAGS: -C target-feature=+aes
 
@@ -101,3 +101,4 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo check --locked -p biguint
       - run: cargo check --locked -p clmul --all-features
+      - run: cargo check --locked -p binary-field

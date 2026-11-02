@@ -43,6 +43,18 @@ mod backend;
 #[path = "portable.rs"]
 mod backend;
 
+/// Whether the build's target features give [`clmul64`] a hardware instruction, PCLMULQDQ or PMULL.
+/// Code that chooses between carry-less products and shift-and-add on the cost of a word product
+/// reads it.
+pub const HARDWARE: bool = cfg!(any(
+    all(target_arch = "x86_64", target_feature = "pclmulqdq"),
+    all(
+        target_arch = "aarch64",
+        target_endian = "little",
+        target_feature = "aes"
+    )
+));
+
 pub use comb::const_clmul64;
 pub use limbs::{clmul_into, const_clmul_into};
 #[cfg(feature = "biguint")]
