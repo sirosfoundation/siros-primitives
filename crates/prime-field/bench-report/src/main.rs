@@ -6,10 +6,11 @@ use std::process::ExitCode;
 use bench_compare::{BATCH, Layout, Measured, NATIVE, Paths, markdown_table, sentence};
 use serde::{Deserialize, Serialize};
 
-/// A row: a field, by name.
+/// A row: a field, by name, and the bit length of its modulus.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 struct Field {
     field: String,
+    bits: u32,
 }
 
 impl fmt::Display for Field {
@@ -69,6 +70,7 @@ const LAYOUT: Layout<'static, Field> = Layout {
     ],
     row_header: "Field",
     rows_phrase: |fields| format!("over {}", sentence(fields)),
+    bits: |field| field.bits,
     method,
     notes: &[
         "- A variable-time row compares the functions whose time may depend on the values; a \
@@ -98,9 +100,6 @@ const LAYOUT: Layout<'static, Field> = Layout {
          and whose `invert` branches; `P256Field` adds a hand-written P-256 strategy; \
          `compile-algebra`'s `FpField` computes on `num-bigint`.",
     ],
-    axis_title: "field",
-    category_name: |field| field.field.clone(),
-    lines: false,
 };
 
 fn method() -> Vec<String> {

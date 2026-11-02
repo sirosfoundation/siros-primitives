@@ -15,11 +15,13 @@ use reference::Modulus;
 /// The comparison of `binary-field`.
 pub struct BinaryField;
 
-/// A row: a field, by name.
+/// A row: a field, by name, and the degree of its modulus.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Field {
     /// The name.
     pub field: String,
+    /// The degree of the modulus: the bits of an element.
+    pub bits: usize,
 }
 
 impl fmt::Display for Field {
@@ -121,6 +123,7 @@ impl Suite for BinaryField {
             .iter()
             .map(|spec| Field {
                 field: spec.name.to_owned(),
+                bits: spec.modulus.degree,
             })
             .collect()
     }

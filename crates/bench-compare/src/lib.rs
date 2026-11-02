@@ -1,7 +1,6 @@
 #![doc = include_str!("../README.md")]
 
 mod barrier;
-mod chart;
 mod count;
 mod counters;
 mod document;
@@ -10,10 +9,12 @@ mod record;
 mod run;
 mod suite;
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub use barrier::Ymm;
 pub use barrier::{Barrier, Memory};
 #[cfg(target_arch = "x86_64")]
 pub use barrier::{Gpr, Xmm};
-pub use count::{REPETITIONS, TARGET, main};
+pub use count::{FEWEST_STEP_CYCLES, REPETITIONS, TARGET, main};
 pub use document::{LOAD, Layout, markdown_table, report, sentence};
 pub use error::Error;
 pub use record::{

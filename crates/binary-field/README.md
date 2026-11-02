@@ -125,7 +125,7 @@ regenerates it:
 
 ```sh
 cargo run -p binary-field-bench-report -- bench    # the CPU's counts of both builds
-cargo run -p binary-field-bench-report -- report   # BENCHMARKS.md and benchmarks/*.svg
+cargo run -p binary-field-bench-report -- report   # BENCHMARKS.md
 ```
 
 ## Minimum supported Rust version

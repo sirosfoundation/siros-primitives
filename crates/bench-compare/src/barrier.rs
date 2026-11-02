@@ -1,124 +1,437 @@
-//! The barriers of the chain `x = barrier(op(x, y))`. A barrier hides each intermediate `x` from
-//! the optimizer, which then computes every step in order: an associative operation stays a chain
-//! and turns into no tree. A register barrier keeps `x` in one register class and can only add
-//! moves between classes, so a chain runs once per class and the faster run counts. A value of
-//! more than [`REGISTERS`] bytes goes through [`Memory`], and so does every value off x86-64.
+//! What hides a measured operation from the optimizer: the address of each operand set, the sink
+//! of each result, and the barriers of the chain `x = op(x, y)`.
+//!
+//! An empty inline-assembly block does the hiding and emits no instruction. A barrier hides each
+//! intermediate `x`, so the optimizer computes every step in order: an associative operation
+//! stays a chain and turns into no tree. A register barrier holds `x` in one class of registers,
+//! each register filled by one word of `x`, and can only add moves between classes: a chain runs
+//! once per class that holds its value, and the faster run counts. [`Memory`] keeps `x` in one
+//! place on the stack, whose address a block takes after each step: one store and one load per
+//! word and step. Off x86-64, every chain runs through [`Memory`] and `core::hint::black_box`
+//! does the hiding.
 #![cfg_attr(
     target_arch = "x86_64",
-    expect(unsafe_code, reason = "a register barrier is inline assembly")
+    expect(unsafe_code, reason = "a barrier is inline assembly")
 )]
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+pub use registers::Ymm;
 #[cfg(target_arch = "x86_64")]
 pub use registers::{Gpr, Xmm};
 
 use crate::record::Class;
+use crate::suite::Chain;
 
-/// The most bytes that a register barrier holds in registers.
-pub const REGISTERS: usize = 64;
+/// The most bytes that the general-purpose registers hold: eight words of 8 bytes.
+pub(crate) const GPR_BYTES: usize = 64;
+
+/// The bytes of one `xmm` register. A value of more bytes is the smallest that the `ymm`
+/// registers hold.
+pub(crate) const XMM_WORD: usize = 16;
+
+/// The most bytes that the `xmm` registers hold: eight words of 16 bytes.
+pub(crate) const XMM_BYTES: usize = 128;
+
+/// The most bytes that the `ymm` registers hold: eight words of 32 bytes.
+pub(crate) const YMM_BYTES: usize = 256;
 
 /// Where the value of a chain stays between its steps.
 pub trait Barrier {
     /// The class of the barrier in the record.
     const CLASS: Class;
 
-    /// `x`, opaque to the optimizer.
-    fn hide<T>(x: T) -> T;
+    /// Whether the barrier holds a value of `bytes` bytes.
+    fn holds(bytes: usize) -> bool;
+
+    /// Runs `run` on the inputs of `batch` as the chain `x = op(x, y)`, with `x` held by the
+    /// barrier, and returns the number of runs: from the second input on, the result of the run
+    /// before replaces the first operand. An empty block takes the address of the last result.
+    fn chain<I: Chain<R>, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize;
 }
 
-/// Memory: `core::hint::black_box`, a store and a load per step.
+/// Memory: `x` stays in one place on the stack, and after each step an empty block takes its
+/// address and may read and rewrite it. The operation stores its result there and the next one
+/// loads it: one store and one load per word and step. The optimizer can neither forward the
+/// stored value nor skip the store, and it can merge the operation's own result with that place,
+/// so a result that the operation builds in memory takes no copy.
 pub struct Memory;
 
 impl Barrier for Memory {
     const CLASS: Class = Class::Memory;
 
-    #[inline(always)]
-    fn hide<T>(x: T) -> T {
-        core::hint::black_box(x)
+    /// A value larger than the general-purpose registers hold, and every value off x86-64.
+    fn holds(bytes: usize) -> bool {
+        bytes > GPR_BYTES || cfg!(not(target_arch = "x86_64"))
     }
+
+    #[inline(always)]
+    fn chain<I: Chain<R>, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
+        let Some((first, rest)) = batch.split_first() else {
+            return 0;
+        };
+        let mut x = run(opaque(first));
+        let mut runs = 1;
+        for input in rest {
+            clobber(&mut x);
+            x = run(&opaque(input).chain(x));
+            runs += 1;
+        }
+        sink(&x);
+        runs
+    }
+}
+
+/// An empty block that may read and rewrite the memory of `value`: every store to it happens
+/// before the block, and every load from it after.
+#[inline(always)]
+fn clobber<T>(value: &mut T) {
+    #[cfg(target_arch = "x86_64")]
+    registers::clobber(value);
+    #[cfg(not(target_arch = "x86_64"))]
+    #[expect(
+        unused_results,
+        reason = "the reference that `black_box` returns is `value`"
+    )]
+    core::hint::black_box(value);
+}
+
+/// `value` behind an address that the optimizer cannot see through, so it can neither precompute
+/// what the operation reads there nor merge the reads of two operand sets.
+#[inline(always)]
+pub(crate) fn opaque<T>(value: &T) -> &T {
+    #[cfg(target_arch = "x86_64")]
+    return registers::opaque(value);
+    #[cfg(not(target_arch = "x86_64"))]
+    return core::hint::black_box(value);
+}
+
+/// Uses `value` where the optimizer cannot see, so it cannot skip the operation that computed it.
+/// Its bytes must be in memory at its address: a value in registers costs one store per register,
+/// a value already in memory nothing.
+#[inline(always)]
+pub(crate) fn sink<T>(value: &T) {
+    #[cfg(target_arch = "x86_64")]
+    registers::sink(value);
+    #[cfg(not(target_arch = "x86_64"))]
+    #[expect(
+        unused_results,
+        reason = "the reference that `black_box` returns is `value`"
+    )]
+    core::hint::black_box(value);
 }
 
 #[cfg(target_arch = "x86_64")]
 mod registers {
     use core::arch::asm;
     use core::arch::x86_64::__m128i;
+    #[cfg(target_feature = "avx2")]
+    use core::arch::x86_64::__m256i;
     use core::mem::{MaybeUninit, size_of};
-    use core::ptr;
+    use core::{ptr, slice};
 
-    use super::{Barrier, REGISTERS};
+    #[cfg(target_feature = "avx2")]
+    use super::YMM_BYTES;
+    use super::{Barrier, GPR_BYTES, XMM_BYTES, XMM_WORD};
     use crate::record::Class;
+    use crate::suite::Chain;
 
-    /// The general-purpose registers, one per 8 bytes.
+    /// The general-purpose registers, one per word of 8, 4, 2 or 1 bytes: a value takes as many
+    /// 8-byte words as it fills, then one word of each smaller width that its last bytes need.
     pub struct Gpr;
 
-    /// The vector registers, one per 16 bytes.
+    /// The `xmm` registers, one per 16 bytes.
     pub struct Xmm;
 
-    /// `x` through `N` registers that hold a `W` each: the bytes of `x` go into `N` words, each
-    /// word that holds them passes through `pass`, and the words come back as a `T`. A larger `x`
-    /// goes through [`Memory`](super::Memory).
+    /// The `ymm` registers of AVX2 builds, one per 32 bytes.
+    #[cfg(target_feature = "avx2")]
+    pub struct Ymm;
+
+    /// A class of registers that holds a value one word at a time. The length of the value fixes
+    /// every word and its offset at compile time.
+    trait Words {
+        /// Passes the bytes of `source` through registers of the class into `target`, of the same
+        /// length.
+        fn pass(source: &[MaybeUninit<u8>], target: &mut [MaybeUninit<u8>]);
+    }
+
+    impl Words for Gpr {
+        #[inline(always)]
+        fn pass(source: &[MaybeUninit<u8>], target: &mut [MaybeUninit<u8>]) {
+            let (words, mut source) = source.as_chunks::<8>();
+            let (targets, mut target) = target.as_chunks_mut::<8>();
+            for (word, target) in words.iter().zip(targets) {
+                pass::<u64>(word, target);
+            }
+            // The last bytes, at most 7, take one word of each width that their length has.
+            for width in [4, 2, 1] {
+                if source.len() & width != 0 {
+                    let (word, rest) = source.split_at(width);
+                    let (into, others) = target.split_at_mut(width);
+                    match width {
+                        4 => pass::<u32>(word, into),
+                        2 => pass::<u16>(word, into),
+                        _ => pass::<u8>(word, into),
+                    }
+                    (source, target) = (rest, others);
+                }
+            }
+        }
+    }
+
+    impl Words for Xmm {
+        #[inline(always)]
+        fn pass(source: &[MaybeUninit<u8>], target: &mut [MaybeUninit<u8>]) {
+            vector::<__m128i, XMM_WORD>(source, target);
+        }
+    }
+
+    #[cfg(target_feature = "avx2")]
+    impl Words for Ymm {
+        #[inline(always)]
+        fn pass(source: &[MaybeUninit<u8>], target: &mut [MaybeUninit<u8>]) {
+            vector::<__m256i, 32>(source, target);
+        }
+    }
+
+    /// Passes `source` into `target` through vector registers that hold an `N`-byte `W` each: the
+    /// last bytes, fewer than `N`, take one more register.
     #[inline(always)]
-    fn through<T, W: Copy, const N: usize>(x: T, pass: impl Fn(&mut MaybeUninit<W>)) -> T {
-        let size = size_of::<T>();
-        if size > size_of::<[W; N]>() {
-            return super::Memory::hide(x);
+    fn vector<W: Word, const N: usize>(source: &[MaybeUninit<u8>], target: &mut [MaybeUninit<u8>]) {
+        let (words, source) = source.as_chunks::<N>();
+        let (targets, target) = target.as_chunks_mut::<N>();
+        for (word, target) in words.iter().zip(targets) {
+            pass::<W>(word, target);
         }
-        let x = MaybeUninit::new(x);
-        let mut words = [MaybeUninit::<W>::uninit(); N];
-        // SAFETY: `size` bytes fit in `words`, and both are valid for them; a `MaybeUninit` holds
-        // the uninitialized bytes of padding.
-        unsafe {
-            ptr::copy_nonoverlapping(x.as_ptr().cast::<u8>(), words.as_mut_ptr().cast(), size);
+        if !source.is_empty() {
+            pass::<W>(source, target);
         }
-        for word in &mut words[..size.div_ceil(size_of::<W>())] {
-            pass(word);
-        }
-        let mut hidden = MaybeUninit::<T>::uninit();
-        // SAFETY: as above, the other way.
-        unsafe {
-            ptr::copy_nonoverlapping(
-                words.as_ptr().cast::<u8>(),
-                hidden.as_mut_ptr().cast(),
-                size,
-            );
-        }
-        // SAFETY: `hidden` holds the bytes of `x`, which `pass` left as they were; `x` itself, a
-        // `MaybeUninit`, drops nothing.
-        unsafe { hidden.assume_init() }
     }
 
     impl Barrier for Gpr {
         const CLASS: Class = Class::Gpr;
 
+        fn holds(bytes: usize) -> bool {
+            bytes <= GPR_BYTES
+        }
+
         #[inline(always)]
-        fn hide<T>(x: T) -> T {
-            through::<T, u64, { REGISTERS / 8 }>(x, |word| {
-                // SAFETY: the empty block leaves its register as it found it and touches no memory.
-                unsafe {
-                    asm!(
-                        "/* {0} */",
-                        inout(reg) * word,
-                        options(pure, nomem, nostack, preserves_flags)
-                    );
-                }
-            })
+        fn chain<I: Chain<R>, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
+            chain::<Self, I, R>(batch, run)
         }
     }
 
     impl Barrier for Xmm {
         const CLASS: Class = Class::Xmm;
 
+        fn holds(bytes: usize) -> bool {
+            bytes <= XMM_BYTES
+        }
+
         #[inline(always)]
-        fn hide<T>(x: T) -> T {
-            through::<T, __m128i, { REGISTERS / 16 }>(x, |chunk| {
-                // SAFETY: the empty block leaves its register as it found it and touches no memory.
-                unsafe {
-                    asm!(
-                        "/* {0} */",
-                        inout(xmm_reg) * chunk,
-                        options(pure, nomem, nostack, preserves_flags)
-                    );
-                }
-            })
+        fn chain<I: Chain<R>, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
+            chain::<Self, I, R>(batch, run)
+        }
+    }
+
+    #[cfg(target_feature = "avx2")]
+    impl Barrier for Ymm {
+        const CLASS: Class = Class::Ymm;
+
+        /// A value that one `xmm` register cannot hold, up to [`YMM_BYTES`].
+        fn holds(bytes: usize) -> bool {
+            XMM_WORD < bytes && bytes <= YMM_BYTES
+        }
+
+        #[inline(always)]
+        fn chain<I: Chain<R>, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
+            chain::<Self, I, R>(batch, run)
+        }
+    }
+
+    /// The chain of [`Barrier::chain`] with `x` held in the registers of `C`: each result passes
+    /// through them on its way into the next operand set, which the next run builds in registers
+    /// from the operands beside the first.
+    #[inline(always)]
+    fn chain<C: Words, I: Chain<R>, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
+        let Some((first, rest)) = batch.split_first() else {
+            return 0;
+        };
+        let mut result = run(opaque(first));
+        let mut runs = 1;
+        for input in rest {
+            result = run(&opaque(input).chain(through::<C, R>(result)));
+            runs += 1;
+        }
+        sink(&result);
+        runs
+    }
+
+    /// `x` through the registers of `C`, one word at a time.
+    #[inline(always)]
+    fn through<C: Words, T>(x: T) -> T {
+        let mut source = MaybeUninit::new(x);
+        let mut target = MaybeUninit::<T>::uninit();
+        C::pass(bytes(&mut source), bytes(&mut target));
+        // SAFETY: every byte of `target` is the byte of `x` at its offset, which the blocks left
+        // as they found it; `source`, a `MaybeUninit`, drops nothing.
+        unsafe { target.assume_init() }
+    }
+
+    /// The bytes of `value`.
+    #[inline(always)]
+    fn bytes<T>(value: &mut MaybeUninit<T>) -> &mut [MaybeUninit<u8>] {
+        // SAFETY: a `MaybeUninit<T>` spans `size_of::<T>()` bytes, each a valid
+        // `MaybeUninit<u8>`, borrowed as long as `value`.
+        unsafe {
+            slice::from_raw_parts_mut(value.as_mut_ptr().cast::<MaybeUninit<u8>>(), size_of::<T>())
+        }
+    }
+
+    /// Passes `source` through one register that holds a `W` into `target`, of the same length.
+    /// Bytes past `source` are zero in the register: a word of fewer bytes than its register
+    /// keeps no dependency on the register's earlier value.
+    #[inline(always)]
+    fn pass<W: Word>(source: &[MaybeUninit<u8>], target: &mut [MaybeUninit<u8>]) {
+        let mut word = MaybeUninit::<W>::zeroed();
+        bytes(&mut word)[..source.len()].copy_from_slice(source);
+        W::hide(&mut word);
+        target.copy_from_slice(&bytes(&mut word)[..target.len()]);
+    }
+
+    /// A word that fills one register of its class.
+    trait Word: Sized {
+        /// `word`, opaque to the optimizer, in one register.
+        fn hide(word: &mut MaybeUninit<Self>);
+    }
+
+    impl Word for u8 {
+        #[inline(always)]
+        fn hide(word: &mut MaybeUninit<Self>) {
+            // SAFETY: the empty block leaves its register as it found it and touches no memory.
+            unsafe {
+                asm!(
+                    "/* {0} */",
+                    inout(reg_byte) * word,
+                    options(pure, nomem, nostack, preserves_flags)
+                );
+            }
+        }
+    }
+
+    impl Word for u16 {
+        #[inline(always)]
+        fn hide(word: &mut MaybeUninit<Self>) {
+            // SAFETY: as for `u8`.
+            unsafe {
+                asm!(
+                    "/* {0:x} */",
+                    inout(reg) * word,
+                    options(pure, nomem, nostack, preserves_flags)
+                );
+            }
+        }
+    }
+
+    impl Word for u32 {
+        #[inline(always)]
+        fn hide(word: &mut MaybeUninit<Self>) {
+            // SAFETY: as for `u8`.
+            unsafe {
+                asm!(
+                    "/* {0:e} */",
+                    inout(reg) * word,
+                    options(pure, nomem, nostack, preserves_flags)
+                );
+            }
+        }
+    }
+
+    impl Word for u64 {
+        #[inline(always)]
+        fn hide(word: &mut MaybeUninit<Self>) {
+            // SAFETY: as for `u8`.
+            unsafe {
+                asm!(
+                    "/* {0:r} */",
+                    inout(reg) * word,
+                    options(pure, nomem, nostack, preserves_flags)
+                );
+            }
+        }
+    }
+
+    impl Word for __m128i {
+        #[inline(always)]
+        fn hide(word: &mut MaybeUninit<Self>) {
+            // SAFETY: as for `u8`.
+            unsafe {
+                asm!(
+                    "/* {0} */",
+                    inout(xmm_reg) * word,
+                    options(pure, nomem, nostack, preserves_flags)
+                );
+            }
+        }
+    }
+
+    #[cfg(target_feature = "avx2")]
+    impl Word for __m256i {
+        #[inline(always)]
+        fn hide(word: &mut MaybeUninit<Self>) {
+            // SAFETY: as for `u8`.
+            unsafe {
+                asm!(
+                    "/* {0} */",
+                    inout(ymm_reg) * word,
+                    options(pure, nomem, nostack, preserves_flags)
+                );
+            }
+        }
+    }
+
+    /// The address of `value` through a register.
+    #[inline(always)]
+    #[expect(
+        clippy::pointers_in_nomem_asm_block,
+        reason = "the empty block reads nothing behind the address it holds"
+    )]
+    pub(super) fn opaque<T>(value: &T) -> &T {
+        let mut address = ptr::from_ref(value);
+        // SAFETY: the empty block leaves its register as it found it and touches no memory.
+        unsafe {
+            asm!(
+                "/* {0} */",
+                inout(reg) address,
+                options(pure, nomem, nostack, preserves_flags)
+            );
+        }
+        // SAFETY: `address` is the address of `value`, which the block left as it was.
+        unsafe { &*address }
+    }
+
+    /// An empty block that may read the memory of `value`.
+    #[inline(always)]
+    pub(super) fn sink<T>(value: &T) {
+        // SAFETY: the empty block reads and writes nothing.
+        unsafe {
+            asm!(
+                "/* {0} */",
+                in(reg) ptr::from_ref(value),
+                options(readonly, nostack, preserves_flags)
+            );
+        }
+    }
+
+    /// An empty block that may read and write the memory of `value`.
+    #[inline(always)]
+    pub(super) fn clobber<T>(value: &mut T) {
+        // SAFETY: the empty block reads and writes nothing.
+        unsafe {
+            asm!(
+                "/* {0} */",
+                in(reg) ptr::from_mut(value),
+                options(nostack, preserves_flags)
+            );
         }
     }
 }

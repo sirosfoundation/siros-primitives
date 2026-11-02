@@ -6,10 +6,11 @@ use std::process::ExitCode;
 use bench_compare::{BATCH, Build, Layout, Measured, NATIVE, Paths, markdown_table, sentence};
 use serde::{Deserialize, Serialize};
 
-/// A row: a field, by name.
+/// A row: a field, by name, and the degree of its modulus.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 struct Field {
     field: String,
+    bits: u32,
 }
 
 impl fmt::Display for Field {
@@ -83,6 +84,7 @@ const LAYOUT: Layout<'static, Field> = Layout {
     ],
     row_header: "Field",
     rows_phrase: |fields| format!("over {}", sentence(fields)),
+    bits: |field| field.bits,
     method,
     notes: &[
         "- `gf256` is its `gf2p16` and `gf2p64`, and at 8 bits the AES field that its `gf` macro \
@@ -109,9 +111,6 @@ const LAYOUT: Layout<'static, Field> = Layout {
          isomorphism that the bench derives from the crate's tower: a root of the base \
          polynomial, then a root of each quadratic.",
     ],
-    axis_title: "field",
-    category_name: |field| field.field.clone(),
-    lines: false,
 };
 
 fn method() -> Vec<String> {

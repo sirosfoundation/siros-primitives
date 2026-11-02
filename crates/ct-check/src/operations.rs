@@ -1,6 +1,7 @@
 //! The checked operations on secret operands, over the fields of the `compare` benches of
 //! `prime-field` and `binary-field`. Each runs once through [`run_batch`], which keeps a symbol of
-//! its own for every operation and passes the operands and the result through `black_box`.
+//! its own for every operation and hides the address of the operands and of the result from the
+//! compiler.
 
 use std::process::ExitCode;
 

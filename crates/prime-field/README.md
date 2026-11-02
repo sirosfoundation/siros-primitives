@@ -152,7 +152,7 @@ regenerates it:
 
 ```sh
 cargo run -p prime-field-bench-report -- bench    # the CPU's counts of the native build
-cargo run -p prime-field-bench-report -- report   # BENCHMARKS.md and benchmarks/*.svg
+cargo run -p prime-field-bench-report -- report   # BENCHMARKS.md
 ```
 
 ## Features

@@ -2,7 +2,7 @@
 
 Measures `binary-field` against other binary-field crates with the CPU's performance counters, in
 two builds: with carry-less multiplication and without it. It writes
-`crates/binary-field/BENCHMARKS.md` with one SVG chart per operation and build.
+`crates/binary-field/BENCHMARKS.md`.
 
 ## Usage
 
@@ -20,6 +20,7 @@ second flag selects the software backend of `polyval`, which otherwise selects P
 time. It runs each build on one CPU, CPU 15 unless `--cpu` names another: every case is
 checked against a bit-serial reference, then measured. The record goes to
 `benchmarks/record.json` of the crate; `--machine` adds a description of the machine. `report`
-reads the record and writes the document and the charts.
+reads the record, writes the document, and prints to the terminal every cell where a crate's
+figure exceeds its figure on a field of higher degree in the same table by more than 10%.
 
 `bench` needs Linux with `kernel.perf_event_paranoid` at 2 or below.

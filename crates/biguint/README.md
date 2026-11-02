@@ -115,7 +115,7 @@ regenerates it:
 
 ```sh
 cargo run -p biguint-bench-report -- bench    # the CPU's counts of the native build
-cargo run -p biguint-bench-report -- report   # BENCHMARKS.md and benchmarks/*.svg
+cargo run -p biguint-bench-report -- report   # BENCHMARKS.md
 ```
 
 ## Memory

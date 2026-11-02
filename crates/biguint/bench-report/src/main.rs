@@ -53,6 +53,7 @@ const LAYOUT: Layout<'static, Width> = Layout {
     ],
     row_header: "Bits",
     rows_phrase: |widths| format!("at {} bits", sentence(widths)),
+    bits: |width| width.bits,
     method,
     notes: &[
         "- Each row compares functions of one timing class, the class of `biguint`'s function: \
@@ -64,9 +65,6 @@ const LAYOUT: Layout<'static, Width> = Layout {
         "- `num-bigint` allocates each result.",
         "- `uint` is `construct_uint!`, as in `primitive-types`.",
     ],
-    axis_title: "bits",
-    category_name: |width| format!("{} bits", width.bits),
-    lines: true,
 };
 
 fn method() -> Vec<String> {

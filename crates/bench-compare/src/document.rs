@@ -1,17 +1,19 @@
-//! The `BENCHMARKS.md` of a library and the charts in its `benchmarks/` directory.
+//! The `BENCHMARKS.md` of a library, and the odd cells of its tables.
 
 use std::collections::HashMap;
 use std::fs;
 
-use crate::barrier::REGISTERS;
-use crate::chart::{self, CHARTED, Category, Chart, Point, value};
-use crate::count::{REPETITIONS, TARGET};
+use crate::barrier::{GPR_BYTES, XMM_BYTES, XMM_WORD, YMM_BYTES};
+use crate::count::{FEWEST_STEP_CYCLES, REPETITIONS, TARGET};
 use crate::error::Error;
 use crate::record::{Cell, Count, Key, Measurement, Outcome, Record, Sweep};
 use crate::run::Paths;
 
 /// The 1-minute load average from which a sweep ran under load.
 pub const LOAD: f64 = 2.0;
+
+/// A crate's figure on a row is odd above this many times its figure on a row of more bits.
+const ODD: f64 = 1.1;
 
 /// The target features that name no vector or arithmetic extension: state saving, atomics and
 /// random numbers.
@@ -26,10 +28,6 @@ const SYSTEM_FEATURES: [&str; 8] = [
     "xsaves",
 ];
 
-/// The line under the title of every chart.
-const CHART_SUBTITLE: &str = "Cycles per operation in a loop of independent operations, counted by \
-                              the CPU. BENCHMARKS.md lists the values.";
-
 /// The words of a comparison: what its rows are and how the document names them.
 pub struct Layout<'a, K> {
     /// The crate under test.
@@ -42,19 +40,16 @@ pub struct Layout<'a, K> {
     pub row_header: &'a str,
     /// A phrase that names rows, after an operation or a function: `at 64 and 128 bits`.
     pub rows_phrase: fn(&[K]) -> String,
+    /// The size of a row in bits, which orders the rows of a crate for the odd cells.
+    pub bits: fn(&K) -> u32,
     /// The lines of the `Method` section that describe the operands and the checks.
     pub method: fn() -> Vec<String>,
     /// The bullet lines under the `Functions` table, before the absences.
     pub notes: &'a [&'a str],
-    /// The title of the horizontal axis of the charts.
-    pub axis_title: &'a str,
-    /// The name of a row in a chart tooltip: `64 bits`.
-    pub category_name: fn(&K) -> String,
-    /// Whether a line joins the markers of adjacent rows in a chart.
-    pub lines: bool,
 }
 
-/// Writes the document and one chart per operation and build from `record`.
+/// Writes the document from `record`, and prints to the terminal every odd cell: a crate's figure
+/// on a row that exceeds its figure on a row of more bits, in the same table, by more than 10%.
 pub fn report<K: Key>(
     paths: &Paths,
     layout: &Layout<'_, K>,
@@ -76,33 +71,6 @@ pub fn report<K: Key>(
             ));
         }
     }
-    let charts = paths.library.join("benchmarks");
-    fs::create_dir_all(&charts).map_err(|source| Error::io(&charts, source))?;
-    let categories: Vec<Category> = first
-        .keys
-        .iter()
-        .map(|key| Category {
-            label: key.to_string(),
-            name: (layout.category_name)(key),
-        })
-        .collect();
-    // The palette has one slot per crate up to `CHARTED`; further crates stay in the tables.
-    let charted = &first.crates[..first.crates.len().min(CHARTED)];
-    for (build, table) in &tables {
-        for (op, formula) in &table.ops {
-            let svg = chart::svg(&Chart {
-                title: title(op, formula, build),
-                subtitle: CHART_SUBTITLE,
-                categories: &categories,
-                axis_title: layout.axis_title,
-                crates: charted,
-                points: table.points(op, charted),
-                lines: layout.lines,
-            })?;
-            let path = charts.join(chart_file(op, build));
-            fs::write(&path, svg).map_err(|source| Error::io(&path, source))?;
-        }
-    }
     let mut lines = header(record, layout, first);
     lines.extend(setup(record));
     lines.extend(method(layout, record));
@@ -112,24 +80,30 @@ pub fn report<K: Key>(
     }
     lines.extend(reproduce(layout.tool));
     let path = paths.library.join("BENCHMARKS.md");
-    fs::write(&path, lines.join("\n") + "\n").map_err(|source| Error::io(&path, source))
+    fs::write(&path, lines.join("\n") + "\n").map_err(|source| Error::io(&path, source))?;
+    let odd: Vec<String> = tables
+        .iter()
+        .flat_map(|(build, table)| odd_cells(layout, table, build))
+        .collect();
+    println!(
+        "{}: {} odd cells, where a crate's figure exceeds its figure on a row of more bits by \
+         more than {:.0}%",
+        path.display(),
+        odd.len(),
+        100.0 * (ODD - 1.0)
+    );
+    for cell in odd {
+        println!("{cell}");
+    }
+    Ok(())
 }
 
-/// The title of the chart and the table of `op` in `build`.
+/// The title of the table of `op` in `build`.
 fn title<K>(op: &str, formula: &str, build: &Measurement<K>) -> String {
     if build.name.is_empty() {
         format!("{op}: {formula}")
     } else {
         format!("{op}: {formula}, {}", build.name)
-    }
-}
-
-/// The file of the chart of `op` in `build`, in `benchmarks/`.
-fn chart_file<K>(op: &str, build: &Measurement<K>) -> String {
-    if build.slug.is_empty() {
-        format!("{op}.svg")
-    } else {
-        format!("{op}-{}.svg", build.slug)
     }
 }
 
@@ -203,23 +177,46 @@ impl<'a, K: Key> Table<'a, K> {
             Some(Outcome::Absent(_)) | None => None,
         }
     }
+}
 
-    /// The chart points of `op` for `crates`: the throughput cycles of each counted case.
-    fn points(&self, op: &str, crates: &[&'a str]) -> Vec<Point<'a>> {
-        let mut points = Vec::new();
-        for library in crates {
-            for (category, key) in self.keys.iter().enumerate() {
-                if let Some(count) = self.count(op, key, library) {
-                    points.push(Point {
-                        library,
-                        category,
-                        cycles: count.batch.cycles,
-                    });
+/// The odd cells of `table` in `build`, one line each: a crate's figure, as the table shows it,
+/// above [`ODD`] times its figure on a row of more bits.
+fn odd_cells<K: Key>(
+    layout: &Layout<'_, K>,
+    table: &Table<'_, K>,
+    build: &Measurement<K>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    for (op, formula) in &table.ops {
+        let title = title(op, formula, build);
+        for library in &table.crates {
+            for (part, name) in ["throughput", "latency"].into_iter().enumerate() {
+                let figure = |key: &K| {
+                    table
+                        .count(op, key, library)
+                        .and_then(|count| parts(count)[part])
+                        .map(shown)
+                };
+                for small in &table.keys {
+                    for large in &table.keys {
+                        let (Some(less), Some(more)) = (figure(small), figure(large)) else {
+                            continue;
+                        };
+                        if (layout.bits)(small) < (layout.bits)(large) && less > ODD * more {
+                            lines.push(format!(
+                                "{title} | {library} | {name} {}: {} > {}: {}",
+                                (layout.rows_phrase)(std::slice::from_ref(small)),
+                                value(less),
+                                (layout.rows_phrase)(std::slice::from_ref(large)),
+                                value(more)
+                            ));
+                        }
+                    }
                 }
             }
         }
-        points
     }
+    lines
 }
 
 /// The values of `items` in first-seen order, without repeats.
@@ -435,7 +432,7 @@ fn protocol() -> Vec<String> {
              operations and a run of 2n. Before the repetitions, n starts at 16 operations and \
              doubles until a run of n, counted after an uncounted run of as many, takes {} \
              cycles; n stops earlier where the operand sets of 2n operations fill 256 KiB.",
-            chart::grouped(TARGET)
+            grouped(TARGET)
         ),
         String::new(),
         format!(
@@ -445,24 +442,62 @@ fn protocol() -> Vec<String> {
              over the {REPETITIONS} repetitions, of the long run less the short run, divided by \
              n: the fixed cost of a run cancels, as in nanoBench's differencing, and each \
              difference pairs two runs taken back to back. A case whose long runs count no more \
-             cycles than its short runs stops the sweep, and so does a chain step under one \
-             cycle."
+             cycles than its short runs stops the sweep, and so does a chain step under \
+             {FEWEST_STEP_CYCLES} cycles: a step of one instruction takes one cycle, and a chain \
+             that the compiler regrouped takes half a cycle per step or less."
         ),
         String::new(),
         format!(
-            "Throughput runs independent operations, with operands and results behind \
-             `core::hint::black_box`. Latency runs the chain `x = op(x, y)`: from the second \
-             operand set on, each result is the first operand of the next operation, so each \
-             operation waits for the one before. Each result passes through an empty \
-             inline-assembly block, which keeps the compiler from regrouping the chain. The block \
-             holds a result of up to {REGISTERS} bytes in general-purpose registers in one chain \
-             and in vector registers in another, each chain a case of its own in the sweep; it \
-             can only add moves between the two, so the latency is the chain with fewer cycles. \
-             A larger result passes through memory, in a single chain. The chain applies where \
-             the result has the type of the first operand and the other operands are plain \
-             values: a step copies them, and the copy of an allocated value would allocate."
+            "Throughput runs independent operations: the address of each operand set passes \
+             through an empty inline-assembly block, and another block takes the address of each \
+             result, so the compiler can neither precompute a result nor skip one. Latency runs \
+             the chain `x = op(x, y)`: from the second operand set on, each result is the first \
+             operand of the next operation, so each operation waits for the one before. An empty \
+             block holds each result between two operations, which keeps the compiler from \
+             regrouping the chain. One chain holds it in general-purpose registers, one word of \
+             8, 4, 2 or 1 bytes per register, for a result of up to {GPR_BYTES} bytes; one in \
+             `xmm` registers for a result of up to {XMM_BYTES} bytes; one in `ymm` registers for \
+             a result of {} to {YMM_BYTES} bytes; one in memory for a result of more than \
+             {GPR_BYTES} bytes, in one place on the stack that the operation writes and the next \
+             one reads, one store and one load per word. The blocks can only add moves to a \
+             chain, each chain is a case of its own in the sweep, and the latency is the chain \
+             with the fewest cycles. The chain applies where the result has the type of the first \
+             operand and the other operands are plain values: a step copies them, and the copy of \
+             an allocated value would allocate.",
+            XMM_WORD + 1
         ),
     ]
+}
+
+/// `value` with a comma between groups of three digits.
+fn grouped(value: u64) -> String {
+    let digits = value.to_string();
+    let mut text = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            text.push(',');
+        }
+        text.push(digit);
+    }
+    text
+}
+
+/// A figure as the tables show it: one decimal below 100, whole from 100 up.
+fn shown(figure: f64) -> f64 {
+    if figure >= 100.0 {
+        figure.round()
+    } else {
+        (10.0 * figure).round() / 10.0
+    }
+}
+
+/// The text of a figure: one decimal below 100, whole and grouped from 100 up.
+fn value(figure: f64) -> String {
+    if figure >= 100.0 {
+        grouped(figure.round() as u64)
+    } else {
+        format!("{figure:.1}")
+    }
 }
 
 fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
@@ -629,7 +664,7 @@ fn parts(count: &Count) -> [Option<f64>; 2] {
     ]
 }
 
-/// The results of `build`: per operation, its chart and its table.
+/// The results of `build`: per operation, its table.
 fn results<K: Key>(
     layout: &Layout<'_, K>,
     table: &Table<'_, K>,
@@ -641,21 +676,6 @@ fn results<K: Key>(
         format!("## Results {}", build.name)
     };
     let mut lines = vec![heading];
-    if let Some(unplotted) = table.crates.get(CHARTED..).filter(|rest| !rest.is_empty()) {
-        let names: Vec<String> = unplotted.iter().map(|name| format!("`{name}`")).collect();
-        let verb = if names.len() == 1 {
-            "appears"
-        } else {
-            "appear"
-        };
-        lines.extend([
-            String::new(),
-            format!(
-                "The charts show the first {CHARTED} crates; {} {verb} in the tables only.",
-                sentence(&names)
-            ),
-        ]);
-    }
     for (op, formula) in &table.ops {
         let mut rows = Vec::new();
         // Each starred cell: its crate, its deviation and its row.
@@ -723,8 +743,6 @@ fn results<K: Key>(
             String::new(),
             format!("### {title}"),
             String::new(),
-            format!("![{title}](benchmarks/{})", chart_file(op, build)),
-            String::new(),
             legend,
             String::new(),
         ]);
@@ -771,7 +789,7 @@ fn reproduce(tool: &str) -> Vec<String> {
         String::new(),
         "```sh".to_owned(),
         format!("cargo run -p {tool} -- bench    # the CPU's counts of the native build"),
-        format!("cargo run -p {tool} -- report   # this file and benchmarks/*.svg"),
+        format!("cargo run -p {tool} -- report   # this file"),
         "```".to_owned(),
     ]
 }

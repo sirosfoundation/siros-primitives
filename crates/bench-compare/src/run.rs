@@ -15,7 +15,7 @@ use crate::record::{Cell, Key, Line, Measurement, Record, Sweep, Version};
 pub struct Build {
     /// The name of the build in the document; empty for the only build of a bench.
     pub name: &'static str,
-    /// The suffix of the build's charts and target directory; empty for the first build.
+    /// The suffix of the build's target directory; empty for the first build.
     pub slug: &'static str,
     /// The `RUSTFLAGS` of the build.
     pub rustflags: &'static str,
@@ -45,7 +45,7 @@ pub struct Paths {
 
 impl Paths {
     /// The paths of the tool at `manifest_dir`, which lives in the library's directory; the
-    /// record is `benchmarks/record.json` there, next to the charts.
+    /// record is `benchmarks/record.json` there.
     #[must_use]
     pub fn new(manifest_dir: &str) -> Self {
         let library = Path::new(manifest_dir).join("..");
@@ -170,7 +170,6 @@ pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Re
             let (cells, sweep) = cells(paths, measured, build, options.cpu.as_deref())?;
             Ok(Measurement {
                 name: build.name.to_owned(),
-                slug: build.slug.to_owned(),
                 rustflags: build.rustflags.to_owned(),
                 target_features,
                 sweep,

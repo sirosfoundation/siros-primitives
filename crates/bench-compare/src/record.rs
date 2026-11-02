@@ -77,11 +77,13 @@ pub struct Latency {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Class {
-    /// The general-purpose registers.
+    /// The general-purpose registers, for a value of up to 64 bytes.
     Gpr,
-    /// The vector registers.
+    /// The `xmm` registers, for a value of up to 128 bytes.
     Xmm,
-    /// Memory, for a value of more than 64 bytes.
+    /// The `ymm` registers of an AVX2 build, for a value of 17 to 256 bytes.
+    Ymm,
+    /// One place on the stack, for a value of more than 64 bytes.
     Memory,
 }
 
@@ -89,7 +91,8 @@ impl fmt::Display for Class {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::Gpr => "general-purpose registers",
-            Self::Xmm => "vector registers",
+            Self::Xmm => "xmm registers",
+            Self::Ymm => "ymm registers",
             Self::Memory => "memory",
         })
     }
@@ -194,8 +197,6 @@ pub struct Record<K> {
 pub struct Measurement<K> {
     /// The name of the build; empty for the only build of a bench.
     pub name: String,
-    /// The suffix of the build's charts; empty for the first build.
-    pub slug: String,
     /// The `RUSTFLAGS` of the build.
     pub rustflags: String,
     /// The target features that `rustc --print cfg` reports under these flags.

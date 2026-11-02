@@ -8,22 +8,23 @@
 //! before repetition `r + 1` of any case. A repetition of a case draws fresh operand sets for
 //! every run, outside the counted region; it runs `n` operations uncounted, then counts a run of
 //! `n` operations and a run of `2n` through [`run_batch`]. A case with a chain form does the same
-//! through [`run_chain`] once per [`Barrier`], each with its own `n`: in general-purpose and in
-//! vector registers on x86-64 for a result of at most
-//! [`REGISTERS`](crate::barrier::REGISTERS) bytes, through memory otherwise. The figure per operation of an event is the median, over the repetitions, of the
-//! `2n` count less the `n` count, divided by `n`: the fixed cost of a run cancels, and each
-//! difference pairs two runs taken back to back. The latency of a case is its chain with the
-//! fewest cycles. A case whose `2n` runs count no more cycles than its `n` runs stops the sweep,
-//! and so does a chain step under one cycle.
+//! through [`run_chain`] once per [`Barrier`] that holds its result, each with its own `n`. The
+//! figure per operation of an event is the median, over the repetitions, of the `2n` count less
+//! the `n` count, divided by `n`: the fixed cost of a run cancels, and each difference pairs two
+//! runs taken back to back. The latency of a case is its chain with the fewest cycles. A case
+//! whose `2n` runs count no more cycles than its `n` runs stops the sweep, and so does a chain
+//! step under [`FEWEST_STEP_CYCLES`].
 
 use std::fs;
 use std::mem::size_of;
 use std::path::Path;
 use std::process::ExitCode;
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+use crate::barrier::Ymm;
 use crate::barrier::{Barrier, Memory};
 #[cfg(target_arch = "x86_64")]
-use crate::barrier::{Gpr, REGISTERS, Xmm};
+use crate::barrier::{Gpr, Xmm};
 use crate::counters::{Counters, Counts, pin};
 use crate::error::Error;
 use crate::record::{Cell, Class, Count, Events, Latency, Line, Load, Outcome, Sibling, Sweep};
@@ -36,6 +37,11 @@ pub const REPETITIONS: usize = 31;
 
 /// The cycles that a short run takes at least, unless its operations reach their cap.
 pub const TARGET: u64 = 1 << 20;
+
+/// The fewest cycles that a chain step may count. A step of one instruction takes one cycle, and
+/// its figure falls up to 5% below that on a quiet machine; a chain that the compiler regrouped
+/// into pairs takes half a cycle per step or less.
+pub const FEWEST_STEP_CYCLES: f64 = 0.75;
 
 /// The CPU of the measuring thread, unless `--cpu` names another.
 const CPU: usize = 15;
@@ -333,7 +339,7 @@ struct Case {
 
 impl Case {
     /// The cell of the case, which runs `function`: its latency is its chain form with the fewest
-    /// cycles per step. A chain step under one cycle, in any form, is an
+    /// cycles per step. A chain step under [`FEWEST_STEP_CYCLES`], in any form, is an
     /// [`Error::Reassociated`].
     fn count(&self, function: &Function) -> Result<Count, Error> {
         let latencies = self
@@ -342,7 +348,7 @@ impl Case {
             .map(|chain| {
                 let name = format!("{} chain in {}", self.id, chain.class);
                 let events = chain.form.events(&name)?;
-                if events.cycles < 1.0 {
+                if events.cycles < FEWEST_STEP_CYCLES {
                     return Err(Error::Reassociated {
                         case: name,
                         cycles: events.cycles,
@@ -541,9 +547,8 @@ impl<O: std::fmt::Display, K: std::fmt::Display> Visitor<O, K> for Measuring<'_>
 }
 
 impl Measuring<'_> {
-    /// Sizes or runs one repetition of the chain forms of the case `index`: one per register class
-    /// for a result of at most [`REGISTERS`] bytes, one through memory for a larger result.
-    #[cfg(target_arch = "x86_64")]
+    /// Sizes or runs one repetition of the chain forms of the case `index`: one per [`Barrier`]
+    /// that holds its result. A result that no barrier holds is an [`Error::Missing`].
     fn chains<I: Chain<R>, R>(
         &mut self,
         index: usize,
@@ -551,27 +556,25 @@ impl Measuring<'_> {
         run: impl Fn(&I) -> R + Copy,
         name: &str,
     ) -> Result<(), Error> {
-        if size_of::<R>() > REGISTERS {
-            return self.chain::<I, R, Memory>(index, inputs, run, name);
+        #[cfg(target_arch = "x86_64")]
+        {
+            self.chain::<I, R, Gpr>(index, inputs, run, name)?;
+            self.chain::<I, R, Xmm>(index, inputs, run, name)?;
         }
-        self.chain::<I, R, Gpr>(index, inputs, run, name)?;
-        self.chain::<I, R, Xmm>(index, inputs, run, name)
-    }
-
-    /// Sizes or runs one repetition of the chain form of the case `index`, through memory.
-    #[cfg(not(target_arch = "x86_64"))]
-    fn chains<I: Chain<R>, R>(
-        &mut self,
-        index: usize,
-        inputs: &Inputs<'_, I>,
-        run: impl Fn(&I) -> R + Copy,
-        name: &str,
-    ) -> Result<(), Error> {
-        self.chain::<I, R, Memory>(index, inputs, run, name)
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+        self.chain::<I, R, Ymm>(index, inputs, run, name)?;
+        self.chain::<I, R, Memory>(index, inputs, run, name)?;
+        if self.cases[index].chains.is_empty() {
+            return Err(Error::missing(
+                &format!("barrier that holds {} bytes", size_of::<R>()),
+                name,
+            ));
+        }
+        Ok(())
     }
 
     /// Sizes, in pass 0, the chain form of the case `index` whose value `B` holds; in pass `r`,
-    /// runs its repetition `r`.
+    /// runs its repetition `r`. Nothing, for a result that `B` does not hold.
     fn chain<I: Chain<R>, R, B: Barrier>(
         &mut self,
         index: usize,
@@ -579,6 +582,9 @@ impl Measuring<'_> {
         run: impl Fn(&I) -> R + Copy,
         name: &str,
     ) -> Result<(), Error> {
+        if !B::holds(size_of::<R>()) {
+            return Ok(());
+        }
         let region = |batch: &[I]| run_chain::<I, R, B>(batch, run);
         if self.pass == 0 {
             let form = self.size(inputs, cap::<I>(), region, name)?;

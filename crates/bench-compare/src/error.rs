@@ -86,14 +86,6 @@ pub enum Error {
     /// A line of a cargo build with `--message-format=json` is no message.
     #[error("the messages of cargo: {0}")]
     Messages(serde_json::Error),
-    /// The chart palette has fewer colors than the comparison has crates.
-    #[error("{crates} crates for a palette of {slots} colors")]
-    Palette {
-        /// The crates of the comparison.
-        crates: usize,
-        /// The colors of the palette.
-        slots: usize,
-    },
     /// The measuring thread could not pin itself to its CPU.
     #[error("pinning to CPU {cpu}: {source}")]
     Pin {
@@ -163,10 +155,11 @@ pub enum Error {
         /// The feature.
         feature: String,
     },
-    /// A chain step counted less than one cycle, the latency of a single instruction: the
-    /// compiler regrouped the chain.
+    /// A chain step counted fewer cycles than
+    /// [`FEWEST_STEP_CYCLES`](crate::FEWEST_STEP_CYCLES): the compiler regrouped the chain.
     #[error(
-        "{case}: {cycles:.2} cycles per chain step, under the one cycle of a single instruction"
+        "{case}: {cycles:.2} cycles per chain step, under {}: the compiler regrouped the chain",
+        crate::count::FEWEST_STEP_CYCLES
     )]
     Reassociated {
         /// The case and its form.

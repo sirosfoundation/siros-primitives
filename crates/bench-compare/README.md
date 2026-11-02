@@ -10,9 +10,18 @@ adapter per crate that offers the crate's function for each operation or the rea
 A case whose result has the type of its first operand, and whose other operands are `Copy`, can
 offer a chain form, which measures latency as the chain `x = op(x, y)`. Between two operations, an
 empty inline-assembly block holds the result, which keeps the compiler from regrouping the chain
-into a tree. The chain runs twice, with the result in general-purpose registers and in vector
-registers; the block can only add moves between the two, so the latency is the faster chain, and
-the record names its class. A result of more than 64 bytes goes through memory, in a single chain.
+into a tree. The chain runs once per place that holds the result:
+
+- general-purpose registers, up to 64 bytes, one word of 8, 4, 2 or 1 bytes per register;
+- `xmm` registers, up to 128 bytes;
+- `ymm` registers, from 17 to 256 bytes, on AVX2 builds;
+- one place on the stack, above 64 bytes, which each operation writes and the next one reads: one
+  store and one load per word.
+
+The blocks can only add moves, so the latency is the fastest chain, and the record names its
+place. In the loop of independent operations, a block hides the address of each operand set and
+another takes the address of each result, which costs a value in registers one store per
+register.
 
 `Cells::deviating` declares, in one phrase, how the next case's function deviates from the row's
 definition, such as a skipped final reduction. The case's read applies the crate's own
@@ -38,19 +47,22 @@ ankerl::nanobench:
 - repetition r of every case runs before repetition r + 1 of any case, so a drift of the machine
   reaches all cases alike;
 - a run during which the kernel shared the counters with other groups stops the sweep, and so do
-  a case whose long runs count no more cycles than its short runs and a chain step under one
-  cycle.
+  a case whose long runs count no more cycles than its short runs and a chain step under 0.75
+  cycles: a step of one instruction measures within 5% of one cycle on a quiet machine, and a
+  chain that the compiler regrouped takes half a cycle per step or less.
 
 A library's report tool calls `bench_compare::execute` with the files it measures, the features
-its builds enable and forbid, its builds and a `Layout` of words for the document.
+its builds enable and forbid, its builds and a `Layout` of words for the document and of the size
+of each row in bits.
 `bench [--cpu <cpu>] [--machine <description>]` builds the bench of each build in its own directory
 under `target`, runs it and records the counts, the commit, the compiler, the CPU, the load and
 the target features that `rustc --print cfg` reports under the build's flags. It reads the
 features of every compiled unit from cargo's JSON messages: a bench without an enabled feature, a
 unit with a forbidden one, or a build without AVX2 stops it. The native build takes
 `-C target-cpu=native -C codegen-units=1`; one codegen unit makes the code of each crate
-independent of the rest of the bench. `report` reads the record and writes the document with one
-SVG chart per operation and build.
+independent of the rest of the bench. `report` reads the record, writes the document, and prints
+every odd cell to the terminal: a crate's figure that exceeds, by more than 10%, its figure on a
+row of more bits in the same table, both as the table shows them.
 
 Measuring needs Linux with `kernel.perf_event_paranoid` at 2 or below. The cycles of a sweep under
 load compare within that sweep only.

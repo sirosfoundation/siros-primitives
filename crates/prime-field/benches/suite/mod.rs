@@ -17,11 +17,13 @@ use serde::{Deserialize, Serialize};
 /// The comparison of `prime-field`.
 pub struct PrimeField;
 
-/// A row: a field, by name.
+/// A row: a field, by name, and the bit length of its modulus.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Field {
     /// The name.
     pub field: String,
+    /// The bit length of the modulus.
+    pub bits: usize,
 }
 
 impl fmt::Display for Field {
@@ -88,6 +90,14 @@ pub fn spec(key: &Field) -> &'static Spec {
         .unwrap_or_else(|| panic!("no field {}", key.field))
 }
 
+/// The bit length of the little-endian `limbs`.
+fn bit_length(limbs: &[u64]) -> usize {
+    let significant = trim(limbs);
+    significant.last().map_or(0, |top| {
+        64 * significant.len() - top.leading_zeros() as usize
+    })
+}
+
 impl Suite for PrimeField {
     type Op = Op;
     type Key = Field;
@@ -99,6 +109,7 @@ impl Suite for PrimeField {
             .iter()
             .map(|spec| Field {
                 field: spec.name.to_owned(),
+                bits: bit_length(spec.modulus),
             })
             .collect()
     }
