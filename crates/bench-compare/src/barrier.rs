@@ -23,17 +23,18 @@ use crate::record::Class;
 use crate::suite::Chain;
 
 /// The most bytes that the general-purpose registers hold: eight words of 8 bytes.
-pub(crate) const GPR_BYTES: usize = 64;
+const GPR_BYTES: usize = 64;
 
 /// The bytes of one `xmm` register. A value of more bytes is the smallest that the `ymm`
 /// registers hold.
-pub(crate) const XMM_WORD: usize = 16;
+const XMM_WORD: usize = 16;
 
 /// The most bytes that the `xmm` registers hold: eight words of 16 bytes.
-pub(crate) const XMM_BYTES: usize = 128;
+const XMM_BYTES: usize = 128;
 
 /// The most bytes that the `ymm` registers hold: eight words of 32 bytes.
-pub(crate) const YMM_BYTES: usize = 256;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+const YMM_BYTES: usize = 256;
 
 /// Where the value of a chain stays between its steps.
 pub trait Barrier {

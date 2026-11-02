@@ -3,8 +3,7 @@
 use std::collections::HashMap;
 use std::fs;
 
-use crate::barrier::{GPR_BYTES, XMM_BYTES, XMM_WORD, YMM_BYTES};
-use crate::count::{FEWEST_STEP_CYCLES, REPETITIONS, TARGET};
+use crate::count::REPETITIONS;
 use crate::error::Error;
 use crate::record::{Cell, Count, Key, Measurement, Outcome, Record, Sweep};
 use crate::run::Paths;
@@ -15,18 +14,25 @@ pub const LOAD: f64 = 2.0;
 /// A crate's figure on a row is odd above this many times its figure on a row of more bits.
 const ODD: f64 = 1.1;
 
-/// The target features that name no vector or arithmetic extension: state saving, atomics and
-/// random numbers.
-const SYSTEM_FEATURES: [&str; 8] = [
-    "cmpxchg16b",
-    "fxsr",
-    "rdrand",
-    "rdseed",
-    "xsave",
-    "xsavec",
-    "xsaveopt",
-    "xsaves",
-];
+/// An operation of a comparison, as the document names it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Operation<'a> {
+    /// The operation in the record, such as `add_vartime`.
+    pub op: &'a str,
+    /// The operation in the title of its table and in the `Functions` table: `add` for the
+    /// default, variable time, and `add, constant time`.
+    pub name: &'a str,
+    /// What it computes, such as `a + b`.
+    pub formula: &'a str,
+}
+
+impl<'a> Operation<'a> {
+    /// The operation `op` of the record, named `name`, computing `formula`.
+    #[must_use]
+    pub const fn new(op: &'a str, name: &'a str, formula: &'a str) -> Self {
+        Self { op, name, formula }
+    }
+}
 
 /// The words of a comparison: what its rows are and how the document names them.
 pub struct Layout<'a, K> {
@@ -34,18 +40,16 @@ pub struct Layout<'a, K> {
     pub subject: &'a str,
     /// The package of the report tool, for the `Reproduce` section.
     pub tool: &'a str,
-    /// The formula of each operation, by the operation's name.
-    pub formulas: &'a [(&'a str, &'a str)],
+    /// Every operation, in the order of the result tables.
+    pub operations: &'a [Operation<'a>],
     /// The heading of the row column of the result tables.
     pub row_header: &'a str,
     /// A phrase that names rows, after an operation or a function: `at 64 and 128 bits`.
     pub rows_phrase: fn(&[K]) -> String,
     /// The size of a row in bits, which orders the rows of a crate for the odd cells.
     pub bits: fn(&K) -> u32,
-    /// The lines of the `Method` section that describe the operands and the checks.
-    pub method: fn() -> Vec<String>,
-    /// The bullet lines under the `Functions` table, before the absences.
-    pub notes: &'a [&'a str],
+    /// Facts of the `Method` section that reading the figures needs, one short line each.
+    pub method: &'a [&'a str],
 }
 
 /// Writes the document from `record`, and prints to the terminal every odd cell: a crate's figure
@@ -98,12 +102,13 @@ pub fn report<K: Key>(
     Ok(())
 }
 
-/// The title of the table of `op` in `build`.
-fn title<K>(op: &str, formula: &str, build: &Measurement<K>) -> String {
+/// The title of the table of `operation` in `build`.
+fn title<K>(operation: &Operation<'_>, build: &Measurement<K>) -> String {
+    let Operation { name, formula, .. } = operation;
     if build.name.is_empty() {
-        format!("{op}: {formula}")
+        format!("{name}: {formula}")
     } else {
-        format!("{op}: {formula}, {}", build.name)
+        format!("{name}: {formula}, {}", build.name)
     }
 }
 
@@ -114,28 +119,32 @@ fn loaded(sweep: &Sweep) -> bool {
 
 /// The cells of a build, indexed by operation, row and crate.
 struct Table<'a, K> {
-    /// Each operation with its formula.
-    ops: Vec<(&'a str, &'a str)>,
+    /// Each operation, in the order of the layout.
+    ops: Vec<Operation<'a>>,
     keys: Vec<K>,
     crates: Vec<&'a str>,
     cells: HashMap<(&'a str, &'a K, &'a str), &'a Cell<K>>,
 }
 
 impl<'a, K: Key> Table<'a, K> {
-    /// Fails unless `cells` hold exactly one cell for every operation, row and crate, and every
-    /// operation has a formula.
+    /// Fails unless `cells` hold exactly one cell for every operation, row and crate, and the
+    /// layout names every operation.
     fn new(cells: &'a [Cell<K>], layout: &Layout<'a, K>) -> Result<Self, Error> {
-        let ops = unique(cells.iter().map(|cell| cell.op.as_str()))
-            .into_iter()
-            .map(|op| {
-                layout
-                    .formulas
-                    .iter()
-                    .find(|(name, _)| *name == op)
-                    .map(|(_, formula)| (op, *formula))
-                    .ok_or_else(|| Error::missing(&format!("formula for {op}"), "the report"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let recorded = unique(cells.iter().map(|cell| cell.op.as_str()));
+        if let Some(op) = recorded.iter().find(|op| {
+            !layout
+                .operations
+                .iter()
+                .any(|operation| operation.op == **op)
+        }) {
+            return Err(Error::missing(&format!("operation {op}"), "the layout"));
+        }
+        let ops = layout
+            .operations
+            .iter()
+            .filter(|operation| recorded.contains(&operation.op))
+            .copied()
+            .collect();
         let table = Self {
             ops,
             keys: unique(cells.iter().map(|cell| cell.key.clone())),
@@ -151,7 +160,7 @@ impl<'a, K: Key> Table<'a, K> {
                 "the run record",
             ));
         }
-        for (op, _) in &table.ops {
+        for Operation { op, .. } in &table.ops {
             for key in &table.keys {
                 for library in &table.crates {
                     if !table.cells.contains_key(&(*op, key, *library)) {
@@ -187,8 +196,8 @@ fn odd_cells<K: Key>(
     build: &Measurement<K>,
 ) -> Vec<String> {
     let mut lines = Vec::new();
-    for (op, formula) in &table.ops {
-        let title = title(op, formula, build);
+    for operation in &table.ops {
+        let (op, title) = (operation.op, title(operation, build));
         for library in &table.crates {
             for (part, name) in ["throughput", "latency"].into_iter().enumerate() {
                 let figure = |key: &K| {
@@ -268,32 +277,15 @@ fn header<K: Key>(record: &Record<K>, layout: &Layout<'_, K>, table: &Table<'_, 
     } else {
         ""
     };
-    let cpus: Vec<String> = unique(record.builds.iter().map(|build| build.sweep.cpu))
-        .iter()
-        .map(ToString::to_string)
-        .collect();
     vec![
         "# Benchmarks".to_owned(),
         String::new(),
         format!(
-            "`{}` at commit `{}` against {}: {} {}, in cycles per operation, \
-             measured on {}.{state}",
+            "`{}` at commit `{}` against {}, in cycles per operation, measured on {}.{state}",
             layout.subject,
             short(&record.library_commit),
             sentence(&others),
-            sentence(&table.ops.iter().map(|(op, _)| *op).collect::<Vec<_>>()),
-            (layout.rows_phrase)(&table.keys),
             record.date
-        ),
-        String::new(),
-        format!(
-            "The CPU is an {}, measured on its CPU {}.",
-            record.cpu_model,
-            sentence(&cpus)
-        ),
-        format!(
-            "Its counters give each figure per operation as the median, over {REPETITIONS} \
-             repetitions, of a run of 2n operations on fresh operands less a run of n, over n."
         ),
         String::new(),
     ]
@@ -334,18 +326,7 @@ fn setup<K>(record: &Record<K>) -> Vec<String> {
             label("RUSTFLAGS", build),
             format!("`{}`", build.rustflags),
         ]);
-        let extensions: Vec<&str> = build
-            .target_features
-            .iter()
-            .map(String::as_str)
-            .filter(|feature| !SYSTEM_FEATURES.contains(feature))
-            .collect();
-        rows.push(vec![label("Extensions", build), extensions.join(", ")]);
     }
-    rows.push(vec![
-        "Counters".to_owned(),
-        "one Linux perf_event group: user-mode cycles and branch misses".to_owned(),
-    ]);
     for build in &record.builds {
         rows.push(vec![label("Load", build), load(&build.sweep)]);
     }
@@ -370,17 +351,16 @@ fn features<K>(record: &Record<K>) -> String {
     }
 }
 
-/// The load around `sweep` and the busy share of the measuring CPU's siblings.
+/// The measuring CPU, the load around `sweep` and the busy share of the CPU's SMT siblings.
 fn load(sweep: &Sweep) -> String {
     let mut text = format!(
-        "1-minute load average {} before the sweep and {} after",
-        sweep.load.before, sweep.load.after
+        "CPU {}; 1-minute load {} before, {} after",
+        sweep.cpu, sweep.load.before, sweep.load.after
     );
     for sibling in &sweep.siblings {
         text += &format!(
-            "; CPU {}, the SMT sibling of CPU {}, busy {:.0}% of the sweep",
+            "; its SMT sibling, CPU {}, {:.0}% busy",
             sibling.cpu,
-            sweep.cpu,
             100.0 * sibling.busy
         );
     }
@@ -388,85 +368,28 @@ fn load(sweep: &Sweep) -> String {
 }
 
 fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
-    let mut lines = vec!["## Method".to_owned(), String::new()];
-    lines.extend(protocol());
-    let loaded = record
-        .builds
-        .iter()
-        .filter(|build| loaded(&build.sweep))
-        .count();
-    let sentence = match (loaded, record.builds.len()) {
-        (0, _) => None,
-        (1, 1) => Some("The sweep ran at a 1-minute load of {LOAD} or more, so its cycles"),
-        (loaded, builds) if loaded == builds => {
-            Some("The sweeps ran at a 1-minute load of {LOAD} or more, so their cycles")
-        }
-        (_, _) => {
-            Some("A sweep ran at a 1-minute load of {LOAD} or more, so the cycles of its build")
-        }
-    };
-    if let Some(sentence) = sentence {
-        lines.extend([
-            String::new(),
-            format!(
-                "{} compare within each table only.",
-                sentence.replace("{LOAD}", &LOAD.to_string())
-            ),
-        ]);
+    let mut lines = vec![
+        "## Method".to_owned(),
+        String::new(),
+        "- Each cell: throughput / latency, in user-mode cycles per operation.".to_owned(),
+        "- Throughput: independent operations on fresh operands.".to_owned(),
+        "- Latency: the chain `x = op(x, y)`, with `x` in registers or in memory, whichever is \
+         faster."
+            .to_owned(),
+        format!(
+            "- Each figure: the median over {REPETITIONS} repetitions of the cycles of 2n \
+             operations less those of n, over n."
+        ),
+    ];
+    if record.builds.iter().any(|build| loaded(&build.sweep)) {
+        lines.push(format!(
+            "- A sweep ran at a 1-minute load of {LOAD} or more: compare figures within a table \
+             only."
+        ));
     }
-    lines.push(String::new());
-    lines.extend((layout.method)());
+    lines.extend(layout.method.iter().map(|line| format!("- {line}")));
     lines.push(String::new());
     lines
-}
-
-/// How the counts are taken.
-fn protocol() -> Vec<String> {
-    vec![
-        format!(
-            "A sweep measures every case in {REPETITIONS} repetitions; repetition r of every case \
-             runs before repetition r + 1 of any case, so a drift of the machine reaches all \
-             cases alike. Each run draws fresh operand sets from the case's distribution, outside \
-             the counted region: no operand set runs twice, so the branch predictor never learns \
-             a sequence. A repetition runs n operations uncounted, then counts a run of n \
-             operations and a run of 2n. Before the repetitions, n starts at 16 operations and \
-             doubles until a run of n, counted after an uncounted run of as many, takes {} \
-             cycles; n stops earlier where the operand sets of 2n operations fill 256 KiB.",
-            grouped(TARGET)
-        ),
-        String::new(),
-        format!(
-            "One perf_event group on the measuring thread, pinned to one CPU, counts user-mode \
-             cycles and branch misses; a run during which the kernel shares the \
-             counters with other groups stops the sweep. A figure per operation is the median, \
-             over the {REPETITIONS} repetitions, of the long run less the short run, divided by \
-             n: the fixed cost of a run cancels, as in nanoBench's differencing, and each \
-             difference pairs two runs taken back to back. A case whose long runs count no more \
-             cycles than its short runs stops the sweep, and so does a chain step under \
-             {FEWEST_STEP_CYCLES} cycles: a step of one instruction takes one cycle, and a chain \
-             that the compiler regrouped takes half a cycle per step or less."
-        ),
-        String::new(),
-        format!(
-            "Throughput runs independent operations: the address of each operand set passes \
-             through an empty inline-assembly block, and another block takes the address of each \
-             result, so the compiler can neither precompute a result nor skip one. Latency runs \
-             the chain `x = op(x, y)`: from the second operand set on, each result is the first \
-             operand of the next operation, so each operation waits for the one before. An empty \
-             block holds each result between two operations, which keeps the compiler from \
-             regrouping the chain. One chain holds it in general-purpose registers, one word of \
-             8, 4, 2 or 1 bytes per register, for a result of up to {GPR_BYTES} bytes; one in \
-             `xmm` registers for a result of up to {XMM_BYTES} bytes; one in `ymm` registers for \
-             a result of {} to {YMM_BYTES} bytes; one in memory for a result of more than \
-             {GPR_BYTES} bytes, in one place on the stack that the operation writes and the next \
-             one reads, one store and one load per word. The blocks can only add moves to a \
-             chain, each chain is a case of its own in the sweep, and the latency is the chain \
-             with the fewest cycles. The chain applies where the result has the type of the first \
-             operand and the other operands are plain values: a step copies them, and the copy of \
-             an allocated value would allocate.",
-            XMM_WORD + 1
-        ),
-    ]
 }
 
 /// `value` with a comma between groups of three digits.
@@ -502,8 +425,8 @@ fn value(figure: f64) -> String {
 
 fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
     let mut rows = Vec::new();
-    for (op, _) in &table.ops {
-        let mut row = vec![(*op).to_owned()];
+    for Operation { op, name, .. } in &table.ops {
+        let mut row = vec![(*name).to_owned()];
         for library in &table.crates {
             // Each function with the rows it runs on.
             let mut groups: Vec<(&str, Vec<K>)> = Vec::new();
@@ -539,114 +462,10 @@ fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String
     }
     let mut header = vec!["Operation".to_owned()];
     header.extend(table.crates.iter().map(|library| (*library).to_owned()));
-    let mut lines = vec![
-        "## Functions".to_owned(),
-        String::new(),
-        "Each cell measures the crate's own function:".to_owned(),
-        String::new(),
-    ];
+    let mut lines = vec!["## Functions".to_owned(), String::new()];
     lines.extend(markdown_table(&header, &rows, &"l".repeat(header.len())));
     lines.push(String::new());
-    lines.extend(layout.notes.iter().map(|note| (*note).to_owned()));
-    lines.extend(absences(layout, table));
-    lines.push(String::new());
     lines
-}
-
-/// Per crate, its absent cells as (operation, row).
-type AbsentCells<'a, K> = Vec<(&'a str, Vec<(&'a str, &'a K)>)>;
-
-/// One line per reason for an absent cell: per crate, the operations and rows it covers, with
-/// the operations left out when they are all of them.
-fn absences<'a, K: Key>(layout: &Layout<'_, K>, table: &'a Table<'a, K>) -> Vec<String> {
-    let mut reasons: Vec<(&str, AbsentCells<'a, K>)> = Vec::new();
-    for library in &table.crates {
-        for (op, _) in &table.ops {
-            for key in &table.keys {
-                let Some(Outcome::Absent(reason)) = table
-                    .cells
-                    .get(&(*op, key, *library))
-                    .map(|cell| &cell.outcome)
-                else {
-                    continue;
-                };
-                let position = match reasons.iter().position(|(other, _)| other == reason) {
-                    Some(position) => position,
-                    None => {
-                        reasons.push((reason, Vec::new()));
-                        reasons.len() - 1
-                    }
-                };
-                let Some((_, crates)) = reasons.get_mut(position) else {
-                    continue;
-                };
-                match crates.iter_mut().find(|(other, _)| other == library) {
-                    Some((_, cells)) => cells.push((op, key)),
-                    None => crates.push((library, vec![(op, key)])),
-                }
-            }
-        }
-    }
-    reasons
-        .iter()
-        .map(|(reason, crates)| {
-            let cases: Vec<String> = crates
-                .iter()
-                .map(|(library, cells)| describe(layout, table, library, cells))
-                .collect();
-            let mut reason = (*reason).to_owned();
-            if let Some(first) = reason.get_mut(..1) {
-                first.make_ascii_uppercase();
-            }
-            format!("- {reason}: {}.", sentence(&cases))
-        })
-        .collect()
-}
-
-/// The absent `cells` of `library`: its name, the operations unless all of them, and the rows
-/// unless all of them. Operations whose rows differ name their rows each.
-fn describe<K: Key>(
-    layout: &Layout<'_, K>,
-    table: &Table<'_, K>,
-    library: &str,
-    cells: &[(&str, &K)],
-) -> String {
-    let ops = unique(cells.iter().map(|(op, _)| *op));
-    let rows_of = |op: &str| -> Vec<K> {
-        unique(
-            cells
-                .iter()
-                .filter(|(other, _)| *other == op)
-                .map(|(_, key)| (*key).clone()),
-        )
-    };
-    let rows_phrase = |keys: &[K]| {
-        if keys.len() < table.keys.len() {
-            format!(" {}", (layout.rows_phrase)(keys))
-        } else {
-            String::new()
-        }
-    };
-    let per_op: Vec<Vec<K>> = ops.iter().map(|op| rows_of(op)).collect();
-    let mut text = format!("`{library}`");
-    match per_op.split_first() {
-        Some((first, rest)) if rest.iter().any(|keys| keys != first) => {
-            let parts: Vec<String> = ops
-                .iter()
-                .zip(&per_op)
-                .map(|(op, keys)| format!("{op}{}", rows_phrase(keys)))
-                .collect();
-            text += &format!(" {}", sentence(&parts));
-        }
-        _ => {
-            if ops.len() < table.ops.len() {
-                text += &format!(" {}", sentence(&ops));
-            }
-            let keys: Vec<K> = unique(cells.iter().map(|(_, key)| (*key).clone()));
-            text += &rows_phrase(&keys);
-        }
-    }
-    text
 }
 
 /// The legend above every results table.
@@ -677,7 +496,8 @@ fn results<K: Key>(
         format!("## Results {}", build.name)
     };
     let mut lines = vec![heading];
-    for (op, formula) in &table.ops {
+    for operation in &table.ops {
+        let op = operation.op;
         let mut rows = Vec::new();
         // Each starred cell: its crate, its deviation and its row.
         let mut starred: Vec<(&str, &str, &K)> = Vec::new();
@@ -731,7 +551,7 @@ fn results<K: Key>(
         }
         let mut header = vec![layout.row_header.to_owned()];
         header.extend(table.crates.iter().map(|library| (*library).to_owned()));
-        let title = title(op, formula, build);
+        let title = title(operation, build);
         let legend = if starred.is_empty() {
             LEGEND.to_owned()
         } else {

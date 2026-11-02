@@ -26,7 +26,11 @@ register.
 `Cells::deviating` declares, in one phrase, how the next case's function deviates from the row's
 definition, such as a skipped final reduction. The case's read applies the crate's own
 normalization before the check. In the document, a deviating figure below the measured crate's
-gets a `*` and a note under its table, and never counts as the fewest of its row.
+gets a `*` and a note under its table, and is never bold. Bold marks every figure that ties the
+fewest of its row, as the table prints it, among the functions that meet the row's definition.
+
+The document names a variable-time operation by the operation alone (`add`) and marks the other
+table (`add, constant time`); the `Layout` lists the operations in the order of their tables.
 
 `bench_compare::main` runs the bench. It checks every case against the accepted results, pins
 itself to one CPU (`--cpu`, CPU 15 by default), and counts every case with one perf_event group of

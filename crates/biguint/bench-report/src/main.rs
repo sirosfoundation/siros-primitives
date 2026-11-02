@@ -3,7 +3,7 @@
 use core::fmt;
 use std::process::ExitCode;
 
-use bench_compare::{BATCH, Layout, Measured, NATIVE, Paths, markdown_table, sentence};
+use bench_compare::{Layout, Measured, NATIVE, Operation, Paths, sentence};
 use serde::{Deserialize, Serialize};
 
 /// A row: a width in bits.
@@ -42,72 +42,26 @@ const MEASURED: Measured = Measured {
 const LAYOUT: Layout<'static, Width> = Layout {
     subject: "biguint",
     tool: "biguint-bench-report",
-    formulas: &[
-        ("add", "a + b"),
-        ("mul", "a × b"),
-        ("div", "a / b"),
-        ("mod", "a mod b"),
-        ("mulmod", "a × b mod m"),
-        ("add_mod", "a + b mod m"),
-        ("sub_mod", "a − b mod m"),
+    operations: &[
+        Operation::new("add", "add", "a + b"),
+        Operation::new("mul", "mul", "a × b"),
+        Operation::new("div", "div", "a / b"),
+        Operation::new("mod", "mod", "a mod b"),
+        Operation::new("mulmod", "mulmod", "a × b mod m"),
+        Operation::new("add_mod", "add_mod", "a + b mod m"),
+        Operation::new("sub_mod", "sub_mod", "a − b mod m"),
     ],
     row_header: "Bits",
     rows_phrase: |widths| format!("at {} bits", sentence(widths)),
     bits: |width| width.bits,
-    method,
-    notes: &[
-        "- Each row compares functions of one timing class, the class of `biguint`'s function: \
-         add, and mul up to 1024 bits, take a time that the width fixes; mul from 2048 bits, div, \
-         mod, mulmod, add_mod and sub_mod take a time that depends on the values.",
-        "- `native` is `u64` at 64 bits and `u128` at 128 bits.",
-        "- `crypto-bigint` is constant-time; its div, mod and mulmod cases run its `*_vartime` \
-         functions.",
-        "- `num-bigint` allocates each result.",
-        "- `uint` is `construct_uint!`, as in `primitive-types`.",
+    method: &[
+        "Operands at width N: uniform below 2^N; a divisor of N/2 bits; a modulus of N bits with \
+         operands below it.",
+        "Every result matches `num-bigint` before it is measured.",
+        "A row compares the functions of `biguint`'s timing class: fixed for add and for mul up \
+         to 1024 bits, variable for the rest.",
     ],
 };
-
-fn method() -> Vec<String> {
-    let operands = [
-        ["add, mul", "`a` and `b` uniform below 2^N"],
-        [
-            "div, mod",
-            "a dividend with bit N − 1 set; a divisor below 2^(N/2) with bit N/2 − 1 set, held \
-             in an N-bit integer",
-        ],
-        [
-            "mulmod, add_mod, sub_mod",
-            "a modulus `m` with bit N − 1 set; `a` and `b` uniform below `m`",
-        ],
-    ];
-    let rows: Vec<Vec<String>> = operands
-        .iter()
-        .map(|row| row.iter().map(|text| (*text).to_owned()).collect())
-        .collect();
-    let mut lines = vec![
-        format!(
-            "Before a case is measured, its results on {BATCH} operand sets equal `num-bigint`'s, \
-             reduced modulo 2^N for the crates that wrap. The functions that a case calls, such \
-             as the allocator of `num-bigint`, are part of its counts."
-        ),
-        String::new(),
-        "The chains are those of add, of the native mul, whose hardware multiply takes the same \
-         time on all operands, and of the modular functions that return the type of their \
-         operands and reduce any operand: each step of such a chain has its own modulus, below \
-         which the result of the step before may not lie. A chain of products modulo 2^N \
-         gathers trailing zeros and a chain of quotients falls to zero, so the other cases of \
-         mul, div and mod have no chain; `crypto-bigint`'s add_mod and sub_mod need operands \
-         below the modulus, and a step of `num-bigint` would copy allocated operands."
-            .to_owned(),
-        String::new(),
-    ];
-    lines.extend(markdown_table(
-        &["Operation".to_owned(), "Operands at width N".to_owned()],
-        &rows,
-        "ll",
-    ));
-    lines
-}
 
 fn main() -> ExitCode {
     bench_compare::execute(
