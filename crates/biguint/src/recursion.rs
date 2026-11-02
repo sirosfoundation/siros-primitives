@@ -3,7 +3,8 @@
 //! Each level is its own type, so every level inlines into the one above and the halved lengths
 //! fold to constants down to the basecase. A level runs the basecase, the quadratic product or the
 //! schoolbook division, below the threshold or when its scratch is too short for the recursion;
-//! the scratch length is a constant too, so that choice folds as well.
+//! the scratch length is a constant too, so that choice folds as well. A truncated product splits
+//! at its own level and hands its cross products to the level below.
 
 use core::marker::PhantomData;
 
@@ -12,6 +13,7 @@ use crate::div::reciprocal::Reciprocal3By2;
 use crate::div::schoolbook;
 use crate::mul::basecase;
 use crate::mul::karatsuba;
+use crate::mul::truncated;
 
 /// A recursion budget.
 pub(crate) trait Depth {
@@ -20,6 +22,9 @@ pub(crate) trait Depth {
 
     /// Writes `a * b` to `out[..2 * a.len()]` for equally long `a` and `b`.
     fn product(out: &mut [u64], a: &[u64], b: &[u64], scratch: &mut [u64]);
+
+    /// Writes `a * b mod 2^(64 * out.len())` to `out`, `a` and `b` as long as `out`.
+    fn truncated(out: &mut [u64], a: &[u64], b: &[u64], scratch: &mut [u64]);
 
     /// Divides the `2 * divisor.len()` limbs of `numerator` by the normalized `divisor`, whose
     /// two leading limbs `leading` divides by: writes the low `divisor.len()` quotient limbs to
@@ -53,6 +58,11 @@ impl Depth for Bottom {
     }
 
     #[inline(always)]
+    fn truncated(out: &mut [u64], a: &[u64], b: &[u64], _scratch: &mut [u64]) {
+        basecase(out, a, b);
+    }
+
+    #[inline(always)]
     fn divide(
         numerator: &mut [u64],
         divisor: &[u64],
@@ -73,6 +83,17 @@ impl<D: Depth> Depth for Level<D> {
             && scratch.len() >= product_scratch(a.len(), Self::LEVELS)
         {
             karatsuba::karatsuba::<D>(out, a, b, scratch);
+        } else {
+            basecase(out, a, b);
+        }
+    }
+
+    #[inline(always)]
+    fn truncated(out: &mut [u64], a: &[u64], b: &[u64], scratch: &mut [u64]) {
+        if !truncated::streams(out.len())
+            && scratch.len() >= truncated::scratch_len(out.len(), Self::LEVELS)
+        {
+            truncated::split_product::<Self, D>(out, a, b, scratch);
         } else {
             basecase(out, a, b);
         }

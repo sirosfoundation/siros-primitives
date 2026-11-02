@@ -36,10 +36,10 @@ The width selects the algorithm at compile time, and every operand length folds 
 
 | Operation | Width | Algorithm |
 |---|---|---|
-| Product | up to 7 by 7 limbs | Schoolbook, unrolled into straight-line code |
+| Product | up to 9 by 9 limbs, or 12 by 12 modulo `2^N` | Schoolbook, unrolled into straight-line code |
 | Product | below 16 limbs | Schoolbook rows with one carry limb |
 | Product | 16 limbs (1024 bits) and more | Karatsuba with GMP's `toom22` interpolation, up to three halvings |
-| Product modulo `2^N` | 48 limbs and more | Karatsuba on the low parts and truncated cross products, after GMP's `dc_mullo` |
+| Product modulo `2^N` | 13 limbs and more | Full product of the low parts and truncated cross products, split again, after GMP's `dc_mullo` |
 | Division | dividend and divisor within 128 bits | `u128` division, which compiles to the hardware divide |
 | Division | other divisors | Knuth's algorithm D with Möller–Granlund reciprocals |
 | Division | divisor and quotient of 24 limbs (1536 bits) and more, the divisor filling its width | Divide-and-conquer, after GMP's `dcpi1_div_qr` |
@@ -61,8 +61,8 @@ cargo run -p biguint-bench-report -- report   # BENCHMARKS.md and benchmarks/*.s
 
 ## Memory
 
-No operation allocates. In release builds, 4096-bit `mul_mod` and `div_rem` run on a 16 KiB
-thread stack; unoptimized builds need about 1.7 MiB for the same calls.
+No operation allocates. In release builds, 4096-bit `mul_mod` and `div_rem` run on an 8 KiB
+thread stack. Unoptimized builds need about 1.9 MiB for `mul_mod` and 1.2 MiB for `div_rem`.
 
 ## Features
 

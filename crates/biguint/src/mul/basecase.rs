@@ -1,17 +1,18 @@
 //! The quadratic products under every multiplication: the stream product where the compiler
 //! unrolls it completely, rows of fused multiply-accumulate steps elsewhere.
 
-use crate::kernel::{add_mul_row, mul_row, split_mut};
-use crate::stream::{MulIter, Unrolled, add_into};
+use crate::kernel::{add_mul_row, mul_add, mul_row, split_mut};
+use crate::stream::{LimbStream, Unrolled};
 
-/// The most steps of a full stream product that the compiler unrolls completely (a 7 by 7 limb
-/// product), measured with rustc 1.99. Up to there the unrolled stream beats the rows by up to
-/// 12%; past it the stream stays a loop and the rows win.
-pub(crate) const FULL_STREAM_STEPS: usize = 77;
+/// The most steps of a full stream product that the compiler unrolls completely: a 9 by 9 limb
+/// product, 460 instructions against 467 for the rows (rustc 1.99, `-C target-cpu=native`). At
+/// 10 by 10 limbs the stream stays a loop of 874 instructions against 574 for the rows.
+pub(crate) const FULL_STREAM_STEPS: usize = 126;
 
-/// The most steps of a truncated stream product that the compiler unrolls completely (9 by 9
-/// limbs modulo `2^576`), measured with rustc 1.99.
-pub(crate) const TRUNCATED_STREAM_STEPS: usize = 45;
+/// The most steps of a truncated stream product that the compiler unrolls completely: 12 by 12
+/// limbs modulo `2^768`, 454 instructions against 761 for the rows (rustc 1.99,
+/// `-C target-cpu=native`).
+pub(crate) const TRUNCATED_STREAM_STEPS: usize = 78;
 
 /// The steps of the stream product of an `a`-limb and a `b`-limb operand into `out` limbs: each
 /// limb of the shorter operand adds a row over the rest of the output window.
@@ -40,19 +41,28 @@ pub(crate) fn basecase(out: &mut [u64], a: &[u64], b: &[u64]) {
 
 /// Writes `a * b mod 2^(64 * out.len())` to `out` as the stream product.
 ///
-/// The longer operand's [`MulIter`] stream is scaled by each limb of the shorter one and added
-/// into the output window, which advances one limb per multiplier limb. The accumulation runs
-/// over the whole window, so the loop has a constant shape that the compiler unrolls into two
-/// interleaved carry chains.
+/// Each limb of the shorter operand scales the longer one, zero-extended, into the output window,
+/// which advances one limb per multiplier limb. Each step is one fused multiply-accumulate with a
+/// single carry limb. The accumulation runs over the whole window, so the loop has a constant
+/// shape that the compiler unrolls completely.
+///
+/// Operands of equal length take their multipliers from `a`. LLVM then keeps each multiplier in
+/// the implicit `rdx` operand of `mulx` for its whole row; the other orientation reloads `rdx`
+/// before most products (512 bits: 205 instructions against 232).
 #[inline(always)]
 pub(crate) fn stream(out: &mut [u64], a: &[u64], b: &[u64]) {
     for slot in out.iter_mut() {
         *slot = 0;
     }
-    let (a, b) = if b.len() > a.len() { (b, a) } else { (a, b) };
+    let (a, b) = if b.len() >= a.len() { (b, a) } else { (a, b) };
     let mut window = out;
     for &multiplier in b {
-        truncate_carry(add_into(MulIter::new(Unrolled::new(a), multiplier), window));
+        let mut source = Unrolled::new(a);
+        let mut carry = 0;
+        for slot in window.iter_mut() {
+            (*slot, carry) = mul_add(multiplier, source.next_limb(), *slot, carry);
+        }
+        truncate_carry(carry);
         window = match window.split_first_mut() {
             Some((_, rest)) => rest,
             None => break,
