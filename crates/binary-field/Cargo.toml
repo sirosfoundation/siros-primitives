@@ -1,0 +1,31 @@
+[package]
+name = "binary-field"
+version = "0.1.0"
+description = "Binary Galois fields GF(2^n) of any degree, declared by their polynomial, with every algorithm choice folded at compile time"
+readme = "README.md"
+keywords = ["gf2", "galois-field", "binary-field", "clmul", "gcm"]
+categories = ["mathematics", "cryptography", "no-std", "no-std::no-alloc"]
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+biguint = { path = "../biguint", version = "0.1.0", default-features = false }
+clmul = { path = "../clmul", version = "0.1.0" }
+const-default.workspace = true
+derive-where.workspace = true
+generic-array.workspace = true
+thiserror.workspace = true
+typenum.workspace = true
+
+[dev-dependencies]
+ghash.workspace = true
+polyval.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true
