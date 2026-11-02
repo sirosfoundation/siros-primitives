@@ -21,7 +21,7 @@ use typenum::Sum;
 use crate::bits::Bits;
 use crate::bits::sealed::Sealed;
 use crate::kernel::{
-    add_assign, fits, shl_bits_into, shr_bits_into, split, split_mut, sub_mul_row,
+    add_assign, compare, fits, shl_bits_into, shr_bits_into, split, split_mut, sub_mul_row,
     sub_mul_row_chains, subtract_if_above,
 };
 use crate::mul::WideningMul;
@@ -61,13 +61,33 @@ impl<N: Bits> Uint<N> {
         ModN: Bits,
         Sum<N, RhsN>: Bits,
     {
+        // A factor below the modulus keeps the top of the product below it when the product has
+        // room above the other factor for the modulus's limbs.
+        let room = <Sum<N, RhsN> as Bits>::LIMBS >= ModN::LIMBS + RhsN::LIMBS;
+        let top = if room && compare(&self.limbs, &modulus.limbs).is_lt() {
+            Top::Below
+        } else {
+            Top::Any
+        };
         let product = self.widening_mul(rhs);
         divide_checked::<_, <Sum<N, RhsN> as Sealed>::Window, ModN>(
             &product.limbs,
             &modulus.limbs,
+            top,
             &mut DiscardQuotient,
         )
     }
+}
+
+/// What a division knows of the top of its dividend.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum Top {
+    /// Nothing.
+    Any,
+    /// The top `len` limbs of the dividend, for a divisor of `len` significant limbs, are below
+    /// the divisor, as in a product of a factor below the divisor by a factor of at most
+    /// `dividend.len() - len` limbs: the top quotient limb is zero, and the division skips it.
+    Below,
 }
 
 /// `self / divisor`.
@@ -107,7 +127,13 @@ pub(crate) fn divide<W: ArrayLength, M: Bits>(
         return native(dividend, divisor, quotient);
     }
     let limbs = divisor.limbs();
-    long::<_, W, M>(dividend, &limbs, significant_len(&limbs), quotient)
+    long::<_, W, M>(
+        dividend,
+        &limbs,
+        significant_len(&limbs),
+        Top::Any,
+        quotient,
+    )
 }
 
 /// [`divide`] by a divisor that may be zero: `None` for zero.
@@ -115,13 +141,14 @@ pub(crate) fn divide<W: ArrayLength, M: Bits>(
 fn divide_checked<L: ArrayLength, W: ArrayLength, M: Bits>(
     dividend: &[u64],
     divisor: &GenericArray<u64, L>,
+    top: Top,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) -> Option<Uint<M>> {
     if Native::<W, L>::FITS {
         return Some(native(dividend, NonZero::new(wide(divisor))?, quotient));
     }
     let len = divisor.iter().rposition(|limb| *limb != 0)? + 1;
-    Some(long::<_, W, M>(dividend, divisor, len, quotient))
+    Some(long::<_, W, M>(dividend, divisor, len, top, quotient))
 }
 
 /// Whether a dividend in a `W`-limb window and an `L`-limb divisor both fit in `u128`.
@@ -162,9 +189,10 @@ fn long<L: ArrayLength, W: ArrayLength, M: Bits>(
     dividend: &[u64],
     divisor: &GenericArray<u64, L>,
     len: usize,
+    top: Top,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) -> Uint<M> {
-    Invariant::new(divisor, len).remainder::<W, M>(dividend, quotient)
+    Invariant::new(divisor, len).remainder::<W, M>(dividend, top, quotient)
 }
 
 /// A divisor prepared for division: shifted left until the top bit of its top significant limb is
@@ -247,19 +275,20 @@ impl<L: ArrayLength> Invariant<L> {
     pub(crate) fn remainder<W: ArrayLength, M: Bits>(
         &self,
         dividend: &[u64],
+        top: Top,
         quotient: &mut (impl QuotientSink + ?Sized),
     ) -> Uint<M> {
         match self {
             Self::Limb { divisor, shift } => Uint::from_u64(if *shift == 0 {
-                divide_by_limb(dividend, 0, *divisor, quotient)
+                divide_by_limb(dividend, 0, *divisor, top, quotient)
             } else {
-                divide_by_limb(dividend, *shift, *divisor, quotient) >> *shift
+                divide_by_limb(dividend, *shift, *divisor, top, quotient) >> *shift
             }),
             Self::TwoLimbs { divisor, shift } => {
                 if *shift == 0 {
-                    Uint::from_u128(divide_by_two_limbs(dividend, 0, *divisor, quotient))
+                    Uint::from_u128(divide_by_two_limbs(dividend, 0, *divisor, top, quotient))
                 } else {
-                    let remainder = divide_by_two_limbs(dividend, *shift, *divisor, quotient);
+                    let remainder = divide_by_two_limbs(dividend, *shift, *divisor, top, quotient);
                     let (low, high) = (remainder as u64, (remainder >> 64) as u64);
                     Uint::from_u128(join(high >> *shift, funnel_right(low, high, *shift)))
                 }
@@ -269,7 +298,7 @@ impl<L: ArrayLength> Invariant<L> {
                 len,
                 shift,
                 leading,
-            } => by_limbs::<L, W, M>(dividend, normalized, *len, *shift, *leading, quotient),
+            } => by_limbs::<L, W, M>(dividend, normalized, *len, *shift, *leading, top, quotient),
         }
     }
 }
@@ -282,6 +311,7 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
     len: usize,
     shift: u32,
     leading: Reciprocal3By2,
+    top: Top,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) -> Uint<M> {
     let mut window = if shift == 0 {
@@ -289,17 +319,27 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
     } else {
         shifted_window::<W>(dividend, shift)
     };
+    let span = match top {
+        Top::Any => window.len(),
+        // The limbs above the dividend's are zero and the top `len` limbs are below the divisor:
+        // the division starts one quotient limb lower.
+        Top::Below => {
+            quotient.put(dividend.len().wrapping_sub(len), 0);
+            dividend.len()
+        }
+    };
+    let (part, _) = split_mut(&mut window, span);
     if len == L::USIZE {
         // A divisor that fills its limbs passes its length as a constant, so the compiler unrolls
         // the division as it does the multiplication.
         if Shape::<W, L>::DIVIDE_AND_CONQUER {
-            divide_and_conquer::<M>(&mut window, normalized.as_slice(), leading, quotient);
+            divide_and_conquer::<M>(part, normalized.as_slice(), leading, quotient);
         } else {
-            divide_by_limbs::<true>(&mut window, normalized.as_slice(), leading, quotient);
+            divide_by_limbs::<true>(part, normalized.as_slice(), leading, quotient);
         }
     } else {
         let (significant, _) = split(normalized, len);
-        divide_by_limbs::<false>(&mut window, significant, leading, quotient);
+        divide_by_limbs::<false>(part, significant, leading, quotient);
     }
     let mut remainder = GenericArray::<u64, M::Limbs>::default();
     if shift == 0 {
@@ -364,14 +404,23 @@ fn divide_by_limb(
     dividend: &[u64],
     shift: u32,
     divisor: Reciprocal,
+    top: Top,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) -> u64 {
-    let (spill, limbs) = normalized_from_top(dividend, shift);
+    let (spill, mut limbs) = normalized_from_top(dividend, shift);
     // The spill holds only the bits that the normalization shifted out, so it stays below `d`.
-    (0..dividend.len())
+    // Below, the spill is zero and the top limb is below `d`: it starts the remainder.
+    let (first, count) = match top {
+        Top::Any => (spill, dividend.len()),
+        Top::Below => {
+            quotient.put(dividend.len().wrapping_sub(1), 0);
+            (limbs.next().unwrap_or(0), dividend.len().saturating_sub(1))
+        }
+    };
+    (0..count)
         .rev()
         .zip(limbs)
-        .fold(spill, |remainder, (index, limb)| {
+        .fold(first, |remainder, (index, limb)| {
             let (digit, remainder) = divisor.div_rem(remainder, limb);
             quotient.put(index, digit);
             remainder
@@ -384,20 +433,32 @@ fn divide_by_two_limbs(
     dividend: &[u64],
     shift: u32,
     divisor: Reciprocal3By2,
+    top: Top,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) -> u128 {
     let (spill, mut limbs) = normalized_from_top(dividend, shift);
     // The spill holds only the bits that the normalization shifted out, so the two leading limbs
-    // stay below `d`.
-    let leading = join(spill, limbs.next().unwrap_or(0));
-    (0..dividend.len().saturating_sub(1)).rev().zip(limbs).fold(
-        leading,
-        |remainder, (index, limb)| {
+    // stay below `d`. Below, the spill is zero and the top two limbs are below `d`: they start
+    // the remainder.
+    let high = limbs.next().unwrap_or(0);
+    let (leading, count) = match top {
+        Top::Any => (join(spill, high), dividend.len().saturating_sub(1)),
+        Top::Below => {
+            quotient.put(dividend.len().wrapping_sub(2), 0);
+            (
+                join(high, limbs.next().unwrap_or(0)),
+                dividend.len().saturating_sub(2),
+            )
+        }
+    };
+    (0..count)
+        .rev()
+        .zip(limbs)
+        .fold(leading, |remainder, (index, limb)| {
             let (digit, remainder) = divisor.div_rem(remainder, limb);
             quotient.put(index, digit);
             remainder
-        },
-    )
+        })
 }
 
 /// Divides `numerator` by the normalized `divisor`, whose two leading limbs `leading` divides by:

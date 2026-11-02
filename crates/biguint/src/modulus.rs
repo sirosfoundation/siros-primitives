@@ -17,7 +17,7 @@ use core::ops::{Add, Mul, Neg, Sub};
 use generic_array::GenericArray;
 
 use crate::bits::Bits;
-use crate::div::{DiscardQuotient, Invariant};
+use crate::div::{DiscardQuotient, Invariant, Top};
 use crate::kernel::split_mut;
 use crate::modular::sum_mod;
 use crate::mul::{basecase, karatsuba};
@@ -102,7 +102,7 @@ impl<N: Bits> From<NonZeroUint<N>> for Modulus<N> {
                 *slot = 1;
             }
             let (dividend, _) = split_mut(&mut dividend, limb + 1);
-            divisor.remainder::<N::ProductScratch, N>(dividend, &mut DiscardQuotient)
+            divisor.remainder::<N::ProductScratch, N>(dividend, Top::Any, &mut DiscardQuotient)
         };
         let low = value.limbs.first().copied().unwrap_or(0);
         if low & 1 == 1 {
@@ -162,10 +162,11 @@ impl<'id, N: Bits> Ring<'id, N> {
     #[inline(always)]
     #[must_use]
     pub fn reduce<M: Bits>(self, value: Uint<M>) -> Residue<'id, N> {
-        let remainder = self
-            .modulus
-            .divisor
-            .remainder::<M::Window, N>(&value.limbs, &mut DiscardQuotient);
+        let remainder = self.modulus.divisor.remainder::<M::Window, N>(
+            &value.limbs,
+            Top::Any,
+            &mut DiscardQuotient,
+        );
         self.enter(remainder)
     }
 
@@ -257,9 +258,11 @@ impl<'id, N: Bits> Ring<'id, N> {
             }
             Form::Plain => {
                 let (product, _) = split_mut(t, 2 * N::LIMBS);
-                self.modulus
-                    .divisor
-                    .remainder::<N::ProductWindow, N>(product, &mut DiscardQuotient)
+                self.modulus.divisor.remainder::<N::ProductWindow, N>(
+                    product,
+                    Top::Below,
+                    &mut DiscardQuotient,
+                )
             }
         }
     }
