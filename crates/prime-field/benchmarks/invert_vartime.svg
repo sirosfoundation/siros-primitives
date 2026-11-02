@@ -75,6 +75,11 @@
 <g class="c3">
 </g>
 <g class="c4">
+<path class="marker" transform="translate(409.8,395.4)" d="M0,5.5L5,-4H-5Z"><title>halo2curves, BN254 scalar: 17,174 instructions per operation</title></path>
+<path class="marker" transform="translate(504.0,395.3)" d="M0,5.5L5,-4H-5Z"><title>halo2curves, secp256k1 base: 17,277 instructions per operation</title></path>
+<path class="marker" transform="translate(598.2,395.3)" d="M0,5.5L5,-4H-5Z"><title>halo2curves, P-256 base: 17,278 instructions per operation</title></path>
+<path class="marker" transform="translate(692.4,395.3)" d="M0,5.5L5,-4H-5Z"><title>halo2curves, P-256 scalar: 17,261 instructions per operation</title></path>
+<path class="marker" transform="translate(786.7,380.0)" d="M0,5.5L5,-4H-5Z"><title>halo2curves, BLS12-381 base: 30,037 instructions per operation</title></path>
 </g>
 <g class="c5">
 </g>

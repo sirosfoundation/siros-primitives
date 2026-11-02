@@ -71,11 +71,6 @@
 <path class="marker" transform="translate(692.4,146.6)" d="M0,-5.5L5,4H-5Z"><title>k256/p256, P-256 scalar: 179,604 instructions per operation</title></path>
 </g>
 <g class="c4">
-<path class="marker" transform="translate(409.8,390.2)" d="M0,5.5L5,-4H-5Z"><title>halo2curves, BN254 scalar: 17,208 instructions per operation</title></path>
-<path class="marker" transform="translate(504.0,390.2)" d="M0,5.5L5,-4H-5Z"><title>halo2curves, secp256k1 base: 17,225 instructions per operation</title></path>
-<path class="marker" transform="translate(598.2,390.1)" d="M0,5.5L5,-4H-5Z"><title>halo2curves, P-256 base: 17,273 instructions per operation</title></path>
-<path class="marker" transform="translate(692.4,390.0)" d="M0,5.5L5,-4H-5Z"><title>halo2curves, P-256 scalar: 17,335 instructions per operation</title></path>
-<path class="marker" transform="translate(786.7,370.9)" d="M0,5.5L5,-4H-5Z"><title>halo2curves, BLS12-381 base: 30,045 instructions per operation</title></path>
 </g>
 <g class="c5">
 <path class="marker" transform="translate(127.1,415.2)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>plonky3, Mersenne-31: 556 instructions per operation</title></path>
