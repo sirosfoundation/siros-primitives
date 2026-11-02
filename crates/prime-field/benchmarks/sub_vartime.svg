@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="480" viewBox="0 0 960 480" role="img" aria-labelledby="title description">
 <title id="title">sub_vartime: a − b, variable time</title>
-<desc id="description">Instructions per operation, counted by Callgrind. BENCHMARKS.md lists the values.</desc>
+<desc id="description">Cycles per operation in a loop of independent operations, counted by the CPU. BENCHMARKS.md lists the values.</desc>
 <style>.grid,.axis{stroke-width:1}.title{font:600 16px system-ui, -apple-system, "Segoe UI", sans-serif}.subtitle,.legend{font:12px system-ui, -apple-system, "Segoe UI", sans-serif}.tick{font:11px system-ui, -apple-system, "Segoe UI", sans-serif;font-variant-numeric:tabular-nums}.line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}.marker{stroke-width:4;paint-order:stroke}.surface{fill:#fcfcfb}.grid{stroke:#e1e0d9}.axis{stroke:#c3c2b7}.title{fill:#0b0b0b}.subtitle,.legend{fill:#52514e}.tick{fill:#898781}.marker{stroke:#fcfcfb}.c0 .line{stroke:#2a78d6}.c0 .marker{fill:#2a78d6}.c1 .line{stroke:#eb6834}.c1 .marker{fill:#eb6834}.c2 .line{stroke:#1baf7a}.c2 .marker{fill:#1baf7a}.c3 .line{stroke:#eda100}.c3 .marker{fill:#eda100}.c4 .line{stroke:#e87ba4}.c4 .marker{fill:#e87ba4}.c5 .line{stroke:#008300}.c5 .marker{fill:#008300}.c6 .line{stroke:#6250d6}.c6 .marker{fill:#6250d6}.c7 .line{stroke:#e34948}.c7 .marker{fill:#e34948}@media (prefers-color-scheme: dark){.surface{fill:#1a1a19}.grid{stroke:#2c2c2a}.axis{stroke:#383835}.title{fill:#f0efec}.subtitle,.legend{fill:#c3c2b7}.tick{fill:#898781}.marker{stroke:#1a1a19}.c0 .line{stroke:#3987e5}.c0 .marker{fill:#3987e5}.c1 .line{stroke:#d95926}.c1 .marker{fill:#d95926}.c2 .line{stroke:#199e70}.c2 .marker{fill:#199e70}.c3 .line{stroke:#c98500}.c3 .marker{fill:#c98500}.c4 .line{stroke:#d55181}.c4 .marker{fill:#d55181}.c5 .line{stroke:#008300}.c5 .marker{fill:#008300}.c6 .line{stroke:#9085e9}.c6 .marker{fill:#9085e9}.c7 .line{stroke:#e66767}.c7 .marker{fill:#e66767}}</style>
 <rect class="surface" width="960" height="480" rx="8"/>
 <text class="title" x="24" y="38">sub_vartime: a − b, variable time</text>
-<text class="subtitle" x="24" y="60">Instructions per operation, counted by Callgrind. BENCHMARKS.md lists the values.</text>
+<text class="subtitle" x="24" y="60">Cycles per operation in a loop of independent operations, counted by the CPU. BENCHMARKS.md lists the values.</text>
 <g class="c0"><path class="marker" transform="translate(34,86)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"/></g>
 <text class="legend" x="50" y="90">prime-field</text>
 <g class="c1"><path class="marker" transform="translate(151,86)" d="M-4,-4H4V4H-4Z"/></g>
@@ -22,12 +22,16 @@
 <g class="c7"><path class="marker" transform="translate(798,86)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"/></g>
 <text class="legend" x="814" y="90">runtime-algebra</text>
 <text class="tick" x="72" y="420.5" text-anchor="end">0</text>
-<path class="grid" d="M80,316.5H928"/>
-<text class="tick" x="72" y="320.5" text-anchor="end">20</text>
-<path class="grid" d="M80,216.5H928"/>
-<text class="tick" x="72" y="220.5" text-anchor="end">40</text>
+<path class="grid" d="M80,356.5H928"/>
+<text class="tick" x="72" y="360.5" text-anchor="end">5</text>
+<path class="grid" d="M80,296.5H928"/>
+<text class="tick" x="72" y="300.5" text-anchor="end">10</text>
+<path class="grid" d="M80,236.5H928"/>
+<text class="tick" x="72" y="240.5" text-anchor="end">15</text>
+<path class="grid" d="M80,176.5H928"/>
+<text class="tick" x="72" y="180.5" text-anchor="end">20</text>
 <path class="grid" d="M80,116.5H928"/>
-<text class="tick" x="72" y="120.5" text-anchor="end">60</text>
+<text class="tick" x="72" y="120.5" text-anchor="end">25</text>
 <path class="axis" d="M80,416.5H928"/>
 <text class="tick" x="127.1" y="432" text-anchor="middle">Mersenne-31</text>
 <text class="tick" x="221.3" y="432" text-anchor="middle">BabyBear</text>
@@ -40,22 +44,22 @@
 <text class="tick" x="880.9" y="432" text-anchor="middle">P-521 base</text>
 <text class="tick" x="504.0" y="448" text-anchor="middle">field</text>
 <g class="c0">
-<path class="marker" transform="translate(127.1,365.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Mersenne-31: 10.0 instructions per operation</title></path>
-<path class="marker" transform="translate(221.3,365.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BabyBear: 10.0 instructions per operation</title></path>
-<path class="marker" transform="translate(315.6,365.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Goldilocks: 10.1 instructions per operation</title></path>
-<path class="marker" transform="translate(409.8,265.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BN254 scalar: 30.1 instructions per operation</title></path>
-<path class="marker" transform="translate(504.0,295.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, secp256k1 base: 24.1 instructions per operation</title></path>
-<path class="marker" transform="translate(598.2,290.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 base: 25.1 instructions per operation</title></path>
-<path class="marker" transform="translate(692.4,275.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 scalar: 28.1 instructions per operation</title></path>
-<path class="marker" transform="translate(786.7,170.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BLS12-381 base: 49.1 instructions per operation</title></path>
-<path class="marker" transform="translate(880.9,195.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-521 base: 44.1 instructions per operation</title></path>
+<path class="marker" transform="translate(127.1,389.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Mersenne-31: 2.2 cycles per operation</title></path>
+<path class="marker" transform="translate(221.3,389.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BabyBear: 2.2 cycles per operation</title></path>
+<path class="marker" transform="translate(315.6,389.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, Goldilocks: 2.2 cycles per operation</title></path>
+<path class="marker" transform="translate(409.8,342.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BN254 scalar: 6.1 cycles per operation</title></path>
+<path class="marker" transform="translate(504.0,339.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, secp256k1 base: 6.4 cycles per operation</title></path>
+<path class="marker" transform="translate(598.2,340.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 base: 6.3 cycles per operation</title></path>
+<path class="marker" transform="translate(692.4,339.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-256 scalar: 6.4 cycles per operation</title></path>
+<path class="marker" transform="translate(786.7,295.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, BLS12-381 base: 10.1 cycles per operation</title></path>
+<path class="marker" transform="translate(880.9,258.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>prime-field, P-521 base: 13.1 cycles per operation</title></path>
 </g>
 <g class="c1">
-<path class="marker" transform="translate(409.8,237.1)" d="M-4,-4H4V4H-4Z"><title>ark-ff, BN254 scalar: 35.8 instructions per operation</title></path>
-<path class="marker" transform="translate(504.0,238.3)" d="M-4,-4H4V4H-4Z"><title>ark-ff, secp256k1 base: 35.5 instructions per operation</title></path>
-<path class="marker" transform="translate(598.2,259.3)" d="M-4,-4H4V4H-4Z"><title>ark-ff, P-256 base: 31.3 instructions per operation</title></path>
-<path class="marker" transform="translate(692.4,245.7)" d="M-4,-4H4V4H-4Z"><title>ark-ff, P-256 scalar: 34.1 instructions per operation</title></path>
-<path class="marker" transform="translate(786.7,149.8)" d="M-4,-4H4V4H-4Z"><title>ark-ff, BLS12-381 base: 53.2 instructions per operation</title></path>
+<path class="marker" transform="translate(409.8,209.6)" d="M-4,-4H4V4H-4Z"><title>ark-ff, BN254 scalar: 17.2 cycles per operation</title></path>
+<path class="marker" transform="translate(504.0,207.9)" d="M-4,-4H4V4H-4Z"><title>ark-ff, secp256k1 base: 17.3 cycles per operation</title></path>
+<path class="marker" transform="translate(598.2,215.2)" d="M-4,-4H4V4H-4Z"><title>ark-ff, P-256 base: 16.7 cycles per operation</title></path>
+<path class="marker" transform="translate(692.4,209.4)" d="M-4,-4H4V4H-4Z"><title>ark-ff, P-256 scalar: 17.2 cycles per operation</title></path>
+<path class="marker" transform="translate(786.7,137.7)" d="M-4,-4H4V4H-4Z"><title>ark-ff, BLS12-381 base: 23.2 cycles per operation</title></path>
 </g>
 <g class="c2">
 </g>
@@ -64,8 +68,8 @@
 <g class="c4">
 </g>
 <g class="c5">
-<path class="marker" transform="translate(221.3,365.8)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>plonky3, BabyBear: 10.0 instructions per operation</title></path>
-<path class="marker" transform="translate(315.6,355.7)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>plonky3, Goldilocks: 12.1 instructions per operation</title></path>
+<path class="marker" transform="translate(221.3,389.8)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>plonky3, BabyBear: 2.2 cycles per operation</title></path>
+<path class="marker" transform="translate(315.6,389.6)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>plonky3, Goldilocks: 2.2 cycles per operation</title></path>
 </g>
 <g class="c6">
 </g>
