@@ -1,6 +1,8 @@
 //! One adapter per crate: the function that the crate runs for each operation over each field.
 //!
-//! Each crate uses its own public function for an operation. A crate without one, or without the
+//! Each crate uses its own public function for an operation, in the row of its timing class as
+//! its source shows it: variable time when a branch, a loop bound or a memory address depends on
+//! the values; constant time otherwise. A crate without a function of a class, or without the
 //! field, gets an absent cell with the reason. Elements enter and leave each crate in its own
 //! representation; the conversions run before and after the counted batch.
 
@@ -9,12 +11,12 @@ use biguint::generic_array::GenericArray;
 use biguint::typenum::{U31, U64, U254, U256, U381, U521};
 use biguint::{Bits, Uint};
 use core_algebra::{AlgebraicField, SerializableField};
-use prime_field::{Fp, Modulus};
+use prime_field::{Fp, Modulus, Secret};
 use runtime_algebra::field::RuntimeSerializableField;
 
 use super::{
-    BABY_BEAR, BLS12_381_BASE, BN254_SCALAR, Field, GOLDILOCKS, MERSENNE31, Op, P256_BASE,
-    P256_SCALAR, P521_BASE, SECP256K1_BASE,
+    BABY_BEAR, BLS12_381_BASE, BN254_SCALAR, Field, GOLDILOCKS, Kind, MERSENNE31, Op, P256_BASE,
+    P256_SCALAR, P521_BASE, SECP256K1_BASE, Timing,
 };
 
 /// The cells of one crate in one row.
@@ -32,6 +34,30 @@ pub fn offer<V: Visitor<Op, Field>>(row: Row<Op, Field, V>) -> Row<Op, Field, V>
         .lib("runtime-algebra", runtime_algebra)
         .lib("compile-algebra", compile_algebra)
 }
+
+/// The variable-time row of `kind`.
+const fn vartime(kind: Kind) -> Op {
+    Op {
+        kind,
+        timing: Timing::Variable,
+    }
+}
+
+/// The constant-time row of `kind`.
+const fn constant(kind: Kind) -> Op {
+    Op {
+        kind,
+        timing: Timing::Constant,
+    }
+}
+
+/// The reason for an absent variable-time cell of a crate whose function runs in constant time.
+const NO_VARIABLE_TIME: &str = "no variable-time function";
+/// The reason for an absent constant-time cell of a crate whose function runs in variable time.
+const NO_CONSTANT_TIME: &str = "no constant-time function";
+/// The reasons for operations that a crate lacks in both classes.
+const NO_SQUARE: &str = "no squaring function";
+const NO_SQRT: &str = "no square root";
 
 /// An operand type built from canonical limbs.
 trait FromLimbs {
@@ -70,6 +96,9 @@ trait Offer<V> {
 
     /// Records the same reason for every operation.
     fn none(self, reason: &'static str) -> Self;
+
+    /// Records `reason` for both timings of `kind`.
+    fn neither(self, kind: Kind, reason: &'static str) -> Self;
 }
 
 impl<V: Visitor<Op, Field>> Offer<V> for Crate<V> {
@@ -87,6 +116,11 @@ impl<V: Visitor<Op, Field>> Offer<V> for Crate<V> {
         Op::ALL
             .into_iter()
             .fold(self, |cells, op| cells.absent(op, reason))
+    }
+
+    fn neither(self, kind: Kind, reason: &'static str) -> Self {
+        self.absent(vartime(kind), reason)
+            .absent(constant(kind), reason)
     }
 }
 
@@ -131,14 +165,20 @@ fn array8(chunk: &[u8]) -> [u8; 8] {
     <[u8; 8]>::try_from(chunk).expect("eight bytes")
 }
 
-/// Offers add, sub, mul and square of `$t` through the given closures.
+/// Offers add, sub, mul and square of `$t` in the row `$row` of their timing class, and records
+/// `$reason` in the other row.
 macro_rules! ops {
-    ($cells:expr, $t:ty, add: $add:expr, sub: $sub:expr, mul: $mul:expr, square: $square:expr $(,)?) => {
+    ($cells:expr, $t:ty, $row:ident, $other:ident, $reason:expr,
+     add: $add:expr, sub: $sub:expr, mul: $mul:expr, square: $square:expr $(,)?) => {
         $cells
-            .case(Op::Add, "+", pair::<$t>, $add)
-            .case(Op::Sub, "-", pair::<$t>, $sub)
-            .case(Op::Mul, "*", pair::<$t>, $mul)
-            .case(Op::Square, "square", one::<$t>, $square)
+            .case($row(Kind::Add), "+", pair::<$t>, $add)
+            .case($row(Kind::Sub), "-", pair::<$t>, $sub)
+            .case($row(Kind::Mul), "*", pair::<$t>, $mul)
+            .case($row(Kind::Square), "square", one::<$t>, $square)
+            .absent($other(Kind::Add), $reason)
+            .absent($other(Kind::Sub), $reason)
+            .absent($other(Kind::Mul), $reason)
+            .absent($other(Kind::Square), $reason)
     };
 }
 
@@ -186,6 +226,18 @@ impl<M: Modulus> ToLimbs for Fp<M> {
     }
 }
 
+impl<M: Modulus> FromLimbs for Secret<M> {
+    fn from_limbs(limbs: &[u64]) -> Self {
+        Self::new(Fp::from_limbs(limbs))
+    }
+}
+
+impl<M: Modulus> ToLimbs for Secret<M> {
+    fn to_limbs(&self) -> Option<Limbs> {
+        self.reveal().to_limbs()
+    }
+}
+
 /// `prime-field`, the crate under test.
 fn this_crate<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
@@ -202,18 +254,55 @@ fn this_crate<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
+/// `Fp` in the variable-time rows, `Secret` in the constant-time rows.
 fn ours<M: Modulus, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
-    ops!(cells, Fp<M>,
-        add: |&(a, b)| a + b,
-        sub: |&(a, b)| a - b,
-        mul: |&(a, b)| a * b,
-        square: |&a| a.square(),
-    )
-    .case(Op::Invert, "invert", one::<Fp<M>>, |&a| a.invert())
-    .case(Op::InvertVartime, "invert_vartime", one::<Fp<M>>, |&a| {
-        a.invert_vartime()
-    })
-    .case(Op::Sqrt, "sqrt", one::<Fp<M>>, |&a| a.sqrt())
+    cells
+        .case(vartime(Kind::Add), "+", pair::<Fp<M>>, |&(a, b)| a + b)
+        .case(vartime(Kind::Sub), "-", pair::<Fp<M>>, |&(a, b)| a - b)
+        .case(vartime(Kind::Mul), "*", pair::<Fp<M>>, |&(a, b)| a * b)
+        .case(vartime(Kind::Square), "square", one::<Fp<M>>, |a| {
+            a.square()
+        })
+        .case(vartime(Kind::Invert), "invert", one::<Fp<M>>, |a| {
+            a.invert()
+        })
+        .case(vartime(Kind::Sqrt), "sqrt", one::<Fp<M>>, |a| a.sqrt())
+        .case(
+            constant(Kind::Add),
+            "Secret +",
+            pair::<Secret<M>>,
+            |&(a, b)| a + b,
+        )
+        .case(
+            constant(Kind::Sub),
+            "Secret -",
+            pair::<Secret<M>>,
+            |&(a, b)| a - b,
+        )
+        .case(
+            constant(Kind::Mul),
+            "Secret *",
+            pair::<Secret<M>>,
+            |&(a, b)| a * b,
+        )
+        .case(
+            constant(Kind::Square),
+            "Secret::square",
+            one::<Secret<M>>,
+            |a| a.square(),
+        )
+        .case(
+            constant(Kind::Invert),
+            "Secret::invert",
+            one::<Secret<M>>,
+            |a| a.invert(),
+        )
+        .case(
+            constant(Kind::Sqrt),
+            "Secret::sqrt",
+            one::<Secret<M>>,
+            |a| a.sqrt(),
+        )
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -231,6 +320,8 @@ fn ark<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
+/// An arkworks field: every operation branches on the value (`+` and `*` before their final
+/// subtraction, `-` on its borrow, `inverse` and `sqrt` throughout).
 fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     use ark_ff::BigInteger;
     let element = |limbs: &[u64]| F::from_le_bytes_mod_order(&le_bytes(limbs));
@@ -244,21 +335,46 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
     };
     let read = |e: &F| Some(from_le_bytes(&e.into_bigint().to_bytes_le()));
     let read_option = |e: &Option<F>| e.as_ref().and_then(read);
-    cells
-        .api(Op::Add, "+", two, |&(a, b)| a + b, read)
-        .api(Op::Sub, "-", two, |&(a, b)| a - b, read)
-        .api(Op::Mul, "*", two, |&(a, b)| a * b, read)
-        .api(Op::Square, "square", single, |a| a.square(), read)
-        .absent(Op::Invert, VARTIME_INVERT)
+    let mut cells = cells
+        .api(vartime(Kind::Add), "+", two, |&(a, b)| a + b, read)
+        .api(vartime(Kind::Sub), "-", two, |&(a, b)| a - b, read)
+        .api(vartime(Kind::Mul), "*", two, |&(a, b)| a * b, read)
         .api(
-            Op::InvertVartime,
+            vartime(Kind::Square),
+            "square",
+            single,
+            |a| a.square(),
+            read,
+        )
+        .api(
+            vartime(Kind::Invert),
             "inverse",
             single,
             |a| a.inverse(),
             read_option,
         )
-        .api(Op::Sqrt, "sqrt", single, |a| a.sqrt(), read_option)
+        .api(
+            vartime(Kind::Sqrt),
+            "sqrt",
+            single,
+            |a| a.sqrt(),
+            read_option,
+        );
+    for kind in KINDS {
+        cells = cells.absent(constant(kind), NO_CONSTANT_TIME);
+    }
+    cells
 }
+
+/// Every kind of operation.
+const KINDS: [Kind; 6] = [
+    Kind::Add,
+    Kind::Sub,
+    Kind::Mul,
+    Kind::Square,
+    Kind::Invert,
+    Kind::Sqrt,
+];
 
 // ---------------------------------------------------------------------------------------------
 // crypto-bigint
@@ -349,6 +465,9 @@ fn crypto_bigint<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
+/// `ConstMontyForm`: masks and constant-time selections throughout, except `invert_vartime`.
+/// `sqrt` raises to a public exponent by `pow_vartime`, whose time depends on the exponent
+/// alone, then selects in constant time.
 fn monty<
     MOD: crypto_bigint::modular::ConstPrimeMontyParams<L>,
     const L: usize,
@@ -357,20 +476,25 @@ fn monty<
     cells: Crate<V>,
 ) -> Crate<V> {
     type Form<MOD, const L: usize> = crypto_bigint::modular::ConstMontyForm<MOD, L>;
-    ops!(cells, Form<MOD, L>,
+    ops!(cells, Form<MOD, L>, constant, vartime, NO_VARIABLE_TIME,
         add: |(a, b)| a + b,
         sub: |(a, b)| a - b,
         mul: |(a, b)| a * b,
         square: |a| a.square(),
     )
-    .case(Op::Invert, "invert", one::<Form<MOD, L>>, |a| a.invert())
+    .case(constant(Kind::Invert), "invert", one::<Form<MOD, L>>, |a| {
+        a.invert()
+    })
     .case(
-        Op::InvertVartime,
+        vartime(Kind::Invert),
         "invert_vartime",
         one::<Form<MOD, L>>,
         |a| a.invert_vartime(),
     )
-    .case(Op::Sqrt, "sqrt", one::<Form<MOD, L>>, |a| a.sqrt())
+    .case(constant(Kind::Sqrt), "sqrt", one::<Form<MOD, L>>, |a| {
+        a.sqrt()
+    })
+    .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -432,45 +556,76 @@ impl ToLimbs for p256::Scalar {
     }
 }
 
-/// The reason for an absent variable-time inverse.
-const NO_VARTIME_INVERSE: &str = "no variable-time inverse";
-
-/// The RustCrypto curve crates: `k256` for secp256k1, `p256` for P-256.
+/// The RustCrypto curve crates: `k256` for secp256k1, `p256` for P-256. Their field arithmetic
+/// selects by masks and `subtle`; `k256`'s `+` and `-` add limbs without a carry and leave the
+/// reduction to a later `normalize`. `p256`'s scalar adds `invert_vartime`, Stein's algorithm.
 fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
-        "secp256k1 base" => ops!(cells, k256::FieldElement,
+        "secp256k1 base" => ops!(cells, k256::FieldElement, constant, vartime, NO_VARIABLE_TIME,
             add: |&(a, b)| a + b,
             sub: |&(a, b)| a - b,
             mul: |&(a, b)| a * b,
             square: |a| a.square(),
         )
-        .case(Op::Invert, "invert", one::<k256::FieldElement>, |a| {
-            a.invert()
-        })
-        .absent(Op::InvertVartime, NO_VARTIME_INVERSE)
-        .case(Op::Sqrt, "sqrt", one::<k256::FieldElement>, |a| a.sqrt()),
-        "P-256 base" => ops!(cells, p256::FieldElement,
+        .case(
+            constant(Kind::Invert),
+            "invert",
+            one::<k256::FieldElement>,
+            |a| a.invert(),
+        )
+        .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
+        .case(
+            constant(Kind::Sqrt),
+            "sqrt",
+            one::<k256::FieldElement>,
+            |a| a.sqrt(),
+        )
+        .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME),
+        "P-256 base" => ops!(cells, p256::FieldElement, constant, vartime, NO_VARIABLE_TIME,
             add: |&(a, b)| a + b,
             sub: |&(a, b)| a - b,
             mul: |&(a, b)| a * b,
             square: |a| a.square(),
         )
-        .case(Op::Invert, "invert", one::<p256::FieldElement>, |a| {
-            a.invert()
-        })
-        .absent(Op::InvertVartime, NO_VARTIME_INVERSE)
-        .case(Op::Sqrt, "sqrt", one::<p256::FieldElement>, |a| a.sqrt()),
+        .case(
+            constant(Kind::Invert),
+            "invert",
+            one::<p256::FieldElement>,
+            |a| a.invert(),
+        )
+        .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
+        .case(
+            constant(Kind::Sqrt),
+            "sqrt",
+            one::<p256::FieldElement>,
+            |a| a.sqrt(),
+        )
+        .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME),
         "P-256 scalar" => {
             use p256::elliptic_curve::ff::Field;
-            ops!(cells, p256::Scalar,
+            use p256::elliptic_curve::ops::Invert;
+            ops!(cells, p256::Scalar, constant, vartime, NO_VARIABLE_TIME,
                 add: |&(a, b)| a + b,
                 sub: |&(a, b)| a - b,
                 mul: |&(a, b)| a * b,
                 square: |a| a.square(),
             )
-            .case(Op::Invert, "invert", one::<p256::Scalar>, |a| a.invert())
-            .absent(Op::InvertVartime, NO_VARTIME_INVERSE)
-            .case(Op::Sqrt, "sqrt", one::<p256::Scalar>, Field::sqrt)
+            .case(constant(Kind::Invert), "invert", one::<p256::Scalar>, |a| {
+                p256::Scalar::invert(a)
+            })
+            .case(
+                vartime(Kind::Invert),
+                "invert_vartime",
+                one::<p256::Scalar>,
+                Invert::invert_vartime,
+            )
+            .case(
+                constant(Kind::Sqrt),
+                "sqrt",
+                one::<p256::Scalar>,
+                Field::sqrt,
+            )
+            .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME)
         }
         "P-521 base" => cells.none("p521 keeps its field element private"),
         _ => cells.none("no RustCrypto crate declares the field"),
@@ -516,20 +671,23 @@ fn halo2curves<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
-/// A field of halo2curves through the `ff::Field` trait. Its `invert` runs the variable-time
-/// division steps of halo2curves' `BYInverter`, which branch on the trailing zeros of `g`.
+/// A field of halo2curves through the `ff::Field` trait: masks in `+`, `-` and `*`, and the
+/// constant-time Tonelli–Shanks or exponentiation of `ff` in `sqrt`. Its `invert` runs the
+/// variable-time division steps of halo2curves' `BYInverter`, which branch on the trailing
+/// zeros of `g`.
 fn ff_field<F: halo2curves::ff::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
     cells: Crate<V>,
 ) -> Crate<V> {
-    ops!(cells, F,
+    ops!(cells, F, constant, vartime, NO_VARIABLE_TIME,
         add: |&(a, b)| a + b,
         sub: |&(a, b)| a - b,
         mul: |&(a, b)| a * b,
         square: |a| a.square(),
     )
-    .absent(Op::Invert, VARTIME_INVERT)
-    .case(Op::InvertVartime, "invert", one::<F>, |a| a.invert())
-    .case(Op::Sqrt, "sqrt", one::<F>, |a| a.sqrt())
+    .case(vartime(Kind::Invert), "invert", one::<F>, |a| a.invert())
+    .absent(constant(Kind::Invert), NO_CONSTANT_TIME)
+    .case(constant(Kind::Sqrt), "sqrt", one::<F>, |a| a.sqrt())
+    .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -560,28 +718,43 @@ p3_field!(p3_goldilocks::Goldilocks, u64);
 
 /// Plonky3: `p3-mersenne-31`, `p3-baby-bear` and `p3-goldilocks`.
 fn plonky3<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
+    use p3_field::Field as _;
     match cells.key().field.as_str() {
-        "Mersenne-31" => p3::<p3_mersenne_31::Mersenne31, V>(cells),
-        "BabyBear" => p3::<p3_baby_bear::BabyBear, V>(cells),
-        "Goldilocks" => p3::<p3_goldilocks::Goldilocks, V>(cells),
+        "Mersenne-31" => p3::<p3_mersenne_31::Mersenne31, V>(cells, true, |a| a.try_sqrt()),
+        "BabyBear" => p3::<p3_baby_bear::BabyBear, V>(cells, false, |a| a.try_sqrt()),
+        "Goldilocks" => p3::<p3_goldilocks::Goldilocks, V>(cells, false, |a| a.try_sqrt()),
         _ => cells.none("Plonky3 declares no such field"),
     }
 }
 
+/// A Plonky3 field: `+`, `*`, `square`, `try_inverse` and `try_sqrt` decide their corrections and
+/// steps with `if` on the value; Mersenne-31's `-` is arithmetic alone, BabyBear's and
+/// Goldilocks' `-` branch on the borrow. `subtraction_constant` tells the arithmetic `-`; `sqrt` is the
+/// field's own `try_sqrt`, which BabyBear specializes in an inherent method.
 fn p3<F: p3_field::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
     cells: Crate<V>,
+    subtraction_constant: bool,
+    sqrt: impl Fn(&F) -> Option<F> + Copy,
 ) -> Crate<V> {
-    ops!(cells, F,
-        add: |&(a, b)| a + b,
-        sub: |&(a, b)| a - b,
-        mul: |&(a, b)| a * b,
-        square: |a| a.square(),
-    )
-    .case(Op::Invert, "try_inverse", one::<F>, |a| a.try_inverse())
-    .absent(Op::InvertVartime, NO_VARTIME_INVERSE)
-    .case(Op::Sqrt, "tonelli_shanks", one::<F>, |&a| {
-        p3_field::tonelli_shanks(a)
-    })
+    let (sub_row, sub_other, sub_reason) = if subtraction_constant {
+        (constant(Kind::Sub), vartime(Kind::Sub), NO_VARIABLE_TIME)
+    } else {
+        (vartime(Kind::Sub), constant(Kind::Sub), NO_CONSTANT_TIME)
+    };
+    let mut cells = cells
+        .case(vartime(Kind::Add), "+", pair::<F>, |&(a, b)| a + b)
+        .case(sub_row, "-", pair::<F>, |&(a, b)| a - b)
+        .absent(sub_other, sub_reason)
+        .case(vartime(Kind::Mul), "*", pair::<F>, |&(a, b)| a * b)
+        .case(vartime(Kind::Square), "square", one::<F>, |a| a.square())
+        .case(vartime(Kind::Invert), "try_inverse", one::<F>, |a| {
+            a.try_inverse()
+        })
+        .case(vartime(Kind::Sqrt), "try_sqrt", one::<F>, move |a| sqrt(a));
+    for kind in [Kind::Add, Kind::Mul, Kind::Square, Kind::Invert, Kind::Sqrt] {
+        cells = cells.absent(constant(kind), NO_CONSTANT_TIME);
+    }
+    cells
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -600,20 +773,22 @@ impl ToLimbs for winter_math::fields::f64::BaseElement {
     }
 }
 
-/// `winter-math`'s `f64` field.
+/// `winter-math`'s `f64` field: masks in `+`, `-` and `*`, a fixed addition chain in `inv`.
 fn winter_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     use winter_math::FieldElement;
     use winter_math::fields::f64::BaseElement;
     match cells.key().field.as_str() {
-        "Goldilocks" => ops!(cells, BaseElement,
+        "Goldilocks" => ops!(cells, BaseElement, constant, vartime, NO_VARIABLE_TIME,
             add: |&(a, b)| a + b,
             sub: |&(a, b)| a - b,
             mul: |&(a, b)| a * b,
             square: |a| a.square(),
         )
-        .case(Op::Invert, "inv", one::<BaseElement>, |a| a.inv())
-        .absent(Op::InvertVartime, NO_VARTIME_INVERSE)
-        .absent(Op::Sqrt, "no square root"),
+        .case(constant(Kind::Invert), "inv", one::<BaseElement>, |a| {
+            a.inv()
+        })
+        .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
+        .neither(Kind::Sqrt, NO_SQRT),
         _ => cells.none("winter-math declares no such field"),
     }
 }
@@ -652,12 +827,9 @@ fn runtime_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
-/// The reasons for the absent cells of the longfellow-zk fields.
-const NO_SQUARE: &str = "no squaring function";
-const NO_SQRT: &str = "no square root";
-const VARTIME_INVERT: &str = "the inverse runs in variable time";
-
-/// The operations of a longfellow-zk runtime field `F` over `W` words.
+/// The operations of a longfellow-zk runtime field `F` over `W` words: `addf`, `subf` and `mulf`
+/// select by `cmov` in inline assembly; `invert` runs the binary extended Euclidean algorithm,
+/// which branches on the parity of the value.
 fn runtime<const W: usize, F: RuntimeSerializableField<W>, V: Visitor<Op, Field>>(
     field: F,
     cells: Crate<V>,
@@ -677,19 +849,40 @@ fn runtime<const W: usize, F: RuntimeSerializableField<W>, V: Visitor<Op, Field>
     };
     let read = |e: &F::E| Some(field.to_words64(e).to_vec());
     cells
-        .api(Op::Add, "addf", two, |(a, b)| field.addf(a, b), read)
-        .api(Op::Sub, "subf", two, |(a, b)| field.subf(a, b), read)
-        .api(Op::Mul, "mulf", two, |(a, b)| field.mulf(a, b), read)
-        .absent(Op::Square, NO_SQUARE)
-        .absent(Op::Invert, VARTIME_INVERT)
         .api(
-            Op::InvertVartime,
+            constant(Kind::Add),
+            "addf",
+            two,
+            |(a, b)| field.addf(a, b),
+            read,
+        )
+        .api(
+            constant(Kind::Sub),
+            "subf",
+            two,
+            |(a, b)| field.subf(a, b),
+            read,
+        )
+        .api(
+            constant(Kind::Mul),
+            "mulf",
+            two,
+            |(a, b)| field.mulf(a, b),
+            read,
+        )
+        .absent(vartime(Kind::Add), NO_VARIABLE_TIME)
+        .absent(vartime(Kind::Sub), NO_VARIABLE_TIME)
+        .absent(vartime(Kind::Mul), NO_VARIABLE_TIME)
+        .neither(Kind::Square, NO_SQUARE)
+        .api(
+            vartime(Kind::Invert),
             "invert",
             single,
             |a| field.invert(a),
             read,
         )
-        .absent(Op::Sqrt, NO_SQRT)
+        .absent(constant(Kind::Invert), NO_CONSTANT_TIME)
+        .neither(Kind::Sqrt, NO_SQRT)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -704,6 +897,7 @@ fn compile_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
+/// `FpField` on `num-bigint`, whose arithmetic takes time that depends on the values.
 fn compile<T: 'static, V: Visitor<Op, Field>>(
     field: compile_algebra::fp::FpField<T>,
     cells: Crate<V>,
@@ -727,17 +921,38 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
         Some(value)
     };
     cells
-        .api(Op::Add, "addf", two, |(a, b)| field.addf(a, b), read)
-        .api(Op::Sub, "subf", two, |(a, b)| field.subf(a, b), read)
-        .api(Op::Mul, "mulf", two, |(a, b)| field.mulf(a, b), read)
-        .absent(Op::Square, NO_SQUARE)
-        .absent(Op::Invert, "the inverse is a variable-time `modpow`")
         .api(
-            Op::InvertVartime,
+            vartime(Kind::Add),
+            "addf",
+            two,
+            |(a, b)| field.addf(a, b),
+            read,
+        )
+        .api(
+            vartime(Kind::Sub),
+            "subf",
+            two,
+            |(a, b)| field.subf(a, b),
+            read,
+        )
+        .api(
+            vartime(Kind::Mul),
+            "mulf",
+            two,
+            |(a, b)| field.mulf(a, b),
+            read,
+        )
+        .api(
+            vartime(Kind::Invert),
             "invert",
             single,
             |a| field.invert(a),
             read,
         )
-        .absent(Op::Sqrt, NO_SQRT)
+        .absent(constant(Kind::Add), NO_CONSTANT_TIME)
+        .absent(constant(Kind::Sub), NO_CONSTANT_TIME)
+        .absent(constant(Kind::Mul), NO_CONSTANT_TIME)
+        .absent(constant(Kind::Invert), NO_CONSTANT_TIME)
+        .neither(Kind::Square, NO_SQUARE)
+        .neither(Kind::Sqrt, NO_SQRT)
 }

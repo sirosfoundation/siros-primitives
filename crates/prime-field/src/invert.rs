@@ -10,15 +10,16 @@
 //! variable-time variant skips the even steps of a batch at once by the trailing zeros of `g`
 //! and stops when `g` reaches zero.
 //!
-//! For moduli of at most 64 bits a Fermat exponentiation `x^(p - 2)` by an addition chain is
-//! cheaper than the batches, and the chain depends on the exponent alone, so it runs in constant
-//! time with respect to `x`.
+//! On one limb the variable-time inversion is the extended Euclidean algorithm on the limb, one
+//! hardware division per step. The constant-time inversion there is a Fermat exponentiation
+//! `x^(p - 2)` by an addition chain, cheaper than the batches; the chain depends on the exponent
+//! alone, so it runs in constant time with respect to `x`.
 
 use crate::field::{Fp, Modulus};
 use core::hint::black_box;
 
 use crate::chain::Program;
-use crate::kernel::{add, equal, fits, is_zero, limb, mul_add, neg_mod, set, sub};
+use crate::kernel::{add, equal, fits, is_zero, limb, mul_add, neg_mod, select, set, sub};
 use crate::params::{ExtendedLimbs, Limbs, Shape};
 use crate::width::Width;
 
@@ -28,33 +29,51 @@ const BATCH: usize = 62;
 /// The mask of the low `BATCH` bits.
 const LOW: u64 = (1 << BATCH) - 1;
 
-/// The widest modulus whose inverse is a Fermat exponentiation.
-const FERMAT_BITS: usize = 64;
-
 impl<M: Modulus> Fp<M> {
-    /// `self^-1`, or `None` for `0`, in time that depends on the modulus alone.
-    #[inline]
+    /// `self^-1`, or `None` for `0`.
+    #[inline(always)]
     #[must_use]
     pub fn invert(self) -> Option<Self> {
+        if Shape::<M>::LIMBS == 1 {
+            return self.invert_euclid();
+        }
+        self.invert_with::<true>()
+    }
+
+    /// `self^-1`, or `None` for `0`, in time that depends on the modulus alone; the `Option` is
+    /// built in [`declassify`].
+    #[inline(always)]
+    pub(crate) fn invert_ct(self) -> Option<Self> {
+        if Shape::<M>::LIMBS == 1 {
+            return declassify(
+                !self.is_zero(),
+                self.pow_program::<true>(&Shape::<M>::FERMAT_CHAIN),
+            );
+        }
         self.invert_with::<false>()
     }
 
-    /// `self^-1`, or `None` for `0`, in time that depends on the value: the fastest inversion
-    /// for public values.
-    #[inline]
-    #[must_use]
-    pub fn invert_vartime(self) -> Option<Self> {
-        self.invert_with::<true>()
+    /// The inverse of a one-limb element by the extended Euclidean algorithm on its
+    /// representation `v`: `v^-1`, times `R^3` by a Montgomery product for a Montgomery
+    /// residue `v = x R`, which yields `x^-1 R`.
+    #[inline(always)]
+    fn invert_euclid(self) -> Option<Self> {
+        let value = limb(self.limbs(), 0);
+        if Shape::<M>::MERSENNE && value == Shape::<M>::P0 {
+            return None;
+        }
+        let mut limbs = M::Width::ZERO;
+        set(limbs.as_mut_slice(), 0, euclid(value, Shape::<M>::P0)?);
+        let inverse = Self::from_limbs(limbs);
+        Some(if Shape::<M>::MONTGOMERY {
+            inverse.mul_with::<false>(Self::from_limbs(Shape::<M>::R3))
+        } else {
+            inverse
+        })
     }
 
     #[inline(always)]
     fn invert_with<const VARTIME: bool>(self) -> Option<Self> {
-        if Shape::<M>::BITS <= FERMAT_BITS {
-            return disclose::<VARTIME, _>(
-                !self.is_zero(),
-                self.pow_program(&Shape::<M>::FERMAT_CHAIN),
-            );
-        }
         // `f = d y` and `g = e y` modulo `p` throughout, with `f` odd; `d` and `e` carry the
         // representation's seed, so that `d` ends as the representation of `±y^-1`.
         let mut f = M::Width::EXTENDED_ZERO;
@@ -106,10 +125,60 @@ impl<M: Modulus> Fp<M> {
             d.as_slice(),
             Shape::<M>::P.as_slice(),
         );
-        let inverse = Self::select(negative, Self::from_limbs(negated), Self::from_limbs(d));
-        disclose::<VARTIME, _>(positive | negative, inverse)
+        let mut inverse = M::Width::ZERO;
+        select(
+            inverse.as_mut_slice(),
+            negative,
+            negated.as_slice(),
+            d.as_slice(),
+        );
+        disclose::<VARTIME, _>(positive | negative, Self::from_limbs(inverse))
     }
 }
+
+/// `a^-1 mod p` by the extended Euclidean algorithm, for `a < p`; `None` when `a` and `p` share a
+/// factor, `a = 0` among them. A modulus below `2^32` divides 32-bit limbs.
+#[inline(always)]
+fn euclid(a: u64, p: u64) -> Option<u64> {
+    if p >> 32 == 0 {
+        euclid32(a as u32, p as u32).map(u64::from)
+    } else {
+        euclid64(a, p)
+    }
+}
+
+/// Generates the extended Euclidean algorithm on one integer type. The remainders `r_i` start
+/// from `p` and `a`, with `r_i = (-1)^(i + 1) t_i a mod p` for coefficients `t_i >= 0` that grow
+/// by `t_(i + 1) = t_(i - 1) + q t_i`; two steps run per pass, so that no value moves between
+/// registers.
+macro_rules! euclid {
+    ($name:ident, $int:ty) => {
+        /// `a^-1 mod p`; `None` when the greatest common divisor is not `1`.
+        #[inline(always)]
+        fn $name(a: $int, p: $int) -> Option<$int> {
+            let (mut even, mut odd) = (p, a);
+            let (mut even_t, mut odd_t): ($int, $int) = (0, 1);
+            loop {
+                if odd == 0 {
+                    // The last remainder has an even index: its coefficient is negative.
+                    return (even == 1).then(|| p - even_t);
+                }
+                let quotient = even / odd;
+                even %= odd;
+                even_t += quotient * odd_t;
+                if even == 0 {
+                    return (odd == 1).then_some(odd_t);
+                }
+                let quotient = odd / even;
+                odd %= even;
+                odd_t += quotient * even_t;
+            }
+        }
+    };
+}
+
+euclid!(euclid32, u32);
+euclid!(euclid64, u64);
 
 /// `Some(inverse)` when `invertible`, else `None`; the constant-time inversion builds it in
 /// [`declassify`].
@@ -122,13 +191,17 @@ fn disclose<const VARTIME: bool, T>(invertible: bool, inverse: T) -> Option<T> {
     }
 }
 
-/// `Some(inverse)` when `invertible`, else `None`. The `Option` of [`Fp::invert`] discloses
-/// `invertible`, so the branch on it is the one decision of the constant-time inversion that may
-/// depend on the value. The function keeps a symbol of its own, by which the constant-time check
-/// of `ct-check` exempts that branch; it would exempt any other code here too.
+/// `Some(value)` when `some`, else `None`. The `Option` that [`Secret::invert`] and
+/// [`Secret::sqrt`] return discloses `some`, so the branch on it is the one decision of those
+/// constant-time operations that may depend on the value. The function keeps a symbol of its own,
+/// by which the constant-time check of `ct-check` exempts that branch; it would exempt any other
+/// code here too.
+///
+/// [`Secret::invert`]: crate::Secret::invert
+/// [`Secret::sqrt`]: crate::Secret::sqrt
 #[inline(never)]
-fn declassify<T>(invertible: bool, inverse: T) -> Option<T> {
-    if invertible { Some(inverse) } else { None }
+pub(crate) fn declassify<T>(some: bool, value: T) -> Option<T> {
+    if some { Some(value) } else { None }
 }
 
 /// The masks of one inversion, all ones or zero: a sign spread by a shift of 63 that passes through
@@ -376,8 +449,8 @@ impl<M: Modulus> Shape<M> {
         out
     };
 
-    /// The addition chain of `x^(p - 2)`, for moduli of at most [`FERMAT_BITS`] bits.
-    pub(crate) const FERMAT_CHAIN: Program<M> = if Self::BITS <= FERMAT_BITS {
+    /// The addition chain of `x^(p - 2)`, for one-limb moduli.
+    pub(crate) const FERMAT_CHAIN: Program<M> = if Self::LIMBS == 1 {
         Program::for_exponent(Self::P_MINUS_TWO.as_slice())
     } else {
         Program::EMPTY

@@ -8,7 +8,7 @@ use bench_compare::run_batch;
 use binary_field::{Aes, B233, B571, Gcm, Gf2, Poly16, Poly64, Poly256, Polynomial, Pow, Square};
 use prime_field::biguint::Uint;
 use prime_field::biguint::typenum::{U31, U64, U254, U256, U381, U521};
-use prime_field::{Fp, Modulus};
+use prime_field::{Fp, Modulus, Secret};
 
 use crate::request::{Unhandled, classify};
 
@@ -128,20 +128,46 @@ const BINARY_FIELDS: [Field; 7] = [
     binary::<B571>,
 ];
 
-/// Runs `add`, `sub`, `neg`, `double`, `mul`, `square` and `invert` over the field of `M`.
+/// Runs every operation of [`Secret`] over the field of `M`: the operators between two secrets
+/// and between a secret and a public element on either side, with their assigning forms, `-`,
+/// `square`, `double`, `pow` by a public exponent, `invert` and `sqrt`. Only the secrets are
+/// marked undefined.
 fn prime<M: Modulus>() -> Result<usize, Unhandled> {
     let (a, b) = (Fp::<M>::from_u64(A), Fp::<M>::from_u64(B));
-    let mut pair = [(a, b)];
-    let mut single = [a];
+    let mut pair = [(Secret::new(a), Secret::new(b))];
+    let mut single = [Secret::new(a)];
     classify(&mut pair)?;
     classify(&mut single)?;
+    let public = b;
+    let exponent = Uint::<M::Width>::from_u64(B);
+    let assigned = |apply: fn(&mut Secret<M>, Secret<M>, Fp<M>)| {
+        move |&(a, b): &(Secret<M>, Secret<M>)| {
+            let mut target = a;
+            apply(&mut target, b, public);
+            target
+        }
+    };
     Ok(run_batch(&pair, |&(a, b)| a + b)
         + run_batch(&pair, |&(a, b)| a - b)
-        + run_batch(&single, |&a| -a)
-        + run_batch(&single, |a| a.double())
         + run_batch(&pair, |&(a, b)| a * b)
+        + run_batch(&single, |&a| a + public)
+        + run_batch(&single, |&a| a - public)
+        + run_batch(&single, |&a| a * public)
+        + run_batch(&single, |&a| public + a)
+        + run_batch(&single, |&a| public - a)
+        + run_batch(&single, |&a| public * a)
+        + run_batch(&pair, assigned(|target, b, _| *target += b))
+        + run_batch(&pair, assigned(|target, b, _| *target -= b))
+        + run_batch(&pair, assigned(|target, b, _| *target *= b))
+        + run_batch(&pair, assigned(|target, _, public| *target += public))
+        + run_batch(&pair, assigned(|target, _, public| *target -= public))
+        + run_batch(&pair, assigned(|target, _, public| *target *= public))
+        + run_batch(&single, |&a| -a)
         + run_batch(&single, |a| a.square())
-        + run_batch(&single, |a| a.invert()))
+        + run_batch(&single, |a| a.double())
+        + run_batch(&single, |a| a.pow(exponent))
+        + run_batch(&single, |a| a.invert())
+        + run_batch(&single, |a| a.sqrt()))
 }
 
 /// Runs the sum, the product, `square`, `sqrt`, `trace`, `times_x`, `over_x` and, with hardware
