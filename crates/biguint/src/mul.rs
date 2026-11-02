@@ -39,7 +39,7 @@ impl<N: Bits, RhsN: Bits> Mul<Uint<RhsN>> for Uint<N> {
 
     #[inline(always)]
     fn mul(self, rhs: Uint<RhsN>) -> Self::Output {
-        Uint::from_generic_limbs(truncated_product::<N, _>(&self.limbs, &rhs.limbs))
+        Uint::from_generic_limbs(truncated_product::<N, _, false>(&self.limbs, &rhs.limbs))
     }
 }
 
@@ -54,7 +54,10 @@ where
 
     #[inline(always)]
     fn widening_mul(self, rhs: Uint<RhsN>) -> Self::Output {
-        Uint::from_generic_limbs(full_product::<Sum<N, RhsN>, _, _>(&self.limbs, &rhs.limbs))
+        Uint::from_generic_limbs(full_product::<Sum<N, RhsN>, _, _, false>(
+            &self.limbs,
+            &rhs.limbs,
+        ))
     }
 }
 
@@ -126,9 +129,10 @@ const fn min(a: usize, b: usize) -> usize {
     if a < b { a } else { b }
 }
 
-/// `a * b` in the limbs of the width `P`, which holds it.
+/// `a * b` in the limbs of the width `P`, which holds it. `MASKED` runs every correction under
+/// masks: no branch and no memory address depends on the operands.
 #[inline(always)]
-pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength>(
+pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength, const MASKED: bool>(
     a: &GenericArray<u64, A>,
     b: &GenericArray<u64, B>,
 ) -> GenericArray<u64, P::Limbs> {
@@ -137,7 +141,7 @@ pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength>(
         basecase::product(&mut product, a, b);
     } else if A::USIZE == B::USIZE {
         // The difference products need about seven eighths of the product's limbs.
-        karatsuba_into::<P>(
+        karatsuba_into::<P, MASKED>(
             &mut product,
             a,
             b,
@@ -145,7 +149,7 @@ pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength>(
         );
     } else {
         // The block product and its difference products.
-        karatsuba_into::<P>(
+        karatsuba_into::<P, MASKED>(
             &mut product,
             a,
             b,
@@ -157,29 +161,34 @@ pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength>(
 
 /// `a * b` into `product`, the `P::LIMBS` limbs of the width `P`, by [`karatsuba_product`].
 #[inline(always)]
-fn karatsuba_into<P: Bits>(product: &mut [u64], a: &[u64], b: &[u64], scratch: &mut [u64]) {
+fn karatsuba_into<P: Bits, const MASKED: bool>(
+    product: &mut [u64],
+    a: &[u64],
+    b: &[u64],
+    scratch: &mut [u64],
+) {
     if P::LIMBS >= a.len() + b.len() {
-        karatsuba_product(product, a, b, scratch);
+        karatsuba_product::<MASKED>(product, a, b, scratch);
     } else {
         // The top limb of the full product is zero; it needs a place to land.
         let mut wide = GenericArray::<u64, P::Window>::default();
-        karatsuba_product(&mut wide, a, b, scratch);
+        karatsuba_product::<MASKED>(&mut wide, a, b, scratch);
         for (slot, &limb) in product.iter_mut().zip(wide.iter()) {
             *slot = limb;
         }
     }
 }
 
-/// `a * b mod 2^N`.
+/// `a * b mod 2^N`; `MASKED` as for [`full_product`].
 #[inline(always)]
-fn truncated_product<N: Bits, B: ArrayLength>(
+pub(crate) fn truncated_product<N: Bits, B: ArrayLength, const MASKED: bool>(
     a: &GenericArray<u64, N::Limbs>,
     b: &GenericArray<u64, B>,
 ) -> GenericArray<u64, N::Limbs> {
     let mut product = GenericArray::<u64, N::Limbs>::default();
     if Shape::<N::Limbs, B, N::Limbs>::TRUNCATED_SPLIT {
         let mut scratch = GenericArray::<u64, N::TruncatedScratch>::default();
-        Halvings::truncated(&mut product, a, b, &mut scratch);
+        Halvings::truncated_with::<MASKED>(&mut product, a, b, &mut scratch);
     } else {
         basecase::product(&mut product, a, b);
     }
@@ -188,11 +197,16 @@ fn truncated_product<N: Bits, B: ArrayLength>(
 
 /// `a * b` into `product`, both operands at least [`THRESHOLD`] limbs long.
 #[inline(always)]
-fn karatsuba_product(product: &mut [u64], a: &[u64], b: &[u64], scratch: &mut [u64]) {
+fn karatsuba_product<const MASKED: bool>(
+    product: &mut [u64],
+    a: &[u64],
+    b: &[u64],
+    scratch: &mut [u64],
+) {
     let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
     if long.len() == short.len() {
-        Halvings::product(product, long, short, scratch);
+        Halvings::product_with::<MASKED>(product, long, short, scratch);
     } else {
-        blocks::<Halvings>(product, long, short, scratch);
+        blocks::<Halvings, MASKED>(product, long, short, scratch);
     }
 }

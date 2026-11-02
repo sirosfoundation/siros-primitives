@@ -234,6 +234,6 @@ fn any_product<D: Depth>(out: &mut [u64], a: &[u64], b: &[u64], scratch: &mut [u
     } else if long.len() == short.len() {
         D::product(out, long, short, scratch);
     } else {
-        blocks::<D>(out, long, short, scratch);
+        blocks::<D, false>(out, long, short, scratch);
     }
 }

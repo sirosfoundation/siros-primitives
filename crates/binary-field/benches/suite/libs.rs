@@ -11,7 +11,7 @@ use core::ops::{Add, Mul};
 
 use bench_compare::{Cells, Limbs, Row, Visitor};
 use binary_field::generic_array::GenericArray;
-use binary_field::{Gf2, Secret, Square};
+use binary_field::{ConstantTime, Gf2, Square};
 use core_algebra::{AlgebraicField, SerializableField, SupportsU128Conversions};
 use hekate_math::{
     BinaryFieldExtras, Block8, Block16, Block32, Block64, Block128, Block256, TowerField,
@@ -426,7 +426,7 @@ fn this_crate<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
-impl<P: binary_field::Polynomial> Raw for Secret<P> {
+impl<P: binary_field::Polynomial> Raw for ConstantTime<Gf2<P>> {
     fn from_raw(bits: &[u64]) -> Self {
         Self::new(Gf2::from_raw(bits))
     }
@@ -436,7 +436,8 @@ impl<P: binary_field::Polynomial> Raw for Secret<P> {
     }
 }
 
-/// `Gf2`'s defaults in the variable-time rows, `Secret`'s operations in the constant-time rows.
+/// `Gf2`'s defaults in the variable-time rows, `ConstantTime`'s operations in the constant-time
+/// rows.
 fn ours<P: binary_field::Polynomial, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     type Public<P> = Gf2<P>;
     cells
@@ -478,37 +479,37 @@ fn ours<P: binary_field::Polynomial, V: Visitor<Op, Field>>(cells: Crate<V>) -> 
         )
         .binary_in(
             Kind::Add.in_row(CONSTANT),
-            "Secret +",
+            "ConstantTime +",
             #[inline(always)]
-            |&(a, b): &(Secret<P>, _)| a + b,
+            |&(a, b): &(ConstantTime<Gf2<P>>, _)| a + b,
             element,
         )
         .binary_in(
             Kind::Mul.in_row(CONSTANT),
-            "Secret *",
+            "ConstantTime *",
             #[inline(always)]
-            |&(a, b): &(Secret<P>, _)| a * b,
+            |&(a, b): &(ConstantTime<Gf2<P>>, _)| a * b,
             element,
         )
         .chained_unary_in(
             Kind::Square.in_row(CONSTANT),
-            "Secret::square",
+            "ConstantTime::square",
             #[inline(always)]
-            |&a: &Secret<P>| a.square(),
+            |&a: &ConstantTime<Gf2<P>>| a.square(),
             element,
         )
         .unary_in(
             Kind::Invert.in_row(CONSTANT),
-            "Secret::invert",
+            "ConstantTime::invert",
             #[inline(always)]
-            |&a: &Secret<P>| a.invert(),
+            |&a: &ConstantTime<Gf2<P>>| a.invert(),
             maybe,
         )
         .unary_in(
             Kind::Sqrt.in_row(CONSTANT),
-            "Secret::sqrt",
+            "ConstantTime::sqrt",
             #[inline(always)]
-            |&a: &Secret<P>| a.sqrt(),
+            |&a: &ConstantTime<Gf2<P>>| a.sqrt(),
             element,
         )
         .cells()

@@ -9,8 +9,9 @@ Big-integer, prime-field, carry-less and binary-field arithmetic in pure Rust. E
 
 | Crate | Description |
 |---|---|
-| [`biguint`](crates/biguint) | Fixed-width unsigned integers of any bit width |
-| [`prime-field`](crates/prime-field) | Prime fields declared by their modulus; `Fp` is variable-time, `Secret` constant-time |
+| [`constant-time`](crates/constant-time) | `ConstantTime<T>`: operations in constant time over the wrapped values |
+| [`biguint`](crates/biguint) | Fixed-width unsigned integers of any bit width, with constant-time arithmetic in `ConstantTime` |
+| [`prime-field`](crates/prime-field) | Prime fields declared by their modulus; `Fp` is variable-time, `ConstantTime<Fp>` constant-time |
 | [`clmul`](crates/clmul) | Carry-less multiplication of words, limb slices and GF(2^128) elements |
 | [`binary-field`](crates/binary-field) | Binary fields GF(2^n) of any degree, declared by their polynomial |
 

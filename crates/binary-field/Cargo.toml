@@ -19,11 +19,12 @@ default = []
 # square root and inverse up to degree 16, and byte tables of the Frobenius powers of the
 # inverses from degree 17 to 128.
 precomputed = []
-# No lookup table: every operation computes, as `Secret` does. It wins over `precomputed`.
+# No lookup table: every operation computes, as `ConstantTime` does. It wins over `precomputed`.
 not-precomputed = []
 
 [dependencies]
 biguint = { path = "../biguint", version = "0.1.0", default-features = false }
+constant-time = { path = "../constant-time", version = "0.1.0" }
 clmul = { path = "../clmul", version = "0.1.0", features = ["biguint"] }
 const-default.workspace = true
 derive-where.workspace = true

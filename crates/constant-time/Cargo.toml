@@ -1,0 +1,15 @@
+[package]
+name = "constant-time"
+version = "0.1.0"
+description = "A wrapper whose operations run in constant time over the wrapped values, and the traits through which the wrapped types provide them"
+readme = "README.md"
+keywords = ["constant-time", "side-channel", "timing", "cryptography"]
+categories = ["cryptography", "no-std", "no-std::no-alloc"]
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

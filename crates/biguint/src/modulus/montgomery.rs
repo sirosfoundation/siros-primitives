@@ -4,7 +4,9 @@
 
 use generic_array::{ArrayLength, GenericArray};
 
-use crate::kernel::{add_mul_row, reduced, split, split_mut, subtract_when_above};
+use crate::kernel::{
+    add_mul_row, reduced, split, split_mut, subtract_when_above, subtract_when_above_masked,
+};
 use crate::limb::CarryingAdd;
 use crate::unroll::{UNROLLED, unroll};
 
@@ -34,6 +36,35 @@ pub(crate) fn reduce<L: ArrayLength>(
     modulus: &GenericArray<u64, L>,
     inverse: u64,
 ) {
+    let above = fold::<L>(t, modulus, inverse);
+    let (_, high) = split(t, L::USIZE);
+    // Below `2m`, one subtraction at most brings the value below `m`. A carry out of the top limb
+    // places it at or above `2^(64 * k)`, above `m`; the borrow cancels the carry.
+    reduced(subtract_when_above(out, high, modulus, above));
+}
+
+/// [`reduce`] with its final subtraction under masks at every length: no branch and no memory
+/// address depends on `t`.
+#[cfg_attr(debug_assertions, inline(never))]
+#[cfg_attr(not(debug_assertions), inline(always))]
+pub(crate) fn reduce_masked<L: ArrayLength>(
+    out: &mut [u64],
+    t: &mut [u64],
+    modulus: &GenericArray<u64, L>,
+    inverse: u64,
+) {
+    let above = fold::<L>(t, modulus, inverse);
+    let (_, high) = split(t, L::USIZE);
+    for (slot, &limb) in out.iter_mut().zip(high) {
+        *slot = limb;
+    }
+    subtract_when_above_masked(out, modulus, above);
+}
+
+/// The rows of [`reduce`]: adds to `t` the multiples of the modulus that clear its low `k` limbs,
+/// which leaves the value below `2m` in the limbs above them, and returns the carry out of the top.
+#[inline(always)]
+fn fold<L: ArrayLength>(t: &mut [u64], modulus: &GenericArray<u64, L>, inverse: u64) -> u64 {
     let k = L::USIZE;
     // The carry out of the limb above each row: the rows' sums reach `2^(64 * (2k)) + ...`, one
     // bit above the `2k` limbs.
@@ -53,10 +84,7 @@ pub(crate) fn reduce<L: ArrayLength>(
             }
         }
     });
-    let (_, high) = split(t, k);
-    // Below `2m`, one subtraction at most brings the value below `m`. A carry out of the top limb
-    // places it at or above `2^(64 * k)`, above `m`; the borrow cancels the carry.
-    reduced(subtract_when_above(out, high, modulus, above));
+    above
 }
 
 /// Adds `modulus * q` to `row`, as long, and returns the carry limb above it: the multiply chain

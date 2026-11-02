@@ -75,8 +75,8 @@ const LAYOUT: Layout<'static, Field> = Layout {
     method: &[
         "Operands: canonical residues, the same for every crate.",
         "Every result matches `num-bigint` before it is measured.",
-        "`prime-field` runs `Fp` in the tables without a label and `Secret` in the constant-time \
-         tables.",
+        "`prime-field` runs `Fp` in the tables without a label and `ConstantTime` in the \
+         constant-time tables.",
     ],
 };
 

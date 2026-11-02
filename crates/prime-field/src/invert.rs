@@ -207,14 +207,14 @@ fn disclose<const VARTIME: bool, T>(invertible: bool, inverse: T) -> Option<T> {
     }
 }
 
-/// `Some(value)` when `some`, else `None`. The `Option` that [`Secret::invert`] and
-/// [`Secret::sqrt`] return discloses `some`, so the branch on it is the one decision of those
+/// `Some(value)` when `some`, else `None`. The `Option` that [`ConstantTime::invert`] and
+/// [`ConstantTime::sqrt`] return discloses `some`, so the branch on it is the one decision of those
 /// constant-time operations that may depend on the value. The function keeps a symbol of its own,
 /// by which the constant-time check of `ct-check` exempts that branch; it would exempt any other
 /// code here too.
 ///
-/// [`Secret::invert`]: crate::Secret::invert
-/// [`Secret::sqrt`]: crate::Secret::sqrt
+/// [`ConstantTime::invert`]: crate::ConstantTime::invert
+/// [`ConstantTime::sqrt`]: crate::ConstantTime::sqrt
 #[inline(never)]
 pub(crate) fn declassify<T>(some: bool, value: T) -> Option<T> {
     if some { Some(value) } else { None }

@@ -21,6 +21,7 @@ mod bitwise;
 mod bytes;
 mod cmp;
 mod convert;
+mod ct;
 mod div;
 mod fmt;
 mod kernel;
@@ -40,6 +41,9 @@ mod stream;
 mod uint;
 mod unroll;
 
+/// The constant-time wrapper and the traits that `Uint` and `Residue` implement.
+pub use constant_time;
+pub use constant_time::ConstantTime;
 /// The array type of limbs and encodings.
 pub use generic_array;
 /// The type-level integers that name widths.
@@ -47,7 +51,7 @@ pub use typenum;
 
 pub use bits::{Bits, Bits8, Bits16, Bits32, Bits64, Bits128, Bits256, Bits384, Bits512};
 pub use convert::OutOfRange;
-pub use modulus::{Modulus, NotReduced, Residue, Ring};
+pub use modulus::{ConstantTimeResidue, Modulus, NotReduced, Residue, Ring};
 pub use mul::WideningMul;
 pub use nonzero::{IsZero, NonZero, NonZeroUint};
 pub use num::{Exponent, One, Pow, Square};

@@ -100,10 +100,52 @@ let value = p.scope(|ring| {
 assert_eq!(value, U256::from_u64((6 * 90 + 6 * 6 * 6) % 97));
 ```
 
+## ConstantTime
+
+`ConstantTime<Uint<N>>` and `ConstantTimeResidue<'id, N>` (`ConstantTime<Residue<'id, N>>`) run
+in constant time over the wrapped values: no branch and no memory address depends on them.
+`ConstantTime` comes from [`constant-time`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/constant-time)
+and is re-exported here; `new` and `reveal` cost nothing. Widths, shift amounts, moduli, divisors
+and public operands may steer the time.
+
+- `+ - * & | ^` take two wrapped values, or a wrapped value and a public `Uint` of any width on
+  either side, with the assigning forms; `!`, `<<` and `>>` by a public amount.
+- `add_mod`, `sub_mod`, `neg_mod` and `mul_mod` take a public `NonZeroUint` modulus; `div_rem`,
+  `/` and `%` a public `NonZeroUint` divisor of any width.
+- `square`, `double`, and `pow` by a wrapped exponent of any width, over all its bits.
+- `Ring::reduce_constant_time` makes a wrapped residue; `get` gives its wrapped value. Residues
+  have `+`, `-` and `*` with wrapped and public residues of the same scope, unary `-`, `square`,
+  and `pow` by a wrapped exponent, by a fixed window whose table is read by a masked scan of
+  every entry.
+
+```rust
+use biguint::{ConstantTime, Modulus, NonZeroUint, U256};
+
+let key = ConstantTime::new(U256::from_u64(7));
+let m = NonZeroUint::new(U256::from_u64(97)).expect("a nonzero modulus");
+assert_eq!(key.mul_mod(ConstantTime::new(U256::from_u64(20)), m).reveal(), U256::from_u64(43));
+assert_eq!((key * U256::from_u64(3) + key).reveal(), U256::from_u64(28));
+
+let p = Modulus::from(m);
+let power = p.scope(|ring| {
+    let base = ring.reduce_constant_time(key);
+    base.pow(ConstantTime::new(U256::from_u64(3))).get().reveal()
+});
+assert_eq!(power, U256::from_u64(343 % 97));
+```
+
+A product runs the quadratic product, and Karatsuba from 16 limbs with the signs of its
+differences under masks. A reduction by an odd modulus runs Montgomery's, and a division runs
+schoolbook long division by the public divisor; their corrections run under masks.
+CI runs every operation at 64, 256, 521 and 4096 bits, under an odd and an even modulus, under
+Valgrind's memcheck with
+[`ct-check`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/ct-check).
+
 ## Memory
 
 No operation allocates. A 4096-bit `*`, `div_rem` or `mul_mod` uses at most 7.9 KiB of stack in a
-release build.
+release build. `pow` of a 4096-bit `ConstantTimeResidue` holds a table of 32 residues,
+16 KiB.
 
 ## Features
 

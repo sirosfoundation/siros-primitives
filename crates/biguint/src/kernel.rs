@@ -5,7 +5,7 @@
 //! the carry stays an ordinary register and each step consumes its own flags.
 
 use core::cmp::Ordering;
-use core::hint::select_unpredictable;
+use core::hint::{black_box, select_unpredictable};
 
 use crate::limb::{BorrowingSub, CarryingAdd, mask_below};
 use crate::stream::{
@@ -185,44 +185,52 @@ pub(crate) fn subtract_when_above(
     divisor: &[u64],
     carry: u64,
 ) -> bool {
-    if out.len() > BRANCH_FREE_LIMBS {
-        copy(out, part);
+    copy(out, part);
+    subtract_when_above_in_place(out, divisor, carry)
+}
+
+/// Subtracts `divisor` from `part` when `carry` is set or `part >= divisor`, and returns whether
+/// it did. A set `carry` stands for a part of at least `2^(64 * k)`, whose borrow cancels it.
+/// `part` sets `k`; `divisor` is at least as long. Up to [`BRANCH_FREE_LIMBS`] limbs, the
+/// difference runs into registers, and its borrow decides whether `part` takes it, by an
+/// unpredictable select of every limb; longer, [`subtract_if_above`] decides.
+#[inline(always)]
+pub(crate) fn subtract_when_above_in_place(part: &mut [u64], divisor: &[u64], carry: u64) -> bool {
+    if part.len() > BRANCH_FREE_LIMBS {
         if carry != 0 {
-            fits(sub_assign(out, divisor));
+            fits(sub_assign(part, divisor));
             return true;
         }
-        return subtract_if_above(out, divisor);
+        return subtract_if_above(part, divisor);
     }
-    let borrow = sub_into(out, part, divisor);
+    let mut difference = [0u64; BRANCH_FREE_LIMBS];
+    let (difference, _) = split_mut(&mut difference, part.len());
+    let borrow = sub_into(difference, part, divisor);
     let take = (carry != 0) | (borrow == 0);
-    for (slot, &limb) in out.iter_mut().zip(part) {
+    for (slot, &limb) in part.iter_mut().zip(difference.iter()) {
         // A conditional move: the unpredictable select keeps LLVM from branching inside a loop.
-        *slot = select_unpredictable(take, *slot, limb);
+        *slot = select_unpredictable(take, limb, *slot);
     }
     take
 }
 
-/// Writes `(part + addend) mod 2^(64 * k)` to `out` when `carry` is zero, `part` otherwise. `out`
-/// sets `k`; `part` and `addend` are at least as long. Up to [`BRANCH_FREE_LIMBS`] limbs, the
-/// addition runs under a mask ([`mask_below`]); longer, it runs when `carry` calls for it.
+/// Adds `addend` to `part` modulo `2^(64 * k)` when `carry` is zero. `part` sets `k`; `addend` is
+/// at least as long. Up to [`BRANCH_FREE_LIMBS`] limbs, the addition runs under a mask
+/// ([`mask_below`]); longer, it runs when `carry` calls for it.
 #[inline(always)]
-pub(crate) fn add_without_carry(out: &mut [u64], part: &[u64], addend: &[u64], carry: u64) {
-    if out.len() > BRANCH_FREE_LIMBS {
-        copy(out, part);
+pub(crate) fn add_unless_carry(part: &mut [u64], addend: &[u64], carry: u64) {
+    if part.len() > BRANCH_FREE_LIMBS {
         if carry == 0 {
-            fits(add_assign(out, addend));
+            fits(add_assign(part, addend));
         }
         return;
     }
     // All ones without the carry.
     let mask = mask_below(carry, 1);
-    let (mut part, mut addend) = (
-        ZeroExtended::new(part).pull(),
-        ZeroExtended::new(addend).pull(),
-    );
+    let mut addend = ZeroExtended::new(addend).pull();
     let mut carry = 0;
-    for_each_slot(out, |slot| {
-        (*slot, carry) = part.next_limb().add_carry(addend.next_limb() & mask, carry);
+    for_each_slot(part, |slot| {
+        (*slot, carry) = slot.add_carry(addend.next_limb() & mask, carry);
     });
 }
 
@@ -376,3 +384,104 @@ pub(crate) fn reduced(_quotient: bool) {}
 /// the steps that build it cancel.
 #[inline(always)]
 pub(crate) fn fits(_carry: u64) {}
+
+/// All ones when `bit` is `1`, zero when it is `0`. LLVM turns a mask that it knows to be zero or
+/// all ones into a branch; the mask passes through `black_box`, which hides its value.
+#[inline(always)]
+pub(crate) fn mask_of(bit: u64) -> u64 {
+    black_box(0u64.wrapping_sub(bit))
+}
+
+/// All ones when `a == b`, zero otherwise, without a comparison; opaque as [`mask_of`].
+#[inline(always)]
+pub(crate) fn mask_equal(a: u64, b: u64) -> u64 {
+    black_box(mask_below(a ^ b, 1))
+}
+
+/// Adds `b & mask` to `out`, `b` zero-extended to its length, and returns the carry out of the top
+/// limb.
+#[inline(always)]
+pub(crate) fn add_masked(out: &mut [u64], b: &[u64], mask: u64) -> u64 {
+    let mut source = ZeroExtended::new(b).pull();
+    let mut carry = 0;
+    for_each_slot(out, |slot| {
+        (*slot, carry) = slot.add_carry(source.next_limb() & mask, carry);
+    });
+    carry
+}
+
+/// Writes `a` over `out` where `mask` is all ones, and keeps `out` where it is zero.
+#[inline(always)]
+pub(crate) fn select_masked(out: &mut [u64], a: &[u64], mask: u64) {
+    for (slot, &limb) in out.iter_mut().zip(a) {
+        *slot ^= (*slot ^ limb) & mask;
+    }
+}
+
+/// [`subtract_when_above_in_place`] under masks at every length: subtracts `divisor` from `part`
+/// when `carry` is set or `part >= divisor`. The subtraction always runs, and the divisor is added
+/// back under a mask when it borrowed without a carry.
+#[inline(always)]
+pub(crate) fn subtract_when_above_masked(part: &mut [u64], divisor: &[u64], carry: u64) {
+    let borrow = sub_assign(part, divisor);
+    fits(add_masked(part, divisor, mask_of(borrow & !carry & 1)));
+}
+
+/// [`add_unless_carry`] under a mask at every length.
+#[inline(always)]
+pub(crate) fn add_unless_carry_masked(part: &mut [u64], addend: &[u64], carry: u64) {
+    fits(add_masked(part, addend, mask_of(carry ^ 1)));
+}
+
+/// Writes `-out mod 2^(64 * out.len())` over `out` where `mask` is all ones, and keeps `out` where
+/// it is zero: the complement under the mask, plus the mask's low bit.
+#[inline(always)]
+pub(crate) fn negate_masked(out: &mut [u64], mask: u64) {
+    let mut carry = mask & 1;
+    for_each_slot(out, |slot| {
+        (*slot, carry) = (*slot ^ mask).add_carry(0, carry);
+    });
+}
+
+/// Adds `b ^ flip`, `b` zero-extended to the length of `out`, and the low bit of `flip` to `out`,
+/// and returns the carry out of the top limb. A `flip` of all ones adds `!b + 1`, which subtracts
+/// `b` modulo `2^(64 * out.len())`; a zero `flip` adds `b`.
+#[inline(always)]
+pub(crate) fn add_flipped(out: &mut [u64], b: &[u64], flip: u64) -> u64 {
+    let mut source = ZeroExtended::new(b).pull();
+    let mut carry = flip & 1;
+    for_each_slot(out, |slot| {
+        (*slot, carry) = slot.add_carry(source.next_limb() ^ flip, carry);
+    });
+    carry
+}
+
+/// [`add_limb`] through every limb: the carry ripples to the top whatever the values.
+#[inline(always)]
+pub(crate) fn add_limb_masked(out: &mut [u64], carry: u64) -> u64 {
+    let Some((bottom, rest)) = out.split_first_mut() else {
+        return carry;
+    };
+    let (sum, overflow) = bottom.overflowing_add(carry);
+    *bottom = sum;
+    let mut carry = u64::from(overflow);
+    for_each_slot(rest, |slot| {
+        (*slot, carry) = slot.add_carry(0, carry);
+    });
+    carry
+}
+
+/// [`sub_limb`] through every limb: the borrow ripples to the top whatever the values.
+#[inline(always)]
+pub(crate) fn sub_limb_masked(out: &mut [u64], borrow: u64) -> u64 {
+    let Some((bottom, rest)) = out.split_first_mut() else {
+        return borrow;
+    };
+    let (difference, underflow) = bottom.overflowing_sub(borrow);
+    *bottom = difference;
+    let mut borrow = u64::from(underflow);
+    for_each_slot(rest, |slot| {
+        (*slot, borrow) = slot.sub_borrow(0, borrow);
+    });
+    borrow
+}

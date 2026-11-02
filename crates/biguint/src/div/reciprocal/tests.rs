@@ -48,6 +48,8 @@ fn byte_division_by_one_word_is_exact_on_every_input() {
                 );
                 let actual = byte::div_2_by_1(high, low, divisor, reciprocal);
                 assert_eq!(actual, expected, "{dividend:#x} / {divisor:#x}");
+                let masked = byte::div_2_by_1_masked(high, low, divisor, reciprocal);
+                assert_eq!(masked, expected, "masked {dividend:#x} / {divisor:#x}");
             }
         }
     }

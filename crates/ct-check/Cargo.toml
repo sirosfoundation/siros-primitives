@@ -1,7 +1,7 @@
 [package]
 name = "ct-check"
 version = "0.0.0"
-description = "Runs the constant-time operations of prime-field and binary-field on secret operands under Valgrind's memcheck, which reports every branch and memory address that depends on them"
+description = "Runs the ConstantTime operations of biguint, prime-field and binary-field under Valgrind's memcheck, which reports every branch and memory address that depends on a wrapped operand"
 readme = "README.md"
 publish = false
 edition.workspace = true
@@ -11,6 +11,7 @@ authors.workspace = true
 
 [dependencies]
 bench-compare = { path = "../bench-compare" }
+biguint = { path = "../biguint" }
 binary-field = { path = "../binary-field" }
 prime-field = { path = "../prime-field" }
 serde.workspace = true

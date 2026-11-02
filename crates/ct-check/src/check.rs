@@ -109,7 +109,7 @@ fn check(valgrind: &Path, build: &Build) -> Result<bool, Failure> {
         }
         Err(bench_compare::Error::Failed { status, .. }) if status.code() == Some(REPORTED) => {
             println!(
-                "{}: memcheck reported a branch or a memory address that depends on a secret \
+                "{}: memcheck reported a branch or a memory address that depends on a wrapped \
                  operand",
                 build.name
             );

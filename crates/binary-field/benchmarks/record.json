@@ -111,7 +111,7 @@
           "field": "GF(2⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 65536,
@@ -309,7 +309,7 @@
           "field": "GF(2¹⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 32768,
@@ -525,7 +525,7 @@
           "field": "GF(2⁶⁴)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -687,7 +687,7 @@
           "field": "GF(2¹²⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -885,7 +885,7 @@
           "field": "GF(2²³³)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 2048,
@@ -975,7 +975,7 @@
           "field": "GF(2²⁵⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 2048,
@@ -1083,7 +1083,7 @@
           "field": "GF(2⁵⁷¹)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 819,
@@ -1803,7 +1803,7 @@
           "field": "GF(2⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 65536,
@@ -1929,7 +1929,7 @@
           "field": "GF(2¹⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 32768,
@@ -2055,7 +2055,7 @@
           "field": "GF(2⁶⁴)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -2199,7 +2199,7 @@
           "field": "GF(2¹²⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -2379,7 +2379,7 @@
           "field": "GF(2²³³)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 2048,
@@ -2469,7 +2469,7 @@
           "field": "GF(2²⁵⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 2048,
@@ -2577,7 +2577,7 @@
           "field": "GF(2⁵⁷¹)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 819,
@@ -3495,7 +3495,7 @@
           "field": "GF(2⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 131072,
@@ -3621,7 +3621,7 @@
           "field": "GF(2¹⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 65536,
@@ -3729,7 +3729,7 @@
           "field": "GF(2⁶⁴)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 8192,
@@ -3855,7 +3855,7 @@
           "field": "GF(2¹²⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 8192,
@@ -3981,7 +3981,7 @@
           "field": "GF(2²³³)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -4071,7 +4071,7 @@
           "field": "GF(2²⁵⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -4179,7 +4179,7 @@
           "field": "GF(2⁵⁷¹)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 1638,
@@ -4917,7 +4917,7 @@
           "field": "GF(2⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 16384,
@@ -5019,7 +5019,7 @@
           "field": "GF(2¹⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 8192,
@@ -5121,7 +5121,7 @@
           "field": "GF(2⁶⁴)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 1024,
@@ -5233,7 +5233,7 @@
           "field": "GF(2¹²⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 1024,
@@ -5335,7 +5335,7 @@
           "field": "GF(2²³³)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 128,
@@ -5417,7 +5417,7 @@
           "field": "GF(2²⁵⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 256,
@@ -5509,7 +5509,7 @@
           "field": "GF(2⁵⁷¹)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 32,
@@ -6255,7 +6255,7 @@
           "field": "GF(2⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 131072,
@@ -6347,7 +6347,7 @@
           "field": "GF(2¹⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 65536,
@@ -6429,7 +6429,7 @@
           "field": "GF(2⁶⁴)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 8192,
@@ -6521,7 +6521,7 @@
           "field": "GF(2¹²⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 8192,
@@ -6613,7 +6613,7 @@
           "field": "GF(2²³³)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -6695,7 +6695,7 @@
           "field": "GF(2²⁵⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -6777,7 +6777,7 @@
           "field": "GF(2⁵⁷¹)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 1638,
@@ -7493,7 +7493,7 @@
           "field": "GF(2⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 65536,
@@ -7691,7 +7691,7 @@
           "field": "GF(2¹⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 32768,
@@ -7907,7 +7907,7 @@
           "field": "GF(2⁶⁴)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -8069,7 +8069,7 @@
           "field": "GF(2¹²⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -8267,7 +8267,7 @@
           "field": "GF(2²³³)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 2048,
@@ -8357,7 +8357,7 @@
           "field": "GF(2²⁵⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 2048,
@@ -8465,7 +8465,7 @@
           "field": "GF(2⁵⁷¹)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret +",
+            "function": "ConstantTime +",
             "deviation": null,
             "batch": {
               "operations": 819,
@@ -9185,7 +9185,7 @@
           "field": "GF(2⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 65536,
@@ -9311,7 +9311,7 @@
           "field": "GF(2¹⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 32768,
@@ -9437,7 +9437,7 @@
           "field": "GF(2⁶⁴)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -9581,7 +9581,7 @@
           "field": "GF(2¹²⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -9761,7 +9761,7 @@
           "field": "GF(2²³³)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 2048,
@@ -9851,7 +9851,7 @@
           "field": "GF(2²⁵⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 2048,
@@ -9959,7 +9959,7 @@
           "field": "GF(2⁵⁷¹)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret *",
+            "function": "ConstantTime *",
             "deviation": null,
             "batch": {
               "operations": 256,
@@ -10877,7 +10877,7 @@
           "field": "GF(2⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 131072,
@@ -11003,7 +11003,7 @@
           "field": "GF(2¹⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 65536,
@@ -11111,7 +11111,7 @@
           "field": "GF(2⁶⁴)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 8192,
@@ -11237,7 +11237,7 @@
           "field": "GF(2¹²⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 8192,
@@ -11363,7 +11363,7 @@
           "field": "GF(2²³³)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -11453,7 +11453,7 @@
           "field": "GF(2²⁵⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -11561,7 +11561,7 @@
           "field": "GF(2⁵⁷¹)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::square",
+            "function": "ConstantTime::square",
             "deviation": null,
             "batch": {
               "operations": 1638,
@@ -12299,7 +12299,7 @@
           "field": "GF(2⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 8192,
@@ -12401,7 +12401,7 @@
           "field": "GF(2¹⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -12503,7 +12503,7 @@
           "field": "GF(2⁶⁴)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 512,
@@ -12615,7 +12615,7 @@
           "field": "GF(2¹²⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 128,
@@ -12717,7 +12717,7 @@
           "field": "GF(2²³³)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 64,
@@ -12799,7 +12799,7 @@
           "field": "GF(2²⁵⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 32,
@@ -12891,7 +12891,7 @@
           "field": "GF(2⁵⁷¹)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::invert",
+            "function": "ConstantTime::invert",
             "deviation": null,
             "batch": {
               "operations": 16,
@@ -13637,7 +13637,7 @@
           "field": "GF(2⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 131072,
@@ -13729,7 +13729,7 @@
           "field": "GF(2¹⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 65536,
@@ -13811,7 +13811,7 @@
           "field": "GF(2⁶⁴)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 8192,
@@ -13903,7 +13903,7 @@
           "field": "GF(2¹²⁸)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 8192,
@@ -13995,7 +13995,7 @@
           "field": "GF(2²³³)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -14077,7 +14077,7 @@
           "field": "GF(2²⁵⁶)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 4096,
@@ -14159,7 +14159,7 @@
           "field": "GF(2⁵⁷¹)",
           "crate": "binary-field",
           "counted": {
-            "function": "Secret::sqrt",
+            "function": "ConstantTime::sqrt",
             "deviation": null,
             "batch": {
               "operations": 256,

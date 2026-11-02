@@ -9,6 +9,7 @@
 //! by this reduction is the cheapest modular multiplication for a modulus used once (Handbook of
 //! Applied Cryptography, Note 14.39).
 
+pub(crate) mod ct;
 pub(crate) mod dc;
 pub(crate) mod reciprocal;
 
