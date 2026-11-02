@@ -244,7 +244,7 @@ fn mul_mod_matches_reference() {
                 for &b in &operands {
                     let expected = (!modulus.is_zero())
                         .then(|| reference::<N, B, L>(a).mul_mod(reference(b), rm));
-                    let product = a.mul_mod(b, modulus).map(reference::<N, B, L>);
+                    let product = a.checked_mul_mod(b, modulus).map(reference::<N, B, L>);
                     assert_eq!(product, expected, "{B}: {a:?} * {b:?} mod {modulus:?}");
                 }
             }
@@ -271,7 +271,7 @@ fn mul_mod_matches_reference() {
                 for &b in &rhs_values {
                     let expected =
                         (!modulus.is_zero()).then(|| wide(a).mul_mod(wide(b), wide(modulus)));
-                    let product = a.mul_mod(b, modulus).map(wide);
+                    let product = a.checked_mul_mod(b, modulus).map(wide);
                     assert_eq!(product, expected, "{a:?} * {b:?} mod {modulus:?}");
                 }
             }
@@ -514,4 +514,57 @@ fn swap_bytes_matches_reference() {
     check::<U192, 192, 3, 24>();
     check::<U256, 256, 4, 32>();
     check::<U512, 512, 8, 64>();
+}
+
+#[test]
+fn nonzero_operations_match_reference() {
+    fn check<N, const B: usize, const L: usize>()
+    where
+        N: Bits + Add<N>,
+        Sum<N, N>: Bits,
+    {
+        let values: Vec<NonZeroUint<N>> = samples::<N>()
+            .into_iter()
+            .filter_map(NonZeroUint::new)
+            .collect();
+        let nonzero = |value: Option<NonZeroUint<N>>| value.map(|value| reference(value.get()));
+        for &a in &values {
+            let ra = reference::<N, B, L>(a.get());
+            assert_eq!(a.leading_zeros(), ra.leading_zeros(), "{B}: {a:?}");
+            assert_eq!(a.trailing_zeros(), ra.trailing_zeros(), "{B}: {a:?}");
+            assert_eq!(a.ilog2(), ra.bit_len() - 1, "{B}: {a:?}");
+            assert_eq!(a.is_power_of_two(), ra.is_power_of_two(), "{B}: {a:?}");
+            for exponent in [0, 1, 2, 3, 7, 64, 521] {
+                let expected = (0..exponent).try_fold(Reference::<B, L>::from(1u8), |power, _| {
+                    power.checked_mul(ra)
+                });
+                assert_eq!(
+                    nonzero(a.checked_pow(exponent)),
+                    expected,
+                    "{B}: {a:?}^{exponent}"
+                );
+            }
+            for &b in &values {
+                let rb = reference::<N, B, L>(b.get());
+                assert_eq!(reference((a | b).get()), ra | rb, "{B}: {a:?} | {b:?}");
+                assert_eq!(
+                    reference((a | b.get()).get()),
+                    ra | rb,
+                    "{B}: {a:?} | {b:?}"
+                );
+                let sum = ra.saturating_add(rb);
+                assert_eq!(reference(a.saturating_add(b.get()).get()), sum, "{B}: +");
+                assert_eq!(
+                    nonzero(a.checked_add(b.get())),
+                    ra.checked_add(rb),
+                    "{B}: +"
+                );
+                let product = ra.saturating_mul(rb);
+                assert_eq!(reference(a.saturating_mul(b).get()), product, "{B}: *");
+                assert_eq!(nonzero(a.checked_mul(b)), ra.checked_mul(rb), "{B}: *");
+            }
+        }
+        assert_eq!(NonZeroUint::<N>::try_from(Uint::ZERO), Err(biguint::IsZero));
+    }
+    for_each_width!(check);
 }

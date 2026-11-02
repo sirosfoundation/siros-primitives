@@ -217,10 +217,10 @@ where
             #[inline(always)]
             |&(a, divisor)| a.div_rem(divisor).1,
         )
-        .case(
+        .chained(
             Op::MulMod,
             "mul_mod",
-            three::<Uint<N>, Uint<N>>,
+            three::<Uint<N>, NonZeroUint<N>>,
             #[inline(always)]
             |&(a, b, modulus)| a.mul_mod(b, modulus),
         )

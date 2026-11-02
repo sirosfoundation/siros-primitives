@@ -111,7 +111,7 @@ where
         for &a in &operands {
             for &b in &rhs_values {
                 let expected = wide(a).mul_mod(wide(b), wide_modulus);
-                let product = a.mul_mod(b, modulus).map(wide);
+                let product = a.checked_mul_mod(b, modulus).map(wide);
                 assert_eq!(product, Some(expected), "{a:?} * {b:?} mod {modulus:?}");
             }
         }
