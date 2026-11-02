@@ -140,14 +140,28 @@ pub(crate) fn sub_masked(out: &mut [u64], b: &[u64], mask: u64) -> u64 {
     borrow
 }
 
+/// The most limbs whose correction of a whole operand runs without a branch on the values. A
+/// branch on the values mispredicts on about half the operands, at a fixed cost; the branch-free
+/// form runs one more carry chain, whose time grows with the length. Up to this length, the chain
+/// costs less.
+pub(crate) const BRANCH_FREE_LIMBS: usize = 8;
+
 /// Subtracts `divisor` from the equally long `part` when `part >= divisor`, and returns whether
 /// it did. The top limbs decide when they differ, and the limbs below them when they are equal,
-/// which is rare. The subtraction runs under a mask ([`mask_below`]).
+/// which is rare. Up to [`BRANCH_FREE_LIMBS`] limbs, the subtraction runs under a mask
+/// ([`mask_below`]); longer, it runs when the top limbs call for it.
 #[inline(always)]
 pub(crate) fn subtract_if_above(part: &mut [u64], divisor: &[u64]) -> bool {
     let (Some(&top), Some(&divisor_top)) = (part.last(), divisor.last()) else {
         return false;
     };
+    if divisor.len() > BRANCH_FREE_LIMBS && top != divisor_top {
+        let above = top > divisor_top;
+        if above {
+            fits(sub_assign(part, divisor));
+        }
+        return above;
+    }
     let above = if top == divisor_top {
         // No borrow: the borrow is below one.
         mask_below(borrow_of(part, divisor), 1)
@@ -159,10 +173,11 @@ pub(crate) fn subtract_if_above(part: &mut [u64], divisor: &[u64]) -> bool {
 }
 
 /// Writes `part - divisor` to `out` when `carry` is set or `part >= divisor`, `part` otherwise, and
-/// returns whether it subtracted: the difference runs into `out`, and its borrow decides whether
-/// `out` takes `part` back, by an unpredictable select of every limb. A set `carry` stands for a
-/// part of at least `2^(64 * k)`, whose borrow cancels it. `out` sets `k`; `part` and `divisor` are
-/// at least as long.
+/// returns whether it subtracted. A set `carry` stands for a part of at least `2^(64 * k)`, whose
+/// borrow cancels it. `out` sets `k`; `part` and `divisor` are at least as long. Up to
+/// [`BRANCH_FREE_LIMBS`] limbs, the difference runs into `out`, and its borrow decides whether
+/// `out` takes `part` back, by an unpredictable select of every limb; longer, `out` takes `part`
+/// and [`subtract_if_above`] decides.
 #[inline(always)]
 pub(crate) fn subtract_when_above(
     out: &mut [u64],
@@ -170,6 +185,14 @@ pub(crate) fn subtract_when_above(
     divisor: &[u64],
     carry: u64,
 ) -> bool {
+    if out.len() > BRANCH_FREE_LIMBS {
+        copy(out, part);
+        if carry != 0 {
+            fits(sub_assign(out, divisor));
+            return true;
+        }
+        return subtract_if_above(out, divisor);
+    }
     let borrow = sub_into(out, part, divisor);
     let take = (carry != 0) | (borrow == 0);
     for (slot, &limb) in out.iter_mut().zip(part) {
@@ -179,10 +202,20 @@ pub(crate) fn subtract_when_above(
     take
 }
 
-/// Writes `(part + (addend & mask)) mod 2^(64 * k)` to `out`. `out` sets `k`; `part` and `addend`
-/// are at least as long.
+/// Writes `(part + addend) mod 2^(64 * k)` to `out` when `carry` is zero, `part` otherwise. `out`
+/// sets `k`; `part` and `addend` are at least as long. Up to [`BRANCH_FREE_LIMBS`] limbs, the
+/// addition runs under a mask ([`mask_below`]); longer, it runs when `carry` calls for it.
 #[inline(always)]
-pub(crate) fn add_masked(out: &mut [u64], part: &[u64], addend: &[u64], mask: u64) {
+pub(crate) fn add_without_carry(out: &mut [u64], part: &[u64], addend: &[u64], carry: u64) {
+    if out.len() > BRANCH_FREE_LIMBS {
+        copy(out, part);
+        if carry == 0 {
+            fits(add_assign(out, addend));
+        }
+        return;
+    }
+    // All ones without the carry.
+    let mask = mask_below(carry, 1);
     let (mut part, mut addend) = (
         ZeroExtended::new(part).pull(),
         ZeroExtended::new(addend).pull(),
@@ -191,6 +224,14 @@ pub(crate) fn add_masked(out: &mut [u64], part: &[u64], addend: &[u64], mask: u6
     for_each_slot(out, |slot| {
         (*slot, carry) = part.next_limb().add_carry(addend.next_limb() & mask, carry);
     });
+}
+
+/// Copies the limbs of `limbs` that `out` holds.
+#[inline(always)]
+fn copy(out: &mut [u64], limbs: &[u64]) {
+    for (slot, &limb) in out.iter_mut().zip(limbs) {
+        *slot = limb;
+    }
 }
 
 /// Writes `a - b` to `out` and returns the borrow out of its top limb. `out` sets the length; `a`

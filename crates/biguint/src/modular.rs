@@ -3,8 +3,7 @@
 //! correction that brings the sum below the modulus.
 
 use crate::bits::Bits;
-use crate::kernel::{add_masked, reduced, subtract_when_above};
-use crate::limb::mask_below;
+use crate::kernel::{add_without_carry, reduced, subtract_when_above};
 use crate::nonzero::NonZeroUint;
 use crate::stream::{AddOp, LimbSource, Op2CarryIter, TwosComplement, ZeroExtended, pull_limbs};
 use crate::uint::Uint;
@@ -93,7 +92,7 @@ impl<S: LimbSource> Addend for TwosComplement<S> {
 
     #[inline(always)]
     fn correct(out: &mut [u64], sum: &[u64], carry: u64, modulus: &[u64]) {
-        add_masked(out, sum, modulus, mask_below(carry, 1));
+        add_without_carry(out, sum, modulus, carry);
     }
 }
 
