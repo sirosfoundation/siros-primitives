@@ -2,10 +2,32 @@
 //! axioms, and published test vectors.
 
 use binary_field::generic_array::GenericArray;
+use binary_field::typenum::{U8, U16, U17, U64, U127, U128, U163};
 use binary_field::{
     Aes, B233, B571, Gcm, Gf2, Gf2p8, Gf2p128, Poly16, Poly64, Poly256, Polynomial, Pow, Secret,
     Square,
 };
+
+/// Declares the field of `x^degree + sum(x^tap)`.
+macro_rules! field {
+    ($name:ident, $degree:ty, [$($tap:literal),*]) => {
+        struct $name;
+        impl Polynomial for $name {
+            type Degree = $degree;
+            const TAPS: &'static [usize] = &[$($tap),*];
+        }
+    };
+}
+
+// Irreducible polynomials beyond the standard fields, one per plan shape, most with taps above
+// half the degree, whose reductions take more than one fold.
+field!(F8High, U8, [7, 6, 1, 0]);
+field!(F16High, U16, [12, 10, 3, 0]);
+field!(F17, U17, [3, 0]);
+field!(F64High, U64, [40, 39, 33, 0]);
+field!(F127High, U127, [97, 0]);
+field!(F128Tap63, U128, [63, 62, 17, 0]);
+field!(F163, U163, [7, 6, 3, 0]);
 
 /// A splitmix64 stream, so that every run sees the same operands.
 struct Stream(u64);
@@ -174,13 +196,29 @@ fn frobenius_sum<P: Polynomial>(a: Gf2<P>) -> bool {
 
 #[test]
 fn fields_match_the_bit_serial_reference() {
-    check_field::<Aes>(200);
-    check_field::<Poly16>(200);
-    check_field::<Poly64>(200);
-    check_field::<Gcm>(200);
-    check_field::<B233>(60);
-    check_field::<Poly256>(60);
-    check_field::<B571>(20);
+    // Unoptimized builds inline every operation into one frame per field, which outgrows the
+    // 2 MiB stack of a test thread.
+    std::thread::Builder::new()
+        .stack_size(16 << 20)
+        .spawn(|| {
+            check_field::<Aes>(200);
+            check_field::<Poly16>(200);
+            check_field::<Poly64>(200);
+            check_field::<Gcm>(200);
+            check_field::<B233>(60);
+            check_field::<Poly256>(60);
+            check_field::<B571>(20);
+            check_field::<F8High>(200);
+            check_field::<F16High>(200);
+            check_field::<F17>(100);
+            check_field::<F64High>(60);
+            check_field::<F127High>(40);
+            check_field::<F128Tap63>(40);
+            check_field::<F163>(20);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 #[test]

@@ -9,7 +9,8 @@ use clmul::Poly;
 use const_default::ConstDefault;
 use typenum::{U64, U128};
 
-use crate::frobenius::ChainStep;
+use crate::frobenius::Frobenius;
+use crate::invert::{Inversion, inverse};
 use crate::plan::{Plan, Polynomial, Shape, Wide};
 use crate::representation::{Representation, Storage};
 use crate::table::Tables;
@@ -126,11 +127,29 @@ impl<P: Polynomial> Field<P> {
         }
     }
 
-    /// `p mod f` for a product `p` of degree below `2n` in one word: `n` up to 32.
+    /// `p mod f` for a product `p` of degree below `2n` in one word: `n` up to 32. One fold with the
+    /// overflow added first when `2d <= n`; otherwise the plan's rounds, each of which moves the
+    /// bits at and above `x^n` down by `x^n = r`.
     #[inline(always)]
     fn reduce_word<W: Word>(product: W) -> W {
         let degree = Plan::<P>::DEGREE;
-        Self::fold_word(product & W::of(low_mask(degree)), product >> degree)
+        let mask = W::of(low_mask(degree));
+        if Plan::<P>::ONE_SPILL {
+            return Self::fold_word(product & mask, product >> degree);
+        }
+        let taps = Plan::<P>::TAPS;
+        let (mut sum, mut rest) = (product & mask, product >> degree);
+        each!(_round < Plan::<P>::ROUNDS => {
+            let mut folded = W::ZERO;
+            each!(index < taps.len() => {
+                if let Some(&tap) = taps.get(index) {
+                    folded = folded ^ (rest << tap);
+                }
+            });
+            sum = sum ^ (folded & mask);
+            rest = folded >> degree;
+        });
+        sum
     }
 
     // ---------------------------------------------------------------------------------------
@@ -145,7 +164,13 @@ impl<P: Polynomial> Field<P> {
                 Self::reduce_word(product).resize()
             }
             Shape::Words => Self::fold_words(a.clmul_words(0, b, 0)),
-            Shape::Lane => Self::lane_mul(a.resize(), b.resize()).resize(),
+            Shape::Lane if Plan::<P>::FOLD_BY_PRODUCTS => {
+                Self::lane_mul(a.resize(), b.resize()).resize()
+            }
+            Shape::Lane => {
+                let product = a.resize::<U128>().widening_mul(b.resize::<U128>());
+                Self::fold_lane(product.resize(), (product >> 128).resize()).resize()
+            }
             Shape::Lanes => Self::reduce_lanes(a.widening_mul(b)),
         }
     }
@@ -190,22 +215,33 @@ impl<P: Polynomial> Field<P> {
         low ^ (middle << 64) ^ middle.clmul_words(1, r, 0)
     }
 
-    /// `low + high x^128 mod f` for `n = 128` and `d` below 64, by shifts within words: the carries
-    /// out of the low word and the overflow of the high word come from the same shifts, with the
-    /// overflow added to `high` first.
+    /// `low + high x^128 mod f` for `n = 128` and `d` below 64, by shifts within words, as
+    /// `(high + t) r mod x^128` for the overflow `t` of `high r`: `t r` stays below `x^128`. The
+    /// shifts by each tap give the overflow in the high word and the carries out of the low word.
+    /// When `d` is at most 32 the overflow, below `x^d`, holds no bit that a shift carries, and one
+    /// pass of shifts gives both; above, the carries come from `high + t`.
     #[inline(always)]
     fn fold_lane(low: Poly<U128>, high: Poly<U128>) -> Poly<U128> {
         let taps = Plan::<P>::TAPS;
-        let mut spill = Poly::<U128>::ZERO;
-        each!(index < taps.len() => {
-            if let Some(&tap) = taps.get(index)
-                && tap > 0
-            {
-                spill ^= high.shr_within_words((64 - tap) as u32);
-            }
-        });
+        let spills = |value: Poly<U128>| {
+            let mut spill = Poly::<U128>::ZERO;
+            each!(index < taps.len() => {
+                if let Some(&tap) = taps.get(index)
+                    && tap > 0
+                {
+                    spill ^= value.shr_within_words((64 - tap) as u32);
+                }
+            });
+            spill
+        };
+        let spill = spills(high);
         let high = high ^ (spill >> 64);
-        let mut sum = low ^ high ^ (spill << 64);
+        let carries = if Plan::<P>::R_DEGREE <= 32 {
+            spill
+        } else {
+            spills(high)
+        };
+        let mut sum = low ^ high ^ (carries << 64);
         each!(index < taps.len() => {
             if let Some(&tap) = taps.get(index)
                 && tap > 0
@@ -221,7 +257,7 @@ impl<P: Polynomial> Field<P> {
     fn reduce_lanes(product: Poly<Wide<P>>) -> Lanes<P> {
         let degree = Plan::<P>::DEGREE;
         let mut low = product.resize::<P::Degree>();
-        if Plan::<P>::R_DEGREE < 64 && Plan::<P>::ONE_SPILL {
+        if Plan::<P>::FOLD_BY_PRODUCTS && Plan::<P>::ONE_SPILL {
             // Two products with `r`: the high half's, and its overflow's, below 64 bits.
             let r = Poly::<U64>::of(Plan::<P>::R_WORD);
             let folded = (product >> degree).resize::<P::Degree>().widening_mul(r);
@@ -317,8 +353,10 @@ impl<P: Polynomial> Field<P> {
     /// `a b`, the default.
     #[inline(always)]
     pub(crate) fn mul(a: Element<P>, b: Element<P>) -> Element<P> {
-        if Plan::<P>::MUL_BY_TABLE {
+        if Plan::<P>::MUL_BY_PRODUCTS {
             Element::<P>::from_word(Tables::<P>::mul(a.word(), b.word()))
+        } else if Plan::<P>::MUL_BY_LOGARITHMS {
+            Element::<P>::from_word(Tables::<P>::log_mul(a.word(), b.word()))
         } else {
             Self::ct_mul(a, b)
         }
@@ -337,8 +375,10 @@ impl<P: Polynomial> Field<P> {
     /// `a^2`, the default.
     #[inline(always)]
     pub(crate) fn square(a: Element<P>) -> Element<P> {
-        if Plan::<P>::SMALL {
+        if Plan::<P>::ELEMENT_TABLES {
             Element::<P>::from_word(Tables::<P>::square(a.word()))
+        } else if Plan::<P>::BYTE_MAPS {
+            Element::<P>::from_word(Tables::<P>::square_by_bytes(a.word()))
         } else {
             Self::ct_square(a)
         }
@@ -357,8 +397,10 @@ impl<P: Polynomial> Field<P> {
     /// The square root, the default.
     #[inline(always)]
     pub(crate) fn sqrt(a: Element<P>) -> Element<P> {
-        if Plan::<P>::SMALL {
+        if Plan::<P>::ELEMENT_TABLES {
             Element::<P>::from_word(Tables::<P>::sqrt(a.word()))
+        } else if Plan::<P>::BYTE_MAPS {
+            Element::<P>::from_word(Tables::<P>::sqrt_by_bytes(a.word()))
         } else {
             Self::ct_sqrt(a)
         }
@@ -374,63 +416,81 @@ impl<P: Polynomial> Field<P> {
         }
     }
 
-    /// The inverse of a nonzero `a`, and `0` for `0`, the default.
+    /// The inverse of a nonzero `a`, and `0` for `0`, the default: the table of inverses, or the
+    /// field's chain with the tables of its Frobenius powers.
     #[inline(always)]
     pub(crate) fn invert(a: Element<P>) -> Element<P> {
-        if Plan::<P>::SMALL {
+        if Plan::<P>::ELEMENT_TABLES {
             Element::<P>::from_word(Tables::<P>::invert(a.word()))
-        } else if Plan::<P>::INVERT_BY_TABLES {
-            Element::<P>::from_poly(Self::lanes_invert(a.poly()))
+        } else if Plan::<P>::FROBENIUS_WINDOW > 0 {
+            Element::<P>::from_poly(inverse::<P, Tabulated<P>>(a.poly()))
         } else {
             Self::ct_invert(a)
         }
     }
 
-    /// The chain of Itoh and Tsujii of a field of one register, whose powers from `x^(2^3)` on
-    /// read the tables of the chain's steps. The tables cover degrees up to 128, so the chain has
-    /// at most seven steps.
-    #[inline(always)]
-    fn lanes_invert(a: Lanes<P>) -> Lanes<P> {
-        let bits = Plan::<P>::CHAIN_BITS;
-        let exponent = Plan::<P>::DEGREE - 1;
-        let mut power = a;
-        macro_rules! steps {
-            ($($step:literal)*) => {$(
-                if $step + 1 < bits {
-                    let index = bits - 2 - $step;
-                    let doubled = if ChainStep::<P, $step>::TABULATED {
-                        ChainStep::<P, $step>::apply(power)
-                    } else {
-                        Self::lanes_frobenius(power, ChainStep::<P, $step>::K)
-                    };
-                    power = Self::lanes_mul(doubled, power);
-                    if (exponent >> index) & 1 == 1 {
-                        power = Self::lanes_mul(Self::lanes_square(power), a);
-                    }
-                }
-            )*};
-        }
-        steps!(0 1 2 3 4 5 6);
-        Self::lanes_square(power)
-    }
-
-    /// The inverse of a nonzero `a`, and `0` for `0`, in constant time: `a^(2^n - 2)` by the chain
-    /// of Itoh and Tsujii.
+    /// The inverse of a nonzero `a`, and `0` for `0`, in constant time: `a^(2^n - 2)` along the
+    /// field's chain, with squarings or the constant-time maps of the Frobenius powers.
     #[inline(always)]
     pub(crate) fn ct_invert(a: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {
-            Element::<P>::from_word(crate::invert::itoh_tsujii::<P, _>(
-                a.word(),
-                Self::word_frobenius,
-                Self::word_mul,
-            ))
+            Element::<P>::from_word(inverse::<P, Words<P>>(a.word()))
         } else {
-            Element::<P>::from_poly(crate::invert::itoh_tsujii::<P, _>(
-                a.poly(),
-                Self::lanes_frobenius,
-                Self::lanes_mul,
-            ))
+            Element::<P>::from_poly(inverse::<P, Squarings<P>>(a.poly()))
         }
+    }
+}
+
+/// The inversion of a word of a field up to degree 16 in constant time: the constant-time maps of
+/// the Frobenius powers and carry-less products.
+struct Words<P>(PhantomData<P>);
+
+impl<P: Polynomial> Inversion for Words<P> {
+    type Value = u64;
+
+    #[inline(always)]
+    fn frobenius(x: u64, _: usize, power: usize) -> u64 {
+        Field::<P>::word_frobenius(x, power)
+    }
+
+    #[inline(always)]
+    fn mul(a: u64, b: u64) -> u64 {
+        Field::<P>::word_mul(a, b)
+    }
+}
+
+/// The inversion of a polynomial in constant time: squarings and carry-less products.
+struct Squarings<P>(PhantomData<P>);
+
+impl<P: Polynomial> Inversion for Squarings<P> {
+    type Value = Lanes<P>;
+
+    #[inline(always)]
+    fn frobenius(x: Lanes<P>, _: usize, power: usize) -> Lanes<P> {
+        Field::<P>::lanes_frobenius(x, power)
+    }
+
+    #[inline(always)]
+    fn mul(a: Lanes<P>, b: Lanes<P>) -> Lanes<P> {
+        Field::<P>::lanes_mul(a, b)
+    }
+}
+
+/// The default inversion of a polynomial of a field of 17 to 128 bits: the tables of the
+/// Frobenius powers of its chain.
+struct Tabulated<P>(PhantomData<P>);
+
+impl<P: Polynomial> Inversion for Tabulated<P> {
+    type Value = Lanes<P>;
+
+    #[inline(always)]
+    fn frobenius(x: Lanes<P>, step: usize, power: usize) -> Lanes<P> {
+        Frobenius::<P>::apply(x, step, power, Field::<P>::lanes_square)
+    }
+
+    #[inline(always)]
+    fn mul(a: Lanes<P>, b: Lanes<P>) -> Lanes<P> {
+        Field::<P>::lanes_mul(a, b)
     }
 }
 

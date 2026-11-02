@@ -12,11 +12,14 @@ authors.workspace = true
 rust-version.workspace = true
 
 [features]
-default = ["precomputed"]
-# Tables for the default operations of the fields up to degree 16: logarithms up to degree 8,
-# squares and square roots by byte, and inverses. Without them those operations take the
-# carry-less products of `Secret`.
+# The default build carries at most 16 KiB of lookup tables per field.
+default = []
+# The fastest tables, of any size: every product of the fields up to degree 8, every square,
+# square root and inverse up to degree 16, and byte tables of the Frobenius powers of the
+# inverses from degree 17 to 128.
 precomputed = []
+# No lookup table: every operation computes, as `Secret` does. It wins over `precomputed`.
+not-precomputed = []
 
 [dependencies]
 biguint = { path = "../biguint", version = "0.1.0", default-features = false }

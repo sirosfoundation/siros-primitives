@@ -7,10 +7,15 @@
 Binary Galois fields `GF(2^n) = GF(2)[x] / (f(x))` in pure Rust for any degree `n` and any
 irreducible `f`: `no_std`, without `unsafe`, allocation or panics.
 
-A field is declared by its polynomial. `Gf2<P>` holds an element as a polynomial of degree below
-`n` in `ceil(n / 64)` little-endian `u64` limbs, bit `i` the coefficient of `x^i`. It provides
+A field is declared by its polynomial. `Gf2<P>` holds an element, a polynomial of degree below `n`,
+in the registers its plan chooses: a byte or a 16-bit word in a general register up to degree 16,
+one vector register up to degree 128, and `ceil(n / 128)` vector registers above. It provides
 addition, multiplication, squaring, inversion, powers by exponents of any width, square roots,
-traces, `x` and `x^-1` multiples, and conversions from and to bytes, limbs and `biguint::Uint`.
+traces, `x` and `x^-1` multiples, and conversions from and to bytes, little-endian `u64` limbs and
+`biguint::Uint`, bit `i` the coefficient of `x^i`. Its operations take the fastest path, which may
+index tables and take time that depends on the value. `Secret<P>` wraps an element whose operations
+take one path for every value, and reveals it on request.
+
 `Gf2p8`, `Gf2p16`, `Gf2p64`, `Gf2p128`, `Gf2p233`, `Gf2p256` and `Gf2p571` are the fields of
 AES, GCM, the NIST curves B-233 and B-571 and three other low-weight polynomials; `Gf2p128` adds
 the GCM and POLYVAL block views.
@@ -57,35 +62,83 @@ limb counts, the fold steps of the reduction, the word `r` of the carry-less fol
 
 The degree and the taps select each algorithm at compile time, and every limb count, shift and
 loop bound folds to a constant, so each field compiles to straight-line code. The word products
-come from
+and squares come from
 [`clmul`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/clmul):
-PCLMULQDQ, PMULL, or a const comb in builds without them; the plan knows which through
-`clmul::HARDWARE`.
+PCLMULQDQ, PMULL, or a const comb in builds without them, and its `Poly` of vector registers. The
+plan knows which through `clmul::HARDWARE`.
 
 | Operation | Case | Algorithm |
 |---|---|---|
-| Product | up to 6 limbs with hardware products, 1 limb without | Schoolbook over 64-bit carry-less products |
-| Product | 7 limbs and more with hardware products, 2 and more without | Karatsuba (Karatsuba and Ofman, 1962), in characteristic 2 the middle term costs only XORs |
-| Reduction | `r` of degree below 64 and the carry-less fold cheaper by the cost model | Carry-less folding (Gueron and Kounavis, 2010): each 64-bit chunk of the overflow, aligned to `n`, is one product with `r`, from the top down; a final step folds what the products put back above `n` |
-| Reduction | otherwise, such as `x^233 + x^74 + 1` | Shift-and-XOR per tap of the whole overflow, in the two rounds that a low-weight `r` needs |
-| Square | hardware products | One carry-less product of each limb with itself: the cross terms cancel |
-| Square | otherwise | Bit spreading: bit `i` moves to `2i` by five mask-and-shift steps per half limb |
-| Inverse | the cost model prefers it, which is every hardware build | Itoh and Tsujii (1988): `a^(2^n - 2)` along the bits of `n - 1`, `n - 1` squarings and about `log2(n) + popcount(n - 1)` products, without a data-dependent branch |
-| Inverse | otherwise | Extended Euclidean algorithm over `GF(2)[x]` (Hankerson, Menezes and Vanstone, algorithm 2.48) |
+| Product | degree up to 8, with `precomputed` | The table of every product |
+| Product | degree up to 8, by default | Logarithm and antilogarithm tables of a generator |
+| Product | degree up to 16, and `Secret` | One carry-less product of the words |
+| Product | above | Karatsuba's three word products per pair of registers (Karatsuba and Ofman, 1962), schoolbook across registers |
+| Reduction | `2d <= n`, with `d` the degree of `r` | One fold of the overflow, with the overflow of the fold added first: two carry-less products with `r` when the word products are hardware and `d` is below 64 (Gueron and Kounavis, 2010), one shifted copy per tap otherwise |
+| Reduction | otherwise, such as `x^233 + x^74 + 1` | Rounds of shifted copies per tap, as many as the taps need |
+| Square | degree up to 16, with tables | The table of every square, or the images of the two bytes |
+| Square | degree up to 8, `Secret` | A constant-time linear map: each output byte is the parities of an input byte under eight row masks, by two products (Warren, Hacker's Delight, 7-1 and 7-6) |
+| Square | above | The bits spread to twice their position, by a byte shuffle of a nibble table with SSSE3, PCLMULQDQ or interleaving otherwise; then the reduction |
+| Inverse | degree up to 8, and up to 16 with `precomputed` | The table of every inverse |
+| Inverse | otherwise | `a^(2^n - 2)` along a shortest addition chain for `n - 1` (Itoh and Tsujii, 1988; Knuth, TAOCP vol. 2, 4.6.3): one product and one Frobenius power per step, 10 products for GF(2¹²⁸) |
+| Frobenius power | degree 17 to 128, with tables | The sum of the images of the windows of the value: byte windows with `precomputed`, 3-bit or 4-bit windows within 16 KiB by default, composed with squarings |
+| Frobenius power | otherwise | Squarings; up to degree 16, the constant-time linear map of the power |
 | Power | any exponent width | Square-and-multiply over `biguint::Exponent`, which `u32`, `u64` and `Uint<N>` implement |
+| Square root | degree up to 16, with tables | The table of every root, or the images of the two bytes |
 | Square root | degree up to 1024 | Even and odd coefficient split: `sqrt(a) = e(x) + sqrt(x) o(x)`, with `sqrt(x) = x^(2^(n-1))` a compile-time constant |
 | Square root | larger degree | The Frobenius map, `n - 1` squarings at run time; the const evaluator refuses the longer chain |
 | Trace | any | The parity of `a & m`, where bit `k` of the compile-time mask `m` is the trace of `x^k` from Newton's identities on the coefficients of `f` |
 | GCM view | `GF(2^128)` with the GCM polynomial | Bit reversal of the big-endian block, the order of NIST SP 800-38D |
 | POLYVAL view | the same field | Bit reversal of the little-endian block times `x`: RFC 8452 works in the reciprocal polynomial with a factor `x^-128`, and this map is the field isomorphism that carries its sum and product |
 
-Timing: addition, product, `square`, `sqrt`, `trace`, `times_x` and `over_x` take one path for
-every value, and `invert` by Itoh and Tsujii for every nonzero value. The Euclidean `invert` takes
-time that depends on the value, and `pow` on the exponent. A selection by a secret bit is a mask
-that passes through `core::hint::black_box`, which keeps the compiler from turning it into a
-branch. CI runs the constant-time operations on secret operands under Valgrind's memcheck with
+Timing: the operations of `Secret` take one path for every value: its inverse for every nonzero
+value, which `invert` discloses. The tables of the operations of `Gf2` take time that depends on
+the value, and `pow` on the exponent. A selection by a secret bit is a mask that passes through
+`core::hint::black_box`, which keeps the compiler from turning it into a branch. CI runs every
+operation of `Secret` on secret operands under Valgrind's memcheck with
 [`ct-check`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/ct-check),
 which fails on a branch or a memory address that depends on them.
+
+## Tables
+
+Three configurations of features decide the lookup tables of a build:
+
+- the default: at most 16 KiB of tables per field;
+- `precomputed`: the fastest tables, of any size;
+- `not-precomputed`: no lookup table; every operation computes as `Secret`'s does. It wins over
+  `precomputed`, so either feature, set by any dependent, decides the whole build.
+
+The bytes of each field's constants: the `.rodata` of a release binary that adds, multiplies,
+squares, inverts and takes square roots in the field, less an empty program's (`x86_64`, default
+target features). Without tables, the bytes left are the masks and constants that instructions
+read.
+
+| Field | Default | `precomputed` | `not-precomputed` |
+|---|---:|---:|---:|
+| GF(2⁸) | 1,536 | 66,304 | 0 |
+| GF(2¹⁶) | 2,048 | 393,216 | 0 |
+| GF(2⁶⁴) | 8,264 | 65,608 | 72 |
+| GF(2¹²⁸) | 11,480 | 262,360 | 216 |
+| GF(2²³³) | 440 | 440 | 440 |
+| GF(2²⁵⁶) | 216 | 216 | 216 |
+| GF(2⁵⁷¹) | 400 | 400 | 400 |
+
+The cycles of the operations that differ, batch / chain, from one sweep per configuration on an
+AMD Ryzen 9 5950X (`-C target-cpu=native`, load 20):
+
+| Operation | Default | `precomputed` | `not-precomputed` |
+|---|---|---|---|
+| GF(2⁸) mul | 3.5 / 12.0 | 2.7 / 9.5 | 9.1 / 20.1 |
+| GF(2⁸) square | 5.1 / 5.1 | 2.0 / 5.0 | 6.0 / 16.0 |
+| GF(2⁸) sqrt | 5.1 / 5.0 | 2.1 / 5.0 | 6.9 / 16.1 |
+| GF(2⁸) invert | 5.5 / 5.1 | 2.3 / 5.1 | 86 / 154 |
+| GF(2¹⁶) square | 5.1 / 9.1 | 2.5 / 6.0 | 7.0 / 20.1 |
+| GF(2¹⁶) sqrt | 5.4 / 9.0 | 3.1 / 6.0 | 14.0 / 37.6 |
+| GF(2¹⁶) invert | 220 / 265 | 3.1 / 6.1 | 184 / 264 |
+| GF(2⁶⁴) invert | 272 / 326 | 265 / 286 | 1074 / 1108 |
+| GF(2¹²⁸) invert | 783 / 803 | 583 / 488 | 2015 / 2051 |
+
+The default and `not-precomputed` builds run the same GF(2¹⁶) inversion, 336 instructions; their
+batch figures differ by code placement.
 
 ## Benchmarks
 
@@ -93,7 +146,7 @@ which fails on a branch or a memory address that depends on them.
 compares `binary-field` with gf256, galois_field_2pm, g2p, reed-solomon-erasure, hekate-math,
 Plonky3, longfellow-zk's `runtime-algebra`, `compile-algebra` and `core-algebra`, and polyval on
 add, mul, square, invert and sqrt over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and
-GF(2⁵⁷¹), in instructions per operation that Callgrind counts. The unpublished
+GF(2⁵⁷¹), in instructions per operation that Callgrind counts, with `precomputed`. The unpublished
 [`binary-field-bench-report`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/binary-field/bench-report)
 regenerates it:
 

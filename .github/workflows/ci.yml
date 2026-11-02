@@ -19,8 +19,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/rust-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # `--all-features` takes `not-precomputed`, which wins over `precomputed`, and
+      # `--no-default-features` is the default build: the three table configurations of
+      # binary-field.
       - run: cargo test --locked --workspace --all-features
       - run: cargo test --locked --workspace --no-default-features
+      - run: cargo test --locked -p binary-field --features precomputed
 
   test-adx:
     name: Test with the adx carry intrinsics
@@ -47,6 +51,8 @@ jobs:
       - uses: ./.github/actions/rust-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo test --locked -p clmul -p binary-field --all-features
+      - run: cargo test --locked -p binary-field
+      - run: cargo test --locked -p binary-field --features precomputed
 
   constant-time:
     name: Constant time
@@ -78,6 +84,9 @@ jobs:
           targets: thumbv7em-none-eabi,aarch64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      # The default and the `precomputed` tables of binary-field; `--all-features` has none.
+      - run: cargo clippy --locked -p binary-field --all-targets -- -D warnings
+      - run: cargo clippy --locked -p binary-field --all-targets --features precomputed -- -D warnings
       # A 32-bit target without `std`, `adx` or carry-less instructions: the portable carry path,
       # the comb and the `no_std` build.
       - run: cargo clippy --locked -p biguint -p prime-field -p clmul -p binary-field --target thumbv7em-none-eabi -- -D warnings
