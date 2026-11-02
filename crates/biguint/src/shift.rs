@@ -10,23 +10,75 @@ use crate::bits::Bits;
 use crate::kernel::{shl_bits_into, shr_bits_into, split, split_mut};
 use crate::uint::Uint;
 
-/// `(self * 2^rhs) mod 2^N`: `0` when `rhs >= N`.
-impl<N: Bits> Shl<usize> for Uint<N> {
-    type Output = Self;
+mod sealed {
+    /// Seals [`super::ShiftAmount`].
+    pub trait Sealed {}
+}
 
+/// A shift amount: every primitive integer and every `Uint`.
+///
+/// One `Shl` and one `Shr` implementation take any amount, so their output is known before the
+/// amount's type: an unsuffixed literal amount takes `i32`, as for the primitive integers.
+pub trait ShiftAmount: sealed::Sealed + Copy {
+    /// The amount, or `None` when it is negative or above `usize::MAX`.
+    fn to_usize(self) -> Option<usize>;
+}
+
+macro_rules! primitive_amounts {
+    ($($primitive:ty),* $(,)?) => {
+        $(
+            impl sealed::Sealed for $primitive {}
+
+            impl ShiftAmount for $primitive {
+                #[inline(always)]
+                fn to_usize(self) -> Option<usize> {
+                    usize::try_from(self).ok()
+                }
+            }
+        )*
+    };
+}
+
+primitive_amounts!(
+    u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize
+);
+
+impl<N: Bits> sealed::Sealed for Uint<N> {}
+
+impl<N: Bits> ShiftAmount for Uint<N> {
     #[inline(always)]
-    fn shl(self, rhs: usize) -> Self::Output {
-        Uint::from_generic_limbs(shift_left(&self.limbs, rhs, N::BITS))
+    fn to_usize(self) -> Option<usize> {
+        let mut limbs = self.limbs.into_iter();
+        let low = limbs.next().unwrap_or(0);
+        if limbs.all(|limb| limb == 0) {
+            usize::try_from(low).ok()
+        } else {
+            None
+        }
     }
 }
 
-/// `floor(self / 2^rhs)`: `0` when `rhs >= N`.
-impl<N: Bits> Shr<usize> for Uint<N> {
+/// `(self * 2^rhs) mod 2^N`: `0` when `rhs >= N` or `rhs < 0`.
+impl<N: Bits, A: ShiftAmount> Shl<A> for Uint<N> {
     type Output = Self;
 
     #[inline(always)]
-    fn shr(self, rhs: usize) -> Self::Output {
-        Uint::from_generic_limbs(shift_right(&self.limbs, rhs, N::BITS))
+    fn shl(self, rhs: A) -> Self::Output {
+        rhs.to_usize().map_or(Self::ZERO, |rhs| {
+            Uint::from_generic_limbs(shift_left(&self.limbs, rhs, N::BITS))
+        })
+    }
+}
+
+/// `floor(self / 2^rhs)`: `0` when `rhs >= N` or `rhs < 0`.
+impl<N: Bits, A: ShiftAmount> Shr<A> for Uint<N> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn shr(self, rhs: A) -> Self::Output {
+        rhs.to_usize().map_or(Self::ZERO, |rhs| {
+            Uint::from_generic_limbs(shift_right(&self.limbs, rhs, N::BITS))
+        })
     }
 }
 
@@ -59,26 +111,6 @@ impl<N: Bits> Uint<N> {
     #[must_use]
     pub fn wrapping_shr(self, rhs: u32) -> Self {
         self >> (rhs as usize % N::BITS)
-    }
-}
-
-/// `(self * 2^rhs) mod 2^N`: `0` when `rhs >= N`.
-impl<N: Bits> Shl<u32> for Uint<N> {
-    type Output = Self;
-
-    #[inline(always)]
-    fn shl(self, rhs: u32) -> Self::Output {
-        self << rhs as usize
-    }
-}
-
-/// `floor(self / 2^rhs)`: `0` when `rhs >= N`.
-impl<N: Bits> Shr<u32> for Uint<N> {
-    type Output = Self;
-
-    #[inline(always)]
-    fn shr(self, rhs: u32) -> Self::Output {
-        self >> rhs as usize
     }
 }
 
@@ -135,32 +167,4 @@ fn wide(limbs: &[u64]) -> u128 {
 #[inline(always)]
 fn narrow(rhs: usize) -> u32 {
     u32::try_from(rhs).unwrap_or(u32::MAX)
-}
-
-/// `(self * 2^rhs) mod 2^N`: `0` when `rhs >= N`.
-impl<N: Bits, RhsN: Bits> Shl<Uint<RhsN>> for Uint<N> {
-    type Output = Self;
-
-    #[inline(always)]
-    fn shl(self, rhs: Uint<RhsN>) -> Self::Output {
-        shift_amount::<N, RhsN>(rhs).map_or(Self::ZERO, |amount| self << amount)
-    }
-}
-
-/// `floor(self / 2^rhs)`: `0` when `rhs >= N`.
-impl<N: Bits, RhsN: Bits> Shr<Uint<RhsN>> for Uint<N> {
-    type Output = Self;
-
-    #[inline(always)]
-    fn shr(self, rhs: Uint<RhsN>) -> Self::Output {
-        shift_amount::<N, RhsN>(rhs).map_or(Self::ZERO, |amount| self >> amount)
-    }
-}
-
-/// `rhs` as a shift amount when it is below `N`.
-#[inline(always)]
-fn shift_amount<N: Bits, RhsN: Bits>(rhs: Uint<RhsN>) -> Option<usize> {
-    let mut limbs = rhs.limbs.into_iter();
-    let low = limbs.next().unwrap_or(0);
-    (limbs.all(|limb| limb == 0) && low < N::BITS as u64).then_some(low as usize)
 }

@@ -428,6 +428,14 @@ fn bit_operations_match_reference() {
                     assert_eq!(reference(a << amount), ra.wrapping_shl(shift));
                     assert_eq!(reference(a >> amount), ra.wrapping_shr(shift));
                 }
+                if let Ok(signed) = i64::try_from(shift) {
+                    assert_eq!(reference(a << signed), ra.wrapping_shl(shift));
+                    assert!(
+                        (a >> (-signed - 1)).is_zero(),
+                        "{B}: {a:?} >> {}",
+                        -signed - 1
+                    );
+                }
                 assert_eq!(reference(a.rotate_left(shift)), ra.rotate_left(shift));
                 assert_eq!(reference(a.rotate_right(shift)), ra.rotate_right(shift));
             }

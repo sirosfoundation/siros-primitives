@@ -10,7 +10,8 @@ panics.
 `Uint<N>` holds an integer of exactly `N` bits for any `typenum` width `N`, in `ceil(N / 64)`
 little-endian `u64` limbs. It provides wrapping arithmetic, carrying addition and subtraction,
 widening multiplication, division by a divisor of any width, modular arithmetic, shifts,
-rotations, comparisons, byte encodings and exact conversions.
+rotations, comparisons, byte encodings and exact conversions. `<<` and `>>` take an amount of any
+primitive integer type or any `Uint`; an amount that is negative or at least `N` gives `0`.
 
 ## Example
 
