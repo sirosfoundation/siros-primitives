@@ -42,6 +42,17 @@ impl<N: Bits> Uint<N> {
     /// `1`.
     pub const ONE: Self = Self::from_u64(1);
 
+    /// `2^N - 1`.
+    pub const MAX: Self = {
+        let mut limbs = GenericArray::<u64, N::Limbs>::DEFAULT;
+        let mut rest = limbs.as_mut_slice();
+        while let [limb, tail @ ..] = rest {
+            *limb = u64::MAX;
+            rest = tail;
+        }
+        Self::from_generic_limbs(limbs)
+    };
+
     /// `value mod 2^N`.
     #[inline(always)]
     #[must_use]

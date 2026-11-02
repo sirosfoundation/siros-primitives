@@ -97,8 +97,7 @@ fn method() -> Vec<String> {
          which the result of the step before may not lie. A chain of products modulo 2^N \
          gathers trailing zeros and a chain of quotients falls to zero, so the other cases of \
          mul, div and mod have no chain; `crypto-bigint`'s add_mod and sub_mod need operands \
-         below the modulus, `biguint`'s mulmod returns an `Option`, and a step of `num-bigint` \
-         would copy allocated operands."
+         below the modulus, and a step of `num-bigint` would copy allocated operands."
             .to_owned(),
         String::new(),
     ];

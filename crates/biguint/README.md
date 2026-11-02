@@ -10,7 +10,8 @@ panics.
 `Uint<N>` holds an integer of exactly `N` bits for any `typenum` width `N`, in `ceil(N / 64)`
 little-endian `u64` limbs. It provides wrapping arithmetic, carrying addition and subtraction,
 widening multiplication, division by a divisor of any width, modular arithmetic, shifts,
-rotations, comparisons, byte encodings and exact conversions.
+rotations, comparisons, byte encodings and exact conversions. `<<` and `>>` take an amount of any
+primitive integer type or any `Uint`; an amount that is negative or at least `N` gives `0`.
 
 ## Example
 
@@ -22,7 +23,7 @@ let top = U256::ONE << 255usize;
 assert_eq!(U256::from_u64(3) * top, top);
 assert_eq!(top.widening_mul(top), U512::ONE << 510usize);
 assert_eq!(
-    U256::from_u64(7).mul_mod(U256::from_u64(9), U256::from_u64(10)),
+    U256::from_u64(7).checked_mul_mod(U256::from_u64(9), U256::from_u64(10)),
     Some(U256::from_u64(3))
 );
 
@@ -32,9 +33,13 @@ assert_eq!(max521.bit_len(), 521);
 
 ## Division
 
-A divisor is a `NonZeroUint`. `NonZeroUint::new` returns `None` for zero, so the check runs once
-per divisor, and `get` returns the value. `div_rem`, `/` and `%` take a `NonZeroUint` and return
-plain values.
+A divisor is a `NonZeroUint`, the alias of `NonZero<Uint<N>>`. `NonZero::new` returns `None` for
+zero, so the check runs once per divisor; `get` returns the value and `as_ref` borrows it, and
+`TryFrom` and `From` convert both ways. `div_rem`, `/` and `%` take a `NonZeroUint` and return
+plain values. The operations whose result stays nonzero return a `NonZeroUint`: `|` with any
+`Uint`, `saturating_add` and `saturating_mul`, and `checked_add`, `checked_mul` and `checked_pow`
+with an `Option`. `leading_zeros`, `trailing_zeros`, `ilog2` and `is_power_of_two` need no zero
+case.
 `checked_div_rem` takes a `Uint` and returns `None` for a zero divisor. The divisor may have any
 width, and the remainder has the divisor's.
 
@@ -49,11 +54,34 @@ assert_eq!(a % divisor, U128::from_u64(4));
 assert_eq!(a.checked_div_rem(U128::ZERO), None);
 ```
 
+## num-traits
+
+`Uint` implements these `num-traits` traits, each with the inherent method of the same name:
+
+- `Zero`, `One`, `ConstZero`, `ConstOne`, `Bounded`;
+- `Pow<u32>`, `MulAdd`, modulo `2^N`;
+- `CheckedAdd`, `CheckedSub`, `CheckedMul`, `CheckedNeg`, `CheckedShl`, `CheckedShr`;
+- `WrappingAdd`, `WrappingSub`, `WrappingMul`, `WrappingNeg`, `WrappingShl`, `WrappingShr`;
+- `SaturatingAdd`, `SaturatingSub`, `SaturatingMul`;
+- `OverflowingAdd`, `OverflowingSub`, `OverflowingMul`;
+- `ToPrimitive`, `FromPrimitive`, `NumCast`;
+- `ToBytes`, `FromBytes`, on `ceil(N / 8)` bytes.
+
+`checked_shl` and `checked_shr` return `None` for a shift of `N` or more; `wrapping_shl` and
+`wrapping_shr` shift by the amount modulo `N`. `FromBytes` reads the bytes modulo `2^N`.
+`to_f32` and `to_f64` round to the nearest float, ties to even. `FromPrimitive` keeps the integer
+part of a float. `NumCast` reads its source through `to_u128` and returns `None` from `2^128` up.
+
+`checked_div` and `checked_rem` are inherent methods only: `CheckedDiv`, `CheckedRem`, `Num`,
+`Unsigned`, `PrimInt` and `Euclid` require `Div<Self>` and `Rem<Self>`, which panic on a zero
+divisor. `NonZero<T>` has the crate's `One` wherever `T` has it. `num-traits`' `One` requires
+`Mul<Output = Self>`, and a product of two nonzero `Uint`s can wrap to zero.
+
 ## Modular arithmetic
 
 `add_mod`, `sub_mod` and `neg_mod` take a `NonZeroUint` modulus of the operands' width and
-operands of any value. `mul_mod` takes operands and a modulus of any widths, and returns `None` for
-a zero modulus.
+operands of any value. `mul_mod` takes a `NonZeroUint` modulus and operands of any widths and
+values; `checked_mul_mod` takes a `Uint` modulus and returns `None` for zero.
 
 ```rust
 use biguint::{NonZeroUint, U256};
@@ -62,6 +90,7 @@ let m = NonZeroUint::new(U256::from_u64(97)).expect("a nonzero modulus");
 assert_eq!(U256::from_u64(90).add_mod(U256::from_u64(10), m), U256::from_u64(3));
 assert_eq!(U256::from_u64(3).sub_mod(U256::from_u64(10), m), U256::from_u64(90));
 assert_eq!(U256::from_u64(3).neg_mod(m), U256::from_u64(94));
+assert_eq!(U256::from_u64(50).mul_mod(U256::from_u64(4), m), U256::from_u64(6));
 ```
 
 A `Modulus` prepares a modulus once for many operations. `Modulus::scope` runs a closure on a
@@ -123,8 +152,12 @@ cargo run -p biguint-bench-report -- report   # BENCHMARKS.md
 
 ## Memory
 
-No operation allocates. In release builds, 4096-bit `mul_mod` and `div_rem` run on an 8 KiB
-thread stack. Unoptimized builds need about 1.9 MiB for `mul_mod` and 1.2 MiB for `div_rem`.
+No operation allocates. Valgrind's DRD counts the thread stack that 4096-bit operations use:
+
+| Build | `*` | `div_rem` | `mul_mod` |
+|---|---:|---:|---:|
+| release | 4.8 KiB | 4.6 KiB | 7.9 KiB |
+| unoptimized | 224 KiB | 38 KiB | 1.0 MiB |
 
 ## Features
 

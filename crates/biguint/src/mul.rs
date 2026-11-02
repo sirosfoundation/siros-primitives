@@ -58,6 +58,57 @@ where
     }
 }
 
+impl<N: Bits> Uint<N> {
+    /// `(self * rhs) mod 2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn wrapping_mul(self, rhs: Self) -> Self {
+        self * rhs
+    }
+
+    /// `(self * rhs) mod 2^N`, and whether the product reaches `2^N`.
+    ///
+    /// The bit lengths decide the overflow unless they sum to `N + 1`. Then `self >> 1` times
+    /// `rhs` fits in `N` bits, and the product is twice it plus `rhs` when `self` is odd.
+    #[inline(always)]
+    #[must_use]
+    pub fn overflowing_mul(self, rhs: Self) -> (Self, bool) {
+        let bits = self.bit_len() + rhs.bit_len();
+        let undecided = bits == N::BITS + 1;
+        let factor = if undecided { self >> 1usize } else { self };
+        let product = factor * rhs;
+        if undecided {
+            let odd = if self.bit_at(0) { rhs } else { Self::ZERO };
+            let (sum, carry) = (product << 1usize).carrying_add(odd, false);
+            (sum, carry || product.bit_at(N::BITS - 1))
+        } else {
+            (product, bits > N::BITS)
+        }
+    }
+
+    /// `self * rhs`, or `None` when the product reaches `2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_mul(self, rhs: Self) -> Option<Self> {
+        let (product, overflow) = self.overflowing_mul(rhs);
+        (!overflow).then_some(product)
+    }
+
+    /// `self * rhs`, or [`Self::MAX`] when the product reaches `2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn saturating_mul(self, rhs: Self) -> Self {
+        self.checked_mul(rhs).unwrap_or(Self::MAX)
+    }
+
+    /// `(self * factor + addend) mod 2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn mul_add(self, factor: Self, addend: Self) -> Self {
+        self * factor + addend
+    }
+}
+
 /// The strategy for multiplying an `A`-limb operand by a `B`-limb operand into `O` limbs, decided
 /// at compile time.
 struct Shape<A, B, O>(core::marker::PhantomData<(A, B, O)>);

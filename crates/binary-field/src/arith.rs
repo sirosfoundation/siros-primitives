@@ -7,11 +7,11 @@ use core::ops::{BitAnd, BitXor, Shl, Shr};
 use biguint::Uint;
 use clmul::Poly;
 use const_default::ConstDefault;
-use typenum::{U64, U128};
+use typenum::{U8, U64, U96, U128};
 
 use crate::frobenius::Frobenius;
 use crate::invert::{Inversion, inverse};
-use crate::kernel::{clmul16, spread_half};
+use crate::kernel::{clmul8, clmul16, spread_half};
 use crate::plan::{Plan, Polynomial, Shape, Wide};
 use crate::representation::{Representation, Storage};
 use crate::table::Tables;
@@ -91,6 +91,15 @@ const fn low_mask(bits: usize) -> u64 {
     } else {
         (1 << bits) - 1
     }
+}
+
+/// Where a squaring runs: alone, or in a run of squarings, a Frobenius power.
+#[derive(Clone, Copy)]
+pub(crate) enum Squaring {
+    /// One squaring.
+    Alone,
+    /// A squaring of a run.
+    Run,
 }
 
 /// The arithmetic of the field with the polynomial `P`.
@@ -179,12 +188,31 @@ impl<P: Polynomial> Field<P> {
     /// The square of a polynomial of the field.
     #[inline(always)]
     pub(crate) fn lanes_square(a: Lanes<P>) -> Lanes<P> {
+        Self::square_in(a, Squaring::Alone)
+    }
+
+    /// The square of a polynomial of the field, as a squaring of a run.
+    #[inline(always)]
+    pub(crate) fn run_square(a: Lanes<P>) -> Lanes<P> {
+        Self::square_in(a, Squaring::Run)
+    }
+
+    /// The square of a polynomial of the field, in the context `context`.
+    #[inline(always)]
+    fn square_in(a: Lanes<P>, context: Squaring) -> Lanes<P> {
         match Plan::<P>::SHAPE {
             Shape::Word => {
-                let square = Self::word_poly_square(a).resize::<U64>();
+                let square = Self::word_poly_square(a, context).resize::<U64>();
                 Self::reduce_word(square).resize()
             }
-            Shape::Words => Self::fold_words(Self::word_poly_square(a)),
+            Shape::Words if Plan::<P>::SPILL_BY_NIBBLES => {
+                // The top nibble of `h` holds the squares of the top two bits of `a`, so their
+                // map gives the spill without waiting on the square.
+                let degree = Plan::<P>::DEGREE;
+                let spill = (a >> (degree - 2)).map_low_nibbles(Tables::<P>::SQUARE_SPILL);
+                Self::fold_spilled(Self::word_poly_square(a, context), spill.resize())
+            }
+            Shape::Words => Self::fold_words(Self::word_poly_square(a, context)),
             Shape::Lane => {
                 let square = a.resize::<U128>().widening_square();
                 Self::fold_lane(square.resize(), (square >> 128).resize()).resize()
@@ -193,12 +221,13 @@ impl<P: Polynomial> Field<P> {
         }
     }
 
-    /// The square of a polynomial of at most 64 coefficients, in 128 bits: one carry-less product
-    /// with hardware word products, and otherwise the bits spread to twice their position, which
-    /// takes no product.
+    /// The square of a polynomial of at most 64 coefficients, in 128 bits. A square alone takes
+    /// `clmul`'s spread of the bits to twice their position, a byte shuffle of a nibble table with
+    /// SSSE3, which leaves the carry-less multiplier to the fold; a run of squarings takes the
+    /// carry-less product with hardware word products, which takes fewer instructions.
     #[inline(always)]
-    fn word_poly_square(a: Lanes<P>) -> Poly<U128> {
-        if clmul::HARDWARE {
+    fn word_poly_square(a: Lanes<P>, context: Squaring) -> Poly<U128> {
+        if clmul::HARDWARE && matches!(context, Squaring::Run) {
             a.clmul_words(0, a, 0)
         } else {
             a.resize::<U64>().widening_square()
@@ -212,7 +241,10 @@ impl<P: Polynomial> Field<P> {
     fn fold_words(product: Poly<U128>) -> Lanes<P> {
         let degree = Plan::<P>::DEGREE;
         let mask = Poly::of(low_mask(degree));
-        if Plan::<P>::FOLD_BY_PRODUCTS && degree == 64 {
+        if Plan::<P>::SPILL_BY_NIBBLES {
+            let spill = (product >> (2 * degree - 4)).map_low_nibbles(Tables::<P>::SPILL);
+            Self::fold_spilled(product, spill)
+        } else if Plan::<P>::FOLD_BY_PRODUCTS && degree == 64 {
             // `h` is word 1, so the shifts within words give `t` in word 1 without a move.
             let r = Poly::<U64>::of(Plan::<P>::R_WORD);
             let raised = product ^ Self::overflow(product);
@@ -228,6 +260,32 @@ impl<P: Polynomial> Field<P> {
             let high = (product >> degree).resize::<U64>();
             Self::fold_word(low, high).resize()
         }
+    }
+
+    /// `p mod f` for `n` from 33 to 64, `d` at most 4 and a product `p` of two words, as
+    /// `low + (h r mod x^n) + t r`, given `t r`, the image of the top nibble of `h` under the
+    /// spill map, which runs in parallel with the fold of `h`.
+    #[inline(always)]
+    fn fold_spilled(product: Poly<U128>, spill: Poly<U128>) -> Lanes<P> {
+        let degree = Plan::<P>::DEGREE;
+        let r = Poly::<U64>::of(Plan::<P>::R_WORD);
+        let folded = if Plan::<P>::FOLD_BY_PRODUCTS && degree == 64 {
+            product.clmul_words(1, r, 0)
+        } else if Plan::<P>::FOLD_BY_PRODUCTS {
+            (product >> degree).clmul_words(0, r, 0)
+        } else {
+            let high = (product >> degree).resize::<U64>();
+            let mut sum = high;
+            each!(index < Plan::<P>::TAPS.len() => {
+                if let Some(&tap) = Plan::<P>::TAPS.get(index)
+                    && tap > 0
+                {
+                    sum ^= high << tap;
+                }
+            });
+            sum.resize()
+        };
+        (product ^ folded ^ spill).resize()
     }
 
     /// The overflow of `h r` past `x^n` for `h` below `x^n` in each word of `high`, by one shift per
@@ -406,7 +464,13 @@ impl<P: Polynomial> Field<P> {
                 Shape::Word | Shape::Words => {
                     let wide = a.resize::<U128>();
                     let halves = gather_within(wide ^ (wide.shr_within_words(1) << 64));
-                    let product = halves.clmul_words(1, root_x, 0);
+                    // Word 1 holds `o`, below `x^32`: a comb takes the narrow product when the
+                    // width says so.
+                    let product = if clmul::HARDWARE {
+                        halves.clmul_words(1, root_x, 0)
+                    } else {
+                        halves.resize::<U96>().clmul_words(1, root_x, 0)
+                    };
                     let odd = if Plan::<P>::ONE_SPILL {
                         Self::fold_short(product)
                     } else if matches!(Plan::<P>::SHAPE, Shape::Word) {
@@ -430,7 +494,7 @@ impl<P: Polynomial> Field<P> {
         } else {
             let mut power = a;
             each!(_step < Plan::<P>::DEGREE - 1 => {
-                power = Self::lanes_square(power);
+                power = Self::run_square(power);
             });
             power
         }
@@ -439,12 +503,18 @@ impl<P: Polynomial> Field<P> {
     // ---------------------------------------------------------------------------------------
     // The word of an element of a field of degree up to 16.
 
-    /// `a b mod f`: one hardware word product, or without one, the integer products of three bit
-    /// lanes from degree 9, where they take fewer instructions than the comb of 64-bit words.
+    /// `a b mod f`: one hardware word product, or without one, the integer products of narrow bit
+    /// lanes, which take fewer instructions than the comb of 64-bit words.
     #[inline(always)]
     pub(crate) fn word_mul(a: u64, b: u64) -> u64 {
-        if clmul::HARDWARE || Plan::<P>::DEGREE <= 8 {
+        if clmul::HARDWARE && Plan::<P>::NIBBLE_MAPS {
+            // In a vector register: the product, and its fold by two nibble maps.
+            let byte = |value: u64| Poly::<U8>::from_uint(Uint::from_u64(value));
+            Tables::<P>::fold_byte(byte(a).clmul_words(0, byte(b), 0))
+        } else if clmul::HARDWARE {
             Self::reduce_word(clmul::clmul64(a, b) as u64)
+        } else if Plan::<P>::DEGREE <= 8 {
+            Self::reduce_word(clmul8(a, b))
         } else {
             Self::reduce_word(clmul16(a, b))
         }
@@ -486,7 +556,7 @@ impl<P: Polynomial> Field<P> {
         let mut power = a;
         let mut step = 0;
         while step < k {
-            power = Self::lanes_square(power);
+            power = Self::run_square(power);
             step += 1;
         }
         power

@@ -20,6 +20,7 @@ not-precomputed = []
 const-default.workspace = true
 derive-where.workspace = true
 generic-array.workspace = true
+num-traits.workspace = true
 thiserror.workspace = true
 typenum.workspace = true
 
@@ -28,7 +29,7 @@ bench-compare = { path = "../bench-compare" }
 bnum.workspace = true
 crypto-bigint.workspace = true
 num-bigint.workspace = true
-ruint.workspace = true
+ruint = { workspace = true, features = ["num-traits"] }
 serde.workspace = true
 uint.workspace = true
 

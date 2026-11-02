@@ -229,7 +229,9 @@ mod uint {
     use biguint::generic_array::sequence::GenericSequence;
     use biguint::typenum::{Sum, U1, U8, U16, U63, U64, U65, U100, U128, U129, U192, U233, U571};
     use biguint::{Bits, Uint};
-    use clmul::{CarrylessMul, Poly, Width, const_carryless_mul, const_widening_carryless_mul};
+    use clmul::{
+        CarrylessMul, NibbleMap, Poly, Width, const_carryless_mul, const_widening_carryless_mul,
+    };
 
     use super::{Rng, reference};
 
@@ -329,6 +331,43 @@ mod uint {
                 );
             }
             assert_eq!(p.resize::<M>().to_uint(), a.resize::<M>());
+            // Every byte through a nibble map, against the bits of each nibble selecting images.
+            let images = [0x8F, 0x31, 0xC6, 0x5A];
+            let map = NibbleMap::from_images(images);
+            let image = |nibble: u64| {
+                (0..4)
+                    .filter(|bit| (nibble >> bit) & 1 == 1)
+                    .fold(0u64, |sum, bit| sum ^ u64::from(images[bit]))
+            };
+            let mapped = |shift: u32| -> Uint<N> {
+                let top = match N::BITS % 64 {
+                    0 => u64::MAX,
+                    bits => (1 << bits) - 1,
+                };
+                Uint::from_generic_limbs(GenericArray::generate(|index| {
+                    let word = (0..8).fold(0u64, |word, byte| {
+                        let nibble = (a.as_limbs()[index] >> (8 * byte + shift)) & 0xF;
+                        word | (image(nibble) << (8 * byte))
+                    });
+                    if index + 1 == N::LIMBS {
+                        word & top
+                    } else {
+                        word
+                    }
+                }))
+            };
+            // Widened, so that a bit at or above `N` would show.
+            let wide = |poly: Poly<N>| poly.resize::<Sum<N, N>>().to_uint();
+            assert_eq!(
+                wide(p.map_low_nibbles(map)),
+                mapped(0).resize(),
+                "{a:?} low"
+            );
+            assert_eq!(
+                wide(p.map_high_nibbles(map)),
+                mapped(4).resize(),
+                "{a:?} high"
+            );
             assert_eq!(
                 p.widening_square().to_uint(),
                 expected::<Sum<N, N>>(a.as_limbs(), a.as_limbs())

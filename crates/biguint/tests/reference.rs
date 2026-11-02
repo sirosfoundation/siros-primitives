@@ -244,7 +244,7 @@ fn mul_mod_matches_reference() {
                 for &b in &operands {
                     let expected = (!modulus.is_zero())
                         .then(|| reference::<N, B, L>(a).mul_mod(reference(b), rm));
-                    let product = a.mul_mod(b, modulus).map(reference::<N, B, L>);
+                    let product = a.checked_mul_mod(b, modulus).map(reference::<N, B, L>);
                     assert_eq!(product, expected, "{B}: {a:?} * {b:?} mod {modulus:?}");
                 }
             }
@@ -271,7 +271,7 @@ fn mul_mod_matches_reference() {
                 for &b in &rhs_values {
                     let expected =
                         (!modulus.is_zero()).then(|| wide(a).mul_mod(wide(b), wide(modulus)));
-                    let product = a.mul_mod(b, modulus).map(wide);
+                    let product = a.checked_mul_mod(b, modulus).map(wide);
                     assert_eq!(product, expected, "{a:?} * {b:?} mod {modulus:?}");
                 }
             }
@@ -428,6 +428,14 @@ fn bit_operations_match_reference() {
                     assert_eq!(reference(a << amount), ra.wrapping_shl(shift));
                     assert_eq!(reference(a >> amount), ra.wrapping_shr(shift));
                 }
+                if let Ok(signed) = i64::try_from(shift) {
+                    assert_eq!(reference(a << signed), ra.wrapping_shl(shift));
+                    assert!(
+                        (a >> (-signed - 1)).is_zero(),
+                        "{B}: {a:?} >> {}",
+                        -signed - 1
+                    );
+                }
                 assert_eq!(reference(a.rotate_left(shift)), ra.rotate_left(shift));
                 assert_eq!(reference(a.rotate_right(shift)), ra.rotate_right(shift));
             }
@@ -514,4 +522,390 @@ fn swap_bytes_matches_reference() {
     check::<U192, 192, 3, 24>();
     check::<U256, 256, 4, 32>();
     check::<U512, 512, 8, 64>();
+}
+
+#[test]
+fn nonzero_operations_match_reference() {
+    fn check<N, const B: usize, const L: usize>()
+    where
+        N: Bits + Add<N>,
+        Sum<N, N>: Bits,
+    {
+        let values: Vec<NonZeroUint<N>> = samples::<N>()
+            .into_iter()
+            .filter_map(NonZeroUint::new)
+            .collect();
+        let nonzero = |value: Option<NonZeroUint<N>>| value.map(|value| reference(value.get()));
+        for &a in &values {
+            let ra = reference::<N, B, L>(a.get());
+            assert_eq!(a.leading_zeros(), ra.leading_zeros(), "{B}: {a:?}");
+            assert_eq!(a.trailing_zeros(), ra.trailing_zeros(), "{B}: {a:?}");
+            assert_eq!(a.ilog2(), ra.bit_len() - 1, "{B}: {a:?}");
+            assert_eq!(a.is_power_of_two(), ra.is_power_of_two(), "{B}: {a:?}");
+            for exponent in [0, 1, 2, 3, 7, 64, 521] {
+                let expected = (0..exponent).try_fold(Reference::<B, L>::from(1u8), |power, _| {
+                    power.checked_mul(ra)
+                });
+                assert_eq!(
+                    nonzero(a.checked_pow(exponent)),
+                    expected,
+                    "{B}: {a:?}^{exponent}"
+                );
+            }
+            for &b in &values {
+                let rb = reference::<N, B, L>(b.get());
+                assert_eq!(reference((a | b).get()), ra | rb, "{B}: {a:?} | {b:?}");
+                assert_eq!(
+                    reference((a | b.get()).get()),
+                    ra | rb,
+                    "{B}: {a:?} | {b:?}"
+                );
+                let sum = ra.saturating_add(rb);
+                assert_eq!(reference(a.saturating_add(b.get()).get()), sum, "{B}: +");
+                assert_eq!(
+                    nonzero(a.checked_add(b.get())),
+                    ra.checked_add(rb),
+                    "{B}: +"
+                );
+                let product = ra.saturating_mul(rb);
+                assert_eq!(reference(a.saturating_mul(b).get()), product, "{B}: *");
+                assert_eq!(nonzero(a.checked_mul(b)), ra.checked_mul(rb), "{B}: *");
+            }
+        }
+        assert_eq!(NonZeroUint::<N>::try_from(Uint::ZERO), Err(biguint::IsZero));
+    }
+    for_each_width!(check);
+}
+
+#[test]
+fn num_traits_match_reference() {
+    use num_traits::ops::overflowing::{OverflowingAdd, OverflowingMul, OverflowingSub};
+    use num_traits::{
+        Bounded, CheckedAdd, CheckedMul, CheckedNeg, CheckedShl, CheckedShr, CheckedSub, ConstOne,
+        ConstZero, FromBytes, FromPrimitive, MulAdd, NumCast, SaturatingAdd, SaturatingMul,
+        SaturatingSub, ToBytes, ToPrimitive, WrappingAdd, WrappingMul, WrappingNeg, WrappingShl,
+        WrappingShr, WrappingSub,
+    };
+
+    /// A trait method on both types, its output in the reference's terms.
+    type Binary<N, const B: usize, const L: usize> = (
+        &'static str,
+        fn(Uint<N>, Uint<N>) -> String,
+        fn(Reference<B, L>, Reference<B, L>) -> String,
+    );
+    type Unary<N, const B: usize, const L: usize> = (
+        &'static str,
+        fn(Uint<N>) -> String,
+        fn(Reference<B, L>) -> String,
+    );
+
+    fn r<N: Bits, const B: usize, const L: usize>(value: Uint<N>) -> Reference<B, L> {
+        reference(value)
+    }
+
+    fn check<N: Bits, const B: usize, const L: usize>() {
+        let binary: [Binary<N, B, L>; 13] = [
+            (
+                "checked_add",
+                |a, b| format!("{:?}", CheckedAdd::checked_add(&a, &b).map(r::<N, B, L>)),
+                |a, b| format!("{:?}", CheckedAdd::checked_add(&a, &b)),
+            ),
+            (
+                "checked_sub",
+                |a, b| format!("{:?}", CheckedSub::checked_sub(&a, &b).map(r::<N, B, L>)),
+                |a, b| format!("{:?}", CheckedSub::checked_sub(&a, &b)),
+            ),
+            (
+                "checked_mul",
+                |a, b| format!("{:?}", CheckedMul::checked_mul(&a, &b).map(r::<N, B, L>)),
+                |a, b| format!("{:?}", CheckedMul::checked_mul(&a, &b)),
+            ),
+            (
+                "wrapping_add",
+                |a, b| format!("{:?}", r::<N, B, L>(WrappingAdd::wrapping_add(&a, &b))),
+                |a, b| format!("{:?}", WrappingAdd::wrapping_add(&a, &b)),
+            ),
+            (
+                "wrapping_sub",
+                |a, b| format!("{:?}", r::<N, B, L>(WrappingSub::wrapping_sub(&a, &b))),
+                |a, b| format!("{:?}", WrappingSub::wrapping_sub(&a, &b)),
+            ),
+            (
+                "wrapping_mul",
+                |a, b| format!("{:?}", r::<N, B, L>(WrappingMul::wrapping_mul(&a, &b))),
+                |a, b| format!("{:?}", WrappingMul::wrapping_mul(&a, &b)),
+            ),
+            (
+                "saturating_add",
+                |a, b| format!("{:?}", r::<N, B, L>(SaturatingAdd::saturating_add(&a, &b))),
+                |a, b| format!("{:?}", SaturatingAdd::saturating_add(&a, &b)),
+            ),
+            (
+                "saturating_sub",
+                |a, b| format!("{:?}", r::<N, B, L>(SaturatingSub::saturating_sub(&a, &b))),
+                |a, b| format!("{:?}", SaturatingSub::saturating_sub(&a, &b)),
+            ),
+            (
+                "saturating_mul",
+                |a, b| format!("{:?}", r::<N, B, L>(SaturatingMul::saturating_mul(&a, &b))),
+                |a, b| format!("{:?}", SaturatingMul::saturating_mul(&a, &b)),
+            ),
+            (
+                "overflowing_add",
+                |a, b| {
+                    let (sum, overflow) = OverflowingAdd::overflowing_add(&a, &b);
+                    format!("{:?}", (r::<N, B, L>(sum), overflow))
+                },
+                |a, b| format!("{:?}", OverflowingAdd::overflowing_add(&a, &b)),
+            ),
+            (
+                "overflowing_sub",
+                |a, b| {
+                    let (difference, overflow) = OverflowingSub::overflowing_sub(&a, &b);
+                    format!("{:?}", (r::<N, B, L>(difference), overflow))
+                },
+                |a, b| format!("{:?}", OverflowingSub::overflowing_sub(&a, &b)),
+            ),
+            (
+                "overflowing_mul",
+                |a, b| {
+                    let (product, overflow) = OverflowingMul::overflowing_mul(&a, &b);
+                    format!("{:?}", (r::<N, B, L>(product), overflow))
+                },
+                |a, b| format!("{:?}", OverflowingMul::overflowing_mul(&a, &b)),
+            ),
+            (
+                "mul_add",
+                |a, b| format!("{:?}", r::<N, B, L>(MulAdd::mul_add(a, b, a ^ b))),
+                |a, b| format!("{:?}", MulAdd::mul_add(a, b, a ^ b)),
+            ),
+        ];
+        let unary: [Unary<N, B, L>; 12] = [
+            (
+                "checked_neg",
+                |a| format!("{:?}", CheckedNeg::checked_neg(&a).map(r::<N, B, L>)),
+                |a| format!("{:?}", CheckedNeg::checked_neg(&a)),
+            ),
+            (
+                "wrapping_neg",
+                |a| format!("{:?}", r::<N, B, L>(WrappingNeg::wrapping_neg(&a))),
+                |a| format!("{:?}", WrappingNeg::wrapping_neg(&a)),
+            ),
+            (
+                "pow",
+                |a| {
+                    let powers = EXPONENTS.map(|e| r::<N, B, L>(num_traits::Pow::pow(a, e)));
+                    format!("{powers:?}")
+                },
+                // ruint's `Pow` takes an exponent of its own width.
+                |a| {
+                    let powers = EXPONENTS.map(|e| {
+                        (0..e).fold(<Reference<B, L> as num_traits::One>::one(), |power, _| {
+                            WrappingMul::wrapping_mul(&power, &a)
+                        })
+                    });
+                    format!("{powers:?}")
+                },
+            ),
+            (
+                "to_u64",
+                |a| format!("{:?}", ToPrimitive::to_u64(&a)),
+                |a| format!("{:?}", ToPrimitive::to_u64(&a)),
+            ),
+            (
+                "to_i64",
+                |a| format!("{:?}", ToPrimitive::to_i64(&a)),
+                |a| format!("{:?}", ToPrimitive::to_i64(&a)),
+            ),
+            (
+                "to_u128",
+                |a| format!("{:?}", ToPrimitive::to_u128(&a)),
+                |a| format!("{:?}", ToPrimitive::to_u128(&a)),
+            ),
+            (
+                "to_i128",
+                |a| format!("{:?}", ToPrimitive::to_i128(&a)),
+                |a| format!("{:?}", ToPrimitive::to_i128(&a)),
+            ),
+            (
+                "to_f32",
+                |a| format!("{:?}", ToPrimitive::to_f32(&a).map(f32::to_bits)),
+                |a| format!("{:?}", ToPrimitive::to_f32(&a).map(f32::to_bits)),
+            ),
+            (
+                "to_f64",
+                |a| format!("{:?}", ToPrimitive::to_f64(&a).map(f64::to_bits)),
+                |a| format!("{:?}", ToPrimitive::to_f64(&a).map(f64::to_bits)),
+            ),
+            (
+                "to_bytes",
+                |a| {
+                    let (le, be) = (ToBytes::to_le_bytes(&a), ToBytes::to_be_bytes(&a));
+                    format!("{:?}", (le.as_slice(), be.as_slice()))
+                },
+                |a| {
+                    let (le, be) = (ToBytes::to_le_bytes(&a), ToBytes::to_be_bytes(&a));
+                    format!("{:?}", (le.as_slice(), be.as_slice()))
+                },
+            ),
+            (
+                "from_bytes",
+                |a| {
+                    let le = <Uint<N> as FromBytes>::from_le_bytes(&a.to_le_bytes());
+                    let be = <Uint<N> as FromBytes>::from_be_bytes(&a.to_be_bytes());
+                    format!("{:?}", (r::<N, B, L>(le), r::<N, B, L>(be)))
+                },
+                |a| {
+                    let le = <Reference<B, L> as FromBytes>::from_le_bytes(&a.to_le_bytes_vec());
+                    let be = <Reference<B, L> as FromBytes>::from_be_bytes(&a.to_be_bytes_vec());
+                    format!("{:?}", (le, be))
+                },
+            ),
+            (
+                "checked_shl, checked_shr, wrapping_shl, wrapping_shr",
+                |a| {
+                    let shifts: Vec<_> = shift_amounts(B)
+                        .into_iter()
+                        .filter_map(|shift| u32::try_from(shift).ok())
+                        .map(|shift| {
+                            (
+                                CheckedShl::checked_shl(&a, shift).map(r::<N, B, L>),
+                                CheckedShr::checked_shr(&a, shift).map(r::<N, B, L>),
+                                r::<N, B, L>(WrappingShl::wrapping_shl(&a, shift)),
+                                r::<N, B, L>(WrappingShr::wrapping_shr(&a, shift)),
+                            )
+                        })
+                        .collect();
+                    format!("{shifts:?}")
+                },
+                // ruint's shift traits refuse lost bits. The traits' contract refuses `rhs >= B`
+                // and reduces `rhs` modulo `B`, which ruint's operators then shift by.
+                |a| {
+                    let shifts: Vec<_> = shift_amounts(B)
+                        .into_iter()
+                        .filter(|&shift| u32::try_from(shift).is_ok())
+                        .map(|shift| {
+                            (
+                                (shift < B).then(|| a << shift),
+                                (shift < B).then(|| a >> shift),
+                                a << (shift % B),
+                                a >> (shift % B),
+                            )
+                        })
+                        .collect();
+                    format!("{shifts:?}")
+                },
+            ),
+        ];
+
+        let mut values = samples::<N>();
+        // Factors whose bit lengths sum to `B + 1`, with products below and above `2^B`.
+        for shift in [1, B / 3, B / 2, B - 1] {
+            values.push(Uint::MAX >> shift);
+            values.push((Uint::ONE << shift) + Uint::<N>::ONE);
+        }
+        for &a in &values {
+            let ra = reference::<N, B, L>(a);
+            for (name, ours, theirs) in &unary {
+                assert_eq!(ours(a), theirs(ra), "{B}: {name}({a:?})");
+            }
+            for &b in &values {
+                let rb = reference::<N, B, L>(b);
+                for (name, ours, theirs) in &binary {
+                    assert_eq!(ours(a, b), theirs(ra, rb), "{B}: {name}({a:?}, {b:?})");
+                }
+            }
+        }
+
+        assert_eq!(
+            [
+                <Uint<N> as Bounded>::min_value(),
+                <Uint<N> as Bounded>::max_value(),
+                <Uint<N> as num_traits::One>::one(),
+                <Uint<N> as ConstOne>::ONE,
+                <Uint<N> as ConstZero>::ZERO,
+            ]
+            .map(r::<N, B, L>),
+            [
+                <Reference<B, L> as Bounded>::min_value(),
+                <Reference<B, L> as Bounded>::max_value(),
+                <Reference<B, L> as num_traits::One>::one(),
+                <Reference<B, L> as ConstOne>::ONE,
+                <Reference<B, L> as ConstZero>::ZERO,
+            ],
+            "{B}: constants"
+        );
+
+        let power = |exponent: usize| 2f64.powi(exponent as i32);
+        let floats = [
+            0.0,
+            -0.0,
+            -0.5,
+            -1.0,
+            0.75,
+            2.9,
+            1e30,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::MAX,
+            power(B - 1),
+            power(B),
+            power(B) * (1.0 - f64::EPSILON / 2.0),
+        ];
+        let sampled = values
+            .iter()
+            .map(|&value| <f64 as From<_>>::from(reference::<N, B, L>(value)));
+        for float in floats.into_iter().chain(sampled) {
+            assert_eq!(
+                <Uint<N> as FromPrimitive>::from_f64(float).map(r::<N, B, L>),
+                <Reference<B, L> as FromPrimitive>::from_f64(float),
+                "{B}: from_f64({float})"
+            );
+            assert_eq!(
+                <Uint<N> as NumCast>::from(float).map(r::<N, B, L>),
+                <Reference<B, L> as NumCast>::from(float),
+                "{B}: NumCast::from({float})"
+            );
+        }
+        let integers = [
+            0,
+            1,
+            -1,
+            127,
+            128,
+            <i128 as From<i64>>::from(i64::MIN),
+            <i128 as From<u64>>::from(u64::MAX),
+            i128::MAX,
+            i128::MIN,
+        ];
+        for integer in integers {
+            let unsigned = integer.cast_unsigned();
+            let (low, signed_low) = (unsigned as u64, integer as i64);
+            let ours = (
+                <Uint<N> as FromPrimitive>::from_u64(low).map(r::<N, B, L>),
+                <Uint<N> as FromPrimitive>::from_i64(signed_low).map(r::<N, B, L>),
+                <Uint<N> as FromPrimitive>::from_u128(unsigned).map(r::<N, B, L>),
+                <Uint<N> as FromPrimitive>::from_i128(integer).map(r::<N, B, L>),
+                <Uint<N> as NumCast>::from(integer).map(r::<N, B, L>),
+            );
+            let theirs = (
+                <Reference<B, L> as FromPrimitive>::from_u64(low),
+                <Reference<B, L> as FromPrimitive>::from_i64(signed_low),
+                <Reference<B, L> as FromPrimitive>::from_u128(unsigned),
+                <Reference<B, L> as FromPrimitive>::from_i128(integer),
+                <Reference<B, L> as NumCast>::from(integer),
+            );
+            assert_eq!(ours, theirs, "{B}: from {integer}");
+        }
+    }
+
+    const EXPONENTS: [u32; 7] = [0, 1, 2, 3, 7, 64, 521];
+
+    check::<U1, 1, 1>();
+    check::<U7, 7, 1>();
+    check::<U64, 64, 1>();
+    check::<U129, 129, 3>();
+    check::<U256, 256, 4>();
+    check::<U521, 521, 9>();
 }
