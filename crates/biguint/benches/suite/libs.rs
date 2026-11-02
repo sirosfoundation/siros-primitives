@@ -6,7 +6,7 @@
 use core::num::NonZero;
 use core::ops::Add;
 
-use bench_compare::{Cells, Gpr, Limbs, Row, Visitor};
+use bench_compare::{Cells, Limbs, Row, Visitor};
 use biguint::typenum::{Sum, U1024 as Bits1024, U2048 as Bits2048, U4096 as Bits4096};
 use biguint::{Bits, Bits64, Bits128, Bits256, Bits384, Bits512, Uint};
 use num_bigint::BigUint;
@@ -89,17 +89,17 @@ macro_rules! by_ref {
     };
 }
 
-/// Offers each `Op => method` as [`by_value`] does, with its chain form through `$barrier`.
+/// Offers each `Op => method` as [`by_value`] does, with its chain form.
 macro_rules! chained_by_value {
-    ($cells:expr, $t:ty, $barrier:expr, $($op:ident => $method:ident),+ $(,)?) => {
-        $cells$(.chained(Op::$op, stringify!($method), pair::<$t>, |&(a, b)| a.$method(b), $barrier))+
+    ($cells:expr, $t:ty, $($op:ident => $method:ident),+ $(,)?) => {
+        $cells$(.chained(Op::$op, stringify!($method), pair::<$t>, |&(a, b)| a.$method(b)))+
     };
 }
 
-/// Offers each `Op => method` as [`by_ref`] does, with its chain form through `$barrier`.
+/// Offers each `Op => method` as [`by_ref`] does, with its chain form.
 macro_rules! chained_by_ref {
-    ($cells:expr, $t:ty, $barrier:expr, $($op:ident => $method:ident),+ $(,)?) => {
-        $cells$(.chained(Op::$op, stringify!($method), pair::<$t>, |(a, b)| a.$method(b), $barrier))+
+    ($cells:expr, $t:ty, $($op:ident => $method:ident),+ $(,)?) => {
+        $cells$(.chained(Op::$op, stringify!($method), pair::<$t>, |(a, b)| a.$method(b)))+
     };
 }
 
@@ -110,7 +110,7 @@ where
     Sum<N, N>: Bits,
 {
     cells
-        .chained(Op::Add, "+", pair::<Uint<N>>, |&(a, b)| a + b, Gpr)
+        .chained(Op::Add, "+", pair::<Uint<N>>, |&(a, b)| a + b)
         .case(Op::Mul, "*", pair::<Uint<N>>, |&(a, b)| a * b)
         .case(Op::Div, "div_rem", pair::<Uint<N>>, |&(a, b)| {
             a.div_rem(b).map(|(quotient, _)| quotient)
@@ -130,7 +130,7 @@ where
 /// hardware multiply takes the same time on any operands, so the chain of products applies.
 macro_rules! primitive {
     ($cells:expr, $t:ty) => {
-        chained_by_value!($cells, $t, Gpr, Add => wrapping_add, Mul => wrapping_mul)
+        chained_by_value!($cells, $t, Add => wrapping_add, Mul => wrapping_mul)
             .case(Op::Div, "/ NonZero", two::<$t, NonZero<$t>>, |&(a, divisor)| a / divisor)
             .case(Op::Mod, "% NonZero", two::<$t, NonZero<$t>>, |&(a, divisor)| a % divisor)
     };
@@ -158,7 +158,7 @@ fn native_none<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
 
 /// `ruint` at `B` bits in `L` limbs.
 fn ruint<const B: usize, const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
-    let cells = chained_by_value!(cells, ruint::Uint<B, L>, Gpr, Add => wrapping_add);
+    let cells = chained_by_value!(cells, ruint::Uint<B, L>, Add => wrapping_add);
     by_value!(
         cells,
         ruint::Uint<B, L>,
@@ -171,14 +171,13 @@ fn ruint<const B: usize, const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>)
         "mul_mod",
         three::<ruint::Uint<B, L>, ruint::Uint<B, L>>,
         |&(a, b, modulus)| a.mul_mod(b, modulus),
-        Gpr,
     )
 }
 
 /// `crypto-bigint` at `L` limbs. Division and mulmod run its variable-time functions.
 fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     use crypto_bigint::{NonZero, Uint};
-    let cells = chained_by_ref!(cells, Uint<L>, Gpr, Add => wrapping_add);
+    let cells = chained_by_ref!(cells, Uint<L>, Add => wrapping_add);
     by_ref!(cells, Uint<L>, Mul => wrapping_mul)
         .case(
             Op::Div,
@@ -197,13 +196,12 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
             "mul_mod_vartime",
             three::<Uint<L>, NonZero<Uint<L>>>,
             |(a, b, modulus)| a.mul_mod_vartime(b, modulus),
-            Gpr,
         )
 }
 
 /// `bnum` at `N` bytes.
 fn bnum<const N: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
-    let cells = chained_by_value!(cells, bnum::Uint<N>, Gpr, Add => wrapping_add);
+    let cells = chained_by_value!(cells, bnum::Uint<N>, Add => wrapping_add);
     by_value!(
         cells,
         bnum::Uint<N>,
@@ -217,7 +215,7 @@ fn bnum<const N: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
 /// `num-bigint`, which allocates each result and returns it exactly.
 fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     cells
-        .chained(Op::Add, "&a + &b", pair::<BigUint>, |(a, b)| a + b, Gpr)
+        .chained(Op::Add, "&a + &b", pair::<BigUint>, |(a, b)| a + b)
         .case(Op::Mul, "&a * &b", pair::<BigUint>, |(a, b)| a * b)
         .case(Op::Div, "&a / &b", pair::<BigUint>, |(a, b)| a / b)
         .case(Op::Mod, "&a % &b", pair::<BigUint>, |(a, b)| a % b)
@@ -232,7 +230,7 @@ fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     reason = "the code that `construct_uint!` expands to"
 )]
 mod parity {
-    use bench_compare::{Gpr, Limbs, Visitor};
+    use bench_compare::{Limbs, Visitor};
 
     use super::{Crate, Op, Width, pair};
     use crate::suite::limbs::{FromLimbs, Offer, ToLimbs};
@@ -264,13 +262,9 @@ mod parity {
     macro_rules! parity_ops {
         ($cells:expr, $t:ident) => {
             $cells
-                .chained(
-                    Op::Add,
-                    "overflowing_add",
-                    pair::<$t>,
-                    |&(a, b)| a.overflowing_add(b).0,
-                    Gpr,
-                )
+                .chained(Op::Add, "overflowing_add", pair::<$t>, |&(a, b)| {
+                    a.overflowing_add(b).0
+                })
                 .case(Op::Mul, "overflowing_mul", pair::<$t>, |&(a, b)| {
                     a.overflowing_mul(b).0
                 })

@@ -159,7 +159,7 @@ pub trait Visitor<O, K>: Sized {
     /// Measures `run` as a chain on the inputs that `inputs` draws, for a case with a chain
     /// form, after [`measure`](Self::measure).
     #[must_use]
-    fn measure_chain<I: Chain<R>, R, B: Barrier>(
+    fn measure_chain<I: Chain<R>, R>(
         self,
         _id: &CaseId<O, K>,
         _inputs: &Inputs<'_, I>,
@@ -320,14 +320,13 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
     /// Offers the case of [`api`](Self::api) with its chain form: the case also runs as the chain
     /// `x = op(x, y)`, where each result is the first operand of the next operation.
     #[must_use]
-    pub fn chain<I: Chain<R>, R, B: Barrier>(
+    pub fn chain<I: Chain<R>, R>(
         self,
         op: O,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
         read: impl Fn(&R) -> Option<Limbs>,
-        barrier: B,
     ) -> Self {
         self.chain_with(
             op,
@@ -336,18 +335,13 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
             |&(), set| prepare(set),
             run,
             |&(), result| read(result),
-            barrier,
         )
     }
 
     /// Offers the case of [`api_with`](Self::api_with) with its chain form, as
-    /// [`chain`](Self::chain) does. `barrier` names the registers where the result's type lives.
+    /// [`chain`](Self::chain) does.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the closures of a case and its barrier"
-    )]
-    pub fn chain_with<S, I: Chain<R>, R, B: Barrier>(
+    pub fn chain_with<S, I: Chain<R>, R>(
         self,
         op: O,
         function: &'static str,
@@ -355,7 +349,6 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
         prepare: impl Fn(&S, &[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
         read: impl Fn(&S, &R) -> Option<Limbs>,
-        _barrier: B,
     ) -> Self {
         self.case(
             op,
@@ -366,7 +359,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
                 run,
                 read,
             },
-            |visitor: V, id, inputs| visitor.measure_chain::<I, R, B>(id, inputs, run),
+            |visitor: V, id, inputs| visitor.measure_chain(id, inputs, run),
         )
     }
 

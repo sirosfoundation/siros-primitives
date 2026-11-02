@@ -1,49 +1,66 @@
 //! The barriers of the chain `x = barrier(op(x, y))`. A barrier hides each intermediate `x` from
 //! the optimizer, which then computes every step in order: an associative operation stays a chain
-//! and turns into no tree. Each barrier keeps `x` in one register class; a case names the class
-//! where its type lives, so that each crate pays for its own register moves. A value of more than
-//! [`REGISTERS`] bytes goes through memory, and so does every value off x86-64.
+//! and turns into no tree. A register barrier keeps `x` in one register class and can only add
+//! moves between classes, so a chain runs once per class and the faster run counts. A value of
+//! more than [`REGISTERS`] bytes goes through [`Memory`], and so does every value off x86-64.
 #![cfg_attr(
     target_arch = "x86_64",
     expect(unsafe_code, reason = "a register barrier is inline assembly")
 )]
 
-/// The most bytes that a barrier holds in registers.
+#[cfg(target_arch = "x86_64")]
+pub use registers::{Gpr, Xmm};
+
+use crate::record::Class;
+
+/// The most bytes that a register barrier holds in registers.
 pub const REGISTERS: usize = 64;
 
 /// Where the value of a chain stays between its steps.
 pub trait Barrier {
+    /// The class of the barrier in the record.
+    const CLASS: Class;
+
     /// `x`, opaque to the optimizer.
     fn hide<T>(x: T) -> T;
 }
 
-/// The general-purpose registers, one per 8 bytes. Integer words take them: `u64` arrays, `u128`,
-/// multi-limb integers and field elements, and the pointer and lengths of a heap value.
-#[derive(Clone, Copy)]
-pub struct Gpr;
+/// Memory: `core::hint::black_box`, a store and a load per step.
+pub struct Memory;
 
-/// The vector registers, one per 16 bytes. Elements built on `__m128i` take them.
-#[derive(Clone, Copy)]
-pub struct Xmm;
+impl Barrier for Memory {
+    const CLASS: Class = Class::Memory;
+
+    #[inline(always)]
+    fn hide<T>(x: T) -> T {
+        core::hint::black_box(x)
+    }
+}
 
 #[cfg(target_arch = "x86_64")]
 mod registers {
     use core::arch::asm;
     use core::arch::x86_64::__m128i;
-    use core::hint::black_box;
     use core::mem::{MaybeUninit, size_of};
     use core::ptr;
 
-    use super::{Barrier, Gpr, REGISTERS, Xmm};
+    use super::{Barrier, REGISTERS};
+    use crate::record::Class;
+
+    /// The general-purpose registers, one per 8 bytes.
+    pub struct Gpr;
+
+    /// The vector registers, one per 16 bytes.
+    pub struct Xmm;
 
     /// `x` through `N` registers that hold a `W` each: the bytes of `x` go into `N` words, each
     /// word that holds them passes through `pass`, and the words come back as a `T`. A larger `x`
-    /// passes through [`black_box`].
+    /// goes through [`Memory`](super::Memory).
     #[inline(always)]
     fn through<T, W: Copy, const N: usize>(x: T, pass: impl Fn(&mut MaybeUninit<W>)) -> T {
         let size = size_of::<T>();
         if size > size_of::<[W; N]>() {
-            return black_box(x);
+            return super::Memory::hide(x);
         }
         let x = MaybeUninit::new(x);
         let mut words = [MaybeUninit::<W>::uninit(); N];
@@ -70,6 +87,8 @@ mod registers {
     }
 
     impl Barrier for Gpr {
+        const CLASS: Class = Class::Gpr;
+
         #[inline(always)]
         fn hide<T>(x: T) -> T {
             through::<T, u64, { REGISTERS / 8 }>(x, |word| {
@@ -86,6 +105,8 @@ mod registers {
     }
 
     impl Barrier for Xmm {
+        const CLASS: Class = Class::Xmm;
+
         #[inline(always)]
         fn hide<T>(x: T) -> T {
             through::<T, __m128i, { REGISTERS / 16 }>(x, |chunk| {
@@ -99,21 +120,5 @@ mod registers {
                 }
             })
         }
-    }
-}
-
-#[cfg(not(target_arch = "x86_64"))]
-impl Barrier for Gpr {
-    #[inline(always)]
-    fn hide<T>(x: T) -> T {
-        core::hint::black_box(x)
-    }
-}
-
-#[cfg(not(target_arch = "x86_64"))]
-impl Barrier for Xmm {
-    #[inline(always)]
-    fn hide<T>(x: T) -> T {
-        core::hint::black_box(x)
     }
 }

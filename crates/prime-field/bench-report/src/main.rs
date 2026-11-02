@@ -44,6 +44,9 @@ const MEASURED: Measured = Measured {
         "runtime-algebra",
         "compile-algebra",
     ],
+    features: &[],
+    // It strips the lookup tables of `biguint`.
+    forbidden: &["not-precomputed"],
     builds: &[NATIVE],
 };
 

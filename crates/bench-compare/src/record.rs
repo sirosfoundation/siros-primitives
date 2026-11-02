@@ -57,7 +57,39 @@ pub struct Count {
     /// The loop of independent operations.
     pub batch: Events,
     /// The chain; absent for a case without a chain form.
-    pub chain: Option<Events>,
+    pub chain: Option<Latency>,
+}
+
+/// The chain of a case: of its chains, one per class that can hold its value, the one with the
+/// fewest cycles per step.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct Latency {
+    /// Where the chain holds its value between steps.
+    pub class: Class,
+    /// The events per step.
+    pub events: Events,
+}
+
+/// Where a chain holds its value between steps.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Class {
+    /// The general-purpose registers.
+    Gpr,
+    /// The vector registers.
+    Xmm,
+    /// Memory, for a value of more than [`REGISTERS`](crate::barrier::REGISTERS) bytes.
+    Memory,
+}
+
+impl fmt::Display for Class {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Gpr => "general-purpose registers",
+            Self::Xmm => "vector registers",
+            Self::Memory => "memory",
+        })
+    }
 }
 
 /// The user-mode events per operation that the CPU's counters count in one form of a case.
@@ -144,6 +176,10 @@ pub struct Record<K> {
     pub cpu_model: String,
     /// The operator's description of the machine.
     pub machine: Option<String>,
+    /// The measured package.
+    pub package: String,
+    /// The features of the measured package that every build enables beside its default ones.
+    pub features: Vec<String>,
     /// The versions of the compared crates.
     pub versions: Vec<Version>,
     /// The measurement of every build of the bench.

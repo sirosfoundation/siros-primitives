@@ -47,6 +47,10 @@ const MEASURED: Measured = Measured {
         "core-algebra",
         "polyval",
     ],
+    // The comparison measures the full tables, which the default features leave out.
+    features: &["precomputed"],
+    // It strips every lookup table.
+    forbidden: &["not-precomputed"],
     builds: &[
         Build {
             name: "with carry-less multiplication",

@@ -7,21 +7,26 @@
 //! runs [`REPETITIONS`] repetitions of every case, interleaved: repetition `r` of every case runs
 //! before repetition `r + 1` of any case. A repetition of a case draws fresh operand sets for
 //! every run, outside the counted region; it runs `n` operations uncounted, then counts a run of
-//! `n` operations and a run of `2n` through [`run_batch`] and, for a case with a chain form, the
-//! same through [`run_chain`]. The figure per operation of an event is the median, over the
-//! repetitions, of the `2n` count less the `n` count, divided by `n`: the fixed cost of a run
-//! cancels, and each difference pairs two runs taken back to back. A case whose `2n` runs count no
-//! more cycles than its `n` runs stops the sweep, and so does a chain step under one cycle.
+//! `n` operations and a run of `2n` through [`run_batch`]. A case with a chain form does the same
+//! through [`run_chain`] once per [`Barrier`], each with its own `n`: in general-purpose and in
+//! vector registers on x86-64 for a result of at most
+//! [`REGISTERS`](crate::barrier::REGISTERS) bytes, through memory otherwise. The figure per operation of an event is the median, over the repetitions, of the
+//! `2n` count less the `n` count, divided by `n`: the fixed cost of a run cancels, and each
+//! difference pairs two runs taken back to back. The latency of a case is its chain with the
+//! fewest cycles. A case whose `2n` runs count no more cycles than its `n` runs stops the sweep,
+//! and so does a chain step under one cycle.
 
 use std::fs;
 use std::mem::size_of;
 use std::path::Path;
 use std::process::ExitCode;
 
-use crate::barrier::Barrier;
+use crate::barrier::{Barrier, Memory};
+#[cfg(target_arch = "x86_64")]
+use crate::barrier::{Gpr, REGISTERS, Xmm};
 use crate::counters::{Counters, Counts, pin};
 use crate::error::Error;
-use crate::record::{Cell, Count, Events, Line, Load, Outcome, Sibling, Sweep};
+use crate::record::{Cell, Class, Count, Events, Latency, Line, Load, Outcome, Sibling, Sweep};
 use crate::suite::{Call, CaseId, Chain, Inputs, Rng, Suite, Visitor, run_batch, run_chain, visit};
 
 /// The counted repetitions of every case.
@@ -309,32 +314,50 @@ impl Form {
     }
 }
 
+/// The counted runs of one chain form of a case.
+struct ChainForm {
+    /// Where the chain holds its value between steps.
+    class: Class,
+    form: Form,
+}
+
 /// One measured case.
 struct Case {
     id: String,
     batch: Form,
-    chain: Option<Form>,
+    /// The chain forms, one per barrier; none for a case without a chain form.
+    chains: Vec<ChainForm>,
 }
 
 impl Case {
-    /// The cell of the case, which runs `function`. A chain step under one cycle is an
+    /// The cell of the case, which runs `function`: its latency is its chain form with the fewest
+    /// cycles per step. A chain step under one cycle, in any form, is an
     /// [`Error::Reassociated`].
     fn count(&self, function: &str) -> Result<Count, Error> {
-        let chain = |form: &Form| {
-            let name = format!("{} chain", self.id);
-            let events = form.events(&name)?;
-            if events.cycles < 1.0 {
-                return Err(Error::Reassociated {
-                    case: name,
-                    cycles: events.cycles,
-                });
-            }
-            Ok(events)
-        };
+        let latencies = self
+            .chains
+            .iter()
+            .map(|chain| {
+                let name = format!("{} chain in {}", self.id, chain.class);
+                let events = chain.form.events(&name)?;
+                if events.cycles < 1.0 {
+                    return Err(Error::Reassociated {
+                        case: name,
+                        cycles: events.cycles,
+                    });
+                }
+                Ok(Latency {
+                    class: chain.class,
+                    events,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
         Ok(Count {
             function: function.to_owned(),
             batch: self.batch.events(&self.id)?,
-            chain: self.chain.as_ref().map(chain).transpose()?,
+            chain: latencies
+                .into_iter()
+                .min_by(|a, b| a.events.cycles.total_cmp(&b.events.cycles)),
         })
     }
 }
@@ -477,7 +500,7 @@ impl<O: std::fmt::Display, K: std::fmt::Display> Visitor<O, K> for Measuring<'_>
                 self.cases.push(Case {
                     id: name.clone(),
                     batch,
-                    chain: None,
+                    chains: Vec::new(),
                 });
             })
         } else {
@@ -491,7 +514,7 @@ impl<O: std::fmt::Display, K: std::fmt::Display> Visitor<O, K> for Measuring<'_>
         self.fail(result)
     }
 
-    fn measure_chain<I: Chain<R>, R, B: Barrier>(
+    fn measure_chain<I: Chain<R>, R>(
         mut self,
         id: &CaseId<O, K>,
         inputs: &Inputs<'_, I>,
@@ -501,7 +524,6 @@ impl<O: std::fmt::Display, K: std::fmt::Display> Visitor<O, K> for Measuring<'_>
             return self;
         }
         let name = id.to_string();
-        let region = |batch: &[I]| run_chain::<I, R, B>(batch, run);
         // `measure` took note of the case just before.
         let index = if self.pass == 0 {
             self.cases.len().checked_sub(1)
@@ -510,26 +532,75 @@ impl<O: std::fmt::Display, K: std::fmt::Display> Visitor<O, K> for Measuring<'_>
         }
         .filter(|index| self.cases.get(*index).is_some_and(|case| case.id == name))
         .ok_or_else(|| Error::missing(&name, "the cases of the first pass"));
-        let result = index.and_then(|index| {
-            if self.pass == 0 {
-                let chain = self.size(inputs, cap::<I>(), region, &name)?;
-                self.cases[index].chain = Some(chain);
-                return Ok(());
-            }
-            let operations = self.cases[index]
-                .chain
-                .as_ref()
-                .map(|chain| chain.operations)
-                .ok_or_else(|| Error::missing("chain", &name))?;
-            let counts = self.repetition(inputs, operations, region, &name)?;
-            self.cases[index]
-                .chain
-                .as_mut()
-                .ok_or_else(|| Error::missing("chain", &name))?
-                .repetitions
-                .push(counts);
-            Ok(())
-        });
+        let result = index.and_then(|index| self.chains(index, inputs, run, &name));
         self.fail(result)
+    }
+}
+
+impl Measuring<'_> {
+    /// Sizes or runs one repetition of the chain forms of the case `index`: one per register class
+    /// for a result of at most [`REGISTERS`] bytes, one through memory for a larger result.
+    #[cfg(target_arch = "x86_64")]
+    fn chains<I: Chain<R>, R>(
+        &mut self,
+        index: usize,
+        inputs: &Inputs<'_, I>,
+        run: impl Fn(&I) -> R + Copy,
+        name: &str,
+    ) -> Result<(), Error> {
+        if size_of::<R>() > REGISTERS {
+            return self.chain::<I, R, Memory>(index, inputs, run, name);
+        }
+        self.chain::<I, R, Gpr>(index, inputs, run, name)?;
+        self.chain::<I, R, Xmm>(index, inputs, run, name)
+    }
+
+    /// Sizes or runs one repetition of the chain form of the case `index`, through memory.
+    #[cfg(not(target_arch = "x86_64"))]
+    fn chains<I: Chain<R>, R>(
+        &mut self,
+        index: usize,
+        inputs: &Inputs<'_, I>,
+        run: impl Fn(&I) -> R + Copy,
+        name: &str,
+    ) -> Result<(), Error> {
+        self.chain::<I, R, Memory>(index, inputs, run, name)
+    }
+
+    /// Sizes, in pass 0, the chain form of the case `index` whose value `B` holds; in pass `r`,
+    /// runs its repetition `r`.
+    fn chain<I: Chain<R>, R, B: Barrier>(
+        &mut self,
+        index: usize,
+        inputs: &Inputs<'_, I>,
+        run: impl Fn(&I) -> R + Copy,
+        name: &str,
+    ) -> Result<(), Error> {
+        let region = |batch: &[I]| run_chain::<I, R, B>(batch, run);
+        if self.pass == 0 {
+            let form = self.size(inputs, cap::<I>(), region, name)?;
+            self.cases[index].chains.push(ChainForm {
+                class: B::CLASS,
+                form,
+            });
+            return Ok(());
+        }
+        let missing = || Error::missing(&format!("chain in {}", B::CLASS), name);
+        let operations = self.cases[index]
+            .chains
+            .iter()
+            .find(|chain| chain.class == B::CLASS)
+            .map(|chain| chain.form.operations)
+            .ok_or_else(missing)?;
+        let counts = self.repetition(inputs, operations, region, name)?;
+        self.cases[index]
+            .chains
+            .iter_mut()
+            .find(|chain| chain.class == B::CLASS)
+            .ok_or_else(missing)?
+            .form
+            .repetitions
+            .push(counts);
+        Ok(())
     }
 }

@@ -336,6 +336,7 @@ fn setup<K>(record: &Record<K>) -> Vec<String> {
             "Compiler".to_owned(),
             format!("{}, LLVM {}, `bench` profile", record.rustc, record.llvm),
         ],
+        vec!["Features".to_owned(), features(record)],
     ];
     let label = |what: &str, build: &Measurement<K>| {
         if build.name.is_empty() {
@@ -369,6 +370,20 @@ fn setup<K>(record: &Record<K>) -> Vec<String> {
     lines.extend(markdown_table(&[String::new(), String::new()], &rows, "ll"));
     lines.push(String::new());
     lines
+}
+
+/// The features that the builds enable beside the default ones of the measured package.
+fn features<K>(record: &Record<K>) -> String {
+    if record.features.is_empty() {
+        format!("`{}` with its default features", record.package)
+    } else {
+        let names: Vec<String> = record
+            .features
+            .iter()
+            .map(|feature| format!("`{feature}`"))
+            .collect();
+        format!("`{}` built with {}", record.package, sentence(&names))
+    }
 }
 
 /// The load around `sweep` and the busy share of the measuring CPU's siblings.
@@ -452,9 +467,12 @@ fn protocol() -> Vec<String> {
              `core::hint::black_box`. Latency runs the chain `x = op(x, y)`: from the second \
              operand set on, each result is the first operand of the next operation, so each \
              operation waits for the one before. Each result passes through an empty \
-             inline-assembly block, which keeps the compiler from regrouping the chain: in the \
-             registers of its type up to {REGISTERS} bytes, through memory above. The chain \
-             applies where the result has the type of the first operand."
+             inline-assembly block, which keeps the compiler from regrouping the chain. The block \
+             holds a result of up to {REGISTERS} bytes in general-purpose registers in one chain \
+             and in vector registers in another, each chain a case of its own in the sweep; it \
+             can only add moves between the two, so the latency is the chain with fewer cycles. \
+             A larger result passes through memory, in a single chain. The chain applies where \
+             the result has the type of the first operand."
         ),
     ]
 }
@@ -617,7 +635,7 @@ fn results<K: Key>(
             vec![("throughput cycles", |count| Some(count.batch.cycles))];
         if table.chained(op) {
             metrics.push(("latency cycles", |count| {
-                count.chain.map(|chain| chain.cycles)
+                count.chain.map(|latency| latency.events.cycles)
             }));
         }
         metrics.push(("instructions", |count| Some(count.batch.instructions)));

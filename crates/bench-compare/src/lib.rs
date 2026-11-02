@@ -10,12 +10,15 @@ mod record;
 mod run;
 mod suite;
 
-pub use barrier::{Barrier, Gpr, Xmm};
+pub use barrier::{Barrier, Memory};
+#[cfg(target_arch = "x86_64")]
+pub use barrier::{Gpr, Xmm};
 pub use count::{REPETITIONS, TARGET, main};
 pub use document::{LOAD, Layout, markdown_table, report, sentence};
 pub use error::Error;
 pub use record::{
-    Cell, Count, Events, Key, Line, Load, Measurement, Outcome, Record, Sibling, Sweep, Version,
+    Cell, Class, Count, Events, Key, Latency, Line, Load, Measurement, Outcome, Record, Sibling,
+    Sweep, Version,
 };
 pub use run::{Build, Measured, NATIVE, Options, Paths, bench, cargo, execute, output};
 pub use suite::{

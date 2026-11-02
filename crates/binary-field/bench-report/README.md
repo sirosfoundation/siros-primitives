@@ -11,7 +11,9 @@ cargo run -p binary-field-bench-report -- bench [--cpu <cpu>] [--machine <descri
 cargo run -p binary-field-bench-report -- report
 ```
 
-`bench` builds the `compare` bench of `binary-field` twice: with the flags of
+`bench` builds the `compare` bench of `binary-field` with its feature `precomputed`, whose full
+tables the comparison measures; a unit built with `not-precomputed` stops it. It builds the bench
+twice: with the flags of
 [`bench-compare`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/bench-compare),
 and with `-C target-feature=-pclmulqdq,-vpclmulqdq --cfg polyval_backend="soft"` added: the
 second flag selects the software backend of `polyval`, which otherwise selects PCLMULQDQ at run

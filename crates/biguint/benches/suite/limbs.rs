@@ -2,7 +2,7 @@
 
 use core::num::NonZero;
 
-use bench_compare::{Barrier, Cells, Chain, Limbs, Visitor};
+use bench_compare::{Cells, Chain, Limbs, Visitor};
 use biguint::generic_array::GenericArray;
 use biguint::{Bits, Uint};
 use num_bigint::BigUint;
@@ -32,14 +32,13 @@ pub trait Offer<O, K, V> {
         run: impl Fn(&I) -> R + Copy,
     ) -> Self;
 
-    /// Offers the case with its chain form, `x = op(x, y)`, whose results pass through `barrier`.
-    fn chained<I: Chain<R>, R: ToLimbs, B: Barrier>(
+    /// Offers the case with its chain form, `x = op(x, y)`.
+    fn chained<I: Chain<R>, R: ToLimbs>(
         self,
         op: O,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
-        barrier: B,
     ) -> Self;
 }
 
@@ -56,15 +55,14 @@ impl<O: Copy + Eq + core::fmt::Display, K: bench_compare::Key, V: Visitor<O, K>>
         self.api(op, function, prepare, run, ToLimbs::to_limbs)
     }
 
-    fn chained<I: Chain<R>, R: ToLimbs, B: Barrier>(
+    fn chained<I: Chain<R>, R: ToLimbs>(
         self,
         op: O,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
-        barrier: B,
     ) -> Self {
-        self.chain(op, function, prepare, run, ToLimbs::to_limbs, barrier)
+        self.chain(op, function, prepare, run, ToLimbs::to_limbs)
     }
 }
 

@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::Deserialize;
+
 use crate::error::Error;
 use crate::record::{Cell, Key, Line, Measurement, Record, Sweep, Version};
 
@@ -79,6 +81,10 @@ pub struct Measured {
     pub pathspecs: &'static [&'static str],
     /// The crates whose versions the record keeps.
     pub versions: &'static [&'static str],
+    /// The features of the package that every build enables beside its default ones.
+    pub features: &'static [&'static str],
+    /// The features that no crate of a build may have.
+    pub forbidden: &'static [&'static str],
     /// The builds of the bench, measured one after the other.
     pub builds: &'static [Build],
 }
@@ -191,6 +197,12 @@ pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Re
         native_cpu: native_cpu(&target_cpus)?,
         cpu_model: cpu_model()?,
         machine: options.machine,
+        package: measured.package.to_owned(),
+        features: measured
+            .features
+            .iter()
+            .map(|&feature| feature.to_owned())
+            .collect(),
         versions: versions(paths, measured.package, measured.versions)?,
         builds,
     };
@@ -201,13 +213,15 @@ pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Re
 }
 
 /// Every cell of the comparison in `build` with its counts, and the sweep: the lines that the
-/// bench prints, measuring on `cpu`.
+/// bench prints, measuring on `cpu`. The bench is built first, and the features of its build
+/// must pass [`check_features`].
 fn cells<K: Key>(
     paths: &Paths,
     measured: &Measured,
     build: &Build,
     cpu: Option<&str>,
 ) -> Result<(Vec<Cell<K>>, Sweep), Error> {
+    let features = measured.features.join(",");
     let mut args = vec![
         "bench",
         "--locked",
@@ -216,6 +230,18 @@ fn cells<K: Key>(
         "--bench",
         measured.bench,
     ];
+    if !features.is_empty() {
+        args.extend(["--features", &features]);
+    }
+    let mut build_args = args.clone();
+    build_args.extend(["--no-run", "--message-format=json"]);
+    let messages = cargo(
+        &paths.root,
+        &paths.results(build),
+        build.rustflags,
+        &build_args,
+    )?;
+    check_features(measured, &messages)?;
     if let Some(cpu) = cpu {
         args.extend(["--", "--cpu", cpu]);
     }
@@ -234,6 +260,70 @@ fn cells<K: Key>(
             &format!("single sweep among its {}", sweeps.len()),
             "the lines of the bench",
         )),
+    }
+}
+
+/// One JSON message of a cargo build: the fields that [`check_features`] reads.
+#[derive(Deserialize)]
+struct Message {
+    reason: String,
+    package_id: Option<String>,
+    target: Option<Target>,
+    #[serde(default)]
+    features: Vec<String>,
+}
+
+/// The target of a compiled unit.
+#[derive(Deserialize)]
+struct Target {
+    name: String,
+    kind: Vec<String>,
+}
+
+/// Checks the units of a build from its JSON `messages`: the bench of `measured` has every feature
+/// in [`Measured::features`], and no unit has a feature in [`Measured::forbidden`].
+fn check_features(measured: &Measured, messages: &str) -> Result<(), Error> {
+    let mut bench = None;
+    for line in messages.lines().filter(|line| !line.trim().is_empty()) {
+        let message: Message = serde_json::from_str(line).map_err(Error::Messages)?;
+        if message.reason != "compiler-artifact" {
+            continue;
+        }
+        let unit = message
+            .package_id
+            .ok_or_else(|| Error::missing("package_id", "a compiler-artifact message"))?;
+        if let Some(feature) = message
+            .features
+            .iter()
+            .find(|feature| measured.forbidden.contains(&feature.as_str()))
+        {
+            return Err(Error::Forbidden {
+                unit,
+                feature: feature.clone(),
+            });
+        }
+        if message.target.as_ref().is_some_and(|target| {
+            target.name == measured.bench && target.kind.iter().any(|kind| kind == "bench")
+        }) {
+            bench = Some(message.features);
+        }
+    }
+    let bench = bench.ok_or_else(|| {
+        Error::missing(
+            &format!("bench {}", measured.bench),
+            "the messages of the build",
+        )
+    })?;
+    match measured
+        .features
+        .iter()
+        .find(|feature| !bench.iter().any(|built| built == *feature))
+    {
+        Some(feature) => Err(Error::Unbuilt {
+            package: measured.package.to_owned(),
+            feature: (*feature).to_owned(),
+        }),
+        None => Ok(()),
     }
 }
 

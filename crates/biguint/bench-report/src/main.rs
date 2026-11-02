@@ -33,6 +33,9 @@ const MEASURED: Measured = Measured {
         ":(exclude)crates/biguint/benchmarks",
     ],
     versions: &["ruint", "crypto-bigint", "bnum", "uint", "num-bigint"],
+    features: &[],
+    // It strips the lookup tables of `biguint`.
+    forbidden: &["not-precomputed"],
     builds: &[NATIVE],
 };
 

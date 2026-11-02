@@ -83,6 +83,9 @@ pub enum Error {
     /// A line of the bench is no cell.
     #[error("the bench: {0}")]
     Cells(serde_json::Error),
+    /// A line of a cargo build with `--message-format=json` is no message.
+    #[error("the messages of cargo: {0}")]
+    Messages(serde_json::Error),
     /// The chart palette has fewer colors than the comparison has crates.
     #[error("{crates} crates for a palette of {slots} colors")]
     Palette {
@@ -143,6 +146,22 @@ pub enum Error {
         case: String,
         /// The operations of a short run.
         operations: usize,
+    },
+    /// The bench of a build lacks a feature that the build enables.
+    #[error("the bench of {package} was built without its feature {feature}")]
+    Unbuilt {
+        /// The measured package.
+        package: String,
+        /// The feature.
+        feature: String,
+    },
+    /// A unit of a build has a feature that the comparison forbids.
+    #[error("{unit} was built with the forbidden feature {feature}")]
+    Forbidden {
+        /// The package of the unit, as cargo names it.
+        unit: String,
+        /// The feature.
+        feature: String,
     },
     /// A chain step counted less than one cycle, the latency of a single instruction: the
     /// compiler regrouped the chain.
