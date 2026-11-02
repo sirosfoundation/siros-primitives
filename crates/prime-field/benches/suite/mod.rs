@@ -7,6 +7,11 @@ use core::fmt;
 
 use bench_compare::{BATCH, Limbs, Rng, Row, Sample, Suite, Visitor, trim};
 use num_bigint::BigUint;
+use prime_field::Modulus;
+use prime_field::standard::{
+    BabyBear, Bls12381Base, Bn254Scalar, Goldilocks, Mersenne31, P256Base, P256Scalar, P521Base,
+    Secp256k1Base, Tom256Base,
+};
 use serde::{Deserialize, Serialize};
 
 /// The comparison of `prime-field`.
@@ -31,90 +36,47 @@ pub struct Spec {
     pub modulus: &'static [u64],
 }
 
-pub const MERSENNE31: [u64; 1] = [0x7fff_ffff];
-pub const BABY_BEAR: [u64; 1] = [0x7800_0001];
-pub const GOLDILOCKS: [u64; 1] = [0xffff_ffff_0000_0001];
-pub const BN254_SCALAR: [u64; 4] = [
-    0x43e1_f593_f000_0001,
-    0x2833_e848_79b9_7091,
-    0xb850_45b6_8181_585d,
-    0x3064_4e72_e131_a029,
-];
-pub const SECP256K1_BASE: [u64; 4] = [
-    0xffff_fffe_ffff_fc2f,
-    0xffff_ffff_ffff_ffff,
-    0xffff_ffff_ffff_ffff,
-    0xffff_ffff_ffff_ffff,
-];
-pub const P256_BASE: [u64; 4] = [
-    0xffff_ffff_ffff_ffff,
-    0x0000_0000_ffff_ffff,
-    0x0000_0000_0000_0000,
-    0xffff_ffff_0000_0001,
-];
-pub const P256_SCALAR: [u64; 4] = [
-    0xf3b9_cac2_fc63_2551,
-    0xbce6_faad_a717_9e84,
-    0xffff_ffff_ffff_ffff,
-    0xffff_ffff_0000_0000,
-];
-pub const BLS12_381_BASE: [u64; 6] = [
-    0xb9fe_ffff_ffff_aaab,
-    0x1eab_fffe_b153_ffff,
-    0x6730_d2a0_f6b0_f624,
-    0x6477_4b84_f385_12bf,
-    0x4b1b_a7b6_434b_acd7,
-    0x1a01_11ea_397f_e69a,
-];
-pub const P521_BASE: [u64; 9] = [
-    u64::MAX,
-    u64::MAX,
-    u64::MAX,
-    u64::MAX,
-    u64::MAX,
-    u64::MAX,
-    u64::MAX,
-    u64::MAX,
-    0x1ff,
-];
-
 /// Every field, in row order: by size.
-pub const FIELDS: [Spec; 9] = [
+pub const FIELDS: [Spec; 10] = [
     Spec {
         name: "Mersenne-31",
-        modulus: &MERSENNE31,
+        modulus: Mersenne31::MODULUS.as_limbs(),
     },
     Spec {
         name: "BabyBear",
-        modulus: &BABY_BEAR,
+        modulus: BabyBear::MODULUS.as_limbs(),
     },
     Spec {
         name: "Goldilocks",
-        modulus: &GOLDILOCKS,
+        modulus: Goldilocks::MODULUS.as_limbs(),
     },
     Spec {
         name: "BN254 scalar",
-        modulus: &BN254_SCALAR,
+        modulus: Bn254Scalar::MODULUS.as_limbs(),
     },
     Spec {
         name: "secp256k1 base",
-        modulus: &SECP256K1_BASE,
+        modulus: Secp256k1Base::MODULUS.as_limbs(),
     },
     Spec {
         name: "P-256 base",
-        modulus: &P256_BASE,
+        modulus: P256Base::MODULUS.as_limbs(),
     },
     Spec {
         name: "P-256 scalar",
-        modulus: &P256_SCALAR,
+        modulus: P256Scalar::MODULUS.as_limbs(),
+    },
+    Spec {
+        name: "Tom-256 base",
+        modulus: Tom256Base::MODULUS.as_limbs(),
     },
     Spec {
         name: "BLS12-381 base",
-        modulus: &BLS12_381_BASE,
+        modulus: Bls12381Base::MODULUS.as_limbs(),
     },
     Spec {
         name: "P-521 base",
-        modulus: &P521_BASE,
+        modulus: P521Base::MODULUS.as_limbs(),
     },
 ];
 

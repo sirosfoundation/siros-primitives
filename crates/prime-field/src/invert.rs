@@ -1,14 +1,18 @@
 //! Inversion by the Bernstein–Yang safegcd (*Fast constant-time gcd computation and modular
-//! inversion*, 2019), in batches of 62 division steps as in libsecp256k1 and crypto-bigint.
+//! inversion*, 2019), in batches of division steps as in libsecp256k1 and crypto-bigint.
 //!
-//! A division step reads the parity of `g` and the sign of `delta`, so 62 steps run on the low
-//! 64 bits of `f` and `g` alone. The steps of a batch compose into a 2×2 matrix of 62-bit signed
-//! factors, which then updates the full `f` and `g` and the Bézout coefficients `d` and `e`
-//! modulo `p` once per batch. The steps track `zeta = -(delta + 1/2)`, the half-delta variant
-//! whose proven bound is `(45907 BITS + 26313) / 19929` steps. The constant-time variant runs
-//! that bound with masked selections, in the formulation of libsecp256k1's `divsteps_59`; the
-//! variable-time variant skips the even steps of a batch at once by the trailing zeros of `g`
-//! and stops when `g` reaches zero.
+//! A division step reads the parity of `g` and the sign of `delta`, so a batch of up to 62 steps
+//! runs on the low 64 bits of `f` and `g` alone. The steps of a batch compose into a 2×2 matrix
+//! of signed factors scaled by `2^62`, which then updates the full `f` and `g` and the Bézout
+//! coefficients `d` and `e` modulo `p` once per batch.
+//!
+//! The variable-time variant is libsecp256k1's `divsteps_62_var`: the original steps from
+//! `delta = 1`, a run of trailing zeros of `g` at once, and the steps that add `f` to `g` at once
+//! as one multiple of `f` that clears up to 6 low bits; it stops when `g` reaches zero. The
+//! constant-time variant tracks `zeta = -(delta + 1/2)`, the half-delta variant whose proven
+//! bound is `(45907 BITS + 26313) / 19929` steps, and runs that bound with masked selections in
+//! the formulation of libsecp256k1's `divsteps_59`. Its batches are two halves of 30 steps, short
+//! enough that a row of factors `(a, b)` packs into the one word `a + 2^32 b`.
 //!
 //! On one limb the variable-time inversion is the extended Euclidean algorithm on the limb, one
 //! hardware division per step. The constant-time inversion there is a Fermat exponentiation
@@ -23,8 +27,16 @@ use crate::kernel::{add, equal, fits, is_zero, limb, mul_add, neg_mod, select, s
 use crate::params::{ExtendedLimbs, Limbs, Shape};
 use crate::width::Width;
 
-/// The division steps of one batch.
+/// The division steps of one batch: its matrix scales by `2^BATCH`.
 const BATCH: usize = 62;
+
+/// The division steps of one half of a constant-time batch. Within `HALF` steps from the
+/// identity, every factor stays in `[-2^HALF, 2^HALF]`, so a row of two factors fits one word.
+const HALF: usize = 30;
+
+/// The division steps of a constant-time batch: two halves, whose product takes the scale
+/// `2^BATCH` by a shift.
+const MASKED_BATCH: usize = 2 * HALF;
 
 /// The mask of the low `BATCH` bits.
 const LOW: u64 = (1 << BATCH) - 1;
@@ -88,18 +100,22 @@ impl<M: Modulus> Fp<M> {
             .for_each(|(slot, &value)| *slot = value);
         let mut d = M::Width::ZERO;
         let mut e = Shape::<M>::INVERSE_SEED;
-        let mut zeta: i64 = -1;
+        // `eta = -delta` of the variable-time steps from `delta = 1`, or `zeta = -(delta + 1/2)`
+        // of the masked steps from `delta = 1/2`.
+        let mut eta: i64 = -1;
         let masks = Masks::new();
-        let batches = (45_907 * Shape::<M>::BITS + 26_313)
-            .div_ceil(19_929)
-            .div_ceil(BATCH);
+        let batches = if VARTIME {
+            Shape::<M>::DIVSTEPS.div_ceil(BATCH)
+        } else {
+            Shape::<M>::HALF_DELTA_DIVSTEPS.div_ceil(MASKED_BATCH)
+        };
         for _ in 0..batches {
             if VARTIME && is_zero(g.as_slice()) {
                 break;
             }
             let matrix = Matrix::divsteps::<VARTIME>(
                 masks,
-                &mut zeta,
+                &mut eta,
                 limb(f.as_slice(), 0),
                 limb(g.as_slice(), 0),
             );
@@ -250,78 +266,131 @@ struct Matrix {
 }
 
 impl Matrix {
-    /// The 62 division steps of a batch on the low limbs of `f` and `g`. A step with `g` odd
-    /// adds `f` to `g`, or `-f` when `zeta` is negative, in which case `f` then takes the old
-    /// `g`; every step halves `g`, which doubles the factors of `f`, and lowers `zeta`.
+    /// The division steps of a batch on the low limbs of `f` and `g`: [`BATCH`] steps, or
+    /// [`MASKED_BATCH`] masked steps. A step with `g` odd adds `f` to `g`, or `-f` when `eta`
+    /// is negative, in which case `f` then takes the old `g`; every step halves `g`, which
+    /// doubles the factors of `f`, and lowers `eta`.
     #[inline(always)]
-    fn divsteps<const VARTIME: bool>(masks: Masks, zeta: &mut i64, f: u64, g: u64) -> Self {
+    fn divsteps<const VARTIME: bool>(masks: Masks, eta: &mut i64, f: u64, g: u64) -> Self {
         if VARTIME {
-            Self::divsteps_vartime(zeta, f, g)
+            Self::divsteps_vartime(eta, f, g)
         } else {
-            Self::divsteps_masked(masks, zeta, f, g)
+            Self::divsteps_masked(masks, eta, f, g)
         }
     }
 
-    /// The steps with branches; the even steps of a run of trailing zeros of `g` run at once.
+    /// The steps with branches, in the original formulation with `eta = -delta`, as in
+    /// libsecp256k1's `divsteps_62_var`: a run of trailing zeros of `g` halves it at once, and
+    /// the steps that add `f` to `g` before each halving run at once as `g + w f`, with `w` the
+    /// multiple of `f` that clears up to 6 low bits of `g` after a swap and up to 4 otherwise,
+    /// within the steps before `eta` changes sign.
     #[inline(always)]
-    fn divsteps_vartime(zeta: &mut i64, mut f: u64, mut g: u64) -> Self {
-        let (mut u, mut v, mut q, mut r) = (1i64, 0i64, 0i64, 1i64);
+    fn divsteps_vartime(eta: &mut i64, mut f: u64, mut g: u64) -> Self {
+        let (mut u, mut v, mut q, mut r) = (1u64, 0u64, 0u64, 1u64);
         let mut remaining = BATCH as u32;
-        while remaining > 0 {
-            let zeros = g.trailing_zeros().min(remaining);
+        loop {
+            // The sentinel bit stops the count at the steps that remain.
+            let zeros = (g | (u64::MAX << remaining)).trailing_zeros();
             g >>= zeros;
             u <<= zeros;
             v <<= zeros;
-            *zeta -= i64::from(zeros);
+            *eta -= i64::from(zeros);
             remaining -= zeros;
             if remaining == 0 {
                 break;
             }
-            if *zeta < 0 {
-                *zeta = -*zeta - 2;
-                (f, g) = (g, g.wrapping_sub(f));
-                (u, v, q, r) = (q, r, q - u, r - v);
+            // `limit` lies in `[1, remaining]`: `eta >= 0` after a swap or in the other branch.
+            let (w, limit) = if *eta < 0 {
+                *eta = -*eta;
+                (f, g) = (g, f.wrapping_neg());
+                (u, q) = (q, u.wrapping_neg());
+                (v, r) = (r, v.wrapping_neg());
+                // `f (f^2 - 2) = -f^-1 mod 2^6` for odd `f`.
+                let w = f
+                    .wrapping_mul(g)
+                    .wrapping_mul(f.wrapping_mul(f).wrapping_sub(2));
+                (w, Self::limit(*eta, remaining).min(6))
             } else {
-                *zeta -= 1;
-                g = g.wrapping_add(f);
-                q += u;
-                r += v;
-            }
-            g >>= 1;
-            u <<= 1;
-            v <<= 1;
-            remaining -= 1;
+                // `f + ((f + 1) & 4) << 1 = f^-1 mod 2^4` for odd `f`.
+                let inverse = f.wrapping_add((f.wrapping_add(1) & 4) << 1);
+                let w = inverse.wrapping_neg().wrapping_mul(g);
+                (w, Self::limit(*eta, remaining).min(4))
+            };
+            let w = w & (u64::MAX >> (64 - limit));
+            g = g.wrapping_add(f.wrapping_mul(w));
+            q = q.wrapping_add(u.wrapping_mul(w));
+            r = r.wrapping_add(v.wrapping_mul(w));
         }
-        Self { u, v, q, r }
+        Self {
+            u: u as i64,
+            v: v as i64,
+            q: q as i64,
+            r: r as i64,
+        }
     }
 
-    /// The steps with masked selections. The factors take the same steps in two lanes, `(u, v)`
-    /// beside `(q, r)`, which the compiler may pair in vector registers.
+    /// The low bits of `g` that one combination may clear, for `eta >= 0`: no more than the
+    /// steps that remain, and no more than `eta + 1`, past which `eta` changes sign.
     #[inline(always)]
-    fn divsteps_masked(masks: Masks, zeta: &mut i64, mut f: u64, mut g: u64) -> Self {
-        let mut top = [1i64, 0];
-        let mut bottom = [0i64, 1];
-        let mut remaining = BATCH;
-        while remaining > 0 {
+    fn limit(eta: i64, remaining: u32) -> u32 {
+        (eta + 1).min(i64::from(remaining)) as u32
+    }
+
+    /// The steps with masked selections: two halves of [`HALF`] steps, the second from the `f`
+    /// and `g` that the first leaves.
+    #[inline(always)]
+    fn divsteps_masked(masks: Masks, zeta: &mut i64, f: u64, g: u64) -> Self {
+        let (first, f, g) = Self::half_masked(masks, zeta, f, g);
+        let (second, _, _) = Self::half_masked(masks, zeta, f, g);
+        second.after(&first)
+    }
+
+    /// [`HALF`] steps with masked selections; returns their matrix and the new `f` and `g`. The
+    /// row `(a, b)` of the matrix is held as the word `a + 2^32 b`: negating, masking, adding
+    /// and doubling the word does so to both factors, which stay within 31 bits.
+    #[inline(always)]
+    fn half_masked(masks: Masks, zeta: &mut i64, mut f: u64, mut g: u64) -> (Self, u64, u64) {
+        // `u + 2^32 v` and `q + 2^32 r`, from the identity.
+        let mut top = 1u64;
+        let mut bottom = 1u64 << 32;
+        for _ in 0..HALF {
             let negate = masks.negative(*zeta);
             let odd = masks.odd(g);
-            let x = (f ^ negate).wrapping_sub(negate);
-            g = g.wrapping_add(x & odd);
+            g = g.wrapping_add((f ^ negate).wrapping_sub(negate) & odd);
+            bottom = bottom.wrapping_add((top ^ negate).wrapping_sub(negate) & odd);
             let swap = negate & odd;
             *zeta = (*zeta ^ swap as i64) - 1;
             f = f.wrapping_add(g & swap);
-            for (high, low) in top.iter_mut().zip(bottom.iter_mut()) {
-                let y = (*high ^ negate as i64).wrapping_sub(negate as i64);
-                *low = low.wrapping_add(y & odd as i64);
-                *high = high.wrapping_add(*low & swap as i64) << 1;
-            }
+            top = top.wrapping_add(bottom & swap) << 1;
             g >>= 1;
-            remaining -= 1;
         }
-        let [u, v] = top;
-        let [q, r] = bottom;
-        Self { u, v, q, r }
+        let (u, v) = unpack(top);
+        let (q, r) = unpack(bottom);
+        (Self { u, v, q, r }, f, g)
     }
+
+    /// The matrix of `first`'s steps followed by `self`'s, `self · first`, scaled by
+    /// `2^(BATCH - MASKED_BATCH)`. Its factors lie in `[-2^62, 2^62]`.
+    #[inline(always)]
+    fn after(&self, first: &Self) -> Self {
+        let entry = |a: i64, b: i64, c: i64, d: i64| {
+            a.wrapping_mul(b).wrapping_add(c.wrapping_mul(d)) << (BATCH - MASKED_BATCH)
+        };
+        Self {
+            u: entry(self.u, first.u, self.v, first.q),
+            v: entry(self.u, first.v, self.v, first.r),
+            q: entry(self.q, first.u, self.r, first.q),
+            r: entry(self.q, first.v, self.r, first.r),
+        }
+    }
+}
+
+/// The factors `(a, b)` of the word `a + 2^32 b`, for `a` and `b` in `[-2^31, 2^31)`.
+#[inline(always)]
+fn unpack(word: u64) -> (i64, i64) {
+    let low = i64::from(word as u32 as i32);
+    let high = (word.wrapping_sub(low as u64) as i64) >> 32;
+    (low, high)
 }
 
 /// `f a + g b` in two's complement over the length of `out`, for `a` and `b` in two's
@@ -451,6 +520,18 @@ impl<M: Modulus> Shape<M> {
     } else {
         Self::ONE
     };
+
+    /// The division steps that bring `g` to zero from `delta = 1` (Bernstein and Yang, theorem
+    /// 11.2), for `f = p` and `0 <= g < p`.
+    const DIVSTEPS: usize = if Self::BITS < 46 {
+        (49 * Self::BITS + 80) / 17
+    } else {
+        (49 * Self::BITS + 57) / 17
+    };
+
+    /// The division steps that bring `g` to zero from `delta = 1/2`, the proven bound of the
+    /// half-delta variant.
+    const HALF_DELTA_DIVSTEPS: usize = (45_907 * Self::BITS + 26_313).div_ceil(19_929);
 
     /// `2 p`, in `L + 1` limbs.
     pub(crate) const DOUBLE_P: ExtendedLimbs<M> = {

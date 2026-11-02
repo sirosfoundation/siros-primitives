@@ -8,16 +8,29 @@
 
 use bench_compare::{Cells, Chain, Limbs, Row, Visitor};
 use biguint::generic_array::GenericArray;
-use biguint::typenum::{U31, U64, U254, U256, U381, U521};
 use biguint::{Bits, Uint};
 use core_algebra::{AlgebraicField, SerializableField};
+use prime_field::standard::{
+    BabyBear, Bls12381Base, Bn254Scalar, Goldilocks, Mersenne31, P256Base, P256Scalar, P521Base,
+    Secp256k1Base, Tom256Base,
+};
 use prime_field::{Fp, Modulus, Secret};
 use runtime_algebra::field::RuntimeSerializableField;
 
-use super::{
-    BABY_BEAR, BLS12_381_BASE, BN254_SCALAR, Field, GOLDILOCKS, Kind, MERSENNE31, Op, P256_BASE,
-    P256_SCALAR, P521_BASE, SECP256K1_BASE, Timing,
-};
+use super::{Field, Kind, Op, Timing};
+
+/// The limbs of the modulus of `M`, zero-extended to `L` limbs.
+const fn words<M: Modulus, const L: usize>() -> [u64; L] {
+    let modulus = M::MODULUS;
+    let limbs = modulus.as_limbs();
+    let mut words = [0; L];
+    let mut index = 0;
+    while index < L && index < limbs.len() {
+        words[index] = limbs[index];
+        index += 1;
+    }
+    words
+}
 
 /// The cells of one crate in one row.
 type Crate<V> = Cells<Op, Field, V>;
@@ -220,33 +233,6 @@ macro_rules! ops {
 // ---------------------------------------------------------------------------------------------
 // prime-field
 
-/// Declares one `Modulus` marker per field for `prime-field`.
-macro_rules! moduli {
-    ($($name:ident: $width:ty = $limbs:expr;)*) => {
-        $(
-            #[derive(Clone, Copy)]
-            struct $name;
-
-            impl Modulus for $name {
-                type Width = $width;
-                const MODULUS: Uint<$width> = Uint::from_limbs($limbs);
-            }
-        )*
-    };
-}
-
-moduli! {
-    Mersenne31: U31 = MERSENNE31;
-    BabyBear: U31 = BABY_BEAR;
-    Goldilocks: U64 = GOLDILOCKS;
-    Bn254Scalar: U254 = BN254_SCALAR;
-    Secp256k1Base: U256 = SECP256K1_BASE;
-    P256Base: U256 = P256_BASE;
-    P256Scalar: U256 = P256_SCALAR;
-    Bls12381Base: U381 = BLS12_381_BASE;
-    P521Base: U521 = P521_BASE;
-}
-
 impl<M: Modulus> FromLimbs for Fp<M> {
     fn from_limbs(limbs: &[u64]) -> Self {
         let array = GenericArray::<u64, <M::Width as Bits>::Limbs>::try_from_slice(limbs)
@@ -283,6 +269,7 @@ fn this_crate<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         "secp256k1 base" => ours::<Secp256k1Base, V>(cells),
         "P-256 base" => ours::<P256Base, V>(cells),
         "P-256 scalar" => ours::<P256Scalar, V>(cells),
+        "Tom-256 base" => ours::<Tom256Base, V>(cells),
         "BLS12-381 base" => ours::<Bls12381Base, V>(cells),
         "P-521 base" => ours::<P521Base, V>(cells),
         field => panic!("no field {field}"),
@@ -477,48 +464,55 @@ const KINDS: [Kind; 6] = [
 // ---------------------------------------------------------------------------------------------
 // crypto-bigint
 
+/// The `crypto-bigint` moduli of the fields of `prime_field::standard`.
 mod cb {
-    use crypto_bigint::{U64, U256, U384, U576, const_prime_monty_params};
+    use crypto_bigint::Uint;
+    use crypto_bigint::modular::{
+        ConstMontyParams, ConstPrimeMontyParams, FixedMontyParams, PrimeParams,
+    };
+    use prime_field::standard;
 
-    const_prime_monty_params!(Mersenne31, U64, "000000007fffffff", 7);
-    const_prime_monty_params!(BabyBear, U64, "0000000078000001", 31);
-    const_prime_monty_params!(Goldilocks, U64, "ffffffff00000001", 7);
-    const_prime_monty_params!(
-        Bn254Scalar,
-        U256,
-        "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
-        5
-    );
-    const_prime_monty_params!(
-        Secp256k1Base,
-        U256,
-        "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
-        3
-    );
-    const_prime_monty_params!(
-        P256Base,
-        U256,
-        "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff",
-        2
-    );
-    const_prime_monty_params!(
-        P256Scalar,
-        U256,
-        "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
-        11
-    );
-    const_prime_monty_params!(
-        Bls12381Base,
-        U384,
-        "1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab",
-        2
-    );
-    const_prime_monty_params!(
-        P521Base,
-        U576,
-        "00000000000001ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-        3
-    );
+    use super::words;
+
+    /// Declares, per line, the modulus `$name` of `$limbs` limbs with the value of
+    /// `standard::$name` and the multiplicative generator `$generator`.
+    macro_rules! params {
+        ($($name:ident: $limbs:literal, $generator:literal;)*) => {
+            $(
+                #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+                pub struct $name;
+
+                impl ConstMontyParams<$limbs> for $name {
+                    const LIMBS: usize = $limbs;
+                    const PARAMS: FixedMontyParams<$limbs> = FixedMontyParams::new_vartime(
+                        Uint::from_words(words::<standard::$name, $limbs>())
+                            .to_odd()
+                            .expect_copied("an odd modulus"),
+                    );
+                }
+
+                impl ConstPrimeMontyParams<$limbs> for $name {
+                    const PRIME_PARAMS: PrimeParams<$limbs> = PrimeParams::new_vartime(
+                        &<$name as ConstMontyParams<$limbs>>::PARAMS,
+                        $generator,
+                    );
+                }
+            )*
+        };
+    }
+
+    params! {
+        Mersenne31: 1, 7;
+        BabyBear: 1, 31;
+        Goldilocks: 1, 7;
+        Bn254Scalar: 4, 5;
+        Secp256k1Base: 4, 3;
+        P256Base: 4, 2;
+        P256Scalar: 4, 11;
+        Tom256Base: 4, 6;
+        Bls12381Base: 6, 2;
+        P521Base: 9, 3;
+    }
 }
 
 impl<MOD: crypto_bigint::modular::ConstMontyParams<L>, const L: usize> FromLimbs
@@ -557,6 +551,7 @@ fn crypto_bigint<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         "secp256k1 base" => monty::<cb::Secp256k1Base, 4, V>(cells),
         "P-256 base" => monty::<cb::P256Base, 4, V>(cells),
         "P-256 scalar" => monty::<cb::P256Scalar, 4, V>(cells),
+        "Tom-256 base" => monty::<cb::Tom256Base, 4, V>(cells),
         "BLS12-381 base" => monty::<cb::Bls12381Base, 6, V>(cells),
         "P-521 base" => monty::<cb::P521Base, 9, V>(cells),
         field => panic!("no field {field}"),
@@ -806,6 +801,7 @@ halo2_field!(halo2curves::bn256::Fr, 4, from_le_bytes);
 halo2_field!(halo2curves::secp256k1::Fp, 4, from_le_bytes);
 halo2_field!(halo2curves::secp256r1::Fp, 4, from_le_bytes);
 halo2_field!(halo2curves::secp256r1::Fq, 4, from_le_bytes);
+halo2_field!(halo2curves::t256::Fp, 4, from_be_bytes);
 halo2_field!(halo2curves::bls12381::Fq, 6, from_be_bytes);
 
 /// `halo2curves`.
@@ -815,6 +811,7 @@ fn halo2curves<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         "secp256k1 base" => ff_field::<halo2curves::secp256k1::Fp, V>(cells),
         "P-256 base" => ff_field::<halo2curves::secp256r1::Fp, V>(cells),
         "P-256 scalar" => ff_field::<halo2curves::secp256r1::Fq, V>(cells),
+        "Tom-256 base" => ff_field::<halo2curves::t256::Fp, V>(cells),
         "BLS12-381 base" => ff_field::<halo2curves::bls12381::Fq, V>(cells),
         _ => cells.none("halo2curves declares no such field"),
     }
@@ -1054,29 +1051,40 @@ fn winter_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 fn runtime_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     use runtime_algebra::fp_generic::FpGenericField;
     match cells.key().field.as_str() {
-        "Mersenne-31" => {
-            runtime::<1, _, V>(FpGenericField::<1, 1, 3>::new_generic(MERSENNE31), cells)
-        }
-        "BabyBear" => runtime::<1, _, V>(FpGenericField::<1, 1, 3>::new_generic(BABY_BEAR), cells),
-        "Goldilocks" => {
-            runtime::<1, _, V>(FpGenericField::<1, 1, 3>::new_generic(GOLDILOCKS), cells)
-        }
-        "BN254 scalar" => {
-            runtime::<4, _, V>(FpGenericField::<4, 4, 9>::new_generic(BN254_SCALAR), cells)
-        }
+        "Mersenne-31" => runtime::<1, _, V>(
+            FpGenericField::<1, 1, 3>::new_generic(words::<Mersenne31, 1>()),
+            cells,
+        ),
+        "BabyBear" => runtime::<1, _, V>(
+            FpGenericField::<1, 1, 3>::new_generic(words::<BabyBear, 1>()),
+            cells,
+        ),
+        "Goldilocks" => runtime::<1, _, V>(
+            FpGenericField::<1, 1, 3>::new_generic(words::<Goldilocks, 1>()),
+            cells,
+        ),
+        "BN254 scalar" => runtime::<4, _, V>(
+            FpGenericField::<4, 4, 9>::new_generic(words::<Bn254Scalar, 4>()),
+            cells,
+        ),
         "secp256k1 base" => runtime::<4, _, V>(
-            FpGenericField::<4, 4, 9>::new_generic(SECP256K1_BASE),
+            FpGenericField::<4, 4, 9>::new_generic(words::<Secp256k1Base, 4>()),
             cells,
         ),
         "P-256 base" => runtime::<4, _, V>(runtime_algebra::p256::P256Field::new(), cells),
         "P-256 scalar" => runtime::<4, _, V>(runtime_algebra::Q256Field::new(), cells),
-        "BLS12-381 base" => runtime::<6, _, V>(
-            FpGenericField::<6, 6, 13>::new_generic(BLS12_381_BASE),
+        "Tom-256 base" => runtime::<4, _, V>(
+            FpGenericField::<4, 4, 9>::new_generic(words::<Tom256Base, 4>()),
             cells,
         ),
-        "P-521 base" => {
-            runtime::<9, _, V>(FpGenericField::<9, 9, 19>::new_generic(P521_BASE), cells)
-        }
+        "BLS12-381 base" => runtime::<6, _, V>(
+            FpGenericField::<6, 6, 13>::new_generic(words::<Bls12381Base, 6>()),
+            cells,
+        ),
+        "P-521 base" => runtime::<9, _, V>(
+            FpGenericField::<9, 9, 19>::new_generic(words::<P521Base, 9>()),
+            cells,
+        ),
         field => panic!("no field {field}"),
     }
 }
