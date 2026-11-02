@@ -289,8 +289,20 @@ impl<M: Modulus> Shape<M> {
         out
     }
 
-    /// The limbs that the value needs after each fold, from the bound on its bit length.
-    const FOLD_LIMBS: [usize; MAX_FOLDS] = fold_limbs(Self::BITS, Self::DEFICIT);
+    /// The limbs that the value needs after the first, second and third fold, from the bound on
+    /// its bit length.
+    const FOLD_LIMBS_1: usize = fold_limbs(Self::BITS, Self::DEFICIT, 1);
+    const FOLD_LIMBS_2: usize = fold_limbs(Self::BITS, Self::DEFICIT, 2);
+    const FOLD_LIMBS_3: usize = fold_limbs(Self::BITS, Self::DEFICIT, 3);
+
+    /// The limbs that the value needs after `folds` folds.
+    const fn fold_limbs(folds: usize) -> usize {
+        match folds {
+            1 => Self::FOLD_LIMBS_1,
+            2 => Self::FOLD_LIMBS_2,
+            _ => Self::FOLD_LIMBS_3,
+        }
+    }
 
     /// Reduces the full product `wide` into `out` by [`Self::FOLDS`] folds and one conditional
     /// subtraction. Each fold writes the limbs that its bound needs.
@@ -303,14 +315,14 @@ impl<M: Modulus> Shape<M> {
         let mut first = M::Width::EXTENDED_ZERO;
         let mut second = M::Width::EXTENDED_ZERO;
         fold(
-            truncate_mut(first.as_mut_slice(), Self::FOLD_LIMBS[0]),
+            truncate_mut(first.as_mut_slice(), Self::fold_limbs(1)),
             wide,
             Self::BITS,
             deficit,
         );
         let mut step = 1;
         while step < Self::FOLDS {
-            let limbs = Self::FOLD_LIMBS[step];
+            let limbs = Self::fold_limbs(step + 1);
             if step % 2 == 1 {
                 fold(
                     truncate_mut(second.as_mut_slice(), limbs),
@@ -333,7 +345,7 @@ impl<M: Modulus> Shape<M> {
         } else {
             second.as_slice()
         };
-        let folded = truncate(folded, Self::FOLD_LIMBS[Self::FOLDS - 1]);
+        let folded = truncate(folded, Self::fold_limbs(Self::FOLDS));
         copy(out.as_mut_slice(), folded);
         reduce_once(
             out.as_mut_slice(),
@@ -371,24 +383,22 @@ impl<M: Modulus> Shape<M> {
     }
 }
 
-/// The limbs of the value after each fold of the pseudo-Mersenne reduction, from the bound on
-/// its bit length: a product of two residues has `2 bits` bits; a fold of a value of `b` bits
+/// The limbs of the value after `folds` folds of the pseudo-Mersenne reduction, from the bound
+/// on its bit length: a product of two residues has `2 bits` bits; a fold of a value of `b` bits
 /// leaves at most `max(bits, b - bits + bits(deficit)) + 1` bits.
-const fn fold_limbs(bits: usize, deficit: Option<u64>) -> [usize; MAX_FOLDS] {
+const fn fold_limbs(bits: usize, deficit: Option<u64>, folds: usize) -> usize {
     let deficit_bits = match deficit {
         Some(deficit) => 64 - deficit.leading_zeros() as usize,
         None => 64,
     };
-    let mut limbs = [0; MAX_FOLDS];
     let mut bound = 2 * bits;
     let mut step = 0;
-    while step < MAX_FOLDS {
+    while step < folds {
         let high = bound - bits + deficit_bits;
         bound = if high > bits { high } else { bits } + 1;
-        limbs[step] = bound.div_ceil(64);
         step += 1;
     }
-    limbs
+    bound.div_ceil(64)
 }
 
 /// The folds that bring a product of two residues modulo `2^bits - deficit` below twice the
