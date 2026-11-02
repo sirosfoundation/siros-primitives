@@ -46,7 +46,7 @@
 <path class="marker" transform="translate(504.0,417.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 55.1 instructions per operation</title></path>
 <path class="marker" transform="translate(625.1,351.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 231 instructions per operation</title></path>
 <path class="marker" transform="translate(746.3,374.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 169 instructions per operation</title></path>
-<path class="marker" transform="translate(867.4,190.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 659 instructions per operation</title></path>
+<path class="marker" transform="translate(867.4,180.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 687 instructions per operation</title></path>
 </g>
 <g class="c1">
 </g>

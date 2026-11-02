@@ -1,13 +1,13 @@
 # Benchmarks
 
-`binary-field` at commit `19a8636` against `gf256`, `galois_field_2pm`, `g2p`, `reed-solomon-erasure`, `hekate-math`, `plonky3`, `runtime-algebra`, `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut`: add, mul, square, invert and sqrt over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹), in instructions per operation, counted on 2026-11-02.
+`binary-field` at commit `0fbed1b` against `gf256`, `galois_field_2pm`, `g2p`, `reed-solomon-erasure`, `hekate-math`, `plonky3`, `runtime-algebra`, `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut`: add, mul, square, invert and sqrt over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹), in instructions per operation, counted on 2026-11-02.
 
 ## Setup
 
 |  |  |
 |---|---|
 | CPU | AMD Ryzen 9 5950X 16-Core Processor (`znver3`) |
-| Compiler | rustc 1.99.1 (58cf8f9c3 2026-10-13), LLVM 23.1.1, `bench` profile, `-C target-cpu=native -C target-feature=-sse4a,-vpclmulqdq` |
+| Compiler | rustc 1.99.1 (58cf8f9c3 2026-10-13), LLVM 23.1.1, `bench` profile, `-C target-cpu=native -C target-feature=-sse4a,-vpclmulqdq -C codegen-units=1` |
 | Counter | Valgrind 3.22.0, Callgrind |
 | Crates | gf256 0.3.1, galois_field_2pm 0.1.0, g2p 1.2.2, reed-solomon-erasure 6.0.0, hekate-math 0.12.1, p3-binary-field 0.9.0-rc.2, runtime-algebra 0.1.0, compile-algebra 0.1.0, core-algebra 0.1.0, polyval 0.7.3 |
 
@@ -93,12 +93,12 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | GF(2⁸) | 21.0 | 20.0 | 323 | **11.0** | **11.0** | 67.1 | 59.1 | – | – | – | – | – |
-| GF(2¹⁶) | 21.0 | **17.0** | 627 | 22.1 | 31.1 | 235 | 69.1 | – | – | – | – | 31.0 |
-| GF(2⁶⁴) | 17.0 | 13.0 | 1,353 | – | – | 2,480 | **13.0** | – | – | – | – | – |
-| GF(2¹²⁸) | 26.0 | – | – | – | – | 7,935 | **21.0** | **21.0** | 78.1 | 2,068 | 526 | – |
+| GF(2¹⁶) | 21.0 | **17.0** | 627 | 22.1 | 31.1 | 239 | 69.1 | – | – | – | – | 31.0 |
+| GF(2⁶⁴) | 17.0 | 13.0 | 1,353 | – | – | 2,516 | **13.0** | – | – | – | – | – |
+| GF(2¹²⁸) | 26.0 | – | – | – | – | 8,043 | **21.0** | **21.0** | 78.1 | 2,068 | 526 | – |
 | GF(2²³³) | **106** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **76.0** | – | – | – | – | 25,496 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **478** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **76.0** | – | – | – | – | 25,820 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **472** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square: a²
 
@@ -108,10 +108,10 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | GF(2⁸) | **20.0** | – | – | – | – | 33.0 | 34.1 | – | – | – | – | – |
 | GF(2¹⁶) | 20.0 | – | – | – | – | 88.1 | **11.0** | – | – | – | – | – |
-| GF(2⁶⁴) | **16.0** | – | – | – | – | 583 | 22.0 | – | – | – | – | – |
-| GF(2¹²⁸) | 20.0 | – | – | – | – | 1,236 | **16.0** | – | – | – | – | – |
+| GF(2⁶⁴) | **16.0** | – | – | – | – | 588 | 22.0 | – | – | – | – | – |
+| GF(2¹²⁸) | 20.0 | – | – | – | – | 1,245 | **16.0** | – | – | – | – | – |
 | GF(2²³³) | **52.1** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **34.0** | – | – | – | – | 3,936 | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **34.0** | – | – | – | – | 3,950 | – | – | – | – | – | – |
 | GF(2⁵⁷¹) | **97.1** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert: a⁻¹
@@ -120,13 +120,13 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | 172 | **15.0** | 1,407 | – | – | 807 | 518 | – | – | – | – | – |
-| GF(2¹⁶) | 312 | 386 | 4,284 | – | – | 1,052 | 95.1 | – | – | – | – | **25.1** |
-| GF(2⁶⁴) | **985** | 1,025 | 28,264 | – | – | 4,786 | 1,081 | – | – | – | – | – |
-| GF(2¹²⁸) | 2,041 | – | – | – | – | 13,511 | **493** | 6,368 | 13,665 | 533,598 | – | – |
-| GF(2²³³) | **12,320** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | **7,569** | – | – | – | – | 41,386 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **62,012** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | 172 | **15.0** | 1,408 | – | – | 807 | 518 | – | – | – | – | – |
+| GF(2¹⁶) | 317 | 386 | 3,482 | – | – | 1,078 | 95.1 | – | – | – | – | **25.1** |
+| GF(2⁶⁴) | **994** | 1,025 | 28,265 | – | – | 4,870 | 1,081 | – | – | – | – | – |
+| GF(2¹²⁸) | 2,053 | – | – | – | – | 13,718 | **493** | 6,368 | 13,665 | 533,598 | – | – |
+| GF(2²³³) | **12,300** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **7,589** | – | – | – | – | 41,949 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **62,025** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt: √a
 
@@ -140,7 +140,7 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 | GF(2¹²⁸) | **55.1** | – | – | – | – | – | 81.1 | – | – | – | – | – |
 | GF(2²³³) | **231** | – | – | – | – | – | – | – | – | – | – | – |
 | GF(2²⁵⁶) | **169** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | **659** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **687** | – | – | – | – | – | – | – | – | – | – | – |
 
 ## Reproduce
 

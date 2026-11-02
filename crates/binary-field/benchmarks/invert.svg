@@ -41,12 +41,12 @@
 <text class="tick" x="504.0" y="470" text-anchor="middle">field</text>
 <g class="c0">
 <path class="marker" transform="translate(140.6,437.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁸): 172 instructions per operation</title></path>
-<path class="marker" transform="translate(261.7,436.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹⁶): 312 instructions per operation</title></path>
-<path class="marker" transform="translate(382.9,434.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁶⁴): 985 instructions per operation</title></path>
-<path class="marker" transform="translate(504.0,430.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 2,041 instructions per operation</title></path>
-<path class="marker" transform="translate(625.1,391.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 12,320 instructions per operation</title></path>
-<path class="marker" transform="translate(746.3,409.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 7,569 instructions per operation</title></path>
-<path class="marker" transform="translate(867.4,205.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 62,012 instructions per operation</title></path>
+<path class="marker" transform="translate(261.7,436.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹⁶): 317 instructions per operation</title></path>
+<path class="marker" transform="translate(382.9,434.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁶⁴): 994 instructions per operation</title></path>
+<path class="marker" transform="translate(504.0,430.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 2,053 instructions per operation</title></path>
+<path class="marker" transform="translate(625.1,391.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 12,300 instructions per operation</title></path>
+<path class="marker" transform="translate(746.3,409.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 7,589 instructions per operation</title></path>
+<path class="marker" transform="translate(867.4,205.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 62,025 instructions per operation</title></path>
 </g>
 <g class="c1">
 <path class="marker" transform="translate(140.6,437.9)" d="M-4,-4H4V4H-4Z"><title>gf256, GF(2⁸): 15.0 instructions per operation</title></path>
@@ -54,9 +54,9 @@
 <path class="marker" transform="translate(382.9,434.2)" d="M-4,-4H4V4H-4Z"><title>gf256, GF(2⁶⁴): 1,025 instructions per operation</title></path>
 </g>
 <g class="c2">
-<path class="marker" transform="translate(140.6,432.7)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2⁸): 1,407 instructions per operation</title></path>
-<path class="marker" transform="translate(261.7,421.9)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2¹⁶): 4,284 instructions per operation</title></path>
-<path class="marker" transform="translate(382.9,332.0)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2⁶⁴): 28,264 instructions per operation</title></path>
+<path class="marker" transform="translate(140.6,432.7)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2⁸): 1,408 instructions per operation</title></path>
+<path class="marker" transform="translate(261.7,424.9)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2¹⁶): 3,482 instructions per operation</title></path>
+<path class="marker" transform="translate(382.9,332.0)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2⁶⁴): 28,265 instructions per operation</title></path>
 </g>
 <g class="c3">
 </g>
@@ -64,10 +64,10 @@
 </g>
 <g class="c5">
 <path class="marker" transform="translate(140.6,435.0)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2⁸): 807 instructions per operation</title></path>
-<path class="marker" transform="translate(261.7,434.1)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹⁶): 1,052 instructions per operation</title></path>
-<path class="marker" transform="translate(382.9,420.1)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2⁶⁴): 4,786 instructions per operation</title></path>
-<path class="marker" transform="translate(504.0,387.3)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹²⁸): 13,511 instructions per operation</title></path>
-<path class="marker" transform="translate(746.3,282.8)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2²⁵⁶): 41,386 instructions per operation</title></path>
+<path class="marker" transform="translate(261.7,434.0)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹⁶): 1,078 instructions per operation</title></path>
+<path class="marker" transform="translate(382.9,419.7)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2⁶⁴): 4,870 instructions per operation</title></path>
+<path class="marker" transform="translate(504.0,386.6)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹²⁸): 13,718 instructions per operation</title></path>
+<path class="marker" transform="translate(746.3,280.7)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2²⁵⁶): 41,949 instructions per operation</title></path>
 </g>
 <g class="c6">
 <path class="marker" transform="translate(140.6,436.1)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2⁸): 518 instructions per operation</title></path>

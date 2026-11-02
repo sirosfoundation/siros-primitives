@@ -44,7 +44,7 @@
 <path class="marker" transform="translate(504.0,437.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 26.0 instructions per operation</title></path>
 <path class="marker" transform="translate(625.1,436.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 106 instructions per operation</title></path>
 <path class="marker" transform="translate(746.3,437.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 76.0 instructions per operation</title></path>
-<path class="marker" transform="translate(867.4,433.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 478 instructions per operation</title></path>
+<path class="marker" transform="translate(867.4,433.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 472 instructions per operation</title></path>
 </g>
 <g class="c1">
 <path class="marker" transform="translate(140.6,437.8)" d="M-4,-4H4V4H-4Z"><title>gf256, GF(2⁸): 20.0 instructions per operation</title></path>
@@ -66,10 +66,10 @@
 </g>
 <g class="c5">
 <path class="marker" transform="translate(140.6,437.3)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2⁸): 67.1 instructions per operation</title></path>
-<path class="marker" transform="translate(261.7,435.6)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹⁶): 235 instructions per operation</title></path>
-<path class="marker" transform="translate(382.9,413.2)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2⁶⁴): 2,480 instructions per operation</title></path>
-<path class="marker" transform="translate(504.0,358.6)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹²⁸): 7,935 instructions per operation</title></path>
-<path class="marker" transform="translate(746.3,183.0)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2²⁵⁶): 25,496 instructions per operation</title></path>
+<path class="marker" transform="translate(261.7,435.6)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹⁶): 239 instructions per operation</title></path>
+<path class="marker" transform="translate(382.9,412.8)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2⁶⁴): 2,516 instructions per operation</title></path>
+<path class="marker" transform="translate(504.0,357.6)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹²⁸): 8,043 instructions per operation</title></path>
+<path class="marker" transform="translate(746.3,179.8)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2²⁵⁶): 25,820 instructions per operation</title></path>
 </g>
 <g class="c6">
 <path class="marker" transform="translate(140.6,437.4)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2⁸): 59.1 instructions per operation</title></path>
