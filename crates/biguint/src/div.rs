@@ -177,18 +177,12 @@ impl<W: ArrayLength, L: ArrayLength> Shape<W, L> {
 #[inline(always)]
 fn normalized_from_top(dividend: &[u64], shift: u32) -> (u64, impl Iterator<Item = u64> + '_) {
     let spill = dividend.last().map_or(0, |&top| funnel_left(0, top, shift));
-    let below = dividend
-        .iter()
-        .rev()
-        .skip(1)
-        .copied()
-        .chain(core::iter::once(0));
-    let limbs = dividend
-        .iter()
-        .rev()
-        .copied()
-        .zip(below)
-        .map(move |(limb, below)| funnel_left(limb, below, shift));
+    // A range of indices gives the loops a trip count that the compiler computes.
+    let limb_at = |index: usize| dividend.get(index).copied().unwrap_or(0);
+    let limbs = (0..dividend.len()).rev().map(move |index| {
+        let below = index.checked_sub(1).map_or(0, limb_at);
+        funnel_left(limb_at(index), below, shift)
+    });
     (spill, limbs)
 }
 
