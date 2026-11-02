@@ -47,6 +47,8 @@ The target features of the build select the backend at compile time:
 `-C target-feature=+aes` enables PMULL, and `-C target-cpu=native` enables what the build machine
 has. The const functions run the comb on every target.
 
+`HARDWARE` is `true` in builds with one of the two instructions.
+
 The PCLMULQDQ and PMULL backends hold the crate's only `unsafe`: Rust requires it for each call
 into a `#[target_feature]` function from a function without the attribute, even when the build
 enables the feature.
