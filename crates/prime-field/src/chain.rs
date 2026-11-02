@@ -32,8 +32,6 @@ const MAX_WINDOW: usize = 6;
 /// The registers of the runtime loop, a power of two: the base in register `0`, then the
 /// dictionary entries. A register index is masked to the file.
 const REGISTERS: usize = 32;
-/// The register that marks a step without a multiplication.
-const NONE: u8 = u8::MAX;
 /// The rows of program storage, each one limb array of the modulus: one step per limb, so the
 /// capacity scales with the width. The binary method needs at most `64 L + 1` steps, which fits
 /// `ROWS L` for every `L`.
@@ -44,43 +42,47 @@ const NODES: usize = 128;
 /// into windows.
 const RUN_LENGTHS: usize = 32;
 
-/// A dictionary step `regs[dst] = regs[src]^(2^squarings) · regs[mul]`, or a main step
-/// `acc = acc^(2^squarings) · regs[mul]`; `mul == NONE` skips the product.
+/// A register of the runtime loop, below [`REGISTERS`].
+type Register = u8;
+
+/// A dictionary step: `regs[dst] = regs[src]^(2^squarings) · regs[mul]`, without the product
+/// when `mul` is `None`.
 #[derive(Clone, Copy)]
-struct Step {
+struct Build {
     squarings: u32,
-    src: u8,
-    mul: u8,
-    dst: u8,
+    src: Register,
+    mul: Option<Register>,
+    dst: Register,
 }
 
-impl Step {
-    /// The step packed into one limb.
-    const fn encode(self) -> u64 {
-        self.squarings as u64
-            | ((self.src as u64) << 32)
-            | ((self.mul as u64) << 40)
-            | ((self.dst as u64) << 48)
-    }
+/// A main step: `acc = acc^(2^squarings) · regs[mul]`, without the product when `mul` is
+/// `None`.
+#[derive(Clone, Copy)]
+struct Climb {
+    squarings: u32,
+    mul: Option<Register>,
+}
 
-    /// A main step.
-    const fn main(squarings: u32, mul: u8) -> Self {
-        Self {
-            squarings,
-            src: NONE,
-            mul,
-            dst: NONE,
-        }
-    }
+/// The byte of a packed step that holds no register: every register is below [`REGISTERS`].
+const NO_REGISTER: u64 = 0xff;
 
-    /// The step of a packed limb.
-    const fn decode(word: u64) -> Self {
-        Self {
-            squarings: word as u32,
-            src: (word >> 32) as u8,
-            mul: (word >> 40) as u8,
-            dst: (word >> 48) as u8,
-        }
+/// A step packed into one limb: the squarings in the low 32 bits, then the bytes of `src`, `mul`
+/// and `dst`.
+const fn pack(squarings: u32, src: Register, mul: Option<Register>, dst: Register) -> u64 {
+    let mul = match mul {
+        Some(register) => register as u64,
+        None => NO_REGISTER,
+    };
+    squarings as u64 | ((src as u64) << 32) | (mul << 40) | ((dst as u64) << 48)
+}
+
+/// The register in byte `byte` of a packed step.
+const fn unpack(word: u64, byte: u32) -> Option<Register> {
+    let value = (word >> (8 * byte)) & 0xff;
+    if value == NO_REGISTER {
+        None
+    } else {
+        Some(value as Register)
     }
 }
 
@@ -91,8 +93,8 @@ pub(crate) struct Program<M: Modulus> {
     len: usize,
     /// The dictionary steps at the front.
     dictionary: usize,
-    /// The register the accumulator starts from; `NONE` for the exponent `0`, where it is `1`.
-    first: u8,
+    /// The register the accumulator starts from; `None` for the exponent `0`, where it is `1`.
+    first: Option<Register>,
     /// The registers in use.
     registers: usize,
     /// The squarings of a run.
@@ -107,7 +109,7 @@ impl<M: Modulus> Program<M> {
         words: [const { M::Width::ZERO }; ROWS],
         len: 0,
         dictionary: 0,
-        first: NONE,
+        first: None,
         registers: 1,
         squarings: 0,
         multiplications: 0,
@@ -140,19 +142,39 @@ impl<M: Modulus> Program<M> {
         self.squarings + self.multiplications
     }
 
-    /// Step `index`.
-    const fn step(&self, index: usize) -> Step {
+    /// The packed step at `index`.
+    const fn word(&self, index: usize) -> u64 {
         let row = index / Shape::<M>::LIMBS;
-        let word = if row < ROWS {
+        if row < ROWS {
             limb(self.words[row].as_slice(), index % Shape::<M>::LIMBS)
         } else {
             0
-        };
-        Step::decode(word)
+        }
     }
 
-    /// Appends `step`; `false` when the storage is full.
-    const fn push(&mut self, step: Step) -> bool {
+    /// The dictionary step at `index`, below [`Self::dictionary`].
+    const fn build(&self, index: usize) -> Build {
+        let word = self.word(index);
+        Build {
+            squarings: word as u32,
+            src: (word >> 32) as Register,
+            mul: unpack(word, 5),
+            dst: (word >> 48) as Register,
+        }
+    }
+
+    /// The main step at `index`, at or above [`Self::dictionary`].
+    const fn climb(&self, index: usize) -> Climb {
+        let word = self.word(index);
+        Climb {
+            squarings: word as u32,
+            mul: unpack(word, 5),
+        }
+    }
+
+    /// Appends a packed step of `squarings` squarings and the product by `mul`; `false` when the
+    /// storage is full.
+    const fn push(&mut self, word: u64, squarings: u32, mul: Option<Register>) -> bool {
         let row = self.len / Shape::<M>::LIMBS;
         if self.len >= Self::CAPACITY || row >= ROWS {
             return false;
@@ -160,27 +182,46 @@ impl<M: Modulus> Program<M> {
         set(
             self.words[row].as_mut_slice(),
             self.len % Shape::<M>::LIMBS,
-            step.encode(),
+            word,
         );
         self.len += 1;
-        self.squarings += step.squarings as usize;
-        if step.mul != NONE {
+        self.squarings += squarings as usize;
+        if mul.is_some() {
             self.multiplications += 1;
         }
         true
     }
 
+    /// Appends a dictionary step; `false` when the storage is full.
+    const fn push_build(&mut self, step: Build) -> bool {
+        self.push(
+            pack(step.squarings, step.src, step.mul, step.dst),
+            step.squarings,
+            step.mul,
+        )
+    }
+
+    /// Appends a main step; `false` when the storage is full.
+    const fn push_climb(&mut self, step: Climb) -> bool {
+        self.push(
+            pack(step.squarings, 0, step.mul, 0),
+            step.squarings,
+            step.mul,
+        )
+    }
+
     /// A fresh register, or `None` when every one is in use.
-    const fn allocate(&mut self) -> Option<u8> {
+    const fn allocate(&mut self) -> Option<Register> {
         if self.registers >= REGISTERS {
             return None;
         }
-        let register = self.registers as u8;
+        let register = self.registers as Register;
         self.registers += 1;
         Some(register)
     }
 
-    /// Square-and-multiply: the base in register `0`, one step per set bit below the top.
+    /// Square-and-multiply: the base in register `0`, one step per set bit below the top. The
+    /// storage holds `64 L + 1` steps, the most an exponent of `L` limbs needs.
     const fn binary(exponent: &[u64]) -> Self {
         let mut program = Self::EMPTY;
         let mut index = bit_len(exponent);
@@ -188,11 +229,14 @@ impl<M: Modulus> Program<M> {
         while index > 0 {
             index -= 1;
             if bit(exponent, index) {
-                if program.first == NONE {
-                    program.first = 0;
+                if program.first.is_none() {
+                    program.first = Some(0);
                 } else {
                     assert!(
-                        program.push(Step::main(gap, 0)),
+                        program.push_climb(Climb {
+                            squarings: gap,
+                            mul: Some(0),
+                        }),
                         "the program storage holds every set bit of the exponent"
                     );
                 }
@@ -200,9 +244,12 @@ impl<M: Modulus> Program<M> {
             }
             gap += 1;
         }
-        if program.first != NONE && gap > 1 {
+        if program.first.is_some() && gap > 1 {
             assert!(
-                program.push(Step::main(gap - 1, NONE)),
+                program.push_climb(Climb {
+                    squarings: gap - 1,
+                    mul: None,
+                }),
                 "the program storage holds the final squarings"
             );
         }
@@ -270,10 +317,10 @@ impl<M: Modulus> Program<M> {
                 return None;
             };
             map.add(Entry::Run(sum), register);
-            if !program.push(Step {
+            if !program.push_build(Build {
                 squarings: b,
                 src,
-                mul,
+                mul: Some(mul),
                 dst: register,
             }) {
                 return None;
@@ -292,21 +339,21 @@ impl<M: Modulus> Program<M> {
             };
             map.add(Entry::Window(sum), register);
             let step = if a == b {
-                Step {
+                Build {
                     squarings: 1,
                     src,
-                    mul: NONE,
+                    mul: None,
                     dst: register,
                 }
             } else {
-                Step {
+                Build {
                     squarings: 0,
                     src,
-                    mul,
+                    mul: Some(mul),
                     dst: register,
                 }
             };
-            if !program.push(step) {
+            if !program.push_build(step) {
                 return None;
             }
             index += 1;
@@ -320,9 +367,12 @@ impl<M: Modulus> Program<M> {
                 return None;
             };
             match previous {
-                None => program.first = entry,
+                None => program.first = Some(entry),
                 Some(shift) => {
-                    if !program.push(Step::main((shift - term.shift) as u32, entry)) {
+                    if !program.push_climb(Climb {
+                        squarings: (shift - term.shift) as u32,
+                        mul: Some(entry),
+                    }) {
                         return None;
                     }
                 }
@@ -331,7 +381,10 @@ impl<M: Modulus> Program<M> {
         }
         if let Some(shift) = previous
             && shift > 0
-            && !program.push(Step::main(shift as u32, NONE))
+            && !program.push_climb(Climb {
+                squarings: shift as u32,
+                mul: None,
+            })
         {
             return None;
         }
@@ -871,7 +924,7 @@ const fn halve(nodes: &mut Nodes, sequence: &mut Sequence, f: u32, next: u32) ->
 
 /// The registers of the dictionary entries.
 struct Map {
-    entries: [(Entry, u8); REGISTERS],
+    entries: [(Entry, Register); REGISTERS],
     len: usize,
 }
 
@@ -882,14 +935,14 @@ impl Map {
         len: 1,
     };
 
-    const fn add(&mut self, entry: Entry, register: u8) {
+    const fn add(&mut self, entry: Entry, register: Register) {
         if self.len < REGISTERS {
             self.entries[self.len] = (entry, register);
             self.len += 1;
         }
     }
 
-    const fn find(&self, entry: Entry) -> Option<u8> {
+    const fn find(&self, entry: Entry) -> Option<Register> {
         let mut index = 0;
         while index < self.len {
             let (candidate, register) = self.entries[index];
@@ -903,7 +956,7 @@ impl Map {
 
     /// The register of `entry`. A window value `2^k - 1` without a register of its own is the
     /// run of length `k`.
-    const fn register(&self, entry: Entry) -> Option<u8> {
+    const fn register(&self, entry: Entry) -> Option<Register> {
         if let Some(register) = self.find(entry) {
             return Some(register);
         }
@@ -923,33 +976,32 @@ impl<M: Modulus> Fp<M> {
         let mut registers = [self; REGISTERS];
         let mut index = 0;
         while index < program.dictionary {
-            let step = program.step(index);
+            let step = program.build(index);
             let mut value = registers[step.src as usize % REGISTERS];
             let mut squaring = 0;
             while squaring < step.squarings {
                 value = value.square();
                 squaring += 1;
             }
-            if step.mul != NONE {
-                value = value.mul(registers[step.mul as usize % REGISTERS]);
+            if let Some(mul) = step.mul {
+                value = value.mul(registers[mul as usize % REGISTERS]);
             }
             registers[step.dst as usize % REGISTERS] = value;
             index += 1;
         }
-        let mut acc = if program.first == NONE {
-            Self::ONE
-        } else {
-            registers[program.first as usize % REGISTERS]
+        let mut acc = match program.first {
+            Some(first) => registers[first as usize % REGISTERS],
+            None => Self::ONE,
         };
         while index < program.len {
-            let step = program.step(index);
+            let step = program.climb(index);
             let mut squaring = 0;
             while squaring < step.squarings {
                 acc = acc.square();
                 squaring += 1;
             }
-            if step.mul != NONE {
-                acc = acc.mul(registers[step.mul as usize % REGISTERS]);
+            if let Some(mul) = step.mul {
+                acc = acc.mul(registers[mul as usize % REGISTERS]);
             }
             index += 1;
         }

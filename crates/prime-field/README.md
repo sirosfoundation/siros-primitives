@@ -60,12 +60,17 @@ The modulus selects the algorithm at compile time; the limb loops unroll to the 
 | mul | every other modulus | Montgomery multiplication by coarsely integrated operand scanning (Koç, Acar and Kaliski 1996); the accumulator drops its second carry limb when the modulus leaves the top bit clear, as in gnark-crypto's and ark-ff's no-carry variant; a Montgomery-friendly modulus (`-p^-1 = 1 mod 2^64`, P-256) loses its per-row multiply to constant folding |
 | square | all | The product with each cross term once and doubled, then the reduction of the modulus |
 | add, sub, neg | all | `a + b - p` or `a - b`, then `p` added back under the mask of the borrow; `-a` is `0 - a` |
-| invert | up to 64 bits | Fermat: `x^(p - 2)` by an addition chain computed at compile time from the exponent, in the hybrid of McLoughlin's `addchain`: runs of ones through an addition sequence over the run lengths, sliding windows of odd powers for the other bits, every window width tried and the shortest chain kept (secp256k1's `p - 2` reaches libsecp256k1's 255 squarings and 15 multiplications) |
+| invert | up to 64 bits | Fermat: `x^(p - 2)` by an addition chain |
 | invert | wider moduli | Bernstein–Yang safegcd (*Fast constant-time gcd computation and modular inversion*, 2019) in the half-delta formulation of libsecp256k1: 62 division steps per batch on the low limbs, a 2×2 matrix of 62-bit factors applied to the values and to the Bézout coefficients modulo `p`, the proven `(45907 k + 26313) / 19929` steps for a `k`-bit modulus, in constant time |
 | invert_vartime | wider moduli | The same batches; the even steps of a batch skip at once by the trailing zeros of `g`, and the loop stops when `g` reaches zero |
-| sqrt | `p = 3 mod 4` | `x^((p + 1) / 4)` by the same addition chain, checked by squaring |
-| sqrt | `p = 1 mod 4` | Tonelli–Shanks from `x^((t - 1) / 2)` by the same addition chain; the two-adic root `z^t` of the least non-residue `z`, found by the Jacobi symbol at compile time, and its first 64 repeated squares form a table, so each round costs the squarings that find the order of the residue and two multiplications |
+| sqrt | `p = 3 mod 4` | `x^((p + 1) / 4)` by an addition chain, checked by squaring |
+| sqrt | `p = 1 mod 4` | Tonelli–Shanks from `x^((t - 1) / 2)` by an addition chain; the two-adic root `z^t` of the least non-residue `z`, found by the Jacobi symbol at compile time, and its first 64 repeated squares form a table, so each round costs the squarings that find the order of the residue and two multiplications |
 | pow | all | Sliding windows over a `biguint::Uint` exponent, with a table of up to 32 odd powers whose width follows the exponent's bit length |
+
+An addition chain is computed at compile time from its exponent, after the hybrid of
+McLoughlin's `addchain`: the runs of ones come from an addition sequence over their lengths, the
+other bits from sliding windows of odd powers, and the shortest chain over every window width is
+kept. secp256k1's `(p + 1) / 4` takes libsecp256k1's 253 squarings and 13 multiplications.
 
 Timing: `add`, `sub`, `neg`, `mul` and `square` take one path for every operand value, and
 `invert` for every nonzero value; an addition chain's steps depend on the exponent alone. Each
