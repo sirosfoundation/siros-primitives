@@ -13,7 +13,8 @@
 
 use core::arch::aarch64::{
     int64x2_t, uint64x2_t, vandq_u64, vdupq_n_s64, veorq_u64, vextq_u64, vgetq_lane_u64,
-    vmull_high_p64, vmull_p64, vorrq_u64, vreinterpretq_p64_u64, vreinterpretq_u64_p128, vshlq_u64,
+    vmull_high_p64, vmull_p64, vorrq_u64, vqtbl1q_u8, vreinterpretq_p64_u64, vreinterpretq_u8_u64,
+    vreinterpretq_u64_p128, vreinterpretq_u64_u8, vshlq_u64,
 };
 
 use crate::{REDUCTION, from_limbs, to_limbs};
@@ -129,6 +130,26 @@ pub(crate) fn clmul(a: Register, i: usize, b: Register, j: usize) -> Register {
             unsafe { vreinterpretq_u64_p128(product) }
         }
     }
+}
+
+/// Every byte of `nibbles`, each below 16, replaced by its entry in `entries`: TBL.
+#[cfg(feature = "biguint")]
+#[inline(always)]
+pub(crate) fn map_nibbles(entries: Register, _: [u64; 4], nibbles: Register) -> Register {
+    // SAFETY: Advanced SIMD.
+    let table = unsafe { vreinterpretq_u8_u64(entries) };
+    // SAFETY: Advanced SIMD.
+    let indices = unsafe { vreinterpretq_u8_u64(nibbles) };
+    // SAFETY: Advanced SIMD.
+    let looked_up = unsafe { vqtbl1q_u8(table, indices) };
+    // SAFETY: Advanced SIMD.
+    unsafe { vreinterpretq_u64_u8(looked_up) }
+}
+
+/// The carry-less product of word `i` of `a`, below `2^32`, and word `j` of `b`.
+#[inline(always)]
+pub(crate) fn clmul_narrow(a: Register, i: usize, b: Register, j: usize) -> Register {
+    clmul(a, i, b, j)
 }
 
 /// The squares of the two words of `a`, `(a0^2, a1^2)`, by the carry-less product of each word with

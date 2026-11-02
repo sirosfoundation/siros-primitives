@@ -109,8 +109,13 @@ impl<P: Polynomial> Plan<P> {
     pub(crate) const SMALL: bool = Self::DEGREE <= 16;
     /// The default product indexes the table of every product: `precomputed`, degree up to 8.
     pub(crate) const MUL_BY_PRODUCTS: bool = matches!(TIER, Tier::Full) && Self::DEGREE <= 8;
-    /// The default product adds logarithms: the default tables, degree up to 8.
-    pub(crate) const MUL_BY_LOGARITHMS: bool = matches!(TIER, Tier::Budget) && Self::DEGREE <= 8;
+    /// The default product adds logarithms: the default tables up to degree 8, and `precomputed`
+    /// from degree 9 to 16 without hardware word products.
+    pub(crate) const MUL_BY_LOGARITHMS: bool = match TIER {
+        Tier::Budget => Self::DEGREE <= 8,
+        Tier::Full => Self::DEGREE > 8 && Self::SMALL && !clmul::HARDWARE,
+        Tier::None => false,
+    };
     /// The default square, square root and inverse index a table of every element: `precomputed`
     /// up to degree 16, the default tables up to degree 8.
     pub(crate) const ELEMENT_TABLES: bool = match TIER {
@@ -143,6 +148,12 @@ impl<P: Polynomial> Plan<P> {
     pub(crate) const ROUNDS: usize = rounds(Self::DEGREE, Self::R_DEGREE);
     /// How a product folds back.
     pub(crate) const SHAPE: Shape = shape(Self::DEGREE, Self::R_DEGREE, Self::ONE_SPILL);
+
+    /// A product of degree 33 to 64 folds its part `h` at and above `x^n` as `(h r mod x^n) + t r`,
+    /// with `t r` the image of the top nibble of `h` under a nibble map: `d` is at most 4, so only
+    /// that nibble overflows past `x^n`.
+    pub(crate) const SPILL_BY_NIBBLES: bool =
+        matches!(Self::SHAPE, Shape::Words) && Self::R_DEGREE <= 4;
 
     /// The bits of `n - 1`, the exponent of the Itoh–Tsujii chain `a^(2^(n-1) - 1)`.
     pub(crate) const CHAIN_BITS: usize =

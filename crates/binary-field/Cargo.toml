@@ -14,7 +14,8 @@ rust-version.workspace = true
 [features]
 # The default build carries at most 16 KiB of lookup tables per field.
 default = []
-# The fastest tables, of any size: every product of the fields up to degree 8, every square,
+# The fastest tables, of any size: every product of the fields up to degree 8, logarithms and
+# antilogarithms from degree 9 to 16 in builds without hardware carry-less products, every square,
 # square root and inverse up to degree 16, and byte tables of the Frobenius powers of the
 # inverses from degree 17 to 128.
 precomputed = []

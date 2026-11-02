@@ -72,6 +72,20 @@ pub(crate) const fn clmul(a: Register, i: usize, b: Register, j: usize) -> Regis
     to_limbs(clmul64(x, y))
 }
 
+/// Every byte of `nibbles`, each below 16, replaced by its image under the linear map whose image
+/// of bit `k` fills `images[k]`, word by word.
+#[cfg(feature = "biguint")]
+#[inline(always)]
+pub(crate) fn map_nibbles(_: Register, images: [u64; 4], nibbles: Register) -> Register {
+    nibbles.map(|word| crate::nibble::map_word(images, word))
+}
+
+/// The carry-less product of word `i` of `a`, below `2^32`, and word `j` of `b`.
+#[inline(always)]
+pub(crate) const fn clmul_narrow(a: Register, i: usize, b: Register, j: usize) -> Register {
+    clmul(a, i, b, j)
+}
+
 /// The squares of the two words of `a`, `(a0^2, a1^2)`: bit `i` of a word moves to bit `2 i`.
 #[inline(always)]
 pub(crate) const fn spread(a: Register) -> (Register, Register) {

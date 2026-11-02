@@ -33,10 +33,9 @@ instruction whose latency depends on its operands, such as a division.
 - `prime-field`: every operation of `Secret` (the sum, the difference and the product with a
   `Secret` or a public `Fp` on either side and their assigning forms, `neg`, `square`, `double`,
   `pow` with a public exponent, `invert` and `sqrt`), over the nine fields of its `compare` bench.
-- `binary-field`: the sum, the product, `square`, `sqrt`, `trace`, `times_x`, `over_x` and `invert`,
-  over the seven fields of its `compare` bench. `invert` runs in the x86-64-v3 build alone. Without
-  hardware carry-less products, every one of these fields inverts by the Euclidean algorithm, whose
-  time depends on the value.
+- `binary-field`: every operation of `Secret` (the sum, the difference and the product with a
+  `Secret` or a public `Gf2` on either side and their assigning forms, `neg`, `square`, `sqrt` and
+  `invert`), over the seven fields of its `compare` bench.
 
 | Build | `RUSTFLAGS` |
 |---|---|

@@ -2,12 +2,11 @@
 //! a general register when the default operations index tables, one vector register up to 128 bits
 //! and `clmul::Poly` above when they run on carry-less products.
 
-use core::fmt::{self, Debug};
-use core::hash::{Hash, Hasher};
+use core::fmt::Debug;
+use core::hash::Hash;
 
 use biguint::Uint;
 use clmul::{Lane, Poly, Width};
-use const_default::ConstDefault;
 use typenum::{B0, B1, IsLessOrEqual, LeEq, U1, U8, U16, U128};
 
 /// The registers of an element of a field of degree `N`, and the conversions that the kernels
@@ -146,72 +145,31 @@ impl<N: Width> Storage<N> for Poly<N> {
     }
 }
 
-/// One vector register holding the polynomial of an element of at most 128 bits, which passes
-/// between functions in the register: a `Poly` passes in memory.
-#[derive(Clone, Copy)]
-#[repr(transparent)]
-pub struct Register(Lane);
-
-impl Register {
-    /// The 128 bits of the register, whose bits at and above the degree are zero.
-    #[inline(always)]
-    fn bits(self) -> Poly<U128> {
-        Poly::from_lane(self.0)
-    }
-}
-
-impl PartialEq for Register {
-    #[inline(always)]
-    fn eq(&self, other: &Self) -> bool {
-        self.bits() == other.bits()
-    }
-}
-
-impl Eq for Register {}
-
-impl Hash for Register {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.bits().hash(state);
-    }
-}
-
-impl Default for Register {
-    #[inline(always)]
-    fn default() -> Self {
-        Self(Lane::DEFAULT)
-    }
-}
-
-impl Debug for Register {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.bits().fmt(f)
-    }
-}
-
-impl<N: Width<Lanes = U1>> Storage<N> for Register {
-    const ZERO: Self = Self(Poly::<N>::ZERO.into_lane());
-    const ONE: Self = Self(Poly::<N>::ONE.into_lane());
-    const X: Self = Self(Poly::<N>::from_uint(Uint::from_u64(2)).into_lane());
+/// One vector register up to 128 bits, which passes between functions in the register, where a
+/// `Poly` passes in memory; its conversions to and from `Poly<N>` take no instruction.
+impl<N: Width<Lanes = U1>> Storage<N> for Lane<N> {
+    const ZERO: Self = Lane::ZERO;
+    const ONE: Self = Lane::from_poly(Poly::<N>::ONE);
+    const X: Self = Lane::from_poly(Poly::<N>::from_uint(Uint::from_u64(2)));
 
     #[inline(always)]
     fn from_poly(poly: Poly<N>) -> Self {
-        Self(poly.into_lane())
+        Lane::from_poly(poly)
     }
 
     #[inline(always)]
     fn poly(self) -> Poly<N> {
-        Poly::from_lane(self.0)
+        self.into_poly()
     }
 
     #[inline(always)]
     fn from_word(word: u64) -> Self {
-        Self::from_poly(Poly::<N>::from_uint(Uint::from_u64(word)))
+        Lane::from_poly(Poly::<N>::from_uint(Uint::from_u64(word)))
     }
 
     #[inline(always)]
     fn word(self) -> u64 {
-        Storage::<N>::poly(self)
+        self.into_poly()
             .to_uint()
             .as_limbs()
             .first()
@@ -221,22 +179,22 @@ impl<N: Width<Lanes = U1>> Storage<N> for Register {
 
     #[inline(always)]
     fn uint(self) -> Uint<N> {
-        Storage::<N>::poly(self).to_uint()
+        self.into_poly().to_uint()
     }
 
     #[inline(always)]
     fn from_uint(value: Uint<N>) -> Self {
-        Self::from_poly(Poly::<N>::from_uint(value))
+        Lane::from_poly(Poly::<N>::from_uint(value))
     }
 
     #[inline(always)]
     fn add(self, rhs: Self) -> Self {
-        Self((self.bits() ^ rhs.bits()).into_lane())
+        Lane::from_poly(self.into_poly() ^ rhs.into_poly())
     }
 
     #[inline(always)]
     fn is_zero(self) -> bool {
-        self.bits().is_zero()
+        self.into_poly().is_zero()
     }
 }
 
@@ -262,7 +220,7 @@ impl<Yes, No> Pick<Yes, No> for B0 {
 }
 
 /// One vector register up to 128 bits, `Poly` above.
-type Vector<N> = <LeEq<N, U128> as Pick<Register, Poly<N>>>::Output;
+type Vector<N> = <LeEq<N, U128> as Pick<Lane<N>, Poly<N>>>::Output;
 
 /// A byte up to degree 8, a 16-bit word up to degree 16, vector registers above.
 type Chosen<N> = <LeEq<N, U16> as Pick<<LeEq<N, U8> as Pick<u8, u16>>::Output, Vector<N>>>::Output;
@@ -271,7 +229,7 @@ impl<N> Representation for N
 where
     N: Width + IsLessOrEqual<U8> + IsLessOrEqual<U16> + IsLessOrEqual<U128>,
     LeEq<N, U8>: Pick<u8, u16>,
-    LeEq<N, U128>: Pick<Register, Poly<N>>,
+    LeEq<N, U128>: Pick<Lane<N>, Poly<N>>,
     LeEq<N, U16>: Pick<<LeEq<N, U8> as Pick<u8, u16>>::Output, Vector<N>>,
     Chosen<N>: Storage<N>,
 {

@@ -173,6 +173,21 @@ pub(crate) const fn truncate(acc: &mut [u64], degree: usize) {
     }
 }
 
+/// The carry-less product of `a` and `b`, each below `2^8`: the low 6 bits of `a` in two lanes of
+/// spacing 2, 3 bits each, by the two lanes of `b`, four integer products in which at most 3 terms
+/// meet at a position, so their count fits the 2 bits up to the next position of the lane; the
+/// top two bits of `a` select shifted copies of `b` by masks.
+#[inline(always)]
+pub(crate) const fn clmul8(a: u64, b: u64) -> u64 {
+    let (x0, x1) = (a & 0x15, a & 0x2A);
+    let (y0, y1) = (b & 0x55, b & 0xAA);
+    let even = (x0.wrapping_mul(y0) ^ x1.wrapping_mul(y1)) & 0x5555;
+    let odd = (x0.wrapping_mul(y1) ^ x1.wrapping_mul(y0)) & 0xAAAA;
+    let six = mask((a >> 6) & 1 == 1);
+    let seven = mask((a >> 7) & 1 == 1);
+    (even | odd) ^ ((b & six) << 6) ^ ((b & seven) << 7)
+}
+
 /// The bits below `2^32` at the positions congruent to 0, 1 and 2 modulo 3.
 const THIRDS: [u64; 3] = [0x4924_9249, 0x9249_2492, 0x2492_4924];
 

@@ -38,24 +38,29 @@ The target features of the build select the backend at compile time:
 
 | Target | Target features | Registers | Word products | Squares |
 |---|---|---|---|---|
-| `x86_64` | | SSE2 | The comb on the words of a register | Bit interleaving, on SSE2 |
-| `x86_64` | `ssse3` | SSE2 | The comb on the words of a register | A byte shuffle of a nibble table |
+| `x86_64` | | SSE2 | The vector comb | Bit interleaving, on SSE2 |
+| `x86_64` | `ssse3` | SSE2 | The vector comb | A byte shuffle of a nibble table |
+| `x86_64` | `avx2` | SSE2, AVX2 for products of two registers | The vector comb | A byte shuffle of a nibble table |
 | `x86_64` | `pclmulqdq` | SSE2 | PCLMULQDQ | PCLMULQDQ |
 | `x86_64` | `pclmulqdq`, `ssse3` | SSE2 | PCLMULQDQ | A byte shuffle of a nibble table |
 | little-endian `aarch64` | `aes` | Advanced SIMD | PMULL | PMULL |
 | any other | | Pairs of `u64` | The comb | Bit interleaving |
 
 The comb multiplies four interleaved bit lanes of the low 60 bits of one word by those of the
-other, and the top 4 bits by each lane, by integer multiplication: 20 products. With `sse4.1`,
-`pextrq` moves the high half of a register out.
+other, and the top 4 bits by each lane, by integer multiplication: 20 products. `clmul64` and the
+const functions run it on every target without PCLMULQDQ or PMULL. The vector comb cuts each word
+into two 32-bit pieces, each piece into four bit lanes of 8 bits, and multiplies the lanes of two
+pieces by PMULUDQ, four 64-bit products to an instruction on AVX2 and two on SSE2: 16 lane products
+per piece product, Karatsuba's three piece products per word product, and nine per product of two
+registers. With `sse4.1`, `pextrq` moves the high half of a register out.
 
 `RUSTFLAGS="-C target-feature=+pclmulqdq,+sse4.1"` enables both `x86_64` features,
 `-C target-feature=+aes` enables PMULL, and `-C target-cpu=native` enables what the build machine
-has. The const functions run the comb on every target.
+has.
 
-A default `x86_64` build has neither PCLMULQDQ nor SSSE3, so it multiplies with the comb. The
-backend is fixed when the crate compiles: a `#[target_feature]` function or a `multiversion` clone
-that calls it still runs the comb. Runtime selection belongs to the application, which builds once
+A default `x86_64` build has neither PCLMULQDQ nor SSSE3, so it multiplies with the vector comb on
+SSE2. The backend is fixed when the crate compiles: a `#[target_feature]` function or a
+`multiversion` clone that calls it still runs the backend of the build. Runtime selection belongs to the application, which builds once
 per feature set and loads the build that the CPU supports.
 
 `HARDWARE` is `true` in builds with one of the two instructions.
@@ -72,11 +77,17 @@ enables the feature.
   compute them in const contexts.
 
   `Poly<N>` holds a polynomial of degree below `N` in `ceil(N / 128)` registers of the backend, a
-  `Lane` each: XOR, AND and OR, shifts by any count and within words, the carry-less product of
-  two words, `widening_mul` (Karatsuba's three word products per pair of registers),
+  `Lane<U128>` each: XOR, AND and OR, shifts by any count and within words, the carry-less product
+  of two words, `widening_mul` (Karatsuba's three word products per pair of registers),
   `widening_square`, truncation and conversions from and to `Uint<N>` and bytes, `from_uint` in
-  const contexts. `from_lane` and `into_lane` convert a polynomial of one register, which passes
-  between functions in its register.
+  const contexts. `Lane<N>` holds a polynomial of up to 128 bits in one register, which passes
+  between functions in the register; its bits at and above `N` are zero, so it converts from and to
+  `Poly<N>` without an instruction.
+
+  `NibbleMap` is a GF(2)-linear map of nibbles to bytes, given by the images of the four bits.
+  `map_low_nibbles` and `map_high_nibbles` replace every byte of a `Poly` by the image of one of its
+  nibbles: one PSHUFB with SSSE3, one TBL on `aarch64`, and elsewhere the images that the bits of
+  the nibble select by masks, in constant time on every backend.
 
 ## Minimum supported Rust version
 
