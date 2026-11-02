@@ -7,7 +7,9 @@ extern crate std;
 
 use std::vec::Vec;
 
-use super::{NormalizedLimb, Reciprocal, Reciprocal3By2, join, reciprocal_word};
+use super::{
+    NormalizedLimb, Reciprocal, Reciprocal3By2, divided_reciprocal, join, newton_reciprocal,
+};
 
 mod byte {
     division_steps!(u8, u16);
@@ -108,7 +110,13 @@ fn normalized_limbs() -> Vec<NormalizedLimb> {
 fn reciprocal_word_is_exact() {
     for divisor in normalized_limbs() {
         let expected = (u128::MAX / u128::from(divisor.0) - (1 << 64)) as u64;
-        assert_eq!(reciprocal_word(divisor), expected, "d = {:#x}", divisor.0);
+        assert_eq!(
+            divided_reciprocal(divisor),
+            expected,
+            "d = {:#x}",
+            divisor.0
+        );
+        assert_eq!(newton_reciprocal(divisor), expected, "d = {:#x}", divisor.0);
     }
 }
 

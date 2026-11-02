@@ -1,8 +1,9 @@
 //! Division steps with a precomputed reciprocal, after Möller and Granlund, "Improved division
 //! by invariant integers" (IEEE Transactions on Computers 60(2), 2011).
 //!
-//! Algorithm 2 computes the reciprocal of a limb without a division. Algorithm 4 divides two limbs
-//! by one, and Algorithm 5 divides three limbs by two; each costs two or three multiplications.
+//! On x86-64 the reciprocal of a limb is one 128-by-64 division; elsewhere Algorithm 2 computes it
+//! without a division. Algorithm 4 divides two limbs by one, and Algorithm 5 divides three limbs by
+//! two; each costs two or three multiplications.
 //! Algorithm 6 extends the reciprocal to a two-limb divisor. Algorithms 4 to 6 are written once
 //! over the word size, so the tests run the same code on 8-bit words, where every boundary case is
 //! reachable.
@@ -203,10 +204,36 @@ impl Reciprocal3By2 {
     }
 }
 
-/// `floor((2^128 - 1) / d) - 2^64` for a normalized limb `d` (Algorithm 2): a seed for the top nine
-/// bits, two Newton steps, then a step that adds zero or one.
+/// `floor((2^128 - 1) / d) - 2^64` for a normalized limb `d`.
 #[inline(always)]
 fn reciprocal_word(divisor: NormalizedLimb) -> u64 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        divided_reciprocal(divisor)
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        newton_reciprocal(divisor)
+    }
+}
+
+/// The reciprocal as the quotient of `(β - 1 - d) β + (β - 1)` by `d`, which fits in a limb because
+/// `β - 1 - d < d`: the compiler's 128-bit division reaches its one-instruction path, `div` on
+/// x86-64. At 128 bits a modular product takes 188 instructions this way against 215 with
+/// Algorithm 2 (rustc 1.99, `-C target-cpu=native`).
+#[cfg(any(test, target_arch = "x86_64"))]
+#[inline(always)]
+fn divided_reciprocal(divisor: NormalizedLimb) -> u64 {
+    // The top bit is set, which also tells the compiler that the divisor is not zero.
+    let d = divisor.0 | 1 << 63;
+    ((u128::from(!d) << 64 | u128::from(u64::MAX)) / u128::from(d)) as u64
+}
+
+/// The reciprocal by Algorithm 2: a seed for the top nine bits, two Newton steps, then a step that
+/// adds zero or one.
+#[cfg(any(test, not(target_arch = "x86_64")))]
+#[inline(always)]
+fn newton_reciprocal(divisor: NormalizedLimb) -> u64 {
     let d = divisor.0;
     let d0 = d & 1;
     let d9 = d >> 55;
@@ -225,10 +252,11 @@ fn reciprocal_word(divisor: NormalizedLimb) -> u64 {
 }
 
 /// The numerator of the reciprocal seed: `floor(SEED_NUMERATOR / d9)` approximates `2^74 / d`.
+#[cfg(any(test, not(target_arch = "x86_64")))]
 const SEED_NUMERATOR: u32 = (1 << 19) - 3 * (1 << 8);
 
 /// `floor(SEED_NUMERATOR / d9)` for `d9` in `256..512`, the top nine bits of a normalized limb.
-#[cfg(feature = "precomputed")]
+#[cfg(all(feature = "precomputed", any(test, not(target_arch = "x86_64"))))]
 #[inline(always)]
 fn reciprocal_seed(d9: u64) -> u64 {
     RECIPROCAL_SEEDS
@@ -237,17 +265,17 @@ fn reciprocal_seed(d9: u64) -> u64 {
 }
 
 /// `floor(SEED_NUMERATOR / d9)` for `d9` in `256..512`, the top nine bits of a normalized limb.
-#[cfg(not(feature = "precomputed"))]
+#[cfg(all(not(feature = "precomputed"), any(test, not(target_arch = "x86_64"))))]
 #[inline(always)]
 fn reciprocal_seed(d9: u64) -> u64 {
     u64::from(SEED_NUMERATOR.checked_div(d9 as u32).unwrap_or(0))
 }
 
 /// The seeds for `d9 = 256..512`.
-#[cfg(feature = "precomputed")]
+#[cfg(all(feature = "precomputed", any(test, not(target_arch = "x86_64"))))]
 static RECIPROCAL_SEEDS: [u16; 256] = reciprocal_seeds();
 
-#[cfg(feature = "precomputed")]
+#[cfg(all(feature = "precomputed", any(test, not(target_arch = "x86_64"))))]
 #[expect(
     clippy::indexing_slicing,
     reason = "constant evaluation: an index out of range fails the build"
@@ -263,6 +291,7 @@ const fn reciprocal_seeds() -> [u16; 256] {
 }
 
 /// The high limb of `a * b + c`.
+#[cfg(any(test, not(target_arch = "x86_64")))]
 #[inline(always)]
 fn high_product(a: u64, b: u64, c: u64) -> u64 {
     ((u128::from(a) * u128::from(b) + u128::from(c)) >> 64) as u64

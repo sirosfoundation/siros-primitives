@@ -66,8 +66,9 @@ thread stack. Unoptimized builds need about 1.9 MiB for `mul_mod` and 1.2 MiB fo
 
 ## Features
 
-- `precomputed` (default): a 512-byte table seeds the reciprocal that every division and modular
-  multiplication starts from. Without it, a 32-bit division computes the seed.
+- `precomputed` (default): on targets other than x86-64, a 512-byte table seeds the reciprocal that
+  every division and modular multiplication starts from. Without it, a 32-bit division computes the
+  seed. On x86-64 one 128-by-64 division computes the whole reciprocal.
 
 ## Minimum supported Rust version
 
