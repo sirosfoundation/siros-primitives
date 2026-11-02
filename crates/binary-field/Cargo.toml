@@ -11,9 +11,16 @@ repository.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["precomputed"]
+# The tables of the operations of `Gf2`: every product up to degree 8; every square, square root
+# and inverse up to degree 16; the Frobenius powers of the inverse's chain from degree 17 to 128.
+# Without them `Gf2` computes as `Secret` does.
+precomputed = []
+
 [dependencies]
 biguint = { path = "../biguint", version = "0.1.0", default-features = false }
-clmul = { path = "../clmul", version = "0.1.0" }
+clmul = { path = "../clmul", version = "0.1.0", features = ["biguint"] }
 const-default.workspace = true
 derive-where.workspace = true
 generic-array.workspace = true

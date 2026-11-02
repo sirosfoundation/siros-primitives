@@ -7,7 +7,7 @@
 use core::num::NonZero;
 use core::ops::Add;
 
-use bench_compare::{Cells, Limbs, Row, Visitor};
+use bench_compare::{Cells, Chain, Limbs, Row, Visitor};
 use biguint::typenum::{Sum, U1024 as Bits1024, U2048 as Bits2048, U4096 as Bits4096};
 use biguint::{Bits, Bits64, Bits128, Bits256, Bits384, Bits512, NonZeroUint, Uint};
 use num_bigint::BigUint;
@@ -39,11 +39,31 @@ const fn row_timing(op: Op, bits: u32) -> Timing {
     }
 }
 
+/// The reason for the absent cell of a function of the class `timing` for `op` at `bits` bits;
+/// `None` when the row has its class.
+const fn mismatch(op: Op, bits: u32, timing: Timing) -> Option<&'static str> {
+    match (row_timing(op, bits), timing) {
+        (Timing::Fixed, Timing::Fixed) | (Timing::Variable, Timing::Variable) => None,
+        (Timing::Fixed, Timing::Variable) => Some(VARIABLE_IN_FIXED_ROW),
+        (Timing::Variable, Timing::Fixed) => Some(FIXED_IN_VARIABLE_ROW),
+    }
+}
+
 /// Offers cases of a stated timing class.
 trait Timed<V> {
     /// Offers the case that runs the crate's `function` for `op`, whose time is of the class
     /// `timing`, or an absent cell when the row's class differs.
     fn timed<I, R: ToLimbs>(
+        self,
+        op: Op,
+        timing: Timing,
+        function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self;
+
+    /// Offers the case of [`timed`](Self::timed) with its chain form, `x = op(x, y)`.
+    fn timed_chained<I: Chain<R>, R: ToLimbs>(
         self,
         op: Op,
         timing: Timing,
@@ -62,12 +82,23 @@ impl<V: Visitor<Op, Width>> Timed<V> for Crate<V> {
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
     ) -> Self {
-        match (row_timing(op, self.key().bits), timing) {
-            (Timing::Fixed, Timing::Fixed) | (Timing::Variable, Timing::Variable) => {
-                self.case(op, function, prepare, run)
-            }
-            (Timing::Fixed, Timing::Variable) => self.absent(op, VARIABLE_IN_FIXED_ROW),
-            (Timing::Variable, Timing::Fixed) => self.absent(op, FIXED_IN_VARIABLE_ROW),
+        match mismatch(op, self.key().bits, timing) {
+            None => self.case(op, function, prepare, run),
+            Some(reason) => self.absent(op, reason),
+        }
+    }
+
+    fn timed_chained<I: Chain<R>, R: ToLimbs>(
+        self,
+        op: Op,
+        timing: Timing,
+        function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self {
+        match mismatch(op, self.key().bits, timing) {
+            None => self.chained(op, function, prepare, run),
+            Some(reason) => self.absent(op, reason),
         }
     }
 }
@@ -144,6 +175,13 @@ macro_rules! by_value {
     };
 }
 
+/// Offers each `Op => method` as [`by_value`] does, with its chain form.
+macro_rules! chained_by_value {
+    ($cells:expr, $t:ty, $($op:ident: $timing:expr => $method:ident),+ $(,)?) => {
+        $cells$(.timed_chained(Op::$op, $timing, stringify!($method), pair::<$t>, #[inline(always)] |&(a, b)| a.$method(b)))+
+    };
+}
+
 /// `biguint`, the crate under test, at `N` bits. Its timing defines each row's.
 fn this_crate<N, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V>
 where
@@ -151,7 +189,7 @@ where
     Sum<N, N>: Bits,
 {
     cells
-        .case(
+        .chained(
             Op::Add,
             "+",
             pair::<Uint<N>>,
@@ -186,14 +224,14 @@ where
             #[inline(always)]
             |&(a, b, modulus)| a.mul_mod(b, modulus),
         )
-        .case(
+        .chained(
             Op::AddMod,
             "add_mod",
             three::<Uint<N>, NonZeroUint<N>>,
             #[inline(always)]
             |&(a, b, modulus)| a.add_mod(b, modulus),
         )
-        .case(
+        .chained(
             Op::SubMod,
             "sub_mod",
             three::<Uint<N>, NonZeroUint<N>>,
@@ -206,7 +244,7 @@ where
 /// hardware divide takes a time that depends on the values.
 macro_rules! primitive {
     ($cells:expr, $t:ty) => {
-        by_value!($cells, $t, Add: Timing::Fixed => wrapping_add, Mul: Timing::Fixed => wrapping_mul)
+        chained_by_value!($cells, $t, Add: Timing::Fixed => wrapping_add, Mul: Timing::Fixed => wrapping_mul)
             .timed(
                 Op::Div,
                 Timing::Variable,
@@ -260,15 +298,15 @@ fn ruint<const B: usize, const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>)
     } else {
         Timing::Variable
     };
+    let cells = chained_by_value!(cells, ruint::Uint<B, L>, Add: Timing::Fixed => wrapping_add);
     by_value!(
         cells,
         ruint::Uint<B, L>,
-        Add: Timing::Fixed => wrapping_add,
         Mul: product => wrapping_mul,
         Div: Timing::Variable => wrapping_div,
         Mod: Timing::Variable => wrapping_rem,
     )
-    .timed(
+    .timed_chained(
         Op::MulMod,
         Timing::Variable,
         "mul_mod",
@@ -276,7 +314,7 @@ fn ruint<const B: usize, const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>)
         #[inline(always)]
         |&(a, b, modulus)| a.mul_mod(b, modulus),
     )
-    .timed(
+    .timed_chained(
         Op::AddMod,
         Timing::Variable,
         "add_mod",
@@ -284,7 +322,7 @@ fn ruint<const B: usize, const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>)
         #[inline(always)]
         |&(a, b, modulus)| a.add_mod(b, modulus),
     )
-    .timed(
+    .timed_chained(
         Op::SubMod,
         Timing::Variable,
         "a.add_mod(m - b.reduce_mod(m), m)",
@@ -299,7 +337,7 @@ fn ruint<const B: usize, const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>)
 fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     use crypto_bigint::{NonZero, Uint};
     cells
-        .timed(
+        .timed_chained(
             Op::Add,
             Timing::Fixed,
             "wrapping_add",
@@ -331,7 +369,7 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
             #[inline(always)]
             |(a, divisor)| a.rem_vartime(divisor),
         )
-        .timed(
+        .timed_chained(
             Op::MulMod,
             Timing::Variable,
             "mul_mod_vartime",
@@ -360,10 +398,10 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
 /// `bnum` at `N` bytes: its sum and its wrapping product run every limb; its division branches on
 /// the values.
 fn bnum<const N: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
+    let cells = chained_by_value!(cells, bnum::Uint<N>, Add: Timing::Fixed => wrapping_add);
     by_value!(
         cells,
         bnum::Uint<N>,
-        Add: Timing::Fixed => wrapping_add,
         Mul: Timing::Fixed => wrapping_mul,
         Div: Timing::Variable => wrapping_div,
         Mod: Timing::Variable => wrapping_rem,
@@ -470,7 +508,7 @@ mod parity {
     macro_rules! parity_ops {
         ($cells:expr, $t:ident, $words:tt) => {
             $cells
-                .timed(
+                .timed_chained(
                     Op::Add,
                     if $words == 1 {
                         Timing::Fixed

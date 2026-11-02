@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="502" viewBox="0 0 960 502" role="img" aria-labelledby="title description">
+<title id="title">invert_vartime: a⁻¹, variable time, without carry-less multiplication</title>
+<desc id="description">Cycles per operation in a loop of independent operations, counted by the CPU. BENCHMARKS.md lists the values.</desc>
+<style>.grid,.axis{stroke-width:1}.title{font:600 16px system-ui, -apple-system, "Segoe UI", sans-serif}.subtitle,.legend{font:12px system-ui, -apple-system, "Segoe UI", sans-serif}.tick{font:11px system-ui, -apple-system, "Segoe UI", sans-serif;font-variant-numeric:tabular-nums}.line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}.marker{stroke-width:4;paint-order:stroke}.surface{fill:#fcfcfb}.grid{stroke:#e1e0d9}.axis{stroke:#c3c2b7}.title{fill:#0b0b0b}.subtitle,.legend{fill:#52514e}.tick{fill:#898781}.marker{stroke:#fcfcfb}.c0 .line{stroke:#2a78d6}.c0 .marker{fill:#2a78d6}.c1 .line{stroke:#eb6834}.c1 .marker{fill:#eb6834}.c2 .line{stroke:#1baf7a}.c2 .marker{fill:#1baf7a}.c3 .line{stroke:#eda100}.c3 .marker{fill:#eda100}.c4 .line{stroke:#e87ba4}.c4 .marker{fill:#e87ba4}.c5 .line{stroke:#008300}.c5 .marker{fill:#008300}.c6 .line{stroke:#6250d6}.c6 .marker{fill:#6250d6}.c7 .line{stroke:#e34948}.c7 .marker{fill:#e34948}@media (prefers-color-scheme: dark){.surface{fill:#1a1a19}.grid{stroke:#2c2c2a}.axis{stroke:#383835}.title{fill:#f0efec}.subtitle,.legend{fill:#c3c2b7}.tick{fill:#898781}.marker{stroke:#1a1a19}.c0 .line{stroke:#3987e5}.c0 .marker{fill:#3987e5}.c1 .line{stroke:#d95926}.c1 .marker{fill:#d95926}.c2 .line{stroke:#199e70}.c2 .marker{fill:#199e70}.c3 .line{stroke:#c98500}.c3 .marker{fill:#c98500}.c4 .line{stroke:#d55181}.c4 .marker{fill:#d55181}.c5 .line{stroke:#008300}.c5 .marker{fill:#008300}.c6 .line{stroke:#9085e9}.c6 .marker{fill:#9085e9}.c7 .line{stroke:#e66767}.c7 .marker{fill:#e66767}}</style>
+<rect class="surface" width="960" height="502" rx="8"/>
+<text class="title" x="24" y="38">invert_vartime: a⁻¹, variable time, without carry-less multiplication</text>
+<text class="subtitle" x="24" y="60">Cycles per operation in a loop of independent operations, counted by the CPU. BENCHMARKS.md lists the values.</text>
+<g class="c0"><path class="marker" transform="translate(34,86)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"/></g>
+<text class="legend" x="50" y="90">binary-field</text>
+<g class="c1"><path class="marker" transform="translate(158,86)" d="M-4,-4H4V4H-4Z"/></g>
+<text class="legend" x="174" y="90">gf256</text>
+<g class="c2"><path class="marker" transform="translate(238,86)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"/></g>
+<text class="legend" x="254" y="90">galois_field_2pm</text>
+<g class="c3"><path class="marker" transform="translate(387,86)" d="M0,-5.5L5,4H-5Z"/></g>
+<text class="legend" x="403" y="90">g2p</text>
+<g class="c4"><path class="marker" transform="translate(454,86)" d="M0,5.5L5,-4H-5Z"/></g>
+<text class="legend" x="470" y="90">reed-solomon-erasure</text>
+<g class="c5"><path class="marker" transform="translate(628,86)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"/></g>
+<text class="legend" x="644" y="90">hekate-math</text>
+<g class="c6"><path class="marker" transform="translate(745,86)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"/></g>
+<text class="legend" x="761" y="90">plonky3</text>
+<g class="c7"><path class="marker" transform="translate(34,108)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"/></g>
+<text class="legend" x="50" y="112">runtime-algebra</text>
+<text class="tick" x="72" y="442.5" text-anchor="end">0</text>
+<path class="grid" d="M80,363.5H928"/>
+<text class="tick" x="72" y="367.5" text-anchor="end">50K</text>
+<path class="grid" d="M80,288.5H928"/>
+<text class="tick" x="72" y="292.5" text-anchor="end">100K</text>
+<path class="grid" d="M80,213.5H928"/>
+<text class="tick" x="72" y="217.5" text-anchor="end">150K</text>
+<path class="grid" d="M80,138.5H928"/>
+<text class="tick" x="72" y="142.5" text-anchor="end">200K</text>
+<path class="axis" d="M80,438.5H928"/>
+<text class="tick" x="140.6" y="454" text-anchor="middle">GF(2⁸)</text>
+<text class="tick" x="261.7" y="454" text-anchor="middle">GF(2¹⁶)</text>
+<text class="tick" x="382.9" y="454" text-anchor="middle">GF(2⁶⁴)</text>
+<text class="tick" x="504.0" y="454" text-anchor="middle">GF(2¹²⁸)</text>
+<text class="tick" x="625.1" y="454" text-anchor="middle">GF(2²³³)</text>
+<text class="tick" x="746.3" y="454" text-anchor="middle">GF(2²⁵⁶)</text>
+<text class="tick" x="867.4" y="454" text-anchor="middle">GF(2⁵⁷¹)</text>
+<text class="tick" x="504.0" y="470" text-anchor="middle">field</text>
+<g class="c0">
+<path class="marker" transform="translate(140.6,438.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁸): 5.3 cycles per operation</title></path>
+<path class="marker" transform="translate(261.7,438.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹⁶): 3.4 cycles per operation</title></path>
+<path class="marker" transform="translate(382.9,436.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁶⁴): 1,136 cycles per operation</title></path>
+<path class="marker" transform="translate(504.0,432.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 3,608 cycles per operation</title></path>
+<path class="marker" transform="translate(625.1,406.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 21,314 cycles per operation</title></path>
+<path class="marker" transform="translate(746.3,376.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 40,768 cycles per operation</title></path>
+<path class="marker" transform="translate(867.4,154.1)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 189,244 cycles per operation</title></path>
+</g>
+<g class="c1">
+<path class="marker" transform="translate(140.6,438.0)" d="M-4,-4H4V4H-4Z"><title>gf256, GF(2⁸): 3.0 cycles per operation</title></path>
+</g>
+<g class="c2">
+<path class="marker" transform="translate(140.6,437.4)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2⁸): 380 cycles per operation</title></path>
+<path class="marker" transform="translate(261.7,436.2)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2¹⁶): 1,197 cycles per operation</title></path>
+<path class="marker" transform="translate(382.9,423.4)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2⁶⁴): 9,740 cycles per operation</title></path>
+</g>
+<g class="c3">
+</g>
+<g class="c4">
+</g>
+<g class="c5">
+</g>
+<g class="c6">
+<path class="marker" transform="translate(261.7,438.0)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2¹⁶): 20.3 cycles per operation</title></path>
+<path class="marker" transform="translate(504.0,436.5)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2¹²⁸): 976 cycles per operation</title></path>
+</g>
+<g class="c7">
+<path class="marker" transform="translate(504.0,420.6)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, GF(2¹²⁸): 11,574 cycles per operation</title></path>
+</g>
+</svg>

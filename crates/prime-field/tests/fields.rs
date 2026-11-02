@@ -1,11 +1,16 @@
-//! Every operation against `num-bigint` over a pseudo-random sweep and the edges `0`, `1` and
-//! `p - 1`, for moduli of every representation: below 2^64, Mersenne, pseudo-Mersenne, Montgomery
-//! with and without a spare bit, `p = 1 mod 4` and `p = 3 mod 4`, one and nine limbs.
+//! Every operation against `num-bigint` over a pseudo-random sweep and edges around `0`, `p / 2`
+//! and `p`, through `Fp`, `Secret` and the `const_*` twins, for moduli of every representation:
+//! below 2^64, Mersenne, pseudo-Mersenne, Montgomery with and without a spare bit, `p = 1 mod 4`
+//! and `p = 3 mod 4`, one and nine limbs.
 
-use biguint::typenum::{U7, U31, U64, U127, U254, U256, U381, U521};
+use biguint::typenum::{U7, U127, U256};
 use biguint::{Bits, Uint};
 use num_bigint::BigUint;
-use prime_field::{Fp, Modulus, NotCanonical};
+use prime_field::standard::{
+    BabyBear, Bls12381Base, Bn254Scalar, Goldilocks, Mersenne31, P256Base, P256Scalar, P521Base,
+    Secp256k1Base, Tom256Base, Tom256Scalar,
+};
+use prime_field::{Fp, Modulus, NotCanonical, Secret};
 
 /// Declares one modulus marker per line: the name, the width and the little-endian limbs.
 macro_rules! moduli {
@@ -19,62 +24,25 @@ macro_rules! moduli {
                 const MODULUS: Uint<$width> = Uint::from_limbs([$($limb),*]);
             }
         )*
-
-        /// Runs the sweep on every modulus.
-        fn each_modulus(sweep: impl Fn(&str, &BigUint, &dyn Fn(&mut Rng))) {
-            $(sweep(stringify!($name), &big(<$name>::MODULUS.as_limbs()), &|rng| check::<$name>(rng));)*
-        }
     };
 }
 
 moduli! {
     Seven: U7 = [7];
-    Mersenne31: U31 = [0x7fff_ffff];
-    BabyBear: U31 = [0x7800_0001];
-    Goldilocks: U64 = [0xffff_ffff_0000_0001];
     Mersenne127: U127 = [0xffff_ffff_ffff_ffff, 0x7fff_ffff_ffff_ffff];
-    Bn254Scalar: U254 = [
-        0x43e1_f593_f000_0001,
-        0x2833_e848_79b9_7091,
-        0xb850_45b6_8181_585d,
-        0x3064_4e72_e131_a029,
-    ];
-    Secp256k1Base: U256 = [
-        0xffff_fffe_ffff_fc2f,
-        0xffff_ffff_ffff_ffff,
-        0xffff_ffff_ffff_ffff,
-        0xffff_ffff_ffff_ffff,
-    ];
     Secp256k1Scalar: U256 = [
         0xbfd2_5e8c_d036_4141,
         0xbaae_dce6_af48_a03b,
         0xffff_ffff_ffff_fffe,
         0xffff_ffff_ffff_ffff,
     ];
-    P256Base: U256 = [
-        0xffff_ffff_ffff_ffff,
-        0x0000_0000_ffff_ffff,
-        0x0000_0000_0000_0000,
-        0xffff_ffff_0000_0001,
-    ];
-    P256Scalar: U256 = [
-        0xf3b9_cac2_fc63_2551,
-        0xbce6_faad_a717_9e84,
-        0xffff_ffff_ffff_ffff,
-        0xffff_ffff_0000_0000,
-    ];
-    Bls12381Base: U381 = [
-        0xb9fe_ffff_ffff_aaab,
-        0x1eab_fffe_b153_ffff,
-        0x6730_d2a0_f6b0_f624,
-        0x6477_4b84_f385_12bf,
-        0x4b1b_a7b6_434b_acd7,
-        0x1a01_11ea_397f_e69a,
-    ];
-    P521Base: U521 = [
-        u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX, u64::MAX,
-        0x1ff,
-    ];
+}
+
+/// Runs the sweep on each modulus marker.
+macro_rules! each_modulus {
+    ($sweep:expr, $($name:ident),* $(,)?) => {
+        $($sweep(stringify!($name), &big(<$name>::MODULUS.as_limbs()), &|rng: &mut Rng| check::<$name>(rng));)*
+    };
 }
 
 /// SplitMix64.
@@ -133,10 +101,40 @@ fn value<M: Modulus>(element: Fp<M>) -> BigUint {
     big(element.to_uint().as_limbs())
 }
 
-/// The sweep on the field of `M`: 64 random pairs and every pair of edges.
+/// Asserts that every result of the operation `name` on `(a, b)` is `expected`.
+fn agree<M: Modulus>(name: &str, a: &BigUint, b: &BigUint, expected: &BigUint, results: &[Fp<M>]) {
+    for (index, result) in results.iter().enumerate() {
+        assert_eq!(value(*result), *expected, "{name} #{index} of ({a}, {b})");
+    }
+}
+
+/// Asserts that `root` squares to `a` exactly when `a` is a quadratic residue.
+fn check_root<M: Modulus>(name: &str, a: &BigUint, residue: bool, root: Option<Fp<M>>) {
+    match root {
+        Some(root) => {
+            assert!(residue, "{name} of the non-residue {a}");
+            assert_eq!(value(root.square()), *a, "{name} squared");
+        }
+        None => assert!(!residue, "no {name} of the residue {a}"),
+    }
+}
+
+/// The sweep on the field of `M`: 64 random pairs and every pair of edges. Each operation runs
+/// through `Fp`, `Secret` (with a public `Fp` on either side) and the `const_*` twins. The edges
+/// include `p - 1 + 0`, whose sum has the top limb of `p` and lies below it: the rare branch of
+/// the variable-time reduction.
 fn check<M: Modulus>(rng: &mut Rng) {
     let p = big(M::MODULUS.as_limbs());
-    let edges = [BigUint::ZERO, BigUint::from(1u8), &p - 1u8];
+    let half = &p >> 1u8;
+    let edges = [
+        BigUint::ZERO,
+        BigUint::from(1u8),
+        BigUint::from(2u8),
+        half.clone(),
+        &half + 1u8,
+        &p - 2u8,
+        &p - 1u8,
+    ];
     let mut pairs: Vec<(BigUint, BigUint)> = edges
         .iter()
         .flat_map(|a| edges.iter().map(move |b| (a.clone(), b.clone())))
@@ -144,13 +142,95 @@ fn check<M: Modulus>(rng: &mut Rng) {
     pairs.extend((0..64).map(|_| (rng.below(&p), rng.below(&p))));
     for (a, b) in &pairs {
         let (x, y) = (element::<M>(a), element::<M>(b));
-        assert_eq!(value(x + y), (a + b) % &p, "add");
-        assert_eq!(value(x - y), (a + &p - b) % &p, "sub");
-        assert_eq!(value(-x), (&p - a) % &p, "neg");
-        assert_eq!(value(x.double()), (a + a) % &p, "double");
-        assert_eq!(value(x * y), a * b % &p, "mul");
-        assert_eq!(value(x.square()), a * a % &p, "square");
-        assert_eq!(value(x.pow(uint::<M::Width>(b))), a.modpow(b, &p), "pow");
+        let (s, t) = (Secret::new(x), Secret::new(y));
+        let assigned = |mut target: Secret<M>, apply: &dyn Fn(&mut Secret<M>)| {
+            apply(&mut target);
+            target.reveal()
+        };
+        let sum = (a + b) % &p;
+        let mut plain = x;
+        plain += y;
+        agree::<M>(
+            "add",
+            a,
+            b,
+            &sum,
+            &[
+                x + y,
+                (s + t).reveal(),
+                (s + y).reveal(),
+                (x + t).reveal(),
+                plain,
+                assigned(s, &|target| *target += t),
+                assigned(s, &|target| *target += y),
+                x.const_add(y),
+            ],
+        );
+        let difference = (a + &p - b) % &p;
+        let mut plain = x;
+        plain -= y;
+        agree::<M>(
+            "sub",
+            a,
+            b,
+            &difference,
+            &[
+                x - y,
+                (s - t).reveal(),
+                (s - y).reveal(),
+                (x - t).reveal(),
+                plain,
+                assigned(s, &|target| *target -= t),
+                assigned(s, &|target| *target -= y),
+                x.const_sub(y),
+            ],
+        );
+        let negation = (&p - a) % &p;
+        agree::<M>("neg", a, b, &negation, &[-x, (-s).reveal(), x.const_neg()]);
+        let double = (a + a) % &p;
+        agree::<M>(
+            "double",
+            a,
+            b,
+            &double,
+            &[x.double(), s.double().reveal(), x.const_double()],
+        );
+        let product = a * b % &p;
+        let mut plain = x;
+        plain *= y;
+        agree::<M>(
+            "mul",
+            a,
+            b,
+            &product,
+            &[
+                x * y,
+                (s * t).reveal(),
+                (s * y).reveal(),
+                (x * t).reveal(),
+                plain,
+                assigned(s, &|target| *target *= t),
+                assigned(s, &|target| *target *= y),
+                x.const_mul(y),
+            ],
+        );
+        let square = a * a % &p;
+        agree::<M>(
+            "square",
+            a,
+            b,
+            &square,
+            &[x.square(), s.square().reveal(), x.const_square()],
+        );
+        let power = a.modpow(b, &p);
+        let exponent = uint::<M::Width>(b);
+        agree::<M>(
+            "pow",
+            a,
+            b,
+            &power,
+            &[x.pow(exponent), s.pow(exponent).reveal()],
+        );
         let inverse = if *a == BigUint::ZERO {
             None
         } else {
@@ -158,22 +238,30 @@ fn check<M: Modulus>(rng: &mut Rng) {
         };
         assert_eq!(x.invert().map(value), inverse, "invert of {a}");
         assert_eq!(
-            x.invert_vartime().map(value),
+            s.invert().map(|inverse| value(inverse.reveal())),
             inverse,
-            "invert_vartime of {a}"
+            "secret invert of {a}"
         );
         let residue = *a == BigUint::ZERO || a.modpow(&(&p >> 1u8), &p) == BigUint::from(1u8);
-        match x.sqrt() {
-            Some(root) => {
-                assert!(residue, "sqrt of the non-residue {a}");
-                assert_eq!(value(root.square()), *a, "sqrt squared");
-            }
-            None => assert!(!residue, "no sqrt of the residue {a}"),
-        }
+        check_root("sqrt", a, residue, x.sqrt());
+        check_root("secret sqrt", a, residue, s.sqrt().map(Secret::reveal));
         assert_eq!(x == y, a == b, "eq");
         assert_eq!(x.is_zero(), *a == BigUint::ZERO, "is_zero");
-        assert_eq!(Fp::<M>::from_le_bytes(&x.to_le_bytes()), Ok(x), "le bytes");
-        assert_eq!(Fp::<M>::from_be_bytes(&x.to_be_bytes()), Ok(x), "be bytes");
+        let integer = uint::<M::Width>(a);
+        assert_eq!(x.to_le_bytes(), integer.to_le_bytes(), "to le bytes of {a}");
+        assert_eq!(x.to_be_bytes(), integer.to_be_bytes(), "to be bytes of {a}");
+        assert_eq!(
+            Fp::<M>::from_le_bytes(&integer.to_le_bytes()),
+            Ok(x),
+            "from le bytes of {a}"
+        );
+        assert_eq!(
+            Fp::<M>::from_be_bytes(&integer.to_be_bytes()),
+            Ok(x),
+            "from be bytes of {a}"
+        );
+        assert_eq!(Fp::<M>::try_from(integer), Ok(x), "try_from of {a}");
+        assert_eq!(Uint::from(x), integer, "Uint from {a}");
     }
     assert_eq!(Fp::<M>::from_uint(M::MODULUS), Err(NotCanonical));
     assert_eq!(
@@ -192,11 +280,77 @@ fn check<M: Modulus>(rng: &mut Rng) {
 
 #[test]
 fn every_operation_matches_num_bigint() {
-    each_modulus(|name, p, sweep| {
+    let sweep = |name: &str, p: &BigUint, sweep: &dyn Fn(&mut Rng)| {
         let mut rng = Rng(p.bits());
         eprintln!("{name}");
         sweep(&mut rng);
-    });
+    };
+    each_modulus!(
+        sweep,
+        Seven,
+        Mersenne31,
+        BabyBear,
+        Goldilocks,
+        Mersenne127,
+        Bn254Scalar,
+        Secp256k1Base,
+        Secp256k1Scalar,
+        P256Base,
+        P256Scalar,
+        Tom256Base,
+        Bls12381Base,
+        P521Base,
+    );
+}
+
+/// Each modulus of `standard` against its definition or the modulus of an independent crate.
+#[test]
+fn standard_moduli_are_the_standards() {
+    use halo2curves::ff::PrimeField;
+    let power = |exponent: u32| BigUint::from(1u8) << exponent;
+    let halo2 = |modulus: &str| {
+        BigUint::parse_bytes(modulus.trim_start_matches("0x").as_bytes(), 16).expect("hex")
+    };
+    let table = [
+        (big(Mersenne31::MODULUS.as_limbs()), power(31) - 1u8),
+        (big(BabyBear::MODULUS.as_limbs()), power(27) * 15u8 + 1u8),
+        (
+            big(Goldilocks::MODULUS.as_limbs()),
+            power(64) - power(32) + 1u8,
+        ),
+        (
+            big(Bn254Scalar::MODULUS.as_limbs()),
+            halo2(halo2curves::bn256::Fr::MODULUS),
+        ),
+        (
+            big(Secp256k1Base::MODULUS.as_limbs()),
+            power(256) - power(32) - 977u16,
+        ),
+        (
+            big(P256Base::MODULUS.as_limbs()),
+            power(256) - power(224) + power(192) + power(96) - 1u8,
+        ),
+        (
+            big(P256Scalar::MODULUS.as_limbs()),
+            halo2(halo2curves::secp256r1::Fq::MODULUS),
+        ),
+        (
+            big(Tom256Base::MODULUS.as_limbs()),
+            halo2(halo2curves::t256::Fp::MODULUS),
+        ),
+        (
+            big(Tom256Scalar::MODULUS.as_limbs()),
+            halo2(halo2curves::t256::Fq::MODULUS),
+        ),
+        (
+            big(Bls12381Base::MODULUS.as_limbs()),
+            halo2(halo2curves::bls12381::Fq::MODULUS),
+        ),
+        (big(P521Base::MODULUS.as_limbs()), power(521) - 1u8),
+    ];
+    for (index, (ours, expected)) in table.iter().enumerate() {
+        assert_eq!(ours, expected, "modulus {index}");
+    }
 }
 
 /// The generators of secp256k1 and P-256 satisfy their curve equations, as the standards give

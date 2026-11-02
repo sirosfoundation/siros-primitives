@@ -1,5 +1,5 @@
-//! One SVG chart per operation: the instructions per operation over the rows, one marker shape
-//! and color per crate, on a linear scale from zero.
+//! One SVG chart per operation: the throughput cycles per operation over the rows, one marker
+//! shape and color per crate, on a linear scale from zero.
 //!
 //! The colors are the categorical slots of the reference palette of the dataviz method, in their
 //! fixed order, with a light and a dark step each.
@@ -100,12 +100,12 @@ pub(crate) struct Chart<'a> {
     pub(crate) lines: bool,
 }
 
-/// The instructions per operation of one crate at one category.
+/// The throughput cycles per operation of one crate at one category.
 #[derive(Clone, Copy)]
 pub(crate) struct Point<'a> {
     pub(crate) library: &'a str,
     pub(crate) category: usize,
-    pub(crate) instructions: f64,
+    pub(crate) cycles: f64,
 }
 
 /// The SVG of `chart`.
@@ -116,8 +116,8 @@ pub(crate) fn svg(chart: &Chart<'_>) -> Result<String, Error> {
             slots: SLOTS.len(),
         });
     }
-    let scale = LinearScale::new(chart.points.iter().map(|point| point.instructions))
-        .ok_or_else(|| Error::missing("positive count", &format!("the chart {}", chart.title)))?;
+    let scale = LinearScale::new(chart.points.iter().map(|point| point.cycles))
+        .ok_or_else(|| Error::missing("positive value", &format!("the chart {}", chart.title)))?;
     let legend_y = PAD + 62.0;
     let (legend_parts, legend_rows) = legend(legend_y, chart.crates, chart.lines);
     let plot_top = legend_y + 30.0 + (legend_rows - 1) as f64 * LEGEND_ROW;
@@ -305,7 +305,7 @@ fn plot(chart: &Chart<'_>, top: f64, scale: &LinearScale) -> Result<Vec<String>,
     let plot_bottom = top + PLOT_HEIGHT;
     let band = (plot_right - plot_left) / chart.categories.len() as f64;
     let x_of = |position: usize| plot_left + (position as f64 + 0.5) * band;
-    let y_of = |instructions: f64| plot_bottom - scale.fraction(instructions) * PLOT_HEIGHT;
+    let y_of = |cycles: f64| plot_bottom - scale.fraction(cycles) * PLOT_HEIGHT;
     let mut parts = Vec::new();
     for (value, label) in scale.ticks() {
         let y = y_of(value).round() + 0.5;
@@ -363,11 +363,7 @@ fn plot(chart: &Chart<'_>, top: f64, scale: &LinearScale) -> Result<Vec<String>,
             let mut runs: Vec<Vec<String>> = Vec::new();
             let mut previous = None;
             for point in &points {
-                let coordinates = format!(
-                    "{:.1},{:.1}",
-                    x_of(point.category),
-                    y_of(point.instructions)
-                );
+                let coordinates = format!("{:.1},{:.1}", x_of(point.category), y_of(point.cycles));
                 match (runs.last_mut(), previous) {
                     (Some(run), Some(last)) if last + 1 == point.category => run.push(coordinates),
                     (Some(_) | None, _) => runs.push(vec![coordinates]),
@@ -385,12 +381,12 @@ fn plot(chart: &Chart<'_>, top: f64, scale: &LinearScale) -> Result<Vec<String>,
                 .map_or("", |category| category.name.as_str());
             parts.push(format!(
                 "<path class=\"marker\" transform=\"translate({:.1},{:.1})\" d=\"{marker}\">\
-                 <title>{}, {}: {} instructions per operation</title></path>",
+                 <title>{}, {}: {} cycles per operation</title></path>",
                 x_of(point.category),
-                y_of(point.instructions),
+                y_of(point.cycles),
                 escape(library),
                 escape(name),
-                instructions(point.instructions)
+                value(point.cycles)
             ));
         }
         parts.push("</g>".to_owned());
@@ -398,8 +394,8 @@ fn plot(chart: &Chart<'_>, top: f64, scale: &LinearScale) -> Result<Vec<String>,
     Ok(parts)
 }
 
-/// A count per operation: one decimal below 100, whole and grouped from 100 up.
-pub(crate) fn instructions(value: f64) -> String {
+/// A value per operation: one decimal below 100, whole and grouped from 100 up.
+pub(crate) fn value(value: f64) -> String {
     if value >= 100.0 {
         grouped(value.round() as u64)
     } else {

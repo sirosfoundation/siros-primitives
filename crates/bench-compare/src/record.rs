@@ -1,4 +1,4 @@
-//! The run record: what `bench` counted and how, read back by `report`.
+//! The run record: what `bench` measured and how, read back by `report`.
 
 use std::fmt;
 use std::fs;
@@ -33,7 +33,7 @@ pub struct Cell<K> {
     /// The crate.
     #[serde(rename = "crate")]
     pub library: String,
-    /// The count, or the reason for its absence.
+    /// The counts, or the reason for their absence.
     #[serde(flatten)]
     pub outcome: Outcome,
 }
@@ -42,29 +42,109 @@ pub struct Cell<K> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Outcome {
-    /// The crate's function, counted over a batch.
+    /// The crate's function, measured.
     Counted(Count),
     /// The crate has no function for the operation on the row; the reason.
     Absent(String),
 }
 
-/// The instructions of one crate's function over a batch of operand sets.
+/// One crate's function, measured in a loop of independent operations and, for a case with a
+/// chain form, in the chain `x = op(x, y)`.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Count {
     /// The function.
     pub function: String,
-    /// The operand sets of the batch.
-    pub operations: u32,
-    /// The instructions that Callgrind counted over the batch.
-    pub instructions: u64,
+    /// How its results deviate from the row's definition, in one phrase; `None` for a function
+    /// that meets it.
+    pub deviation: Option<String>,
+    /// The loop of independent operations.
+    pub batch: Events,
+    /// The chain; absent for a case without a chain form.
+    pub chain: Option<Latency>,
 }
 
-impl Count {
-    /// The mean instructions per operation.
-    #[must_use]
-    pub fn per_operation(&self) -> f64 {
-        self.instructions as f64 / f64::from(self.operations)
+/// The chain of a case: of its chains, one per class that can hold its value, the one with the
+/// fewest cycles per step.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct Latency {
+    /// Where the chain holds its value between steps.
+    pub class: Class,
+    /// The events per step.
+    pub events: Events,
+}
+
+/// Where a chain holds its value between steps.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Class {
+    /// The general-purpose registers.
+    Gpr,
+    /// The vector registers.
+    Xmm,
+    /// Memory, for a value of more than 64 bytes.
+    Memory,
+}
+
+impl fmt::Display for Class {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Gpr => "general-purpose registers",
+            Self::Xmm => "vector registers",
+            Self::Memory => "memory",
+        })
     }
+}
+
+/// The user-mode events per operation that the CPU's counters count in one form of a case.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct Events {
+    /// The operations of a short run; a long run has twice as many.
+    pub operations: usize,
+    /// Core cycles.
+    pub cycles: f64,
+    /// Retired instructions.
+    pub instructions: f64,
+    /// Mispredicted branches.
+    pub branch_misses: f64,
+}
+
+/// The 1-minute load average of the machine before and after a sweep.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct Load {
+    /// Before the first repetition.
+    pub before: f64,
+    /// After the last repetition.
+    pub after: f64,
+}
+
+/// An SMT sibling of the measuring CPU, which shares its core.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct Sibling {
+    /// The CPU.
+    pub cpu: usize,
+    /// The share of the sweep, from 0 to 1, that the sibling spent busy.
+    pub busy: f64,
+}
+
+/// Where and when the bench measured.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Sweep {
+    /// The CPU that the measuring thread ran on.
+    pub cpu: usize,
+    /// The load around the sweep.
+    pub load: Load,
+    /// The SMT siblings of the CPU.
+    pub siblings: Vec<Sibling>,
+}
+
+/// A line that the bench prints: every cell, then the sweep.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Line<K> {
+    /// A cell.
+    Cell(Cell<K>),
+    /// The sweep.
+    Sweep(Sweep),
 }
 
 /// A crate and the version that `Cargo.lock` resolves.
@@ -95,14 +175,33 @@ pub struct Record<K> {
     pub host: String,
     /// The CPU that `-C target-cpu=native` selects.
     pub native_cpu: String,
+    /// The CPU's model name in `/proc/cpuinfo`.
+    pub cpu_model: String,
     /// The operator's description of the machine.
     pub machine: Option<String>,
-    /// The `RUSTFLAGS` of the build.
-    pub rustflags: String,
-    /// The output of `valgrind --version`.
-    pub valgrind: String,
+    /// The measured package.
+    pub package: String,
+    /// The features of the measured package that every build enables beside its default ones.
+    pub features: Vec<String>,
     /// The versions of the compared crates.
     pub versions: Vec<Version>,
+    /// The measurement of every build of the bench.
+    pub builds: Vec<Measurement<K>>,
+}
+
+/// One build of the bench, measured.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Measurement<K> {
+    /// The name of the build; empty for the only build of a bench.
+    pub name: String,
+    /// The suffix of the build's charts; empty for the first build.
+    pub slug: String,
+    /// The `RUSTFLAGS` of the build.
+    pub rustflags: String,
+    /// The target features that `rustc --print cfg` reports under these flags.
+    pub target_features: Vec<String>,
+    /// The sweep that measured the build.
+    pub sweep: Sweep,
     /// Every cell of the comparison.
     pub cells: Vec<Cell<K>>,
 }

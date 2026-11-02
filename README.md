@@ -6,15 +6,15 @@
 
 Big-integer, prime-field, carry-less and binary-field arithmetic in pure Rust. Every crate is
 `no_std` and free of allocation and panics. `unsafe` appears only in `clmul`, at the calls into its
-PCLMULQDQ and PMULL backends, and in the unpublished `ct-check`, at the inline assembly of
-Valgrind's client requests.
+PCLMULQDQ and PMULL backends, and at the inline assembly of two unpublished tools: Valgrind's
+client requests in `ct-check`, the barriers of the latency chains in `bench-compare`.
 
 ## Crates
 
 | Crate | Description |
 |---|---|
 | [`biguint`](crates/biguint) | Fixed-width unsigned integers of any bit width, with Karatsuba multiplication and divide-and-conquer division |
-| [`prime-field`](crates/prime-field) | Prime fields declared by their modulus; Montgomery or pseudo-Mersenne arithmetic chosen at compile time, constant-time inversion, square roots |
+| [`prime-field`](crates/prime-field) | Prime fields declared by their modulus; Montgomery, Mersenne or pseudo-Mersenne arithmetic chosen at compile time; `Fp` takes the fastest path, `Secret` runs every operation in constant time |
 | [`clmul`](crates/clmul) | Carry-less multiplication of 64-bit words, limb slices and GF(2^128) elements, on PCLMULQDQ, PMULL or a const portable comb |
 | [`binary-field`](crates/binary-field) | Binary Galois fields GF(2^n) of any degree, declared by their polynomial, with every algorithm choice folded at compile time |
 
