@@ -186,10 +186,8 @@ impl<M: Modulus> Shape<M> {
         let mut step = 0;
         while step < exponent {
             let mut doubled = M::Width::ZERO;
-            let mut scratch = M::Width::ZERO;
             add_mod(
                 doubled.as_mut_slice(),
-                scratch.as_mut_slice(),
                 value.as_slice(),
                 value.as_slice(),
                 Self::P.as_slice(),
@@ -206,10 +204,8 @@ impl<M: Modulus> Shape<M> {
     pub(crate) const fn encode(value: &[u64]) -> Limbs<M> {
         let mut out = M::Width::ZERO;
         if Self::MONTGOMERY {
-            let mut scratch = M::Width::ZERO;
             cios(
                 out.as_mut_slice(),
-                scratch.as_mut_slice(),
                 value,
                 Self::R2.as_slice(),
                 Self::P.as_slice(),
@@ -229,10 +225,8 @@ impl<M: Modulus> Shape<M> {
         if Self::MONTGOMERY {
             let mut wide = M::Width::WIDE_ZERO;
             copy(wide.as_mut_slice(), value);
-            let mut scratch = M::Width::ZERO;
             redc(
                 out.as_mut_slice(),
-                scratch.as_mut_slice(),
                 wide.as_mut_slice(),
                 Self::P.as_slice(),
                 Self::INV,
@@ -248,11 +242,9 @@ impl<M: Modulus> Shape<M> {
     #[inline(always)]
     pub(crate) const fn mul_raw(a: &[u64], b: &[u64]) -> Limbs<M> {
         let mut out = M::Width::ZERO;
-        let mut scratch = M::Width::ZERO;
         if Self::MONTGOMERY {
             cios(
                 out.as_mut_slice(),
-                scratch.as_mut_slice(),
                 a,
                 b,
                 Self::P.as_slice(),
@@ -262,7 +254,7 @@ impl<M: Modulus> Shape<M> {
         } else {
             let mut wide = M::Width::WIDE_ZERO;
             mul_wide(wide.as_mut_slice(), a, b);
-            Self::fold_raw(&mut out, &mut scratch, wide.as_slice());
+            Self::fold_raw(&mut out, wide.as_slice());
         }
         out
     }
@@ -271,20 +263,18 @@ impl<M: Modulus> Shape<M> {
     #[inline(always)]
     pub(crate) const fn square_raw(a: &[u64]) -> Limbs<M> {
         let mut out = M::Width::ZERO;
-        let mut scratch = M::Width::ZERO;
         let mut wide = M::Width::WIDE_ZERO;
         square_wide(wide.as_mut_slice(), a);
         if Self::MONTGOMERY {
             redc(
                 out.as_mut_slice(),
-                scratch.as_mut_slice(),
                 wide.as_mut_slice(),
                 Self::P.as_slice(),
                 Self::INV,
                 Self::SPARE,
             );
         } else {
-            Self::fold_raw(&mut out, &mut scratch, wide.as_slice());
+            Self::fold_raw(&mut out, wide.as_slice());
         }
         out
     }
@@ -307,7 +297,7 @@ impl<M: Modulus> Shape<M> {
     /// Reduces the full product `wide` into `out` by [`Self::FOLDS`] folds and one conditional
     /// subtraction. Each fold writes the limbs that its bound needs.
     #[inline(always)]
-    const fn fold_raw(out: &mut Limbs<M>, scratch: &mut Limbs<M>, wide: &[u64]) {
+    const fn fold_raw(out: &mut Limbs<M>, wide: &[u64]) {
         let deficit = match Self::DEFICIT {
             Some(deficit) => deficit,
             None => 0,
@@ -349,7 +339,6 @@ impl<M: Modulus> Shape<M> {
         copy(out.as_mut_slice(), folded);
         reduce_once(
             out.as_mut_slice(),
-            scratch.as_mut_slice(),
             limb(folded, Self::LIMBS),
             Self::P.as_slice(),
         );

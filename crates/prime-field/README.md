@@ -59,7 +59,7 @@ The modulus selects the algorithm at compile time; the limb loops unroll to the 
 | mul | `2^k - c` with `c < 2^64` and at most three folds to land below `2p` (Mersenne-31, Goldilocks, secp256k1, P-521) | Schoolbook product, then pseudo-Mersenne folds `low + high · c` and one conditional subtraction; elements are plain residues |
 | mul | every other modulus | Montgomery multiplication by coarsely integrated operand scanning (Koç, Acar and Kaliski 1996); the accumulator drops its second carry limb when the modulus leaves the top bit clear, as in gnark-crypto's and ark-ff's no-carry variant; a Montgomery-friendly modulus (`-p^-1 = 1 mod 2^64`, P-256) loses its per-row multiply to constant folding |
 | square | all | The product with each cross term once and doubled, then the reduction of the modulus |
-| add, sub, neg | all | One carry chain and one masked conditional subtraction or addition; no branch |
+| add, sub, neg | all | `a + b - p` or `a - b`, then `p` added back under the mask of the borrow; `-a` is `0 - a` |
 | invert | up to 64 bits | Fermat: `x^(p - 2)` over the public exponent |
 | invert | wider moduli | Bernstein–Yang safegcd (*Fast constant-time gcd computation and modular inversion*, 2019) in the half-delta formulation of libsecp256k1: 62 division steps per batch on the low limbs, a 2×2 matrix of 62-bit factors applied to the values and to the Bézout coefficients modulo `p`, the proven `(45907 k + 26313) / 19929` steps for a `k`-bit modulus, in constant time |
 | invert_vartime | wider moduli | The same batches; the even steps of a batch skip at once by the trailing zeros of `g`, and the loop stops when `g` reaches zero |
@@ -67,9 +67,10 @@ The modulus selects the algorithm at compile time; the limb loops unroll to the 
 | sqrt | `p = 1 mod 4` | Tonelli–Shanks from `x^((t - 1) / 2)`, with the two-adic root `z^t` of the least non-residue `z` found by the Jacobi symbol at compile time |
 | pow | all | Square-and-multiply from the top set bit of a `biguint::Uint` exponent |
 
-Timing: `add`, `sub`, `neg`, `mul`, `square` and `invert` take one arithmetic path for every
-operand value, with masked selections; `invert_vartime`, `pow` and `sqrt` take time that depends
-on the values.
+Timing: `add`, `sub`, `neg`, `mul` and `square` take one path for every operand value, and
+`invert` for every nonzero value. Each selection by a secret condition is a mask that passes
+through `core::hint::black_box`, which keeps the compiler from turning it into a branch.
+`invert_vartime`, `pow` and `sqrt` take time that depends on the values.
 
 ## Benchmarks
 

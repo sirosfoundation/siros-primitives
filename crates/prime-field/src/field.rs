@@ -29,9 +29,9 @@ pub trait Modulus: Copy + 'static {
 /// by Montgomery multiplication. The representation is private; the conversions take and return
 /// canonical integers.
 #[repr(transparent)]
-#[derive_where::derive_where(Clone, Copy, Default, Eq, Hash, PartialEq; Uint<M::Width>)]
+#[derive_where::derive_where(Clone, Copy, Default, Eq, Hash, PartialEq; Limbs<M>)]
 pub struct Fp<M: Modulus> {
-    value: Uint<M::Width>,
+    limbs: Limbs<M>,
 }
 
 /// A value refused as a field element: it is at or above the modulus, or wider than the
@@ -53,15 +53,13 @@ impl<M: Modulus> Fp<M> {
     /// The element whose representation is `limbs`.
     #[inline(always)]
     pub(crate) const fn from_limbs(limbs: Limbs<M>) -> Self {
-        Self {
-            value: Uint::from_generic_limbs(limbs),
-        }
+        Self { limbs }
     }
 
     /// The representation.
     #[inline(always)]
     pub(crate) const fn limbs(&self) -> &[u64] {
-        self.value.as_limbs()
+        self.limbs.as_slice()
     }
 
     /// `value mod p`.
@@ -156,10 +154,8 @@ impl<M: Modulus> Fp<M> {
     #[must_use]
     pub const fn add(self, rhs: Self) -> Self {
         let mut out = M::Width::ZERO;
-        let mut scratch = M::Width::ZERO;
         add_mod(
             out.as_mut_slice(),
-            scratch.as_mut_slice(),
             self.limbs(),
             rhs.limbs(),
             Shape::<M>::P.as_slice(),
@@ -173,10 +169,8 @@ impl<M: Modulus> Fp<M> {
     #[must_use]
     pub const fn sub(self, rhs: Self) -> Self {
         let mut out = M::Width::ZERO;
-        let mut scratch = M::Width::ZERO;
         sub_mod(
             out.as_mut_slice(),
-            scratch.as_mut_slice(),
             self.limbs(),
             rhs.limbs(),
             Shape::<M>::P.as_slice(),

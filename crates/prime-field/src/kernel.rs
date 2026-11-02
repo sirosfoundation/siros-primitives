@@ -7,6 +7,8 @@
 //! move and the loops below unroll. The kernels hold no scratch of their own: the caller passes
 //! every buffer, sized by its types.
 
+use core::hint::black_box;
+
 /// Drops the carry or borrow out of a result that is known to fit its limbs, or whose wrap
 /// cancels an earlier borrow.
 #[inline(always)]
@@ -85,17 +87,55 @@ pub(crate) const fn sub(out: &mut [u64], a: &[u64], b: &[u64]) -> u64 {
     borrow
 }
 
-/// `out = a` when `condition` holds, else `b`, without a branch: the mask form, which the
-/// compiler lowers to one conditional move per limb.
+/// `out -= a` over the length of `out`; returns the borrow out of the top limb.
+#[inline(always)]
+pub(crate) const fn sub_assign(out: &mut [u64], a: &[u64]) -> u64 {
+    let mut borrow = 0;
+    let mut index = 0;
+    while index < out.len() {
+        let (difference, borrow_out) = sub_borrow(limb(out, index), limb(a, index), borrow);
+        set(out, index, difference);
+        borrow = borrow_out;
+        index += 1;
+    }
+    borrow
+}
+
+/// `out += a & mask` over the length of `out`; returns the carry out of the top limb.
+#[inline(always)]
+pub(crate) const fn add_assign_masked(out: &mut [u64], a: &[u64], mask: u64) -> u64 {
+    let mut carry = 0;
+    let mut index = 0;
+    while index < out.len() {
+        let (sum, carry_out) = add_carry(limb(out, index), limb(a, index) & mask, carry);
+        set(out, index, sum);
+        carry = carry_out;
+        index += 1;
+    }
+    carry
+}
+
+/// All ones when `condition` holds, else zero. The mask passes through [`black_box`], so the
+/// compiler cannot tell that it takes only those two values: an operand masked by it stays
+/// bitwise arithmetic, where the compiler would otherwise branch on the condition, or rewrite an
+/// addition of the mask as a subtraction that breaks the carry chain. crypto-bigint puts the same
+/// barrier on its borrow masks. Every secret condition of the constant-time operations becomes
+/// a mask here.
+#[inline(always)]
+pub(crate) const fn mask(condition: bool) -> u64 {
+    black_box(0u64.wrapping_sub(condition as u64))
+}
+
+/// `out = a` when `condition` holds, else `b`, without a branch.
 #[inline(always)]
 pub(crate) const fn select(out: &mut [u64], condition: bool, a: &[u64], b: &[u64]) {
-    let mask = 0u64.wrapping_sub(condition as u64);
+    let take = mask(condition);
     let mut index = 0;
     while index < out.len() {
         set(
             out,
             index,
-            (limb(a, index) & mask) | (limb(b, index) & !mask),
+            (limb(a, index) & take) | (limb(b, index) & !take),
         );
         index += 1;
     }
@@ -214,83 +254,43 @@ pub(crate) const fn low_limb(a: &[u64], bits: usize, index: usize) -> u64 {
     }
 }
 
-/// `out = value - p` when `top:value >= p`, else `value`, for `top:value < 2p` held in `out`.
-/// `scratch` has the length of `out`.
+/// `top:out mod p` for `top:out < 2p`, in place: `p` comes off, and comes back on under the
+/// mask of a borrow that `top` does not absorb, which wraps the limbs back to `out`.
 #[inline(always)]
-pub(crate) const fn reduce_once(out: &mut [u64], scratch: &mut [u64], top: u64, p: &[u64]) {
-    let borrow = sub(scratch, out, p);
-    let take = (top != 0) | (borrow == 0);
-    let mask = 0u64.wrapping_sub(take as u64);
-    let mut index = 0;
-    while index < out.len() {
-        set(
-            out,
-            index,
-            (limb(scratch, index) & mask) | (limb(out, index) & !mask),
-        );
-        index += 1;
-    }
+pub(crate) const fn reduce_once(out: &mut [u64], top: u64, p: &[u64]) {
+    let borrow = sub_assign(out, p);
+    fits(add_assign_masked(out, p, mask((borrow != 0) & (top == 0))));
 }
 
 /// `out = a + b mod p` for `a, b < p`. `spare` tells that `p` leaves the top bit of the top limb
-/// clear, so `a + b` cannot carry out. `scratch` has the length of `out`.
+/// clear, so `a + b` cannot carry out.
 #[inline(always)]
-pub(crate) const fn add_mod(
-    out: &mut [u64],
-    scratch: &mut [u64],
-    a: &[u64],
-    b: &[u64],
-    p: &[u64],
-    spare: bool,
-) {
+pub(crate) const fn add_mod(out: &mut [u64], a: &[u64], b: &[u64], p: &[u64], spare: bool) {
     let carry = add(out, a, b);
-    reduce_once(out, scratch, if spare { 0 } else { carry }, p);
+    reduce_once(out, if spare { 0 } else { carry }, p);
 }
 
-/// `out = a - b mod p` for `a, b < p`. `scratch` has the length of `out`.
+/// `out = a - b mod p` for `a, b < p`: `p` is added back under the mask of the borrow, and the
+/// carry of that addition cancels the borrow.
 #[inline(always)]
-pub(crate) const fn sub_mod(out: &mut [u64], scratch: &mut [u64], a: &[u64], b: &[u64], p: &[u64]) {
+pub(crate) const fn sub_mod(out: &mut [u64], a: &[u64], b: &[u64], p: &[u64]) {
     let borrow = sub(out, a, b);
-    fits(add(scratch, out, p));
-    let mask = 0u64.wrapping_sub(borrow);
-    let mut index = 0;
-    while index < out.len() {
-        set(
-            out,
-            index,
-            (limb(scratch, index) & mask) | (limb(out, index) & !mask),
-        );
-        index += 1;
-    }
+    fits(add_assign_masked(out, p, mask(borrow != 0)));
 }
 
-/// `out = -a mod p` for `a < p`.
+/// `out = -a mod p` for `a < p`: `0 - a`, which borrows exactly when `a` is not zero.
 #[inline(always)]
 pub(crate) const fn neg_mod(out: &mut [u64], a: &[u64], p: &[u64]) {
-    fits(sub(out, p, a));
-    let mask = 0u64.wrapping_sub(!is_zero(a) as u64);
-    let mut index = 0;
-    while index < out.len() {
-        set(out, index, limb(out, index) & mask);
-        index += 1;
-    }
+    sub_mod(out, &[], a, p);
 }
 
 /// Montgomery multiplication by coarsely integrated operand scanning (Koç, Acar and Kaliski,
 /// 1996): `out = a * b / 2^(64 L) mod p` for `a, b < p` of `L` limbs, with `inv = -p^-1 mod
 /// 2^64`. `spare` tells that `p < 2^(64 L - 1)`, which keeps the accumulator within `L + 1`
 /// limbs and drops the second carry limb, as in gnark-crypto's and ark-ff's no-carry
-/// multiplication. `scratch` has the length of `out`.
+/// multiplication.
 #[inline(always)]
-pub(crate) const fn cios(
-    out: &mut [u64],
-    scratch: &mut [u64],
-    a: &[u64],
-    b: &[u64],
-    p: &[u64],
-    inv: u64,
-    spare: bool,
-) {
+pub(crate) const fn cios(out: &mut [u64], a: &[u64], b: &[u64], p: &[u64], inv: u64, spare: bool) {
     let len = out.len();
     let mut top = 0u64;
     let mut above = 0u64;
@@ -329,21 +329,13 @@ pub(crate) const fn cios(
         top = if spare { 0 } else { above + carry_out };
         i += 1;
     }
-    reduce_once(out, scratch, top, p);
+    reduce_once(out, top, p);
 }
 
 /// Montgomery reduction of the `2 L`-limb `wide` by separated operand scanning: `out = wide /
-/// 2^(64 L) mod p` for `wide < p * 2^(64 L)`. `spare` as in [`cios`]; `scratch` has the length of
-/// `out`.
+/// 2^(64 L) mod p` for `wide < p * 2^(64 L)`. `spare` as in [`cios`].
 #[inline(always)]
-pub(crate) const fn redc(
-    out: &mut [u64],
-    scratch: &mut [u64],
-    wide: &mut [u64],
-    p: &[u64],
-    inv: u64,
-    spare: bool,
-) {
+pub(crate) const fn redc(out: &mut [u64], wide: &mut [u64], p: &[u64], inv: u64, spare: bool) {
     let len = out.len();
     let mut above = 0u64;
     let mut i = 0;
@@ -368,7 +360,7 @@ pub(crate) const fn redc(
         set(out, index, limb(wide, index + len));
         index += 1;
     }
-    reduce_once(out, scratch, if spare { 0 } else { above }, p);
+    reduce_once(out, if spare { 0 } else { above }, p);
 }
 
 /// `wide = a * b`, schoolbook, over `a.len() + b.len()` limbs.

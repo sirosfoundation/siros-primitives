@@ -14,7 +14,7 @@
 //! and the exponent is public, so it runs in constant time with respect to `x`.
 
 use crate::field::{Fp, Modulus};
-use crate::kernel::{add, equal, fits, is_zero, limb, mul_add, neg_mod, set, sub};
+use crate::kernel::{add, equal, fits, is_zero, limb, mask, mul_add, neg_mod, set, sub};
 use crate::params::{ExtendedLimbs, Limbs, Shape};
 use crate::width::Width;
 
@@ -90,7 +90,7 @@ impl<M: Modulus> Fp<M> {
         let mut one = M::Width::EXTENDED_ZERO;
         set(one.as_mut_slice(), 0, 1);
         let positive = equal(f.as_slice(), one.as_slice());
-        let negative = f.as_slice().iter().all(|limb| *limb == u64::MAX);
+        let negative = f.as_slice().iter().fold(u64::MAX, |all, limb| all & limb) == u64::MAX;
         let mut negated = M::Width::ZERO;
         neg_mod(
             negated.as_mut_slice(),
@@ -100,12 +100,6 @@ impl<M: Modulus> Fp<M> {
         let inverse = Self::select(negative, Self::from_limbs(negated), Self::from_limbs(d));
         (positive | negative).then_some(inverse)
     }
-}
-
-/// All ones when `condition` holds, else zero.
-#[inline(always)]
-const fn mask(condition: bool) -> u64 {
-    0u64.wrapping_sub(condition as u64)
 }
 
 /// The factors of one batch: the new `f` is `(u f + v g) / 2^62` and the new `g` is
@@ -148,7 +142,7 @@ impl Matrix {
                     r += v;
                 }
             } else {
-                let negate = (*zeta >> 63) as u64;
+                let negate = mask(*zeta < 0);
                 let odd = mask(g & 1 != 0);
                 let x = (f ^ negate).wrapping_sub(negate);
                 let y = (u ^ negate as i64).wrapping_sub(negate as i64);
@@ -245,7 +239,7 @@ fn combination_mod<M: Modulus>(f: i64, u: &[u64], g: i64, v: &[u64]) -> Limbs<M>
 #[inline(always)]
 fn negate_masked(value: &mut [u64], condition: bool) {
     let flip = mask(condition);
-    let mut carry = u64::from(condition);
+    let mut carry = flip & 1;
     for slot in value {
         let (sum, carry_out) = (*slot ^ flip).overflowing_add(carry);
         *slot = sum;
