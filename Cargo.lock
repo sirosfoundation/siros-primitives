@@ -299,6 +299,7 @@ name = "clmul"
 version = "0.1.0"
 dependencies = [
  "biguint",
+ "const-default",
 ]
 
 [[package]]
@@ -412,7 +413,6 @@ version = "0.0.0"
 dependencies = [
  "bench-compare",
  "binary-field",
- "clmul",
  "prime-field",
  "serde",
  "serde_json",
