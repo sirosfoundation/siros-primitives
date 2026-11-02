@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/sirosfoundation/siros-primitives/actions/workflows/ci.yml/badge.svg)](https://github.com/sirosfoundation/siros-primitives/actions/workflows/ci.yml)
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
-![Rust 1.88+](https://img.shields.io/badge/rustc-1.88+-blue.svg)
+![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
 Big-integer, prime-field, carry-less and binary-field arithmetic in pure Rust. Every crate is
 `no_std` and free of allocation and panics. `unsafe` appears only in `clmul`, at the calls into its
@@ -19,7 +19,7 @@ PCLMULQDQ and PMULL backends.
 
 ## Minimum supported Rust version
 
-Every crate builds with Rust 1.88 or newer.
+Every crate builds with Rust 1.93 or newer.
 
 ## Development
 

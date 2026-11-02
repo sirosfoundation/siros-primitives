@@ -15,8 +15,9 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/sirosfoundation/siros-primitives"
 authors = ["SIROS Foundation"]
-# `core::hint::select_unpredictable` and `let` chains need 1.88; the `msrv` CI job builds on it.
-rust-version = "1.88"
+# The `adc` and `sbb` intrinsics that builds with `adx` call are safe from 1.93; the `msrv` CI job
+# builds on it with and without `adx`.
+rust-version = "1.93"
 
 [workspace.dependencies]
 const-default = { version = "1.0.0", default-features = false }

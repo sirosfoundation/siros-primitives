@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/sirosfoundation/siros-primitives/actions/workflows/ci.yml/badge.svg)](https://github.com/sirosfoundation/siros-primitives/actions/workflows/ci.yml)
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
-![Rust 1.88+](https://img.shields.io/badge/rustc-1.88+-blue.svg)
+![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
 Binary Galois fields `GF(2^n) = GF(2)[x] / (f(x))` in pure Rust for any degree `n` and any
 irreducible `f`: `no_std`, without `unsafe`, allocation or panics.
@@ -100,7 +100,7 @@ depend on the cache; every other case is on par or ahead.
 
 ## Minimum supported Rust version
 
-Rust 1.88 or newer.
+Rust 1.93 or newer.
 
 ## License
 

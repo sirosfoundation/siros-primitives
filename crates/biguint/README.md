@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/sirosfoundation/siros-primitives/actions/workflows/ci.yml/badge.svg)](https://github.com/sirosfoundation/siros-primitives/actions/workflows/ci.yml)
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
-![Rust 1.88+](https://img.shields.io/badge/rustc-1.88+-blue.svg)
+![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
 Fixed-width unsigned integers of any bit width in pure Rust: `no_std`, without `unsafe` or
 panics.
@@ -72,7 +72,7 @@ thread stack. Unoptimized builds need about 1.9 MiB for `mul_mod` and 1.2 MiB fo
 
 ## Minimum supported Rust version
 
-Rust 1.88 or newer.
+Rust 1.93 or newer.
 
 ## License
 

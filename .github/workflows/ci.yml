@@ -93,12 +93,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # rust-toolchain.toml overrides the default toolchain, so RUSTUP_TOOLCHAIN selects 1.88.
-      - name: Install Rust 1.88
+      # rust-toolchain.toml overrides the default toolchain, so RUSTUP_TOOLCHAIN selects 1.93.
+      - name: Install Rust 1.93
         run: |
-          rustup toolchain install 1.88 --profile minimal
-          echo "RUSTUP_TOOLCHAIN=1.88" >> "$GITHUB_ENV"
+          rustup toolchain install 1.93 --profile minimal
+          echo "RUSTUP_TOOLCHAIN=1.93" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo check --locked -p biguint -p prime-field
+      # The `adc` and `sbb` intrinsics of builds with `adx`.
+      - run: cargo check --locked -p biguint -p prime-field
+        env:
+          RUSTFLAGS: -C target-feature=+adx
       - run: cargo check --locked -p clmul --all-features
       - run: cargo check --locked -p binary-field
