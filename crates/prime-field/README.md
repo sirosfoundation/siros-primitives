@@ -60,15 +60,16 @@ The modulus selects the algorithm at compile time; the limb loops unroll to the 
 | mul | every other modulus | Montgomery multiplication by coarsely integrated operand scanning (Koç, Acar and Kaliski 1996); the accumulator drops its second carry limb when the modulus leaves the top bit clear, as in gnark-crypto's and ark-ff's no-carry variant; a Montgomery-friendly modulus (`-p^-1 = 1 mod 2^64`, P-256) loses its per-row multiply to constant folding |
 | square | all | The product with each cross term once and doubled, then the reduction of the modulus |
 | add, sub, neg | all | One carry chain and one masked conditional subtraction or addition; no branch |
-| invert | all | Pornin's optimized binary GCD (*Optimized Binary GCD for Modular Inversion*, 2020): 31 steps per batch on 64-bit approximations, a 2×2 matrix of 32-bit factors applied to the values and to the Bézout coefficients modulo `p`, in constant time |
-| invert_vartime | all | The same batches; the even steps of a batch skip at once by the trailing zeros, and the loop stops when the first value reaches zero |
+| invert | up to 64 bits | Fermat: `x^(p - 2)` over the public exponent |
+| invert | wider moduli | Bernstein–Yang safegcd (*Fast constant-time gcd computation and modular inversion*, 2019) in the half-delta formulation of libsecp256k1: 62 division steps per batch on the low limbs, a 2×2 matrix of 62-bit factors applied to the values and to the Bézout coefficients modulo `p`, the proven `(45907 k + 26313) / 19929` steps for a `k`-bit modulus, in constant time |
+| invert_vartime | wider moduli | The same batches; the even steps of a batch skip at once by the trailing zeros of `g`, and the loop stops when `g` reaches zero |
 | sqrt | `p = 3 mod 4` | `x^((p + 1) / 4)`, checked by squaring |
 | sqrt | `p = 1 mod 4` | Tonelli–Shanks from `x^((t - 1) / 2)`, with the two-adic root `z^t` of the least non-residue `z` found by the Jacobi symbol at compile time |
 | pow | all | Square-and-multiply from the top set bit of a `biguint::Uint` exponent |
 
-Constant time: `add`, `sub`, `neg`, `mul`, `square` and `invert` run the same instructions for
-every value of their operands. `invert_vartime`, `pow` and `sqrt` take time that depends on the
-values.
+Timing: `add`, `sub`, `neg`, `mul`, `square` and `invert` take one arithmetic path for every
+operand value, with masked selections; `invert_vartime`, `pow` and `sqrt` take time that depends
+on the values.
 
 ## Benchmarks
 

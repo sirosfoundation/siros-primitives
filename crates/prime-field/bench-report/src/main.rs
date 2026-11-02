@@ -63,13 +63,13 @@ const LAYOUT: Layout<'static, Field> = Layout {
     method,
     notes: &[
         "- `prime-field`, `ark-ff`, `crypto-bigint`, `halo2curves` and `runtime-algebra` are \
-         generic over the modulus; `k256`, `p256`, `p521`, `p3-*` and `winter-math` are written \
-         for their field.",
+         generic over the modulus; `k256`, `p256`, `p3-*` and `winter-math` are written for \
+         their field.",
         "- `crypto-bigint` is `ConstMontyForm` with a `const_monty_params!` modulus.",
         "- `ark-ff` is `Fp` with `MontBackend` from the arkworks curve crates; its `inverse` and \
          `sqrt` run in variable time.",
         "- `plonky3` is `p3-mersenne-31`, `p3-baby-bear` and `p3-goldilocks` on their field; its \
-         inverse is a Fermat exponentiation.",
+         inverse is a Fermat exponentiation by an addition chain.",
         "- `runtime-algebra` and `compile-algebra` are longfellow-zk's prover-side and \
          compile-side fields: `FpGenericField` is their generic Montgomery field with the modulus \
          held at run time; `P256Field` adds a hand-written P-256 strategy; `compile-algebra`'s \
