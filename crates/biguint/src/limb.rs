@@ -3,6 +3,15 @@
 //! Builds that enable `adx` on `x86_64` use the `adc`/`sbb` intrinsics. Every other build uses
 //! two overflowing operations, which LLVM schedules better there.
 
+/// All ones when `a < b`, zero otherwise: the high limb of the two-limb difference. A correction
+/// that depends on the values applies such a mask: a branch on it mispredicts about once in two.
+/// LLVM keeps this mask arithmetic; it turns a mask from a comparison into a select, and the select
+/// into a branch inside a loop.
+#[inline(always)]
+pub(crate) const fn mask_below(a: u64, b: u64) -> u64 {
+    ((a as u128).wrapping_sub(b as u128) >> 64) as u64
+}
+
 /// Add-with-carry on a `u64` limb.
 pub(crate) trait CarryingAdd: Sized {
     /// `self + rhs + carry` as `(sum mod 2^64, carry_out)`, with carries in `{0, 1}`.

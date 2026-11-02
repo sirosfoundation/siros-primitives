@@ -90,19 +90,22 @@ The width selects the algorithm at compile time, and every operand length folds 
 
 | Operation | Width | Algorithm |
 |---|---|---|
-| Product | below 16 limbs | Schoolbook rows of two carry chains, unrolled up to 16 limbs per operand; a product modulo `2^N` adds its even and odd rows into two outputs |
+| Product | below 16 limbs | Schoolbook rows of two carry chains, unrolled up to 16 limbs per operand |
 | Product | 16 limbs (1024 bits) and more | Karatsuba with GMP's `toom22` interpolation, up to three halvings |
 | Product modulo `2^N` | 17 limbs and more | Full product of the low parts and truncated cross products, split again, after GMP's `dc_mullo` |
 | Division | dividend and divisor within 128 bits | `u128` division, which compiles to the hardware divide |
 | Division | divisor of one or two significant limbs | Möller–Granlund 2-by-1 and 3-by-2 reciprocal steps, with the remainder in registers |
 | Division | other divisors | Knuth's algorithm D with Möller–Granlund 3-by-2 reciprocals |
 | Division | divisor and quotient of 24 limbs (1536 bits) and more, the divisor filling its width | Divide-and-conquer, after GMP's `dcpi1_div_qr` |
-| `add_mod`, `sub_mod`, `neg_mod` | any | One carry chain; the top limbs decide the correction, and a full comparison runs only when they are equal |
+| `add_mod`, `sub_mod`, `neg_mod` | up to 8 limbs | One carry chain, then the correction as a second chain and a conditional move per limb |
+| `add_mod`, `sub_mod`, `neg_mod` | 9 limbs and more | One carry chain; the top limbs decide the correction, and a full comparison runs only when they are equal |
 | `Modulus` product | odd modulus | Montgomery multiplication |
-| `Modulus` product | even modulus | Product, then division by the prepared modulus |
+| `Modulus` product | even modulus of 4 to 8 limbs (256 to 512 bits) whose top limb is nonzero | Product, then Barrett's reduction with a precomputed reciprocal |
+| `Modulus` product | other even moduli | Product, then division by the prepared modulus from one limb below the top |
 | `Modulus` square | below 16 limbs | Products of distinct limbs once, doubled, plus the squares of the limbs |
 | `Residue::pow` | any | Sliding windows of up to 6 bits over odd powers |
-| Shift | up to 8 limbs | Branch-free barrel shifter |
+| Shift | up to 2 limbs | `u128` shifts |
+| Shift | 3 limbs and more | Funnel shifts of the limbs, written at the limb offset in one vectorized pass |
 
 ## Benchmarks
 

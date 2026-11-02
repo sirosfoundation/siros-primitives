@@ -3,7 +3,7 @@
 //! correction that brings the sum below the modulus.
 
 use crate::bits::Bits;
-use crate::kernel::{add_assign, fits, reduced, sub_assign, subtract_if_above};
+use crate::kernel::{add_without_carry, reduced, subtract_when_above};
 use crate::nonzero::NonZeroUint;
 use crate::stream::{AddOp, LimbSource, Op2CarryIter, TwosComplement, ZeroExtended, pull_limbs};
 use crate::uint::Uint;
@@ -69,37 +69,30 @@ pub(crate) trait Addend: LimbSource {
     /// The carry into the bottom limb of the sum.
     const CARRY_IN: u64;
 
-    /// Brings `sum`, whose carry out of the top limb is `carry`, below `modulus`.
-    fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]);
+    /// Writes `sum`, whose carry out of the top limb is `carry`, brought below `modulus`, to `out`.
+    fn correct(out: &mut [u64], sum: &[u64], carry: u64, modulus: &[u64]);
 }
 
 /// The limbs of `b`: `a + b` is below twice the modulus, which a carry out or a sum at or above
-/// the modulus subtracts once. The top limbs decide whether the sum reaches the modulus.
+/// the modulus subtracts once.
 impl Addend for ZeroExtended<'_> {
     const CARRY_IN: u64 = 0;
 
     #[inline(always)]
-    fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]) {
-        if carry != 0 {
-            // The sum is at least `2^(64 * k)`, above the modulus; the borrow cancels the carry.
-            fits(sub_assign(sum, modulus));
-        } else {
-            reduced(subtract_if_above(sum, modulus));
-        }
+    fn correct(out: &mut [u64], sum: &[u64], carry: u64, modulus: &[u64]) {
+        reduced(subtract_when_above(out, sum, modulus, carry));
     }
 }
 
 /// `2^(64 * k) - b`: the sum is `a - b + 2^(64 * k)`, which carries out exactly when `a >= b`.
-/// Without the carry, `a - b` borrowed, and the modulus is added back.
+/// Without the carry, `a - b` borrowed, and the modulus is added back; the carry out of that
+/// addition cancels the borrow.
 impl<S: LimbSource> Addend for TwosComplement<S> {
     const CARRY_IN: u64 = 1;
 
     #[inline(always)]
-    fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]) {
-        if carry == 0 {
-            // The carry out of the addition cancels the borrow.
-            fits(add_assign(sum, modulus));
-        }
+    fn correct(out: &mut [u64], sum: &[u64], carry: u64, modulus: &[u64]) {
+        add_without_carry(out, sum, modulus, carry);
     }
 }
 
@@ -108,8 +101,9 @@ impl<S: LimbSource> Addend for TwosComplement<S> {
 pub(crate) fn sum_mod<N: Bits, B: Addend>(a: &Uint<N>, addend: B, modulus: &Uint<N>) -> Uint<N> {
     let mut sum =
         Op2CarryIter::<_, _, AddOp>::with_carry(a.source().pull(), addend.pull(), B::CARRY_IN);
-    let mut limbs = pull_limbs::<N::Limbs>(&mut sum);
-    B::correct(&mut limbs, sum.carry(), &modulus.limbs);
+    let limbs = pull_limbs::<N::Limbs>(&mut sum);
+    let mut out = Uint::<N>::ZERO;
+    B::correct(&mut out.limbs, &limbs, sum.carry(), &modulus.limbs);
     // Below the modulus, the bits above `N` are zero.
-    Uint { limbs }
+    out
 }
