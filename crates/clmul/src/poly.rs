@@ -13,21 +13,25 @@ use const_default::ConstDefault;
 
 use crate::backend::{self, Register};
 
-/// Runs `$body` with `$index` bound to each of `0..$len`: one copy per index below 16, so that
-/// constant lengths fold to straight-line code, and a loop beyond.
+/// Runs `$body` with `$index` bound to each of `0..$len`. Optimized builds get one copy per index
+/// below 8, so that constant lengths fold to straight-line code, and a loop beyond; debug builds
+/// get the loop alone, which keeps the frames of the inlined operations small.
 macro_rules! each {
     ($index:ident < $len:expr => $body:block) => {{
         let len: usize = $len;
-        each!(@ $index, len, $body; 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15);
+        #[cfg(not(debug_assertions))]
+        each!(@ $index, len, 8, $body; 0 1 2 3 4 5 6 7);
+        #[cfg(debug_assertions)]
+        each!(@ $index, len, 0, $body;);
     }};
-    (@ $index:ident, $len:ident, $body:block; $($k:literal)*) => {
+    (@ $index:ident, $len:ident, $from:literal, $body:block; $($k:literal)*) => {
         $(
             if $k < $len {
                 let $index: usize = $k;
                 $body
             }
         )*
-        let mut $index: usize = 16;
+        let mut $index: usize = $from;
         while $index < $len {
             $body
             $index += 1;
@@ -264,6 +268,32 @@ impl<N: Width> Poly<N> {
         }
     }
 
+    /// Every 64-bit word shifted left by `bits`, below 64, on its own: the coefficients that leave
+    /// a word drop, and the result keeps the bits below `N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn shl_within_words(mut self, bits: u32) -> Self {
+        each!(index < N::LANES => {
+            self.set(index, backend::shl_words(self.lane(index), bits));
+        });
+        if N::BITS % 64 == 0 {
+            self
+        } else {
+            self.truncated()
+        }
+    }
+
+    /// Every 64-bit word shifted right by `bits`, below 64, on its own: the coefficients that
+    /// leave a word drop.
+    #[inline(always)]
+    #[must_use]
+    pub fn shr_within_words(mut self, bits: u32) -> Self {
+        each!(index < N::LANES => {
+            self.set(index, backend::shr_words(self.lane(index), bits));
+        });
+        self
+    }
+
     /// The carry-less product of word `i` of `self` and word `j` of `rhs`: two coefficients of
     /// `x^(64 i)` and `x^(64 j)` times `x^(64 (i + j))` are the 128 bits of the result.
     #[inline(always)]
@@ -292,31 +322,29 @@ impl<N: Width> Poly<N> {
         let mut even = Poly::<Sum<N, M>>::ZERO;
         let mut odd = Poly::<Sum<N, M>>::ZERO;
         let (a_words, b_words) = (N::LIMBS, M::LIMBS);
-        each!(i < N::LANES => {
-            let a = self.lane(i);
-            let a_full = 2 * i + 1 < a_words;
-            let a_sum = backend::xor(a, backend::down(a));
-            each!(j < M::LANES => {
-                let b = rhs.lane(j);
-                let b_full = 2 * j + 1 < b_words;
-                let low = backend::clmul(a, 0, b, 0);
-                even.add_to(i + j, low);
-                match (a_full, b_full) {
-                    (true, true) => {
-                        let high = backend::clmul(a, 1, b, 1);
-                        let b_sum = backend::xor(b, backend::down(b));
-                        let middle = backend::xor(
-                            backend::xor(backend::clmul(a_sum, 0, b_sum, 0), low),
-                            high,
-                        );
-                        even.add_to(i + j + 1, high);
-                        odd.add_to(i + j, middle);
-                    }
-                    (true, false) => odd.add_to(i + j, backend::clmul(a, 1, b, 0)),
-                    (false, true) => odd.add_to(i + j, backend::clmul(a, 0, b, 1)),
-                    (false, false) => {}
+        // One pass over the register pairs `(i, j)`.
+        each!(pair < N::LANES * M::LANES => {
+            let (i, j) = (pair / M::LANES, pair % M::LANES);
+            let (a, b) = (self.lane(i), rhs.lane(j));
+            let (a_full, b_full) = (2 * i + 1 < a_words, 2 * j + 1 < b_words);
+            let low = backend::clmul(a, 0, b, 0);
+            even.add_to(i + j, low);
+            match (a_full, b_full) {
+                (true, true) => {
+                    let high = backend::clmul(a, 1, b, 1);
+                    let a_sum = backend::xor(a, backend::down(a));
+                    let b_sum = backend::xor(b, backend::down(b));
+                    let middle = backend::xor(
+                        backend::xor(backend::clmul(a_sum, 0, b_sum, 0), low),
+                        high,
+                    );
+                    even.add_to(i + j + 1, high);
+                    odd.add_to(i + j, middle);
                 }
-            });
+                (true, false) => odd.add_to(i + j, backend::clmul(a, 1, b, 0)),
+                (false, true) => odd.add_to(i + j, backend::clmul(a, 0, b, 1)),
+                (false, false) => {}
+            }
         });
         let lanes = <Sum<N, M> as Width>::LANES;
         each!(k < lanes => {
@@ -359,7 +387,7 @@ impl<N: Width> Poly<N> {
         if N::BITS <= 64 {
             // One word: a word shift drops what leaves it.
             out.set(0, backend::shl_words(self.lane(0), shift));
-            return out.truncated();
+            return if N::BITS < 64 { out.truncated() } else { out };
         }
         // Whole registers, then one word, then the bits below a word.
         each!(k < N::LANES => {

@@ -3,7 +3,8 @@
 
 use binary_field::generic_array::GenericArray;
 use binary_field::{
-    Aes, B233, B571, Gcm, Gf2, Gf2p8, Gf2p128, Poly16, Poly64, Poly256, Polynomial, Pow, Square,
+    Aes, B233, B571, Gcm, Gf2, Gf2p8, Gf2p128, Poly16, Poly64, Poly256, Polynomial, Pow, Secret,
+    Square,
 };
 
 /// A splitmix64 stream, so that every run sees the same operands.
@@ -69,8 +70,13 @@ fn check_field<P: Polynomial>(rounds: usize) {
     for _ in 0..rounds {
         let a = stream.element::<P>();
         let b = stream.element::<P>();
-        let expected = reference_mul(a.as_limbs(), b.as_limbs(), degree, P::TAPS);
-        assert_eq!((a * b).as_limbs(), &expected[..], "mul at degree {degree}");
+        let expected = reference_mul(&a.as_limbs(), &b.as_limbs(), degree, P::TAPS);
+        assert_eq!(
+            (a * b).as_limbs().as_slice(),
+            &expected[..],
+            "mul at degree {degree}"
+        );
+        check_secret(a, b);
         assert_eq!(a.square(), a * a, "square at degree {degree}");
         assert_eq!(a.sqrt().square(), a, "sqrt at degree {degree}");
         assert_eq!(
@@ -117,6 +123,41 @@ fn check_field<P: Polynomial>(rounds: usize) {
     );
     assert_eq!(Gf2::<P>::ZERO.invert(), None);
     assert_eq!(Gf2::<P>::ONE.invert(), Some(Gf2::<P>::ONE));
+}
+
+/// The operations of `Secret`, which run other algorithms than the defaults of `Gf2` for the fields
+/// with tables, against the defaults, which the caller checks against the references.
+fn check_secret<P: Polynomial>(a: Gf2<P>, b: Gf2<P>) {
+    let (x, y) = (Secret::new(a), Secret::new(b));
+    let degree = Gf2::<P>::DEGREE;
+    assert_eq!((x * y).reveal(), a * b, "secret mul at degree {degree}");
+    assert_eq!(
+        (x * b).reveal(),
+        a * b,
+        "secret by public at degree {degree}"
+    );
+    assert_eq!(
+        (a * y).reveal(),
+        a * b,
+        "public by secret at degree {degree}"
+    );
+    assert_eq!((x + y).reveal(), a + b, "secret add at degree {degree}");
+    assert_eq!((x - b).reveal(), a - b, "secret sub at degree {degree}");
+    assert_eq!(
+        x.square().reveal(),
+        a.square(),
+        "secret square at degree {degree}"
+    );
+    assert_eq!(
+        x.sqrt().reveal(),
+        a.sqrt(),
+        "secret sqrt at degree {degree}"
+    );
+    assert_eq!(
+        x.invert().map(Secret::reveal),
+        a.invert(),
+        "secret inverse at degree {degree}"
+    );
 }
 
 /// `a + a^2 + ... + a^(2^(n-1))`, read back as a bit of GF(2).

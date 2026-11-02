@@ -142,31 +142,6 @@ pub(crate) const fn bit(acc: &[u64], index: usize) -> bool {
     }
 }
 
-/// Writes the carry-less squares of the limbs of `a` to `out`, two limbs each, using the word
-/// product `square`.
-#[inline(always)]
-pub(crate) fn square_limbs(out: &mut [u64], a: &[u64], square: impl Fn(u64) -> u128) {
-    let mut out = out;
-    let mut a = a;
-    while let [limb, a_tail @ ..] = a {
-        let product = square(*limb);
-        match out {
-            [low, high, out_tail @ ..] => {
-                *low = product as u64;
-                *high = (product >> 64) as u64;
-                out = out_tail;
-            }
-            [low] => {
-                *low = product as u64;
-                out = &mut [];
-            }
-            [] => break,
-        }
-        a = a_tail;
-    }
-    clear(out);
-}
-
 /// Zeroes the bits `lo..hi` of `acc`.
 #[inline(always)]
 pub(crate) const fn clear_bits(acc: &mut [u64], lo: usize, hi: usize) {
@@ -209,17 +184,6 @@ const fn spread_half(half: u64) -> u64 {
     (x | (x << 1)) & 0x5555_5555_5555_5555
 }
 
-/// The even bits of `limb`, each moved to half its position, in the low 32 bits.
-#[inline(always)]
-const fn gather_even(limb: u64) -> u64 {
-    let mut x = limb & 0x5555_5555_5555_5555;
-    x = (x | (x >> 1)) & 0x3333_3333_3333_3333;
-    x = (x | (x >> 2)) & 0x0F0F_0F0F_0F0F_0F0F;
-    x = (x | (x >> 4)) & 0x00FF_00FF_00FF_00FF;
-    x = (x | (x >> 8)) & 0x0000_FFFF_0000_FFFF;
-    (x | (x >> 16)) & 0x0000_0000_FFFF_FFFF
-}
-
 /// Writes the carry-less square of `a` to `out`: bit `i` of `a` becomes bit `2i`. The square takes
 /// `2 * a.len()` limbs; `out` may be shorter when the top limbs of the square are zero.
 #[inline(always)]
@@ -244,27 +208,6 @@ pub(crate) const fn spread(out: &mut [u64], a: &[u64]) {
     clear(out);
 }
 
-/// Writes the bits of `a` at the positions congruent to `parity` modulo 2 to `out`, bit `2i +
-/// parity` at bit `i`, and zeroes the rest of `out`.
-#[inline(always)]
-pub(crate) const fn gather(out: &mut [u64], a: &[u64], parity: usize) {
-    let mut out = out;
-    let mut a = a;
-    while let [slot, out_tail @ ..] = out {
-        let (low, a_tail) = match a {
-            [low, a_tail @ ..] => (*low, a_tail),
-            [] => (0, a),
-        };
-        let (high, a_tail) = match a_tail {
-            [high, a_tail @ ..] => (*high, a_tail),
-            [] => (0, a_tail),
-        };
-        *slot = gather_even(low >> parity) | (gather_even(high >> parity) << 32);
-        a = a_tail;
-        out = out_tail;
-    }
-}
-
 /// The parity of the bits that `a` and `mask` share.
 #[inline(always)]
 pub(crate) const fn masked_parity(a: &[u64], mask: &[u64]) -> bool {
@@ -277,41 +220,4 @@ pub(crate) const fn masked_parity(a: &[u64], mask: &[u64]) -> bool {
         mask = mask_tail;
     }
     acc.count_ones() % 2 == 1
-}
-
-/// Whether every limb is zero.
-#[inline(always)]
-pub(crate) const fn is_zero(a: &[u64]) -> bool {
-    let mut acc = 0;
-    let mut a = a;
-    while let [limb, tail @ ..] = a {
-        acc |= *limb;
-        a = tail;
-    }
-    acc == 0
-}
-
-/// The number of bits up to and including the highest set bit, or 0 for zero.
-#[inline(always)]
-pub(crate) const fn bit_len(a: &[u64]) -> usize {
-    let mut len = 0;
-    let mut base = 0;
-    let mut a = a;
-    while let [limb, tail @ ..] = a {
-        if *limb != 0 {
-            len = base + 64 - limb.leading_zeros() as usize;
-        }
-        base += 64;
-        a = tail;
-    }
-    len
-}
-
-/// Whether `a` is exactly `1`.
-#[inline(always)]
-pub(crate) const fn is_one(a: &[u64]) -> bool {
-    match a {
-        [low, rest @ ..] => *low == 1 && is_zero(rest),
-        [] => false,
-    }
 }

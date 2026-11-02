@@ -11,9 +11,16 @@ repository.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["precomputed"]
+# Tables for the default operations of the fields up to degree 16: logarithms up to degree 8,
+# squares and square roots by byte, and inverses. Without them those operations take the
+# carry-less products of `Secret`.
+precomputed = []
+
 [dependencies]
 biguint = { path = "../biguint", version = "0.1.0", default-features = false }
-clmul = { path = "../clmul", version = "0.1.0" }
+clmul = { path = "../clmul", version = "0.1.0", features = ["biguint"] }
 const-default.workspace = true
 derive-where.workspace = true
 generic-array.workspace = true

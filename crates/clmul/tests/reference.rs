@@ -313,6 +313,21 @@ mod uint {
                 assert_eq!((p << bits).to_uint(), *a << bits, "{a:?} << {bits}");
                 assert_eq!((p >> bits).to_uint(), *a >> bits, "{a:?} >> {bits}");
             }
+            for bits in [1, 7, 32, 63] {
+                let words = |shift: fn(u64, u32) -> u64| -> Uint<N> {
+                    Uint::from_generic_limbs(GenericArray::generate(|index| {
+                        shift(a.as_limbs()[index], bits)
+                    }))
+                };
+                assert_eq!(
+                    p.shl_within_words(bits).to_uint(),
+                    words(|word, bits| word << bits)
+                );
+                assert_eq!(
+                    p.shr_within_words(bits).to_uint(),
+                    words(|word, bits| word >> bits)
+                );
+            }
             assert_eq!(p.resize::<M>().to_uint(), a.resize::<M>());
             assert_eq!(
                 p.widening_square().to_uint(),
