@@ -86,6 +86,18 @@ pub(crate) const TIER: Tier = if cfg!(feature = "not-precomputed") {
     Tier::Budget
 };
 
+/// Whether `clmul`'s nibble maps take one byte shuffle: PSHUFB with SSSE3, TBL on the PMULL
+/// backend of `aarch64`. Elsewhere a map takes masks per bit, slower than the parity gathers on a
+/// general register.
+const BYTE_SHUFFLE: bool = cfg!(any(
+    all(target_arch = "x86_64", target_feature = "ssse3"),
+    all(
+        target_arch = "aarch64",
+        target_endian = "little",
+        target_feature = "aes"
+    )
+));
+
 /// The bytes of constants a field may hold without `precomputed`.
 pub(crate) const BUDGET: usize = 16 * 1024;
 
@@ -148,6 +160,11 @@ impl<P: Polynomial> Plan<P> {
     pub(crate) const ROUNDS: usize = rounds(Self::DEGREE, Self::R_DEGREE);
     /// How a product folds back.
     pub(crate) const SHAPE: Shape = shape(Self::DEGREE, Self::R_DEGREE, Self::ONE_SPILL);
+
+    /// The constant-time linear maps of a field up to degree 8 (its squares, square roots and
+    /// Frobenius powers) and the fold of its product with hardware word products are nibble maps
+    /// in a vector register: the build has a byte shuffle, PSHUFB or TBL.
+    pub(crate) const NIBBLE_MAPS: bool = BYTE_SHUFFLE && Self::DEGREE <= 8;
 
     /// A product of degree 33 to 64 folds its part `h` at and above `x^n` as `(h r mod x^n) + t r`,
     /// with `t r` the image of the top nibble of `h` under a nibble map: `d` is at most 4, so only

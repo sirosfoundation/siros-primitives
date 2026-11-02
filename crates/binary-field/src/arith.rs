@@ -7,7 +7,7 @@ use core::ops::{BitAnd, BitXor, Shl, Shr};
 use biguint::Uint;
 use clmul::Poly;
 use const_default::ConstDefault;
-use typenum::{U64, U96, U128};
+use typenum::{U8, U64, U96, U128};
 
 use crate::frobenius::Frobenius;
 use crate::invert::{Inversion, inverse};
@@ -205,6 +205,13 @@ impl<P: Polynomial> Field<P> {
                 let square = Self::word_poly_square(a, context).resize::<U64>();
                 Self::reduce_word(square).resize()
             }
+            Shape::Words if Plan::<P>::SPILL_BY_NIBBLES => {
+                // The top nibble of `h` holds the squares of the top two bits of `a`, so their
+                // map gives the spill without waiting on the square.
+                let degree = Plan::<P>::DEGREE;
+                let spill = (a >> (degree - 2)).map_low_nibbles(Tables::<P>::SQUARE_SPILL);
+                Self::fold_spilled(Self::word_poly_square(a, context), spill.resize())
+            }
             Shape::Words => Self::fold_words(Self::word_poly_square(a, context)),
             Shape::Lane => {
                 let square = a.resize::<U128>().widening_square();
@@ -235,27 +242,8 @@ impl<P: Polynomial> Field<P> {
         let degree = Plan::<P>::DEGREE;
         let mask = Poly::of(low_mask(degree));
         if Plan::<P>::SPILL_BY_NIBBLES {
-            // `low + (h r mod x^n) + t r`, with `t r` the image of the top nibble of `h`, in
-            // parallel with the fold of `h`.
             let spill = (product >> (2 * degree - 4)).map_low_nibbles(Tables::<P>::SPILL);
-            let r = Poly::<U64>::of(Plan::<P>::R_WORD);
-            let folded = if Plan::<P>::FOLD_BY_PRODUCTS && degree == 64 {
-                product.clmul_words(1, r, 0)
-            } else if Plan::<P>::FOLD_BY_PRODUCTS {
-                (product >> degree).clmul_words(0, r, 0)
-            } else {
-                let high = (product >> degree).resize::<U64>();
-                let mut sum = high;
-                each!(index < Plan::<P>::TAPS.len() => {
-                    if let Some(&tap) = Plan::<P>::TAPS.get(index)
-                        && tap > 0
-                    {
-                        sum ^= high << tap;
-                    }
-                });
-                sum.resize()
-            };
-            (product ^ folded ^ spill).resize()
+            Self::fold_spilled(product, spill)
         } else if Plan::<P>::FOLD_BY_PRODUCTS && degree == 64 {
             // `h` is word 1, so the shifts within words give `t` in word 1 without a move.
             let r = Poly::<U64>::of(Plan::<P>::R_WORD);
@@ -272,6 +260,32 @@ impl<P: Polynomial> Field<P> {
             let high = (product >> degree).resize::<U64>();
             Self::fold_word(low, high).resize()
         }
+    }
+
+    /// `p mod f` for `n` from 33 to 64, `d` at most 4 and a product `p` of two words, as
+    /// `low + (h r mod x^n) + t r`, given `t r`, the image of the top nibble of `h` under the
+    /// spill map, which runs in parallel with the fold of `h`.
+    #[inline(always)]
+    fn fold_spilled(product: Poly<U128>, spill: Poly<U128>) -> Lanes<P> {
+        let degree = Plan::<P>::DEGREE;
+        let r = Poly::<U64>::of(Plan::<P>::R_WORD);
+        let folded = if Plan::<P>::FOLD_BY_PRODUCTS && degree == 64 {
+            product.clmul_words(1, r, 0)
+        } else if Plan::<P>::FOLD_BY_PRODUCTS {
+            (product >> degree).clmul_words(0, r, 0)
+        } else {
+            let high = (product >> degree).resize::<U64>();
+            let mut sum = high;
+            each!(index < Plan::<P>::TAPS.len() => {
+                if let Some(&tap) = Plan::<P>::TAPS.get(index)
+                    && tap > 0
+                {
+                    sum ^= high << tap;
+                }
+            });
+            sum.resize()
+        };
+        (product ^ folded ^ spill).resize()
     }
 
     /// The overflow of `h r` past `x^n` for `h` below `x^n` in each word of `high`, by one shift per
@@ -493,7 +507,11 @@ impl<P: Polynomial> Field<P> {
     /// lanes, which take fewer instructions than the comb of 64-bit words.
     #[inline(always)]
     pub(crate) fn word_mul(a: u64, b: u64) -> u64 {
-        if clmul::HARDWARE {
+        if clmul::HARDWARE && Plan::<P>::NIBBLE_MAPS {
+            // In a vector register: the product, and its fold by two nibble maps.
+            let byte = |value: u64| Poly::<U8>::from_uint(Uint::from_u64(value));
+            Tables::<P>::fold_byte(byte(a).clmul_words(0, byte(b), 0))
+        } else if clmul::HARDWARE {
             Self::reduce_word(clmul::clmul64(a, b) as u64)
         } else if Plan::<P>::DEGREE <= 8 {
             Self::reduce_word(clmul8(a, b))
