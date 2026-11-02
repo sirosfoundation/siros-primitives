@@ -122,7 +122,7 @@ pub fn bench<K: Key>(
         machine,
         rustflags: RUSTFLAGS.to_owned(),
         valgrind: valgrind.trim_end().to_owned(),
-        versions: versions(paths, measured.versions)?,
+        versions: versions(paths, measured.package, measured.versions)?,
         cells: cells(paths, measured)?,
     };
     if let Some(directory) = paths.record.parent() {
@@ -208,30 +208,77 @@ fn native_cpu(target_cpus: &str) -> Result<String, Error> {
 }
 
 /// The versions of `wanted` in `Cargo.lock`.
-fn versions(paths: &Paths, wanted: &[&str]) -> Result<Vec<Version>, Error> {
+fn versions(paths: &Paths, package: &str, wanted: &[&str]) -> Result<Vec<Version>, Error> {
     let path = paths.root.join("Cargo.lock");
     let lock = fs::read_to_string(&path).map_err(|source| Error::io(&path, source))?;
-    let packages: Vec<(&str, &str)> = lock
+    let packages: Vec<Locked<'_>> = lock
         .split("[[package]]")
-        .filter_map(|package| {
-            let name = field_value(package, "name = ")?;
-            let version = field_value(package, "version = ")?;
-            Some((name, version))
-        })
+        .filter_map(Locked::parse)
         .collect();
+    let measured = packages
+        .iter()
+        .find(|locked| locked.name == package)
+        .ok_or_else(|| Error::missing(package, "Cargo.lock"))?;
     wanted
         .iter()
         .map(|wanted| {
-            packages
+            let entry = measured
+                .dependencies
                 .iter()
-                .find(|(name, _)| name == wanted)
-                .map(|(name, version)| Version {
-                    name: (*name).to_owned(),
-                    version: (*version).to_owned(),
-                })
-                .ok_or_else(|| Error::missing(wanted, "Cargo.lock"))
+                .find(|entry| entry.split(' ').next() == Some(*wanted))
+                .ok_or_else(|| {
+                    Error::missing(&format!("dependency {wanted} of {package}"), "Cargo.lock")
+                })?;
+            // The entry names a version where the lock holds several of the crate.
+            let version = match entry.split(' ').nth(1) {
+                Some(version) => version,
+                None => {
+                    let mut named = packages.iter().filter(|locked| locked.name == *wanted);
+                    match (named.next(), named.next()) {
+                        (Some(locked), None) => locked.version,
+                        (Some(_), Some(_)) | (None, _) => {
+                            return Err(Error::missing(
+                                &format!("single version of {wanted}"),
+                                "Cargo.lock",
+                            ));
+                        }
+                    }
+                }
+            };
+            Ok(Version {
+                name: (*wanted).to_owned(),
+                version: version.to_owned(),
+            })
         })
         .collect()
+}
+
+/// A `[[package]]` entry of `Cargo.lock`: its name, its version, and its dependencies as the lock
+/// writes them, `name` or `name version`.
+struct Locked<'a> {
+    name: &'a str,
+    version: &'a str,
+    dependencies: Vec<&'a str>,
+}
+
+impl<'a> Locked<'a> {
+    fn parse(entry: &'a str) -> Option<Self> {
+        let dependencies = entry
+            .split_once("dependencies = [")
+            .and_then(|(_, rest)| rest.split_once(']'))
+            .map(|(list, _)| {
+                list.lines()
+                    .map(|line| line.trim().trim_end_matches(',').trim_matches('"'))
+                    .filter(|line| !line.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Self {
+            name: field_value(entry, "name = ")?,
+            version: field_value(entry, "version = ")?,
+            dependencies,
+        })
+    }
 }
 
 /// The quoted value of the line of `package` that starts with `prefix`.
