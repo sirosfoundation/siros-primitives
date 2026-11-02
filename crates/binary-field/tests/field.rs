@@ -201,20 +201,29 @@ fn frobenius_sum<P: Polynomial>(a: Gf2<P>) -> bool {
 
 #[test]
 fn fields_match_the_bit_serial_reference() {
-    check_field::<Aes>(200);
-    check_field::<Poly16>(200);
-    check_field::<Poly64>(200);
-    check_field::<Gcm>(200);
-    check_field::<B233>(60);
-    check_field::<Poly256>(60);
-    check_field::<B571>(20);
-    check_field::<F8High>(200);
-    check_field::<F16High>(200);
-    check_field::<F17>(100);
-    check_field::<F64High>(60);
-    check_field::<F127High>(40);
-    check_field::<F128Tap63>(40);
-    check_field::<F163>(20);
+    // Unoptimized builds inline every operation into one frame per field, which outgrows the
+    // 2 MiB stack of a test thread.
+    std::thread::Builder::new()
+        .stack_size(16 << 20)
+        .spawn(|| {
+            check_field::<Aes>(200);
+            check_field::<Poly16>(200);
+            check_field::<Poly64>(200);
+            check_field::<Gcm>(200);
+            check_field::<B233>(60);
+            check_field::<Poly256>(60);
+            check_field::<B571>(20);
+            check_field::<F8High>(200);
+            check_field::<F16High>(200);
+            check_field::<F17>(100);
+            check_field::<F64High>(60);
+            check_field::<F127High>(40);
+            check_field::<F128Tap63>(40);
+            check_field::<F163>(20);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 #[test]

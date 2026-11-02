@@ -23,8 +23,7 @@ pub type Bytes<P> = <<P as Polynomial>::Degree as Bits>::Bytes;
 ///
 /// The element is a polynomial of degree below `n`; bit `i` of its value is the coefficient of
 /// `x^i`. The field's plan picks its registers at compile time: a byte or a 16-bit word in a
-/// general register for degrees up to 16 with the `precomputed` feature, whose default operations
-/// index tables, and `clmul::Poly`'s vector registers otherwise.
+/// general register for degrees up to 16, and `clmul::Poly`'s vector registers above.
 ///
 /// The operations take the fastest algorithm of the plan, and their time may depend on the
 /// values: table lookups, and branches on zero. [`Secret`](crate::Secret) holds an element whose
@@ -153,8 +152,8 @@ impl<P: Polynomial> Gf2<P> {
         Self::of(Element::<P>::from_poly(poly))
     }
 
-    /// The polynomial in `clmul`'s vector registers, where the element lives, except up to degree
-    /// 16 with `precomputed`: there it moves from a general register.
+    /// The polynomial in `clmul`'s vector registers, where the element lives above degree 16; up to
+    /// degree 16 it moves from a general register.
     #[inline(always)]
     #[must_use]
     pub fn into_poly(self) -> Poly<P::Degree> {

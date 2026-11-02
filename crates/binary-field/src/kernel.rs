@@ -175,7 +175,7 @@ pub(crate) const fn truncate(acc: &mut [u64], degree: usize) {
 
 /// The 32 low bits of `half`, each moved to twice its position.
 #[inline(always)]
-const fn spread_half(half: u64) -> u64 {
+pub(crate) const fn spread_half(half: u64) -> u64 {
     let mut x = half & 0xFFFF_FFFF;
     x = (x | (x << 16)) & 0x0000_FFFF_0000_FFFF;
     x = (x | (x << 8)) & 0x00FF_00FF_00FF_00FF;

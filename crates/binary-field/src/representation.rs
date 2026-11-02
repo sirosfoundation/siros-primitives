@@ -8,9 +8,7 @@ use core::hash::{Hash, Hasher};
 use biguint::Uint;
 use clmul::{Lane, Poly, Width};
 use const_default::ConstDefault;
-use typenum::{B0, B1, IsLessOrEqual, LeEq, U1, U128};
-#[cfg(feature = "precomputed")]
-use typenum::{U8, U16};
+use typenum::{B0, B1, IsLessOrEqual, LeEq, U1, U8, U16, U128};
 
 /// The registers of an element of a field of degree `N`, and the conversions that the kernels
 /// need. A conversion between a general register and `Poly` moves the value between register
@@ -267,10 +265,8 @@ impl<Yes, No> Pick<Yes, No> for B0 {
 type Vector<N> = <LeEq<N, U128> as Pick<Register, Poly<N>>>::Output;
 
 /// A byte up to degree 8, a 16-bit word up to degree 16, vector registers above.
-#[cfg(feature = "precomputed")]
 type Chosen<N> = <LeEq<N, U16> as Pick<<LeEq<N, U8> as Pick<u8, u16>>::Output, Vector<N>>>::Output;
 
-#[cfg(feature = "precomputed")]
 impl<N> Representation for N
 where
     N: Width + IsLessOrEqual<U8> + IsLessOrEqual<U16> + IsLessOrEqual<U128>,
@@ -280,15 +276,4 @@ where
     Chosen<N>: Storage<N>,
 {
     type Element = Chosen<N>;
-}
-
-/// Without tables, every operation runs on carry-less products: vector registers at every degree.
-#[cfg(not(feature = "precomputed"))]
-impl<N> Representation for N
-where
-    N: Width + IsLessOrEqual<U128>,
-    LeEq<N, U128>: Pick<Register, Poly<N>>,
-    Vector<N>: Storage<N>,
-{
-    type Element = Vector<N>;
 }

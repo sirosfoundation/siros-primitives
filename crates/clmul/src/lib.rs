@@ -21,10 +21,9 @@ mod poly;
 #[cfg(feature = "biguint")]
 mod uint;
 
-// The backend of the build's target features: its registers, `clmul64` and the GF(2^128)
-// `Accumulator`.
-#[cfg(all(target_arch = "x86_64", target_feature = "pclmulqdq"))]
-#[path = "pclmulqdq.rs"]
+// The backend of the build's target: its registers, `clmul64` and the GF(2^128) `Accumulator`.
+#[cfg(target_arch = "x86_64")]
+#[path = "x86_64.rs"]
 mod backend;
 
 #[cfg(all(
@@ -36,7 +35,7 @@ mod backend;
 mod backend;
 
 #[cfg(not(any(
-    all(target_arch = "x86_64", target_feature = "pclmulqdq"),
+    target_arch = "x86_64",
     all(
         target_arch = "aarch64",
         target_endian = "little",
