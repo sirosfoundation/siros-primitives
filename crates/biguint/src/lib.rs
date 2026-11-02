@@ -30,6 +30,7 @@ mod modulus;
 mod mul;
 mod nonzero;
 mod num;
+mod num_traits_impls;
 mod permute;
 mod pow;
 mod recursion;

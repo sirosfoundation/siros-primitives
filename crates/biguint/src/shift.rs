@@ -30,6 +30,58 @@ impl<N: Bits> Shr<usize> for Uint<N> {
     }
 }
 
+impl<N: Bits> Uint<N> {
+    /// `(self * 2^rhs) mod 2^N`, or `None` when `rhs >= N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_shl(self, rhs: u32) -> Option<Self> {
+        let rhs = rhs as usize;
+        (rhs < N::BITS).then(|| self << rhs)
+    }
+
+    /// `floor(self / 2^rhs)`, or `None` when `rhs >= N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_shr(self, rhs: u32) -> Option<Self> {
+        let rhs = rhs as usize;
+        (rhs < N::BITS).then(|| self >> rhs)
+    }
+
+    /// `(self * 2^(rhs mod N)) mod 2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn wrapping_shl(self, rhs: u32) -> Self {
+        self << (rhs as usize % N::BITS)
+    }
+
+    /// `floor(self / 2^(rhs mod N))`.
+    #[inline(always)]
+    #[must_use]
+    pub fn wrapping_shr(self, rhs: u32) -> Self {
+        self >> (rhs as usize % N::BITS)
+    }
+}
+
+/// `(self * 2^rhs) mod 2^N`: `0` when `rhs >= N`.
+impl<N: Bits> Shl<u32> for Uint<N> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn shl(self, rhs: u32) -> Self::Output {
+        self << rhs as usize
+    }
+}
+
+/// `floor(self / 2^rhs)`: `0` when `rhs >= N`.
+impl<N: Bits> Shr<u32> for Uint<N> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn shr(self, rhs: u32) -> Self::Output {
+        self >> rhs as usize
+    }
+}
+
 /// `limbs * 2^rhs`, zero when `rhs >= bits`; the caller drops the bits at and above `bits`.
 #[inline(always)]
 pub(crate) fn shift_left<L: ArrayLength>(

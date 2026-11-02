@@ -215,7 +215,7 @@ fn mixed_width_division_matches_reference() {
 fn scans_past_sixty_four_limbs_find_the_set_bit() {
     // Above 65 limbs, the scans read the limbs in groups of 64.
     type U = Uint<U8192>;
-    for bit in [0, 1, 63, 64, 4095, 4096, 4159, 4160, 8127, 8128, 8191] {
+    for bit in [0usize, 1, 63, 64, 4095, 4096, 4159, 4160, 8127, 8128, 8191] {
         let value = U::ONE << bit;
         assert_eq!(value.bit_len(), bit + 1, "bit {bit}");
         assert_eq!(value.trailing_zeros(), bit, "bit {bit}");

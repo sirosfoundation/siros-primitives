@@ -2,7 +2,8 @@
 
 use core::ops::Mul;
 
-/// The multiplicative identity, as a compile-time constant.
+/// The multiplicative identity, as a compile-time constant. `ONE` is not zero:
+/// [`NonZero`](crate::NonZero) takes it as its own.
 pub trait One {
     /// `1`.
     const ONE: Self;

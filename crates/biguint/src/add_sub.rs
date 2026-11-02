@@ -45,6 +45,78 @@ impl<N: Bits> Uint<N> {
         // difference does.
         (Uint::from_generic_limbs(out), limb_borrow != 0)
     }
+
+    /// `(self + rhs) mod 2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn wrapping_add(self, rhs: Self) -> Self {
+        self + rhs
+    }
+
+    /// `(self + rhs) mod 2^N`, and whether the sum reaches `2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn overflowing_add(self, rhs: Self) -> (Self, bool) {
+        self.carrying_add(rhs, false)
+    }
+
+    /// `self + rhs`, or `None` when the sum reaches `2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_add(self, rhs: Self) -> Option<Self> {
+        let (sum, overflow) = self.overflowing_add(rhs);
+        (!overflow).then_some(sum)
+    }
+
+    /// `self + rhs`, or [`Self::MAX`] when the sum reaches `2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn saturating_add(self, rhs: Self) -> Self {
+        self.checked_add(rhs).unwrap_or(Self::MAX)
+    }
+
+    /// `(self - rhs) mod 2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn wrapping_sub(self, rhs: Self) -> Self {
+        self - rhs
+    }
+
+    /// `(self - rhs) mod 2^N`, and whether `self < rhs`.
+    #[inline(always)]
+    #[must_use]
+    pub fn overflowing_sub(self, rhs: Self) -> (Self, bool) {
+        self.borrowing_sub(rhs, false)
+    }
+
+    /// `self - rhs`, or `None` when `self < rhs`.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_sub(self, rhs: Self) -> Option<Self> {
+        let (difference, overflow) = self.overflowing_sub(rhs);
+        (!overflow).then_some(difference)
+    }
+
+    /// `self - rhs`, or `0` when `self < rhs`.
+    #[inline(always)]
+    #[must_use]
+    pub fn saturating_sub(self, rhs: Self) -> Self {
+        self.checked_sub(rhs).unwrap_or(Self::ZERO)
+    }
+
+    /// `(-self) mod 2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn wrapping_neg(self) -> Self {
+        Self::ZERO - self
+    }
+
+    /// `-self`, which is `Some` only for zero.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_neg(self) -> Option<Self> {
+        self.is_zero().then_some(self)
+    }
 }
 
 /// `(self + rhs) mod 2^N`.

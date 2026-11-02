@@ -1,8 +1,27 @@
-//! `Uint`'s place in the [`Pow`](crate::Pow) blanket implementation.
+//! Powers of a `Uint`: [`Uint::wrapping_pow`], and its place in the [`Pow`](crate::Pow) blanket
+//! implementation.
 
 use crate::bits::Bits;
 use crate::num::{Exponent, One, Square};
 use crate::uint::Uint;
+
+impl<N: Bits> Uint<N> {
+    /// `self^exponent mod 2^N`, by square-and-multiply from the exponent's top set bit.
+    #[inline(always)]
+    #[must_use]
+    pub fn wrapping_pow(self, exponent: u32) -> Self {
+        (0..u32::BITS - exponent.leading_zeros())
+            .rev()
+            .fold(Self::ONE, |power, bit| {
+                let square = power * power;
+                if exponent >> bit & 1 == 1 {
+                    square * self
+                } else {
+                    square
+                }
+            })
+    }
+}
 
 impl<N: Bits> One for Uint<N> {
     const ONE: Self = Self::ONE;

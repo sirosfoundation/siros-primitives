@@ -53,6 +53,29 @@ assert_eq!(a % divisor, U128::from_u64(4));
 assert_eq!(a.checked_div_rem(U128::ZERO), None);
 ```
 
+## num-traits
+
+`Uint` implements these `num-traits` traits, each with the inherent method of the same name:
+
+- `Zero`, `One`, `ConstZero`, `ConstOne`, `Bounded`;
+- `Pow<u32>`, `MulAdd`, modulo `2^N`;
+- `CheckedAdd`, `CheckedSub`, `CheckedMul`, `CheckedNeg`, `CheckedShl`, `CheckedShr`;
+- `WrappingAdd`, `WrappingSub`, `WrappingMul`, `WrappingNeg`, `WrappingShl`, `WrappingShr`;
+- `SaturatingAdd`, `SaturatingSub`, `SaturatingMul`;
+- `OverflowingAdd`, `OverflowingSub`, `OverflowingMul`;
+- `ToPrimitive`, `FromPrimitive`, `NumCast`;
+- `ToBytes`, `FromBytes`, on `ceil(N / 8)` bytes.
+
+`checked_shl` and `checked_shr` return `None` for a shift of `N` or more; `wrapping_shl` and
+`wrapping_shr` shift by the amount modulo `N`. `FromBytes` reads the bytes modulo `2^N`.
+`to_f32` and `to_f64` round to the nearest float, ties to even. `FromPrimitive` keeps the integer
+part of a float. `NumCast` reads its source through `to_u128` and returns `None` from `2^128` up.
+
+`checked_div` and `checked_rem` are inherent methods only: `CheckedDiv`, `CheckedRem`, `Num`,
+`Unsigned`, `PrimInt` and `Euclid` require `Div<Self>` and `Rem<Self>`, which panic on a zero
+divisor. `NonZero<T>` has the crate's `One` wherever `T` has it. `num-traits`' `One` requires
+`Mul<Output = Self>`, and a product of two nonzero `Uint`s can wrap to zero.
+
 ## Modular arithmetic
 
 `add_mod`, `sub_mod` and `neg_mod` take a `NonZeroUint` modulus of the operands' width and

@@ -50,6 +50,20 @@ impl<N: Bits> Uint<N> {
         NonZeroUint::new(divisor).map(|divisor| self.div_rem(divisor))
     }
 
+    /// `self / divisor`, or `None` when `divisor` is zero. The divisor may be of any width.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_div<M: Bits>(self, divisor: Uint<M>) -> Option<Self> {
+        NonZeroUint::new(divisor).map(|divisor| self / divisor)
+    }
+
+    /// `self % divisor` in the divisor's width, or `None` when `divisor` is zero.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_rem<M: Bits>(self, divisor: Uint<M>) -> Option<Uint<M>> {
+        NonZeroUint::new(divisor).map(|divisor| self % divisor)
+    }
+
     /// `(self * rhs) mod modulus`. The operands may be of any width and any value.
     #[inline(always)]
     #[must_use]

@@ -29,7 +29,7 @@ bench-compare = { path = "../bench-compare" }
 bnum.workspace = true
 crypto-bigint.workspace = true
 num-bigint.workspace = true
-ruint.workspace = true
+ruint = { workspace = true, features = ["num-traits"] }
 serde.workspace = true
 uint.workspace = true
 
