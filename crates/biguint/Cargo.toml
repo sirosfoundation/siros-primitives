@@ -24,10 +24,12 @@ thiserror.workspace = true
 typenum.workspace = true
 
 [dev-dependencies]
+bench-compare = { path = "../bench-compare" }
 bnum.workspace = true
 crypto-bigint.workspace = true
 num-bigint.workspace = true
 ruint.workspace = true
+serde.workspace = true
 uint.workspace = true
 
 [[bench]]

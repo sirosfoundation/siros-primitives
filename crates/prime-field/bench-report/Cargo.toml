@@ -1,0 +1,17 @@
+[package]
+name = "prime-field-bench-report"
+version = "0.0.0"
+description = "Runs the benchmarks that compare prime-field with other crates and writes BENCHMARKS.md"
+readme = "README.md"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+bench-compare = { path = "../../bench-compare" }
+serde.workspace = true
+
+[lints]
+workspace = true

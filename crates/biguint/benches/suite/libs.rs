@@ -6,31 +6,36 @@
 use core::num::NonZero;
 use core::ops::Add;
 
+use bench_compare::{Cells, Limbs, Row, Visitor};
 use biguint::typenum::{Sum, U1024 as Bits1024, U2048 as Bits2048, U4096 as Bits4096};
 use biguint::{Bits, Bits64, Bits128, Bits256, Bits384, Bits512, Uint};
 use num_bigint::BigUint;
 
-use super::{Cells, FromLimbs, Lib, Limbs, Op, Row, Visitor};
+use super::limbs::{FromLimbs, Offer};
+use super::{Op, Width};
+
+/// The cells of one crate in one row.
+type Crate<V> = Cells<Op, Width, V>;
 
 /// Generates [`WIDTHS`] and [`offer`] from one line per width: the width in bits, the `biguint`
 /// width type, the native adapter, the `u64` limbs, the bytes, and the `uint` crate's adapter.
 macro_rules! widths {
     ($($bits:literal: $biguint:ty, $native:ident, $limbs:literal, $bytes:literal, $parity:ident;)*) => {
         /// The widths in bits.
-        pub const WIDTHS: [usize; [$($bits),*].len()] = [$($bits),*];
+        pub const WIDTHS: [u32; [$($bits),*].len()] = [$($bits),*];
 
         /// Offers the cells of every crate in `row`.
-        pub fn offer<V: Visitor>(row: Row<V>) -> Row<V> {
-            match row.bits() {
+        pub fn offer<V: Visitor<Op, Width>>(row: Row<Op, Width, V>) -> Row<Op, Width, V> {
+            match row.key().bits {
                 $(
                     $bits => row
-                        .lib(Lib::Biguint, this_crate::<$biguint, V>)
-                        .lib(Lib::Native, $native)
-                        .lib(Lib::Ruint, ruint::<$bits, $limbs, V>)
-                        .lib(Lib::CryptoBigint, crypto_bigint::<$limbs, V>)
-                        .lib(Lib::Bnum, bnum::<$bytes, V>)
-                        .lib(Lib::Uint, parity::$parity)
-                        .lib(Lib::NumBigint, num_bigint),
+                        .lib("biguint", this_crate::<$biguint, V>)
+                        .lib("native", $native)
+                        .lib("ruint", ruint::<$bits, $limbs, V>)
+                        .lib("crypto-bigint", crypto_bigint::<$limbs, V>)
+                        .lib("bnum", bnum::<$bytes, V>)
+                        .lib("uint", parity::$parity)
+                        .lib("num-bigint", num_bigint),
                 )*
                 bits => panic!("no adapters at {bits} bits"),
             }
@@ -73,33 +78,33 @@ fn three<T: FromLimbs, M: FromLimbs>(set: &[Limbs]) -> (T, T, M) {
 /// Offers each `Op => method` as `a.method(b)` on two operands of type `$t`, taken by value.
 macro_rules! by_value {
     ($cells:expr, $t:ty, $($op:ident => $method:ident),+ $(,)?) => {
-        $cells$(.api(Op::$op, stringify!($method), pair::<$t>, |&(a, b)| a.$method(b)))+
+        $cells$(.case(Op::$op, stringify!($method), pair::<$t>, |&(a, b)| a.$method(b)))+
     };
 }
 
 /// Offers each `Op => method` as `a.method(&b)` on two operands of type `$t`, taken by reference.
 macro_rules! by_ref {
     ($cells:expr, $t:ty, $($op:ident => $method:ident),+ $(,)?) => {
-        $cells$(.api(Op::$op, stringify!($method), pair::<$t>, |(a, b)| a.$method(b)))+
+        $cells$(.case(Op::$op, stringify!($method), pair::<$t>, |(a, b)| a.$method(b)))+
     };
 }
 
 /// `biguint`, the crate under test, at `N` bits.
-fn this_crate<N, V: Visitor>(cells: Cells<V>) -> Cells<V>
+fn this_crate<N, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V>
 where
     N: Bits + Add<N>,
     Sum<N, N>: Bits,
 {
     cells
-        .api(Op::Add, "+", pair::<Uint<N>>, |&(a, b)| a + b)
-        .api(Op::Mul, "*", pair::<Uint<N>>, |&(a, b)| a * b)
-        .api(Op::Div, "div_rem", pair::<Uint<N>>, |&(a, b)| {
+        .case(Op::Add, "+", pair::<Uint<N>>, |&(a, b)| a + b)
+        .case(Op::Mul, "*", pair::<Uint<N>>, |&(a, b)| a * b)
+        .case(Op::Div, "div_rem", pair::<Uint<N>>, |&(a, b)| {
             a.div_rem(b).map(|(quotient, _)| quotient)
         })
-        .api(Op::Mod, "div_rem", pair::<Uint<N>>, |&(a, b)| {
+        .case(Op::Mod, "div_rem", pair::<Uint<N>>, |&(a, b)| {
             a.div_rem(b).map(|(_, remainder)| remainder)
         })
-        .api(
+        .case(
             Op::MulMod,
             "mul_mod",
             three::<Uint<N>, Uint<N>>,
@@ -111,18 +116,18 @@ where
 macro_rules! primitive {
     ($cells:expr, $t:ty) => {
         by_value!($cells, $t, Add => wrapping_add, Mul => wrapping_mul)
-            .api(Op::Div, "/ NonZero", two::<$t, NonZero<$t>>, |&(a, divisor)| a / divisor)
-            .api(Op::Mod, "% NonZero", two::<$t, NonZero<$t>>, |&(a, divisor)| a % divisor)
+            .case(Op::Div, "/ NonZero", two::<$t, NonZero<$t>>, |&(a, divisor)| a / divisor)
+            .case(Op::Mod, "% NonZero", two::<$t, NonZero<$t>>, |&(a, divisor)| a % divisor)
     };
 }
 
 /// `u64`.
-fn native_u64<V: Visitor>(cells: Cells<V>) -> Cells<V> {
+fn native_u64<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     primitive!(cells, u64).absent(Op::MulMod, NO_MUL_MOD)
 }
 
 /// `u128`.
-fn native_u128<V: Visitor>(cells: Cells<V>) -> Cells<V> {
+fn native_u128<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     primitive!(cells, u128).absent(Op::MulMod, NO_MUL_MOD)
 }
 
@@ -130,14 +135,14 @@ fn native_u128<V: Visitor>(cells: Cells<V>) -> Cells<V> {
 const NO_MUL_MOD: &str = "no modular product";
 
 /// The widths above 128 bits, which have no primitive integer.
-fn native_none<V: Visitor>(cells: Cells<V>) -> Cells<V> {
+fn native_none<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     Op::ALL.into_iter().fold(cells, |cells, op| {
         cells.absent(op, "no primitive of this width")
     })
 }
 
 /// `ruint` at `B` bits in `L` limbs.
-fn ruint<const B: usize, const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
+fn ruint<const B: usize, const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     by_value!(
         cells,
         ruint::Uint<B, L>,
@@ -146,7 +151,7 @@ fn ruint<const B: usize, const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V
         Div => wrapping_div,
         Mod => wrapping_rem,
     )
-    .api(
+    .case(
         Op::MulMod,
         "mul_mod",
         three::<ruint::Uint<B, L>, ruint::Uint<B, L>>,
@@ -155,22 +160,22 @@ fn ruint<const B: usize, const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V
 }
 
 /// `crypto-bigint` at `L` limbs. Division and mulmod run its variable-time functions.
-fn crypto_bigint<const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
+fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     use crypto_bigint::{NonZero, Uint};
     by_ref!(cells, Uint<L>, Add => wrapping_add, Mul => wrapping_mul)
-        .api(
+        .case(
             Op::Div,
             "wrapping_div_vartime",
             two::<Uint<L>, NonZero<Uint<L>>>,
             |(a, divisor)| a.wrapping_div_vartime(divisor),
         )
-        .api(
+        .case(
             Op::Mod,
             "rem_vartime",
             two::<Uint<L>, NonZero<Uint<L>>>,
             |(a, divisor)| a.rem_vartime(divisor),
         )
-        .api(
+        .case(
             Op::MulMod,
             "mul_mod_vartime",
             three::<Uint<L>, NonZero<Uint<L>>>,
@@ -179,7 +184,7 @@ fn crypto_bigint<const L: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
 }
 
 /// `bnum` at `N` bytes.
-fn bnum<const N: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
+fn bnum<const N: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     by_value!(
         cells,
         bnum::Uint<N>,
@@ -192,12 +197,12 @@ fn bnum<const N: usize, V: Visitor>(cells: Cells<V>) -> Cells<V> {
 }
 
 /// `num-bigint`, which allocates each result and returns it exactly.
-fn num_bigint<V: Visitor>(cells: Cells<V>) -> Cells<V> {
+fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     cells
-        .api(Op::Add, "&a + &b", pair::<BigUint>, |(a, b)| a + b)
-        .api(Op::Mul, "&a * &b", pair::<BigUint>, |(a, b)| a * b)
-        .api(Op::Div, "&a / &b", pair::<BigUint>, |(a, b)| a / b)
-        .api(Op::Mod, "&a % &b", pair::<BigUint>, |(a, b)| a % b)
+        .case(Op::Add, "&a + &b", pair::<BigUint>, |(a, b)| a + b)
+        .case(Op::Mul, "&a * &b", pair::<BigUint>, |(a, b)| a * b)
+        .case(Op::Div, "&a / &b", pair::<BigUint>, |(a, b)| a / b)
+        .case(Op::Mod, "&a % &b", pair::<BigUint>, |(a, b)| a % b)
         .absent(Op::MulMod, NO_MUL_MOD)
 }
 
@@ -209,8 +214,10 @@ fn num_bigint<V: Visitor>(cells: Cells<V>) -> Cells<V> {
     reason = "the code that `construct_uint!` expands to"
 )]
 mod parity {
-    use super::{Cells, FromLimbs, Limbs, Op, Visitor, pair};
-    use crate::suite::ToLimbs;
+    use bench_compare::{Limbs, Visitor};
+
+    use super::{Crate, Op, Width, pair};
+    use crate::suite::limbs::{FromLimbs, Offer, ToLimbs};
 
     /// The `construct_uint!` type `$t` of `$words` words, with its limb conversions.
     macro_rules! parity_type {
@@ -239,14 +246,14 @@ mod parity {
     macro_rules! parity_ops {
         ($cells:expr, $t:ident) => {
             $cells
-                .api(Op::Add, "overflowing_add", pair::<$t>, |&(a, b)| {
+                .case(Op::Add, "overflowing_add", pair::<$t>, |&(a, b)| {
                     a.overflowing_add(b).0
                 })
-                .api(Op::Mul, "overflowing_mul", pair::<$t>, |&(a, b)| {
+                .case(Op::Mul, "overflowing_mul", pair::<$t>, |&(a, b)| {
                     a.overflowing_mul(b).0
                 })
-                .api(Op::Div, "/", pair::<$t>, |&(a, b)| a / b)
-                .api(Op::Mod, "%", pair::<$t>, |&(a, b)| a % b)
+                .case(Op::Div, "/", pair::<$t>, |&(a, b)| a / b)
+                .case(Op::Mod, "%", pair::<$t>, |&(a, b)| a % b)
         };
     }
 
@@ -258,7 +265,7 @@ mod parity {
                 parity_type!($t($words));
 
                 /// `uint` at the width of `$t`.
-                pub(super) fn $adapter<V: Visitor>(cells: Cells<V>) -> Cells<V> {
+                pub(super) fn $adapter<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
                     parity_ops!(cells, $t).absent(Op::MulMod, super::NO_MUL_MOD)
                 }
             )*

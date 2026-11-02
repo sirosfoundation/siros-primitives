@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/biguint", "crates/biguint/bench-report"]
+members = [
+    "crates/bench-compare",
+    "crates/biguint",
+    "crates/biguint/bench-report",
+    "crates/prime-field",
+    "crates/prime-field/bench-report",
+]
 
 [workspace.package]
 edition = "2024"
@@ -24,6 +30,24 @@ ruint = { version = "1.21.1", default-features = false }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 uint = { version = "0.10.2", default-features = false }
+
+ark-bls12-381 = "0.6.0"
+ark-bn254 = "0.6.0"
+ark-ff = { version = "0.6.0", default-features = false }
+ark-secp256k1 = { version = "0.6.0", default-features = false }
+ark-secp256r1 = { version = "0.6.0", default-features = false }
+halo2curves = { version = "0.10.0", default-features = false }
+k256 = { version = "0.13.4", default-features = false, features = ["expose-field"] }
+p256 = { version = "0.13.2", default-features = false, features = ["expose-field"] }
+p3-baby-bear = "0.9.0-rc.2"
+p3-field = "0.9.0-rc.2"
+p3-goldilocks = "0.9.0-rc.2"
+p3-mersenne-31 = "0.9.0-rc.2"
+subtle = { version = "2.6.1", default-features = false }
+winter-math = { version = "0.13.1", default-features = false }
+compile-algebra = { git = "https://github.com/longfellow-zk/longfellow-zk", rev = "61a8a735964d1b22bccf79bf14ef6767249cdf92" }
+core-algebra = { git = "https://github.com/longfellow-zk/longfellow-zk", rev = "61a8a735964d1b22bccf79bf14ef6767249cdf92" }
+runtime-algebra = { git = "https://github.com/longfellow-zk/longfellow-zk", rev = "61a8a735964d1b22bccf79bf14ef6767249cdf92" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

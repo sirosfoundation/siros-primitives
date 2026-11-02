@@ -2,12 +2,10 @@
 
 use core::num::NonZero;
 
+use bench_compare::{Cells, Limbs, Visitor};
 use biguint::generic_array::GenericArray;
 use biguint::{Bits, Uint};
 use num_bigint::BigUint;
-
-/// Little-endian `u64` limbs.
-pub type Limbs = Vec<u64>;
 
 /// An operand type built from limbs.
 pub trait FromLimbs {
@@ -22,13 +20,31 @@ pub trait ToLimbs {
     fn to_limbs(&self) -> Option<Limbs>;
 }
 
-/// `limbs` without its high zero limbs.
-pub fn trim(limbs: &[u64]) -> &[u64] {
-    let len = limbs
-        .iter()
-        .rposition(|limb| *limb != 0)
-        .map_or(0, |top| top + 1);
-    &limbs[..len]
+/// Offers cases whose results read back through [`ToLimbs`].
+pub trait Offer<O, K, V> {
+    /// Offers the case that runs the crate's `function` for `op`. `prepare` builds the input of
+    /// one operand set; `run` is the operation on one input.
+    fn case<I, R: ToLimbs>(
+        self,
+        op: O,
+        function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self;
+}
+
+impl<O: Copy + Eq + core::fmt::Display, K: bench_compare::Key, V: Visitor<O, K>> Offer<O, K, V>
+    for Cells<O, K, V>
+{
+    fn case<I, R: ToLimbs>(
+        self,
+        op: O,
+        function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self {
+        self.api(op, function, prepare, run, ToLimbs::to_limbs)
+    }
 }
 
 /// `limbs` as an array of exactly `L` limbs.

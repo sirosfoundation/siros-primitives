@@ -1,10 +1,10 @@
-//! One SVG line chart per operation: the instructions per operation against the width, one line
-//! per crate, on a linear scale from zero.
+//! One SVG chart per operation: the instructions per operation over the rows, one marker shape
+//! and color per crate, on a linear scale from zero.
 //!
 //! The colors are the categorical slots of the reference palette of the dataviz method, in their
-//! fixed order, with a light and a dark step each. Every crate also has its own marker shape.
+//! fixed order, with a light and a dark step each.
 
-use crate::Error;
+use crate::error::Error;
 
 /// The light and the dark color of each categorical slot, in the palette's fixed order.
 const SLOTS: [(&str, &str); 8] = [
@@ -30,6 +30,9 @@ const MARKERS: [&str; 8] = [
     "M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6\
      L-4.6,2.5L-2.1,0Z",
 ];
+
+/// The most crates a chart shows: the categorical slots of the palette.
+pub(crate) const CHARTED: usize = SLOTS.len();
 
 /// The chart's neutral colors in one mode.
 struct Ink {
@@ -68,6 +71,16 @@ const PAD: f64 = 24.0;
 const AXIS_WIDTH: f64 = 56.0;
 const PLOT_HEIGHT: f64 = 300.0;
 const X_AXIS: f64 = 40.0;
+/// The height of one legend row.
+const LEGEND_ROW: f64 = 22.0;
+
+/// A position along the horizontal axis.
+pub(crate) struct Category {
+    /// The tick label.
+    pub(crate) label: String,
+    /// The name in tooltips.
+    pub(crate) name: String,
+}
 
 /// The chart of one operation.
 pub(crate) struct Chart<'a> {
@@ -75,19 +88,23 @@ pub(crate) struct Chart<'a> {
     pub(crate) title: String,
     /// The line under the title.
     pub(crate) subtitle: &'a str,
-    /// The widths along the horizontal axis.
-    pub(crate) widths: &'a [u32],
+    /// The positions along the horizontal axis.
+    pub(crate) categories: &'a [Category],
+    /// The title of the horizontal axis.
+    pub(crate) axis_title: &'a str,
     /// The crates, in the order of their colors.
     pub(crate) crates: &'a [&'a str],
     /// One point per counted case.
     pub(crate) points: Vec<Point<'a>>,
+    /// Whether a line joins the markers of adjacent categories.
+    pub(crate) lines: bool,
 }
 
-/// The instructions per operation of one crate at one width.
+/// The instructions per operation of one crate at one category.
 #[derive(Clone, Copy)]
 pub(crate) struct Point<'a> {
     pub(crate) library: &'a str,
-    pub(crate) bits: u32,
+    pub(crate) category: usize,
     pub(crate) instructions: f64,
 }
 
@@ -102,7 +119,8 @@ pub(crate) fn svg(chart: &Chart<'_>) -> Result<String, Error> {
     let scale = LinearScale::new(chart.points.iter().map(|point| point.instructions))
         .ok_or_else(|| Error::missing("positive count", &format!("the chart {}", chart.title)))?;
     let legend_y = PAD + 62.0;
-    let plot_top = legend_y + 30.0;
+    let (legend_parts, legend_rows) = legend(legend_y, chart.crates, chart.lines);
+    let plot_top = legend_y + 30.0 + (legend_rows - 1) as f64 * LEGEND_ROW;
     let height = plot_top + PLOT_HEIGHT + X_AXIS + PAD;
     let mut parts = vec![
         format!(
@@ -124,7 +142,7 @@ pub(crate) fn svg(chart: &Chart<'_>) -> Result<String, Error> {
             escape(chart.subtitle)
         ),
     ];
-    parts.extend(legend(legend_y, chart.crates));
+    parts.extend(legend_parts);
     parts.extend(plot(chart, plot_top, &scale)?);
     parts.push("</svg>".to_owned());
     Ok(parts.join("\n") + "\n")
@@ -163,13 +181,28 @@ fn style(slots: usize) -> String {
     )
 }
 
-/// One row of line keys and crate names at height `y`.
-fn legend(y: f64, crates: &[&str]) -> Vec<String> {
+/// Rows of keys and crate names from height `y`, wrapped at the chart width; a key is a line
+/// with its marker when lines join the markers, else the marker alone. Returns the parts and
+/// the number of rows.
+fn legend(y: f64, crates: &[&str], lines: bool) -> (Vec<String>, usize) {
     let mut parts = Vec::new();
     let mut x = PAD;
+    let mut y = y;
+    let mut rows = 1;
     for (index, (name, marker)) in crates.iter().zip(MARKERS).enumerate() {
+        let width = 26.0 + (CHARACTER_WIDTH * name.len() as f64).round() + 22.0;
+        if x + width > WIDTH - PAD && x > PAD {
+            x = PAD;
+            y += LEGEND_ROW;
+            rows += 1;
+        }
+        let key = if lines {
+            format!("<path class=\"line\" d=\"M{x},{y}h20\"/>")
+        } else {
+            String::new()
+        };
         parts.push(format!(
-            "<g class=\"c{index}\"><path class=\"line\" d=\"M{x},{y}h20\"/>\
+            "<g class=\"c{index}\">{key}\
              <path class=\"marker\" transform=\"translate({},{y})\" d=\"{marker}\"/></g>",
             x + 10.0,
         ));
@@ -179,9 +212,9 @@ fn legend(y: f64, crates: &[&str]) -> Vec<String> {
             y + 4.0,
             escape(name)
         ));
-        x += 26.0 + (CHARACTER_WIDTH * name.len() as f64).round() + 22.0;
+        x += width;
     }
-    parts
+    (parts, rows)
 }
 
 /// A linear axis from zero to a clean number at or above every value, in about five steps of
@@ -264,12 +297,13 @@ pub(crate) fn grouped(value: u64) -> String {
     text
 }
 
-/// The plot below `top`: its axes, and one line of markers per crate.
+/// The plot below `top`: its axes, and the markers of every crate, joined by lines when the
+/// chart asks for them.
 fn plot(chart: &Chart<'_>, top: f64, scale: &LinearScale) -> Result<Vec<String>, Error> {
     let plot_left = PAD + AXIS_WIDTH;
     let plot_right = WIDTH - PAD - 8.0;
     let plot_bottom = top + PLOT_HEIGHT;
-    let band = (plot_right - plot_left) / chart.widths.len() as f64;
+    let band = (plot_right - plot_left) / chart.categories.len() as f64;
     let x_of = |position: usize| plot_left + (position as f64 + 0.5) * band;
     let y_of = |instructions: f64| plot_bottom - scale.fraction(instructions) * PLOT_HEIGHT;
     let mut parts = Vec::new();
@@ -291,57 +325,71 @@ fn plot(chart: &Chart<'_>, top: f64, scale: &LinearScale) -> Result<Vec<String>,
         "<path class=\"axis\" d=\"M{plot_left},{}H{plot_right}\"/>",
         plot_bottom + 0.5
     ));
-    for (position, bits) in chart.widths.iter().enumerate() {
+    for (position, category) in chart.categories.iter().enumerate() {
         parts.push(format!(
-            "<text class=\"tick\" x=\"{:.1}\" y=\"{}\" text-anchor=\"middle\">{bits}</text>",
+            "<text class=\"tick\" x=\"{:.1}\" y=\"{}\" text-anchor=\"middle\">{}</text>",
             x_of(position),
-            plot_bottom + 16.0
+            plot_bottom + 16.0,
+            escape(&category.label)
         ));
     }
     parts.push(format!(
-        "<text class=\"tick\" x=\"{:.1}\" y=\"{}\" text-anchor=\"middle\">bits</text>",
+        "<text class=\"tick\" x=\"{:.1}\" y=\"{}\" text-anchor=\"middle\">{}</text>",
         (plot_left + plot_right) / 2.0,
-        plot_bottom + 32.0
+        plot_bottom + 32.0,
+        escape(chart.axis_title)
     ));
     for (index, (library, marker)) in chart.crates.iter().zip(MARKERS).enumerate() {
-        // The crate's points as (position along the axis, point), in width order.
-        let mut points = Vec::new();
-        for point in chart
+        // The crate's points in category order.
+        let mut points: Vec<Point<'_>> = chart
             .points
             .iter()
             .filter(|point| point.library == *library)
-        {
-            let position = chart
-                .widths
-                .iter()
-                .position(|bits| *bits == point.bits)
-                .ok_or_else(|| Error::missing(&format!("{} bits", point.bits), "the chart axis"))?;
-            points.push((position, *point));
-        }
-        points.sort_by_key(|(position, _)| *position);
-        parts.push(format!("<g class=\"c{index}\">"));
-        // A line joins the points of adjacent widths; a width without a case breaks it.
-        let mut runs: Vec<Vec<String>> = Vec::new();
-        let mut previous = None;
-        for (position, point) in &points {
-            let coordinates = format!("{:.1},{:.1}", x_of(*position), y_of(point.instructions));
-            match (runs.last_mut(), previous) {
-                (Some(run), Some(last)) if last + 1 == *position => run.push(coordinates),
-                (Some(_) | None, _) => runs.push(vec![coordinates]),
+            .copied()
+            .collect();
+        for point in &points {
+            if point.category >= chart.categories.len() {
+                return Err(Error::missing(
+                    &format!("category {}", point.category),
+                    "the chart axis",
+                ));
             }
-            previous = Some(*position);
         }
-        for run in runs.iter().filter(|run| run.len() > 1) {
-            parts.push(format!("<path class=\"line\" d=\"M{}\"/>", run.join("L")));
+        points.sort_by_key(|point| point.category);
+        parts.push(format!("<g class=\"c{index}\">"));
+        if chart.lines {
+            // A line joins the points of adjacent categories; a category without a case breaks
+            // it.
+            let mut runs: Vec<Vec<String>> = Vec::new();
+            let mut previous = None;
+            for point in &points {
+                let coordinates = format!(
+                    "{:.1},{:.1}",
+                    x_of(point.category),
+                    y_of(point.instructions)
+                );
+                match (runs.last_mut(), previous) {
+                    (Some(run), Some(last)) if last + 1 == point.category => run.push(coordinates),
+                    (Some(_) | None, _) => runs.push(vec![coordinates]),
+                }
+                previous = Some(point.category);
+            }
+            for run in runs.iter().filter(|run| run.len() > 1) {
+                parts.push(format!("<path class=\"line\" d=\"M{}\"/>", run.join("L")));
+            }
         }
-        for (position, point) in &points {
+        for point in &points {
+            let name = chart
+                .categories
+                .get(point.category)
+                .map_or("", |category| category.name.as_str());
             parts.push(format!(
                 "<path class=\"marker\" transform=\"translate({:.1},{:.1})\" d=\"{marker}\">\
-                 <title>{}, {} bits: {} instructions per operation</title></path>",
-                x_of(*position),
+                 <title>{}, {}: {} instructions per operation</title></path>",
+                x_of(point.category),
                 y_of(point.instructions),
                 escape(library),
-                point.bits,
+                escape(name),
                 instructions(point.instructions)
             ));
         }

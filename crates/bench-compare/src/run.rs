@@ -1,31 +1,95 @@
-//! `bench`: builds the `compare` bench for the native CPU, runs it, and records the counts.
+//! `bench`: builds a `compare` bench for the native CPU, runs it, and records the counts.
 
 use std::fs;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::record::{Cell, Record, Version};
-use crate::{Error, Paths, output};
+use crate::error::Error;
+use crate::record::{Cell, Key, Record, Version};
 
 /// The `RUSTFLAGS` of the build: code for the CPU that runs the bench.
 const RUSTFLAGS: &str = "-C target-cpu=native";
 
-/// The crates whose versions the record keeps.
-const VERSIONS: [&str; 5] = ["ruint", "crypto-bigint", "bnum", "uint", "num-bigint"];
+/// The locations that a report tool reads and writes.
+pub struct Paths {
+    /// The workspace root.
+    pub root: PathBuf,
+    /// The crate whose benchmarks the document describes.
+    pub library: PathBuf,
+    /// The run record.
+    pub record: PathBuf,
+}
 
-/// The files that the measured executable is built from, as git pathspecs.
-const MEASURED: [&str; 6] = [
-    "Cargo.toml",
-    "Cargo.lock",
-    "rust-toolchain.toml",
-    "crates/biguint",
-    ":(exclude)crates/biguint/BENCHMARKS.md",
-    ":(exclude)crates/biguint/benchmarks",
-];
+impl Paths {
+    /// The paths of the tool at `manifest_dir`, which lives in the library's directory; the
+    /// record is `target/benchmarks/<record>` under the workspace root.
+    pub fn new(manifest_dir: &str, record: &str) -> Self {
+        let library = Path::new(manifest_dir).join("..");
+        let root = library.join("..").join("..");
+        Self {
+            record: root.join("target").join("benchmarks").join(record),
+            root,
+            library,
+        }
+    }
 
-/// Counts every case of the `compare` bench and writes the record. `machine` describes the
-/// machine.
-pub(crate) fn bench(paths: &Paths, machine: Option<String>) -> Result<(), Error> {
+    /// The target directory of the bench build.
+    fn results(&self) -> PathBuf {
+        self.root.join("target").join("benchmarks")
+    }
+}
+
+/// What a bench measures: the package and its bench, the files that the measured executable is
+/// built from, and the compared crates.
+pub struct Measured {
+    /// The package that holds the bench.
+    pub package: &'static str,
+    /// The bench target.
+    pub bench: &'static str,
+    /// The sources of the measured library, whose last commit the record names.
+    pub sources: &'static str,
+    /// The files that the measured executable is built from, as git pathspecs.
+    pub pathspecs: &'static [&'static str],
+    /// The crates whose versions the record keeps.
+    pub versions: &'static [&'static str],
+}
+
+/// Runs the report tool `tool` with the process arguments: `bench [--machine <description>]`
+/// counts and records; `report` writes the document from the record.
+pub fn execute<K: Key>(
+    tool: &str,
+    paths: &Paths,
+    measured: &Measured,
+    layout: &crate::document::Layout<'_, K>,
+) -> std::process::ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let result = match args.as_slice() {
+        [command] if command == "bench" => bench::<K>(paths, measured, None),
+        [command, flag, machine] if command == "bench" && flag == "--machine" => {
+            bench::<K>(paths, measured, Some(machine.clone()))
+        }
+        [command] if command == "report" => Record::read(&paths.record)
+            .and_then(|record| crate::document::report(paths, layout, &record)),
+        _ => Err(Error::Usage {
+            tool: tool.to_owned(),
+        }),
+    };
+    match result {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{tool}: {error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// Counts every case of the bench and writes the record. `machine` describes the machine.
+pub fn bench<K: Key>(
+    paths: &Paths,
+    measured: &Measured,
+    machine: Option<String>,
+) -> Result<(), Error> {
     let started = now()?;
     let rustc = output(Command::new("rustc").arg("-vV").current_dir(&paths.root))?;
     let target_cpus = output(
@@ -34,13 +98,13 @@ pub(crate) fn bench(paths: &Paths, machine: Option<String>) -> Result<(), Error>
             .current_dir(&paths.root),
     )?;
     let valgrind = output(Command::new("valgrind").arg("--version"))?;
-    let status_lines = git(paths, &["status", "--porcelain", "--"], &MEASURED)?;
-    let record = Record {
+    let status_lines = git(paths, &["status", "--porcelain", "--"], measured.pathspecs)?;
+    let record = Record::<K> {
         date: date(started),
         head: git(paths, &["rev-parse", "HEAD"], &[])?,
         library_commit: git(
             paths,
-            &["log", "-1", "--format=%H", "--", "crates/biguint/src"],
+            &["log", "-1", "--format=%H", "--", measured.sources],
             &[],
         )?,
         dirty: !status_lines.is_empty(),
@@ -55,19 +119,29 @@ pub(crate) fn bench(paths: &Paths, machine: Option<String>) -> Result<(), Error>
         machine,
         rustflags: RUSTFLAGS.to_owned(),
         valgrind: valgrind.trim_end().to_owned(),
-        versions: versions(paths)?,
-        cells: cells(paths)?,
+        versions: versions(paths, measured.versions)?,
+        cells: cells(paths, measured)?,
     };
-    record.write(&paths.record())
+    if let Some(directory) = paths.record.parent() {
+        fs::create_dir_all(directory).map_err(|source| Error::io(directory, source))?;
+    }
+    record.write(&paths.record)
 }
 
-/// Every cell of the comparison with its count: the lines that the `compare` bench prints.
-/// `CARGO` names the cargo that runs this tool.
-fn cells(paths: &Paths) -> Result<Vec<Cell>, Error> {
+/// Every cell of the comparison with its count: the lines that the bench prints. `CARGO` names
+/// the cargo that runs this tool.
+fn cells<K: Key>(paths: &Paths, measured: &Measured) -> Result<Vec<Cell<K>>, Error> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let lines = output(
         Command::new(cargo)
-            .args(["bench", "--locked", "-p", "biguint", "--bench", "compare"])
+            .args([
+                "bench",
+                "--locked",
+                "-p",
+                measured.package,
+                "--bench",
+                measured.bench,
+            ])
             .current_dir(&paths.root)
             .env("CARGO_TARGET_DIR", paths.results())
             .env("RUSTFLAGS", RUSTFLAGS)
@@ -78,6 +152,26 @@ fn cells(paths: &Paths) -> Result<Vec<Cell>, Error> {
         .filter(|line| !line.trim().is_empty())
         .map(|line| serde_json::from_str(line).map_err(Error::Cells))
         .collect()
+}
+
+/// The standard output of `command`, which must succeed. Its standard error goes to the terminal.
+pub(crate) fn output(command: &mut Command) -> Result<String, Error> {
+    let line = format!("{command:?}");
+    let output = command
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|source| Error::Spawn {
+            command: line.clone(),
+            source,
+        })?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        Err(Error::Failed {
+            command: line,
+            status: output.status,
+        })
+    }
 }
 
 /// The output of `git` with `args` and then `pathspecs`, without its trailing newline.
@@ -110,8 +204,8 @@ fn native_cpu(target_cpus: &str) -> Result<String, Error> {
         .ok_or_else(|| Error::missing("native CPU", "rustc --print target-cpus"))
 }
 
-/// The versions of [`VERSIONS`] in `Cargo.lock`.
-fn versions(paths: &Paths) -> Result<Vec<Version>, Error> {
+/// The versions of `wanted` in `Cargo.lock`.
+fn versions(paths: &Paths, wanted: &[&str]) -> Result<Vec<Version>, Error> {
     let path = paths.root.join("Cargo.lock");
     let lock = fs::read_to_string(&path).map_err(|source| Error::io(&path, source))?;
     let packages: Vec<(&str, &str)> = lock
@@ -122,7 +216,7 @@ fn versions(paths: &Paths) -> Result<Vec<Version>, Error> {
             Some((name, version))
         })
         .collect();
-    VERSIONS
+    wanted
         .iter()
         .map(|wanted| {
             packages
