@@ -69,7 +69,8 @@ The degree and the taps select each algorithm at compile time, and every limb co
 loop bound folds to a constant, so each field compiles to straight-line code. The word products
 and squares come from
 [`clmul`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/clmul):
-PCLMULQDQ, PMULL, or a const comb in builds without them, and its `Poly` of vector registers. The
+PCLMULQDQ, PMULL, or combs of integer products in builds without them, and its `Poly` of vector
+registers. The
 plan knows which through `clmul::HARDWARE`. "With tables" means the default build or
 `precomputed` ([Tables](#tables)).
 
@@ -77,6 +78,8 @@ plan knows which through `clmul::HARDWARE`. "With tables" means the default buil
 |---|---|---|
 | Product | `Gf2`, degree up to 8, with `precomputed` | The table of every product |
 | Product | `Gf2`, degree up to 8, by default | Logarithm and antilogarithm tables of a generator |
+| Product | `Gf2`, degree 9 to 16, with `precomputed` and without hardware word products | Logarithm and antilogarithm tables of a generator |
+| Product | degree up to 8, without hardware word products | Integer products of two bit lanes of spacing 2 over the low 6 bits of one factor, four products, and masked copies for its top 2 bits |
 | Product | degree 9 to 16, without hardware word products | Integer products of three bit lanes of spacing 3, two lane products per 64-bit product: five products |
 | Product | degree up to 64 | One carry-less product of the words |
 | Product | degree 128, `d` below 64, with hardware word products | `a0 b + a1 c` for `a = a0 + a1 x^64` and `c = x^64 b mod f = b0 x^64 + b1 r`: one word product gives `c`, four give `u + w x^64`, and the top word of `w` folds by one product with `r`, without overflow |
@@ -129,12 +132,12 @@ read.
 | Field | Default | `precomputed` | `not-precomputed` |
 |---|---:|---:|---:|
 | GF(2⁸) | 1,536 | 66,304 | 0 |
-| GF(2¹⁶) | 2,048 | 393,216 | 0 |
-| GF(2⁶⁴) | 8,312 | 65,656 | 120 |
-| GF(2¹²⁸) | 11,464 | 262,280 | 200 |
-| GF(2²³³) | 520 | 520 | 520 |
-| GF(2²⁵⁶) | 296 | 296 | 296 |
-| GF(2⁵⁷¹) | 400 | 400 | 400 |
+| GF(2¹⁶) | 2,048 | 786,432 | 0 |
+| GF(2⁶⁴) | 8,608 | 65,952 | 416 |
+| GF(2¹²⁸) | 11,872 | 262,752 | 608 |
+| GF(2²³³) | 976 | 976 | 976 |
+| GF(2²⁵⁶) | 600 | 600 | 600 |
+| GF(2⁵⁷¹) | 2,216 | 2,216 | 2,216 |
 
 The cycles of the operations that differ, batch / chain, from one sweep per configuration on an
 AMD Ryzen 9 5950X (`-C target-cpu=native`, load 20):

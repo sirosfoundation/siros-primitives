@@ -6,7 +6,7 @@
 use core::marker::PhantomData;
 
 use biguint::Uint;
-use clmul::Poly;
+use clmul::{NibbleMap, Poly};
 use const_default::ConstDefault;
 use generic_array::GenericArray;
 
@@ -33,6 +33,11 @@ impl<P: Polynomial> Tables<P> {
     /// `sqrt(x) = x^(2^(n-1))`.
     const SQRT_X: Poly<P::Degree> = Poly::from_uint(Uint::from_generic_limbs(sqrt_x::<P>()));
 
+    /// The fold `t r` of the overflow `t` of `h r` past `x^n`, for the top nibble of `h`, below
+    /// `x^n`, at `x^(n-4)`: `t = r x^(k-4)` rounded down for bit `k` of the nibble. Read when the
+    /// plan's `SPILL_BY_NIBBLES` holds, where `d` is at most 4.
+    pub(crate) const SPILL: NibbleMap = NibbleMap::from_images(spill_images(Plan::<P>::R_WORD));
+
     /// `sqrt(x)`.
     #[inline(always)]
     pub(crate) fn sqrt_x() -> Lanes<P> {
@@ -50,18 +55,29 @@ impl<P: Polynomial> Tables<P> {
         Plan::<P>::DEGREE,
         Plan::<P>::TAPS,
     );
+    /// Whether the product adds logarithms of bytes.
+    const BYTE_LOGARITHMS: bool = Plan::<P>::MUL_BY_LOGARITHMS && Plan::<P>::DEGREE <= 8;
+    /// Whether the product adds logarithms of 16-bit words.
+    const WORD_LOGARITHMS: bool = Plan::<P>::MUL_BY_LOGARITHMS && Plan::<P>::DEGREE > 8;
+
     /// The logarithm of every nonzero element of a field of degree up to 8 to a generator.
-    const LOGARITHMS: &'static [u8; BYTES] = &logarithms(
-        Plan::<P>::MUL_BY_LOGARITHMS,
+    const LOGARITHMS: &'static [u8; BYTES] = &narrowed(&logarithms::<BYTES>(
+        Self::BYTE_LOGARITHMS,
         Plan::<P>::DEGREE,
         Plan::<P>::TAPS,
-    );
+    ));
     /// The powers of the generator, twice over, so that a sum of two logarithms indexes it.
-    const EXPONENTIALS: &'static [u8; 2 * BYTES] = &exponentials(
-        Plan::<P>::MUL_BY_LOGARITHMS,
+    const EXPONENTIALS: &'static [u8; 2 * BYTES] = &narrowed(&exponentials::<{ 2 * BYTES }>(
+        Self::BYTE_LOGARITHMS,
         Plan::<P>::DEGREE,
         Plan::<P>::TAPS,
-    );
+    ));
+    /// The logarithm of every nonzero element of a field of degree 9 to 16.
+    const WORD_LOGARITHM_TABLE: &'static [u16; WORDS] =
+        &logarithms::<WORDS>(Self::WORD_LOGARITHMS, Plan::<P>::DEGREE, Plan::<P>::TAPS);
+    /// The powers of the generator of a field of degree 9 to 16, twice over.
+    const WORD_EXPONENTIALS: &'static [u16; 2 * WORDS] =
+        &exponentials::<{ 2 * WORDS }>(Self::WORD_LOGARITHMS, Plan::<P>::DEGREE, Plan::<P>::TAPS);
 
     /// The square of every element, for degrees up to 8.
     const BYTE_SQUARES: &'static [u8; BYTES] = &narrowed(&linear_table(
@@ -123,20 +139,33 @@ impl<P: Polynomial> Tables<P> {
             .map_or(0, u64::from)
     }
 
-    /// `a b` by logarithms, for degrees up to 8: the power of the sum of the logarithms, `0` when
+    /// `a b` by logarithms, for degrees up to 16: the power of the sum of the logarithms, `0` when
     /// either factor is.
     #[inline(always)]
     pub(crate) fn log_mul(a: u64, b: u64) -> u64 {
-        let log = |value: u64| {
-            Self::LOGARITHMS
-                .get(value as usize)
+        let power = if Plan::<P>::DEGREE <= 8 {
+            let log = |value: u64| {
+                Self::LOGARITHMS
+                    .get(value as usize)
+                    .copied()
+                    .map_or(0, usize::from)
+            };
+            Self::EXPONENTIALS
+                .get(log(a) + log(b))
                 .copied()
-                .map_or(0, usize::from)
+                .map_or(0, u64::from)
+        } else {
+            let log = |value: u64| {
+                Self::WORD_LOGARITHM_TABLE
+                    .get(value as usize)
+                    .copied()
+                    .map_or(0, usize::from)
+            };
+            Self::WORD_EXPONENTIALS
+                .get(log(a) + log(b))
+                .copied()
+                .map_or(0, u64::from)
         };
-        let power = Self::EXPONENTIALS
-            .get(log(a) + log(b))
-            .copied()
-            .map_or(0, u64::from);
         if a == 0 || b == 0 { 0 } else { power }
     }
 
@@ -242,6 +271,29 @@ const fn sqrt_x<P: Polynomial>() -> GenericArray<u64, Limbs<P>> {
     power
 }
 
+/// The images of the bits `k` of the top nibble of `h` under `h -> t r`: `t = (r << k) >> 4`, the
+/// carry-less product of `t` and `r` in a byte for `r` below `x^5`.
+const fn spill_images(r: u64) -> [u8; 4] {
+    let mut images = [0u8; 4];
+    let mut k = 0;
+    while k < 4 {
+        let overflow = ((r << k) >> 4) & 0xF;
+        let mut product = 0u64;
+        let mut bit = 0;
+        while bit < 4 {
+            if (overflow >> bit) & 1 == 1 {
+                product ^= r << bit;
+            }
+            bit += 1;
+        }
+        if let Some(slot) = images.as_mut_slice().split_at_mut(k).1.first_mut() {
+            *slot = product as u8;
+        }
+        k += 1;
+    }
+    images
+}
+
 /// `a b` in a field of degree up to 16, bit by bit: the multiple of `a` doubles and reduces once
 /// per bit of `b`.
 const fn small_mul(a: u64, b: u64, degree: usize, taps: &[usize]) -> u64 {
@@ -330,13 +382,13 @@ const fn products(used: bool, degree: usize, taps: &[usize]) -> [u8; WORDS] {
         return table;
     }
     let order = (1 << degree) - 1;
-    let logs = logarithms(true, degree, taps);
-    let exps = exponentials(true, degree, taps);
+    let logs = logarithms::<BYTES>(true, degree, taps);
+    let exps = exponentials::<{ 2 * BYTES }>(true, degree, taps);
     let mut a = 1;
     while a <= order {
         let mut b = 1;
         while b <= order {
-            table[(b << 8) | a] = exps[(logs[a] as usize + logs[b] as usize) % order];
+            table[(b << 8) | a] = exps[(logs[a] as usize + logs[b] as usize) % order] as u8;
             b += 1;
         }
         a += 1;
@@ -344,15 +396,15 @@ const fn products(used: bool, degree: usize, taps: &[usize]) -> [u8; WORDS] {
     table
 }
 
-/// The logarithm of every nonzero element of a field of degree up to 8 to a generator, `0` at
-/// `0`. Zero unless `used`.
+/// The logarithm of every nonzero element of a field of degree up to 16 to a generator, `0` at
+/// `0`, in a table of `LEN` entries, `2^n` at least. Zero unless `used`.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its table's length"
 )]
-const fn logarithms(used: bool, degree: usize, taps: &[usize]) -> [u8; BYTES] {
-    let mut table = [0; BYTES];
-    if !used || degree > 8 {
+const fn logarithms<const LEN: usize>(used: bool, degree: usize, taps: &[usize]) -> [u16; LEN] {
+    let mut table = [0; LEN];
+    if !used || degree > 16 || LEN < 1 << degree {
         return table;
     }
     let order = (1 << degree) - 1;
@@ -360,30 +412,31 @@ const fn logarithms(used: bool, degree: usize, taps: &[usize]) -> [u8; BYTES] {
     let mut power = 1;
     let mut index = 0;
     while index < order {
-        table[power as usize] = index as u8;
+        table[power as usize] = index as u16;
         power = small_mul(power, generator, degree, taps);
         index += 1;
     }
     table
 }
 
-/// `g^i` at `i` for every `i` below `2 (2^n - 1)`, for a field of degree up to 8 and its
-/// generator `g`. Zero unless `used`.
+/// `g^i` at `i` for every `i` below `2 (2^n - 1)`, for a field of degree up to 16 and its
+/// generator `g`, in a table of `LEN` entries, `2^(n+1)` at least. Zero unless `used`.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its table's length"
 )]
-const fn exponentials(used: bool, degree: usize, taps: &[usize]) -> [u8; 2 * BYTES] {
-    let mut table = [0; 2 * BYTES];
-    if !used || degree > 8 {
+const fn exponentials<const LEN: usize>(used: bool, degree: usize, taps: &[usize]) -> [u16; LEN] {
+    let mut table = [0; LEN];
+    if !used || degree > 16 || LEN < 2 << degree {
         return table;
     }
     let order = (1 << degree) - 1;
     let generator = generator(degree, taps);
     let mut power = 1;
     let mut index = 0;
-    while index < 2 * order {
-        table[index] = power as u8;
+    while index < order {
+        table[index] = power as u16;
+        table[index + order] = power as u16;
         power = small_mul(power, generator, degree, taps);
         index += 1;
     }
@@ -419,15 +472,15 @@ const fn inverses(used: bool, degree: usize, taps: &[usize]) -> [u16; WORDS] {
     table
 }
 
-/// The first `BYTES` entries of `table`, in bytes: the entries of a field of degree up to 8.
+/// The first `OUT` entries of `table`, in bytes: the entries of a field of degree up to 8.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its table's length"
 )]
-const fn narrowed(table: &[u16; WORDS]) -> [u8; BYTES] {
-    let mut bytes = [0; BYTES];
+const fn narrowed<const IN: usize, const OUT: usize>(table: &[u16; IN]) -> [u8; OUT] {
+    let mut bytes = [0; OUT];
     let mut index = 0;
-    while index < BYTES {
+    while index < OUT && index < IN {
         bytes[index] = table[index] as u8;
         index += 1;
     }

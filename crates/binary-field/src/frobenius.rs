@@ -109,7 +109,7 @@ impl<P: Polynomial> Frobenius<P> {
         tables!(0 1 2 3 4 5 6 7);
         let mut squared = 0;
         while squared < squarings {
-            x = Field::<P>::lanes_square(x);
+            x = Field::<P>::run_square(x);
             squared += 1;
         }
         x
@@ -280,11 +280,11 @@ type WordNibbles = [[u64; 16]; 16];
 /// Byte tables of fields of one word.
 type WordBytes = [[u64; 256]; 8];
 /// Tables of 3-bit windows of fields of two words: 22 windows per word.
-type LaneTriples = [[Lane; 8]; 44];
+type LaneTriples = [[Lane<U128>; 8]; 44];
 /// Nibble tables of fields of two words.
-type LaneNibbles = [[Lane; 16]; 32];
+type LaneNibbles = [[Lane<U128>; 16]; 32];
 /// Byte tables of fields of two words.
-type LaneBytes = [[Lane; 256]; 16];
+type LaneBytes = [[Lane<U128>; 256]; 16];
 
 impl<P: Polynomial, const T: usize> Table<P, T> {
     /// The power, or 0 past the tabulated ones.
@@ -360,7 +360,7 @@ impl<P: Polynomial, const T: usize> Table<P, T> {
                 4 => lane_sum(Self::LANE_NIBBLES, low, high, 4),
                 _ => lane_sum(Self::LANE_BYTES, low, high, 8),
             };
-            Poly::<U128>::from_lane(sum).resize()
+            sum.into_poly().resize()
         }
     }
 }
@@ -412,32 +412,32 @@ fn add_word_rows<const ENTRIES: usize>(
 /// the rows windows `low`, the second half `high`.
 #[inline(always)]
 fn lane_sum<const POSITIONS: usize, const ENTRIES: usize>(
-    table: &[[Lane; ENTRIES]; POSITIONS],
+    table: &[[Lane<U128>; ENTRIES]; POSITIONS],
     low: u64,
     high: u64,
     window: u32,
-) -> Lane {
+) -> Lane<U128> {
     let mut sums = [Poly::<U128>::ZERO; 4];
     let (low_rows, high_rows) = table.split_at(POSITIONS / 2);
     add_lane_rows(&mut sums, low_rows, low, window);
     add_lane_rows(&mut sums, high_rows, high, window);
     let [first, second, third, fourth] = sums;
-    ((first ^ second) ^ (third ^ fourth)).into_lane()
+    Lane::from_poly((first ^ second) ^ (third ^ fourth))
 }
 
 /// Adds the images that the windows of `word` select in `rows` to four sums, as `add_word_rows`.
 #[inline(always)]
 fn add_lane_rows<const ENTRIES: usize>(
     sums: &mut [Poly<U128>; 4],
-    rows: &[[Lane; ENTRIES]],
+    rows: &[[Lane<U128>; ENTRIES]],
     word: u64,
     window: u32,
 ) {
     let mask = (ENTRIES as u64) - 1;
-    let image = |row: &[Lane; ENTRIES], position: usize| {
+    let image = |row: &[Lane<U128>; ENTRIES], position: usize| {
         let index = ((word >> (window * position as u32)) & mask) as usize;
         row.get(index)
-            .map_or(Poly::<U128>::ZERO, |&lane| Poly::<U128>::from_lane(lane))
+            .map_or(Poly::<U128>::ZERO, |&lane| lane.into_poly())
     };
     let [first, second, third, fourth] = sums;
     let (chunks, remainder) = rows.as_chunks::<4>();
@@ -534,8 +534,8 @@ const fn lane_table<const POSITIONS: usize, const ENTRIES: usize>(
     degree: usize,
     taps: &[usize],
     power: usize,
-) -> [[Lane; ENTRIES]; POSITIONS] {
-    let zero = Poly::<U128>::ZERO.into_lane();
+) -> [[Lane<U128>; ENTRIES]; POSITIONS] {
+    let zero = Lane::<U128>::ZERO;
     let mut table = [[zero; ENTRIES]; POSITIONS];
     if !used || power == 0 {
         return table;
@@ -558,7 +558,7 @@ const fn lane_table<const POSITIONS: usize, const ENTRIES: usize>(
             };
             sums[value] = sums[value ^ low] ^ image;
             table[position][value] =
-                Poly::<U128>::from_uint(Uint::from_u128(sums[value])).into_lane();
+                Lane::from_poly(Poly::<U128>::from_uint(Uint::from_u128(sums[value])));
             value += 1;
         }
         position += 1;

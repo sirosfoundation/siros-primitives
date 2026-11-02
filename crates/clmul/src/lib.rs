@@ -17,6 +17,8 @@
 mod comb;
 mod limbs;
 #[cfg(feature = "biguint")]
+mod nibble;
+#[cfg(feature = "biguint")]
 mod poly;
 #[cfg(feature = "biguint")]
 mod uint;
@@ -59,6 +61,8 @@ pub const HARDWARE: bool = cfg!(any(
 
 pub use comb::const_clmul64;
 pub use limbs::{clmul_into, const_clmul_into};
+#[cfg(feature = "biguint")]
+pub use nibble::NibbleMap;
 #[cfg(feature = "biguint")]
 pub use poly::{Lane, Poly, Width};
 #[cfg(feature = "biguint")]

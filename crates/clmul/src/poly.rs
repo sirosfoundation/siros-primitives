@@ -2,6 +2,7 @@
 
 use core::fmt;
 use core::hash::{Hash, Hasher};
+use core::marker::PhantomData;
 use core::ops::{
     Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, Shl, Shr,
 };
@@ -12,6 +13,7 @@ use biguint::{Bits, OutOfRange, Uint};
 use const_default::ConstDefault;
 
 use crate::backend::{self, Register};
+use crate::nibble::NibbleMap;
 
 /// Runs `$body` with `$index` bound to each of `0..$len`. Optimized builds get one copy per index
 /// below 8, so that constant lengths fold to straight-line code, and a loop beyond; debug builds
@@ -39,13 +41,108 @@ macro_rules! each {
     };
 }
 
-/// One register of a [`Poly`]: 128 bits, two 64-bit words.
-#[derive(Clone, Copy)]
+/// One vector register that holds a polynomial over GF(2) of degree below `N`, for `N` up to 128.
+/// The bits at and above `N` are zero, so the conversions to and from `Poly<N>` take no
+/// instruction. A `Lane` passes between functions in a vector register, where a `Poly` passes in
+/// memory. A [`Poly`] keeps each of its registers as a `Lane<U128>`.
+///
+/// ```
+/// use biguint::typenum::U64;
+/// use biguint::Uint;
+/// use clmul::{Lane, Poly};
+///
+/// let a = Poly::<U64>::from_uint(Uint::from_u64(0b11));
+/// let lane = Lane::from_poly(a);
+/// assert_eq!(lane.into_poly(), a);
+/// assert_eq!(Poly::from(Lane::<U64>::ZERO), Poly::ZERO);
+/// ```
 #[repr(transparent)]
-pub struct Lane(Register);
+pub struct Lane<N>(Register, PhantomData<N>);
 
-impl ConstDefault for Lane {
-    const DEFAULT: Self = Self(backend::ZERO);
+impl<N> Lane<N> {
+    /// The lane of `register`, whose bits at and above `N` are zero.
+    #[inline(always)]
+    const fn of(register: Register) -> Self {
+        Self(register, PhantomData)
+    }
+}
+
+impl<N> Clone for Lane<N> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<N> Copy for Lane<N> {}
+
+impl<N> ConstDefault for Lane<N> {
+    const DEFAULT: Self = Self::of(backend::ZERO);
+}
+
+impl<N: Width<Lanes = U1>> Lane<N> {
+    /// `0`.
+    pub const ZERO: Self = Self::of(backend::ZERO);
+
+    /// The register of `poly`.
+    #[inline(always)]
+    #[must_use]
+    pub const fn from_poly(poly: Poly<N>) -> Self {
+        let [lane] = poly.lanes.into_array::<1>();
+        Self::of(lane.0)
+    }
+
+    /// The polynomial in the register.
+    #[inline(always)]
+    #[must_use]
+    pub const fn into_poly(self) -> Poly<N> {
+        Poly {
+            lanes: GenericArray::<Lane<U128>, U1>::from_array([Lane::of(self.0)]),
+        }
+    }
+}
+
+impl<N: Width<Lanes = U1>> Default for Lane<N> {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
+impl<N: Width<Lanes = U1>> PartialEq for Lane<N> {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        self.into_poly() == other.into_poly()
+    }
+}
+
+impl<N: Width<Lanes = U1>> Eq for Lane<N> {}
+
+impl<N: Width<Lanes = U1>> Hash for Lane<N> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.into_poly().hash(state);
+    }
+}
+
+impl<N: Width<Lanes = U1>> fmt::Debug for Lane<N> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Lane({:?})", self.into_poly().to_uint())
+    }
+}
+
+impl<N: Width<Lanes = U1>> From<Poly<N>> for Lane<N> {
+    #[inline(always)]
+    fn from(poly: Poly<N>) -> Self {
+        Self::from_poly(poly)
+    }
+}
+
+impl<N: Width<Lanes = U1>> From<Lane<N>> for Poly<N> {
+    #[inline(always)]
+    fn from(lane: Lane<N>) -> Self {
+        lane.into_poly()
+    }
 }
 
 /// A bit width `N` with the registers of a [`Poly<N>`]: `ceil(N / 128)`.
@@ -53,7 +150,7 @@ impl ConstDefault for Lane {
 /// Exactly the nonzero `typenum` unsigned integers implement it.
 pub trait Width: Bits
 where
-    <Self::Lanes as ArrayLength>::ArrayType<Lane>: Copy + ConstDefault,
+    <Self::Lanes as ArrayLength>::ArrayType<Lane<U128>>: Copy + ConstDefault,
 {
     /// `ceil(N / 128)`.
     type Lanes: ArrayLength;
@@ -67,7 +164,7 @@ where
     N: Bits + Add<U127>,
     Sum<N, U127>: Div<U128>,
     Quot<Sum<N, U127>, U128>: ArrayLength,
-    <Quot<Sum<N, U127>, U128> as ArrayLength>::ArrayType<Lane>: Copy + ConstDefault,
+    <Quot<Sum<N, U127>, U128> as ArrayLength>::ArrayType<Lane<U128>>: Copy + ConstDefault,
 {
     type Lanes = Quot<Sum<N, U127>, U128>;
 
@@ -94,7 +191,7 @@ where
 /// ```
 #[repr(transparent)]
 pub struct Poly<N: Width> {
-    lanes: GenericArray<Lane, N::Lanes>,
+    lanes: GenericArray<Lane<U128>, N::Lanes>,
 }
 
 /// The bits of word `word` that lie below `bits`.
@@ -108,6 +205,63 @@ const fn word_mask(bits: usize, word: usize) -> u64 {
     } else {
         (1 << (bits - low)) - 1
     }
+}
+
+/// The bits of word `word` of a width of `bits` bits: up to 64.
+#[inline(always)]
+const fn word_bits(bits: usize, word: usize) -> usize {
+    let above = bits.saturating_sub(word * 64);
+    if above > 64 { 64 } else { above }
+}
+
+/// The carry-less product of word `i` of `a`, of `a_bits` bits, and word `j` of `b`, of `b_bits`
+/// bits: the narrow product when either word is below `2^32`.
+#[inline(always)]
+fn word_product(
+    a: Register,
+    i: usize,
+    a_bits: usize,
+    b: Register,
+    j: usize,
+    b_bits: usize,
+) -> Register {
+    if a_bits <= 32 {
+        backend::clmul_narrow(a, i % 2, b, j % 2)
+    } else if b_bits <= 32 {
+        backend::clmul_narrow(b, j % 2, a, i % 2)
+    } else {
+        backend::clmul(a, i % 2, b, j % 2)
+    }
+}
+
+/// The product of two registers as Karatsuba's `[low, middle, high]`, whose sum
+/// `low + middle x^64 + high x^128` it is: three word products, the middle one of the sums of the
+/// words.
+#[cfg(not(all(
+    target_arch = "x86_64",
+    not(target_feature = "pclmulqdq"),
+    target_feature = "avx2"
+)))]
+#[inline(always)]
+fn karatsuba(a: Register, b: Register) -> [Register; 3] {
+    let low = backend::clmul(a, 0, b, 0);
+    let high = backend::clmul(a, 1, b, 1);
+    let a_sum = backend::xor(a, backend::down(a));
+    let b_sum = backend::xor(b, backend::down(b));
+    let middle = backend::xor(backend::xor(backend::clmul(a_sum, 0, b_sum, 0), low), high);
+    [low, middle, high]
+}
+
+/// The product of two registers as Karatsuba's `[low, middle, high]`: the vector comb's nine
+/// piece products on AVX2 registers.
+#[cfg(all(
+    target_arch = "x86_64",
+    not(target_feature = "pclmulqdq"),
+    target_feature = "avx2"
+))]
+#[inline(always)]
+fn karatsuba(a: Register, b: Register) -> [Register; 3] {
+    backend::karatsuba(a, b)
 }
 
 /// Whether register `index` of a width of `bits` bits holds bits at and above `bits`.
@@ -129,7 +283,7 @@ impl<N: Width> Poly<N> {
     #[inline(always)]
     #[must_use]
     pub const fn from_uint(value: Uint<N>) -> Self {
-        let mut lanes = GenericArray::<Lane, N::Lanes>::DEFAULT;
+        let mut lanes = GenericArray::<Lane<U128>, N::Lanes>::DEFAULT;
         let mut slots = lanes.as_mut_slice();
         let mut limbs = value.as_limbs();
         while let [slot, slots_rest @ ..] = slots {
@@ -141,7 +295,7 @@ impl<N: Width> Poly<N> {
                 [high, rest @ ..] => (*high, rest),
                 [] => (0, limbs_rest),
             };
-            *slot = Lane(backend::register([low, high]));
+            *slot = Lane::of(backend::register([low, high]));
             limbs = limbs_rest;
             slots = slots_rest;
         }
@@ -283,6 +437,41 @@ impl<N: Width> Poly<N> {
         }
     }
 
+    /// Every byte replaced by the image of its low nibble under `map`: one PSHUFB with SSSE3, one
+    /// TBL on aarch64, and the images selected by the bits of the nibble elsewhere. The bytes at and
+    /// above `N` index nibble 0, whose image is 0; when `N` is not a multiple of 8 the result's
+    /// bits at and above `N` are cleared.
+    #[inline(always)]
+    #[must_use]
+    pub fn map_low_nibbles(mut self, map: NibbleMap) -> Self {
+        let low = backend::register([0x0F0F_0F0F_0F0F_0F0F; 2]);
+        each!(index < N::LANES => {
+            self.set(index, map.apply(backend::and(self.lane(index), low)));
+        });
+        if N::BITS % 8 == 0 {
+            self
+        } else {
+            self.truncated()
+        }
+    }
+
+    /// Every byte replaced by the image of its high nibble under `map`, as
+    /// [`map_low_nibbles`](Self::map_low_nibbles).
+    #[inline(always)]
+    #[must_use]
+    pub fn map_high_nibbles(mut self, map: NibbleMap) -> Self {
+        let low = backend::register([0x0F0F_0F0F_0F0F_0F0F; 2]);
+        each!(index < N::LANES => {
+            let nibbles = backend::and(backend::shr_words(self.lane(index), 4), low);
+            self.set(index, map.apply(nibbles));
+        });
+        if N::BITS % 8 == 0 {
+            self
+        } else {
+            self.truncated()
+        }
+    }
+
     /// Every 64-bit word shifted right by `bits`, below 64, on its own: the coefficients that
     /// leave a word drop.
     #[inline(always)]
@@ -302,7 +491,14 @@ impl<N: Width> Poly<N> {
         let mut out = Poly::<U128>::ZERO;
         out.set(
             0,
-            backend::clmul(self.lane(i / 2), i % 2, rhs.lane(j / 2), j % 2),
+            word_product(
+                self.lane(i / 2),
+                i,
+                word_bits(N::BITS, i),
+                rhs.lane(j / 2),
+                j,
+                word_bits(M::BITS, j),
+            ),
         );
         out
     }
@@ -327,23 +523,22 @@ impl<N: Width> Poly<N> {
             let (i, j) = (pair / M::LANES, pair % M::LANES);
             let (a, b) = (self.lane(i), rhs.lane(j));
             let (a_full, b_full) = (2 * i + 1 < a_words, 2 * j + 1 < b_words);
-            let low = backend::clmul(a, 0, b, 0);
-            even.add_to(i + j, low);
-            match (a_full, b_full) {
-                (true, true) => {
-                    let high = backend::clmul(a, 1, b, 1);
-                    let a_sum = backend::xor(a, backend::down(a));
-                    let b_sum = backend::xor(b, backend::down(b));
-                    let middle = backend::xor(
-                        backend::xor(backend::clmul(a_sum, 0, b_sum, 0), low),
-                        high,
-                    );
-                    even.add_to(i + j + 1, high);
-                    odd.add_to(i + j, middle);
+            if a_full && b_full {
+                let [low, middle, high] = karatsuba(a, b);
+                even.add_to(i + j, low);
+                even.add_to(i + j + 1, high);
+                odd.add_to(i + j, middle);
+            } else {
+                let bits = |width: usize, word: usize| word_bits(width, word);
+                let (a_low, b_low) = (bits(N::BITS, 2 * i), bits(M::BITS, 2 * j));
+                even.add_to(i + j, word_product(a, 0, a_low, b, 0, b_low));
+                if a_full {
+                    let a_high = bits(N::BITS, 2 * i + 1);
+                    odd.add_to(i + j, word_product(a, 1, a_high, b, 0, b_low));
+                } else if b_full {
+                    let b_high = bits(M::BITS, 2 * j + 1);
+                    odd.add_to(i + j, word_product(a, 0, a_low, b, 1, b_high));
                 }
-                (true, false) => odd.add_to(i + j, backend::clmul(a, 1, b, 0)),
-                (false, true) => odd.add_to(i + j, backend::clmul(a, 0, b, 1)),
-                (false, false) => {}
             }
         });
         let lanes = <Sum<N, M> as Width>::LANES;
@@ -454,31 +649,6 @@ impl<N: Width> Poly<N> {
             out.set(k, value);
         });
         out
-    }
-}
-
-impl<N: Width<Lanes = U1>> Poly<N> {
-    /// The polynomial of the bits of `lane` below `N`.
-    #[inline(always)]
-    #[must_use]
-    pub fn from_lane(lane: Lane) -> Self {
-        let poly = Self {
-            lanes: GenericArray::<Lane, U1>::from_array([lane]),
-        };
-        if N::BITS < 128 {
-            poly.truncated()
-        } else {
-            poly
-        }
-    }
-
-    /// The register of the polynomial. A one-register value passes between functions in a vector
-    /// register, where a `Poly` passes in memory.
-    #[inline(always)]
-    #[must_use]
-    pub const fn into_lane(self) -> Lane {
-        let [lane] = self.lanes.into_array::<1>();
-        lane
     }
 }
 
