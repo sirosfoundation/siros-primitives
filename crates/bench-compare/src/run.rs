@@ -131,24 +131,20 @@ pub fn bench<K: Key>(
     record.write(&paths.record)
 }
 
-/// Every cell of the comparison with its count: the lines that the bench prints. `CARGO` names
-/// the cargo that runs this tool.
+/// Every cell of the comparison with its count: the lines that the bench prints.
 fn cells<K: Key>(paths: &Paths, measured: &Measured) -> Result<Vec<Cell<K>>, Error> {
-    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let lines = output(
-        Command::new(cargo)
-            .args([
-                "bench",
-                "--locked",
-                "-p",
-                measured.package,
-                "--bench",
-                measured.bench,
-            ])
-            .current_dir(&paths.root)
-            .env("CARGO_TARGET_DIR", paths.results())
-            .env("RUSTFLAGS", RUSTFLAGS)
-            .env_remove("CARGO_ENCODED_RUSTFLAGS"),
+    let lines = cargo(
+        &paths.root,
+        &paths.results(),
+        RUSTFLAGS,
+        &[
+            "bench",
+            "--locked",
+            "-p",
+            measured.package,
+            "--bench",
+            measured.bench,
+        ],
     )?;
     lines
         .lines()
@@ -157,8 +153,36 @@ fn cells<K: Key>(paths: &Paths, measured: &Measured) -> Result<Vec<Cell<K>>, Err
         .collect()
 }
 
+/// The standard output of `cargo` with `args` in the workspace at `root`, which must succeed. The
+/// build takes exactly `rustflags`, whatever the environment and the configuration set, and keeps
+/// its artifacts in `target_dir`. `CARGO` names the cargo that runs this tool.
+pub fn cargo(
+    root: &Path,
+    target_dir: &Path,
+    rustflags: &str,
+    args: &[&str],
+) -> Result<String, Error> {
+    output(
+        Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+            .args(args)
+            .current_dir(root)
+            .env("CARGO_TARGET_DIR", target_dir)
+            .env("RUSTFLAGS", rustflags)
+            .env_remove("CARGO_ENCODED_RUSTFLAGS"),
+    )
+}
+
+/// The path of `valgrind` in `PATH`.
+pub fn valgrind() -> Result<PathBuf, Error> {
+    let path = std::env::var_os("PATH").ok_or_else(|| Error::missing("PATH", "the environment"))?;
+    std::env::split_paths(&path)
+        .map(|directory| directory.join("valgrind"))
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| Error::missing("valgrind", "PATH"))
+}
+
 /// The standard output of `command`, which must succeed. Its standard error goes to the terminal.
-pub(crate) fn output(command: &mut Command) -> Result<String, Error> {
+pub fn output(command: &mut Command) -> Result<String, Error> {
     let line = format!("{command:?}");
     let output = command
         .stderr(Stdio::inherit())
