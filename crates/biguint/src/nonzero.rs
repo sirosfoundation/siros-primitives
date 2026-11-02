@@ -8,6 +8,7 @@
 use core::fmt;
 use core::hash::Hash;
 use core::num::NonZero;
+use core::ops::Deref;
 
 use generic_array::{ArrayLength, GenericArray};
 use typenum::{B0, B1, Bit, UInt, UTerm, Unsigned};
@@ -44,6 +45,32 @@ impl<N: Bits> NonZeroUint<N> {
     pub(crate) fn native(self) -> Option<NonZero<u128>> {
         self.value.native()
     }
+
+    /// The limbs, in place above two limbs.
+    #[inline(always)]
+    pub(crate) fn limbs(&self) -> LimbsOf<'_, N::Limbs> {
+        self.value.limbs_of()
+    }
+}
+
+/// The limbs of a nonzero value: its stored limbs, or the limbs of its stored primitive.
+pub enum LimbsOf<'a, L: ArrayLength> {
+    /// The stored limbs.
+    InPlace(&'a GenericArray<u64, L>),
+    /// The limbs of the stored primitive.
+    Copied(GenericArray<u64, L>),
+}
+
+impl<L: ArrayLength> Deref for LimbsOf<'_, L> {
+    type Target = GenericArray<u64, L>;
+
+    #[inline(always)]
+    fn deref(&self) -> &GenericArray<u64, L> {
+        match self {
+            Self::InPlace(limbs) => limbs,
+            Self::Copied(limbs) => limbs,
+        }
+    }
 }
 
 /// The count of the limbs of a nonzero value up to its top nonzero one.
@@ -76,6 +103,9 @@ pub trait NonZeroLimbs<L: ArrayLength>: Copy + Eq + Hash {
 
     /// The limbs.
     fn limbs(self) -> GenericArray<u64, L>;
+
+    /// The limbs, in place when they are stored as limbs.
+    fn limbs_of(&self) -> LimbsOf<'_, L>;
 
     /// The value as a `NonZero<u128>`; `None` above two limbs.
     fn native(self) -> Option<NonZero<u128>>;
@@ -121,6 +151,11 @@ impl NonZeroLimbs<UInt<UTerm, B1>> for NonZero<u64> {
     }
 
     #[inline(always)]
+    fn limbs_of(&self) -> LimbsOf<'_, UInt<UTerm, B1>> {
+        LimbsOf::Copied(self.limbs())
+    }
+
+    #[inline(always)]
     fn native(self) -> Option<NonZero<u128>> {
         Some(NonZero::<u128>::from(self))
     }
@@ -137,6 +172,11 @@ impl NonZeroLimbs<UInt<UInt<UTerm, B1>, B0>> for NonZero<u128> {
     fn limbs(self) -> GenericArray<u64, UInt<UInt<UTerm, B1>, B0>> {
         let value = self.get();
         GenericArray::from_array([value as u64, (value >> 64) as u64])
+    }
+
+    #[inline(always)]
+    fn limbs_of(&self) -> LimbsOf<'_, UInt<UInt<UTerm, B1>, B0>> {
+        LimbsOf::Copied(self.limbs())
     }
 
     #[inline(always)]
@@ -161,6 +201,11 @@ where
     #[inline(always)]
     fn limbs(self) -> GenericArray<u64, L> {
         self.0
+    }
+
+    #[inline(always)]
+    fn limbs_of(&self) -> LimbsOf<'_, L> {
+        LimbsOf::InPlace(&self.0)
     }
 
     #[inline(always)]

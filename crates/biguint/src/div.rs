@@ -106,7 +106,7 @@ pub(crate) fn divide<W: ArrayLength, M: Bits>(
     {
         return native(dividend, divisor, quotient);
     }
-    let limbs = divisor.get().limbs;
+    let limbs = divisor.limbs();
     long::<_, W, M>(dividend, &limbs, significant_len(&limbs), quotient)
 }
 
@@ -191,8 +191,10 @@ pub(crate) enum Invariant<L: ArrayLength> {
 }
 
 impl<L: ArrayLength> Invariant<L> {
-    /// The divisor whose low `len >= 1` limbs hold its value, the top one nonzero.
-    #[inline(always)]
+    /// The divisor whose low `len >= 1` limbs hold its value, the top one nonzero. An unoptimized
+    /// build calls it, as it does the product kernels.
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn new(divisor: &GenericArray<u64, L>, len: usize) -> Self {
         let top = divisor.get(len.wrapping_sub(1)).copied().unwrap_or(0);
         if top.leading_zeros() == 0 {
@@ -218,19 +220,22 @@ impl<L: ArrayLength> Invariant<L> {
                 divisor: Reciprocal3By2::new(high, next << shift),
                 shift,
             },
-            _ => Self::Limbs {
-                normalized: {
-                    let mut normalized = GenericArray::default();
-                    shl_bits_into(&mut normalized, divisor, shift);
-                    normalized
-                },
-                len,
-                shift,
-                leading: Reciprocal3By2::new(
-                    high,
-                    funnel_left(next, limb(len.wrapping_sub(3)), shift),
-                ),
-            },
+            _ => {
+                let mut invariant = Self::Limbs {
+                    normalized: GenericArray::default(),
+                    len,
+                    shift,
+                    leading: Reciprocal3By2::new(
+                        high,
+                        funnel_left(next, limb(len.wrapping_sub(3)), shift),
+                    ),
+                };
+                // The divisor shifts into the invariant's own limbs.
+                if let Self::Limbs { normalized, .. } = &mut invariant {
+                    shl_bits_into(normalized, divisor, shift);
+                }
+                invariant
+            }
         }
     }
 
@@ -288,14 +293,7 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
         // A divisor that fills its limbs passes its length as a constant, so the compiler unrolls
         // the division as it does the multiplication.
         if Shape::<W, L>::DIVIDE_AND_CONQUER {
-            let mut scratch = GenericArray::<u64, M::DivisionScratch>::default();
-            dc::divide_window::<Halvings>(
-                &mut window,
-                normalized.as_slice(),
-                leading,
-                quotient,
-                &mut scratch,
-            );
+            divide_and_conquer::<M>(&mut window, normalized.as_slice(), leading, quotient);
         } else {
             divide_by_limbs::<true>(&mut window, normalized.as_slice(), leading, quotient);
         }
@@ -303,19 +301,34 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
         let (significant, _) = split(normalized, len);
         divide_by_limbs::<false>(&mut window, significant, leading, quotient);
     }
-    // Below the divisor, the remainder has no bits above `M`.
-    let mut remainder = Uint::<M>::ZERO;
+    let mut remainder = GenericArray::<u64, M::Limbs>::default();
     if shift == 0 {
-        shr_bits_into(&mut remainder.limbs, &window, 0);
+        shr_bits_into(&mut remainder, &window, 0);
     } else {
-        shr_bits_into(&mut remainder.limbs, &window, shift);
+        shr_bits_into(&mut remainder, &window, shift);
     }
-    remainder
+    Uint::from_generic_limbs(remainder)
+}
+
+/// [`dc::divide_window`] with its scratch for a remainder of `M` bits. An unoptimized build calls
+/// it, as it does the product kernels, so the scratch takes stack only when the division runs.
+#[cfg_attr(debug_assertions, inline(never))]
+#[cfg_attr(not(debug_assertions), inline(always))]
+fn divide_and_conquer<M: Bits>(
+    window: &mut [u64],
+    divisor: &[u64],
+    leading: Reciprocal3By2,
+    quotient: &mut (impl QuotientSink + ?Sized),
+) {
+    let mut scratch = GenericArray::<u64, M::DivisionScratch>::default();
+    dc::divide_window::<Halvings>(window, divisor, leading, quotient, &mut scratch);
 }
 
 /// The dividend shifted left by `shift` in a window of `W` limbs: the bits shifted out of its top
-/// limb fill the window's limb above it.
-#[inline(always)]
+/// limb fill the window's limb above it. An unoptimized build calls it, so its copies take stack
+/// only while it runs.
+#[cfg_attr(debug_assertions, inline(never))]
+#[cfg_attr(not(debug_assertions), inline(always))]
 fn shifted_window<W: ArrayLength>(dividend: &[u64], shift: u32) -> GenericArray<u64, W> {
     let mut window = GenericArray::<u64, W>::default();
     shl_bits_into(&mut window, dividend, shift);
@@ -410,8 +423,9 @@ pub(crate) fn schoolbook(
 /// The window shrinks from the top by one limb per quotient limb. The top `divisor.len()` limbs of
 /// `window` are below `divisor`. `CONSTANT` tells that the compiler knows the divisor's length,
 /// which unrolls the subtraction of each scaled divisor into two carry chains
-/// ([`sub_mul_row_chains`]).
-#[inline(always)]
+/// ([`sub_mul_row_chains`]). An unoptimized build calls it, as it does the product kernels.
+#[cfg_attr(debug_assertions, inline(never))]
+#[cfg_attr(not(debug_assertions), inline(always))]
 pub(crate) fn divide_by_limbs<const CONSTANT: bool>(
     window: &mut [u64],
     divisor: &[u64],
