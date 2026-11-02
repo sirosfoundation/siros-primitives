@@ -62,8 +62,12 @@ impl<N: Bits> Uint<N> {
         Sum<N, RhsN>: Bits,
     {
         // A factor below the modulus keeps the top of the product below it when the product has
-        // room above the other factor for the modulus's limbs.
-        let room = <Sum<N, RhsN> as Bits>::LIMBS >= ModN::LIMBS + RhsN::LIMBS;
+        // room above the other factor for the modulus's limbs. The divide-and-conquer division
+        // lays out its blocks at compile time; a quotient length chosen at run time doubles its
+        // stack, so it divides the whole window.
+        type Window<N, RhsN> = <Sum<N, RhsN> as Sealed>::Window;
+        let room = <Sum<N, RhsN> as Bits>::LIMBS >= ModN::LIMBS + RhsN::LIMBS
+            && !Shape::<Window<N, RhsN>, ModN::Limbs>::DIVIDE_AND_CONQUER;
         let top = if room && compare(&self.limbs, &modulus.limbs).is_lt() {
             Top::Below
         } else {

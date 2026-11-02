@@ -237,7 +237,7 @@ fn copy(out: &mut [u64], limbs: &[u64]) {
 /// Writes `a - b` to `out` and returns the borrow out of its top limb. `out` sets the length; `a`
 /// and `b` are at least as long.
 #[inline(always)]
-fn sub_into(out: &mut [u64], a: &[u64], b: &[u64]) -> u64 {
+pub(crate) fn sub_into(out: &mut [u64], a: &[u64], b: &[u64]) -> u64 {
     let mut difference =
         Op2CarryIter::<_, _, SubOp>::new(ZeroExtended::new(a).pull(), ZeroExtended::new(b).pull());
     for_each_slot(out, |slot| *slot = difference.next_limb());

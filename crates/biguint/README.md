@@ -100,7 +100,8 @@ The width selects the algorithm at compile time, and every operand length folds 
 | `add_mod`, `sub_mod`, `neg_mod` | up to 8 limbs | One carry chain, then the correction as a second chain and a conditional move per limb |
 | `add_mod`, `sub_mod`, `neg_mod` | 9 limbs and more | One carry chain; the top limbs decide the correction, and a full comparison runs only when they are equal |
 | `Modulus` product | odd modulus | Montgomery multiplication |
-| `Modulus` product | even modulus | Product, then division by the prepared modulus from one limb below the top |
+| `Modulus` product | even modulus of 4 to 8 limbs (256 to 512 bits) whose top limb is nonzero | Product, then Barrett's reduction with a precomputed reciprocal |
+| `Modulus` product | other even moduli | Product, then division by the prepared modulus from one limb below the top |
 | `Modulus` square | below 16 limbs | Products of distinct limbs once, doubled, plus the squares of the limbs |
 | `Residue::pow` | any | Sliding windows of up to 6 bits over odd powers |
 | Shift | up to 2 limbs | `u128` shifts |
