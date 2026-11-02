@@ -638,16 +638,26 @@ fn results<K: Key>(
     } else {
         format!("## Results {}", build.name)
     };
+    let deviating = table.cells.values().any(|cell| match &cell.outcome {
+        Outcome::Counted(count) => count.deviation.is_some(),
+        Outcome::Absent(_) => false,
+    });
+    let marks = if deviating {
+        format!(
+            " among the functions that meet the row's definition. A `\\*` marks the figure of a \
+             function that deviates from it where the figure is below `{}`'s; the note under the \
+             table says how the function deviates.",
+            layout.subject
+        )
+    } else {
+        ".".to_owned()
+    };
     let mut lines = vec![
         heading,
         String::new(),
         format!(
             "Per operation, each row gives throughput cycles, latency cycles for the operations \
-             that have chains, and instructions. Bold marks the fewest in each row among the \
-             functions that meet the row's definition. A `\\*` marks the figure of a function \
-             that deviates from it where the figure is below `{}`'s; the note under the table \
-             says how the function deviates.",
-            layout.subject
+             that have chains, and instructions. Bold marks the fewest in each row{marks}"
         ),
     ];
     if let Some(unplotted) = table.crates.get(CHARTED..).filter(|rest| !rest.is_empty()) {
