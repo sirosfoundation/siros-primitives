@@ -4,6 +4,7 @@ use core::fmt;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use biguint::{Bits, One, Square, Uint};
+use clmul::Poly;
 use const_default::ConstDefault;
 use generic_array::GenericArray;
 
@@ -145,11 +146,19 @@ impl<P: Polynomial> Gf2<P> {
         self.value.uint()
     }
 
-    /// The little-endian limbs of the polynomial.
+    /// The element of the polynomial `poly`: every `Poly<n>` has degree below `n`.
     #[inline(always)]
     #[must_use]
-    pub fn as_limbs(&self) -> GenericArray<u64, Limbs<P>> {
-        self.into_limbs()
+    pub fn from_poly(poly: Poly<P::Degree>) -> Self {
+        Self::of(Element::<P>::from_poly(poly))
+    }
+
+    /// The polynomial in `clmul`'s vector registers, where the element lives, except up to degree
+    /// 16 with `precomputed`: there it moves from a general register.
+    #[inline(always)]
+    #[must_use]
+    pub fn into_poly(self) -> Poly<P::Degree> {
+        self.value.poly()
     }
 
     /// The little-endian limbs of the polynomial.

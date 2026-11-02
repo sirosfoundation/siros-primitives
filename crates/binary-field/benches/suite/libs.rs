@@ -315,7 +315,7 @@ impl<P: binary_field::Polynomial> Raw for Gf2<P> {
     }
 
     fn raw(&self) -> Limbs {
-        self.as_limbs().to_vec()
+        self.into_limbs().to_vec()
     }
 }
 

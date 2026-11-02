@@ -13,9 +13,9 @@ rust-version.workspace = true
 
 [features]
 default = ["precomputed"]
-# Tables for the default operations of the fields up to degree 16: logarithms up to degree 8,
-# squares and square roots by byte, and inverses. Without them those operations take the
-# carry-less products of `Secret`.
+# The tables of the operations of `Gf2`: every product up to degree 8; every square, square root
+# and inverse up to degree 16; the Frobenius powers of the inverse's chain from degree 17 to 128.
+# Without them `Gf2` computes as `Secret` does.
 precomputed = []
 
 [dependencies]

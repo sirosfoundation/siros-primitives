@@ -126,11 +126,29 @@ impl<P: Polynomial> Field<P> {
         }
     }
 
-    /// `p mod f` for a product `p` of degree below `2n` in one word: `n` up to 32.
+    /// `p mod f` for a product `p` of degree below `2n` in one word: `n` up to 32. One fold with the
+    /// overflow added first when `2d <= n`; otherwise the plan's rounds, each of which moves the
+    /// bits at and above `x^n` down by `x^n = r`.
     #[inline(always)]
     fn reduce_word<W: Word>(product: W) -> W {
         let degree = Plan::<P>::DEGREE;
-        Self::fold_word(product & W::of(low_mask(degree)), product >> degree)
+        let mask = W::of(low_mask(degree));
+        if Plan::<P>::ONE_SPILL {
+            return Self::fold_word(product & mask, product >> degree);
+        }
+        let taps = Plan::<P>::TAPS;
+        let (mut sum, mut rest) = (product & mask, product >> degree);
+        each!(_round < Plan::<P>::ROUNDS => {
+            let mut folded = W::ZERO;
+            each!(index < taps.len() => {
+                if let Some(&tap) = taps.get(index) {
+                    folded = folded ^ (rest << tap);
+                }
+            });
+            sum = sum ^ (folded & mask);
+            rest = folded >> degree;
+        });
+        sum
     }
 
     // ---------------------------------------------------------------------------------------
@@ -190,22 +208,33 @@ impl<P: Polynomial> Field<P> {
         low ^ (middle << 64) ^ middle.clmul_words(1, r, 0)
     }
 
-    /// `low + high x^128 mod f` for `n = 128` and `d` below 64, by shifts within words: the carries
-    /// out of the low word and the overflow of the high word come from the same shifts, with the
-    /// overflow added to `high` first.
+    /// `low + high x^128 mod f` for `n = 128` and `d` below 64, by shifts within words, as
+    /// `(high + t) r mod x^128` for the overflow `t` of `high r`: `t r` stays below `x^128`. The
+    /// shifts by each tap give the overflow in the high word and the carries out of the low word.
+    /// When `d` is at most 32 the overflow, below `x^d`, holds no bit that a shift carries, and one
+    /// pass of shifts gives both; above, the carries come from `high + t`.
     #[inline(always)]
     fn fold_lane(low: Poly<U128>, high: Poly<U128>) -> Poly<U128> {
         let taps = Plan::<P>::TAPS;
-        let mut spill = Poly::<U128>::ZERO;
-        each!(index < taps.len() => {
-            if let Some(&tap) = taps.get(index)
-                && tap > 0
-            {
-                spill ^= high.shr_within_words((64 - tap) as u32);
-            }
-        });
+        let spills = |value: Poly<U128>| {
+            let mut spill = Poly::<U128>::ZERO;
+            each!(index < taps.len() => {
+                if let Some(&tap) = taps.get(index)
+                    && tap > 0
+                {
+                    spill ^= value.shr_within_words((64 - tap) as u32);
+                }
+            });
+            spill
+        };
+        let spill = spills(high);
         let high = high ^ (spill >> 64);
-        let mut sum = low ^ high ^ (spill << 64);
+        let carries = if Plan::<P>::R_DEGREE <= 32 {
+            spill
+        } else {
+            spills(high)
+        };
+        let mut sum = low ^ high ^ (carries << 64);
         each!(index < taps.len() => {
             if let Some(&tap) = taps.get(index)
                 && tap > 0
