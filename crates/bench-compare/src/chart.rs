@@ -1,4 +1,4 @@
-//! One SVG chart per operation: the modelled cycles per operation over the rows, one marker
+//! One SVG chart per operation: the throughput cycles per operation over the rows, one marker
 //! shape and color per crate, on a linear scale from zero.
 //!
 //! The colors are the categorical slots of the reference palette of the dataviz method, in their
@@ -100,7 +100,7 @@ pub(crate) struct Chart<'a> {
     pub(crate) lines: bool,
 }
 
-/// The modelled cycles per operation of one crate at one category.
+/// The throughput cycles per operation of one crate at one category.
 #[derive(Clone, Copy)]
 pub(crate) struct Point<'a> {
     pub(crate) library: &'a str,

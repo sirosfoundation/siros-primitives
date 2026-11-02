@@ -93,8 +93,9 @@ which fails on a branch or a memory address that depends on them.
 compares `binary-field` with gf256, galois_field_2pm, g2p, reed-solomon-erasure, hekate-math,
 Plonky3, longfellow-zk's `runtime-algebra`, `compile-algebra` and `core-algebra`, and polyval on
 add, mul, square, invert and sqrt over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and
-GF(2⁵⁷¹), in cycles and instructions per operation that the CPU's performance counters count, in
-builds with and without carry-less multiplication. The unpublished
+GF(2⁵⁷¹), each operation in a constant-time and a variable-time row. The figures are cycles and
+instructions per operation that the CPU's performance counters count, in builds with and without
+carry-less multiplication. The unpublished
 [`binary-field-bench-report`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/binary-field/bench-report)
 regenerates it:
 
