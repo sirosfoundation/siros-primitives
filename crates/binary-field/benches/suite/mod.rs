@@ -126,11 +126,11 @@ impl Suite for BinaryField {
     }
 
     /// The operand sets of `op` over the field, with the results of the reference. The seed
-    /// depends on the operation and the field only, so every crate in a row sees the same
-    /// operands.
+    /// depends on the kind of operation and the field only, so every crate in both rows of an
+    /// operation sees the same operands.
     fn samples(op: Op, key: &Field) -> Vec<Sample> {
         let (index, spec) = spec(key);
-        let mut rng = Rng(((op as u64) << 32) | index as u64);
+        let mut rng = Rng(((op.kind as u64) << 32) | index as u64);
         (0..BATCH)
             .map(|_| {
                 let (operands, accepted) = op.sample(&spec.modulus, &mut rng);
@@ -147,9 +147,18 @@ impl Suite for BinaryField {
     }
 }
 
-/// An operation under comparison.
+/// An operation under comparison: a kind of operation, run by the functions of one timing class.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Op {
+pub struct Op {
+    /// What it computes.
+    pub kind: Kind,
+    /// Whether the functions of its row take time that depends on the values.
+    pub timing: Timing,
+}
+
+/// What an operation computes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Kind {
     /// `a + b`.
     Add,
     /// `a * b`.
@@ -162,38 +171,75 @@ pub enum Op {
     Sqrt,
 }
 
+/// The timing class of a function, which its source decides.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Timing {
+    /// No branch and no memory address depends on a value.
+    Constant,
+    /// A branch or a memory address, such as a table lookup, depends on a value.
+    Variable,
+}
+
+impl Timing {
+    /// The other class.
+    pub const fn other(self) -> Self {
+        match self {
+            Self::Constant => Self::Variable,
+            Self::Variable => Self::Constant,
+        }
+    }
+}
+
+impl Kind {
+    /// The operation of this kind in the row of `timing`.
+    pub const fn in_row(self, timing: Timing) -> Op {
+        Op { kind: self, timing }
+    }
+}
+
 impl Op {
-    /// Every operation, in measurement order.
-    pub const ALL: [Self; 5] = [Self::Add, Self::Mul, Self::Square, Self::Invert, Self::Sqrt];
+    /// Every operation, in measurement order: each kind in its constant-time row, then in its
+    /// variable-time row.
+    pub const ALL: [Self; 10] = {
+        let kinds = [Kind::Add, Kind::Mul, Kind::Square, Kind::Invert, Kind::Sqrt];
+        let mut all = [Kind::Add.in_row(Timing::Constant); 10];
+        let mut index = 0;
+        while index < 5 {
+            all[2 * index] = kinds[index].in_row(Timing::Constant);
+            all[2 * index + 1] = kinds[index].in_row(Timing::Variable);
+            index += 1;
+        }
+        all
+    };
 
     /// One operand set over the field of `modulus`, with its result:
     /// - add, mul: `a` and `b` uniform;
     /// - square, invert: `a` uniform and nonzero;
     /// - sqrt: `a = r²` for `r` uniform and nonzero, whose square root is `r` alone.
     fn sample(self, modulus: &Modulus, rng: &mut Rng) -> (Vec<Limbs>, Limbs) {
-        match self {
-            Self::Add => {
+        match self.kind {
+            Kind::Add => {
                 let (a, b) = (modulus.uniform(rng), modulus.uniform(rng));
                 let mut sum = a.clone();
                 reference::xor(&mut sum, &b);
                 (vec![a, b], sum)
             }
-            Self::Mul => {
+            Kind::Mul => {
                 let (a, b) = (modulus.uniform(rng), modulus.uniform(rng));
                 let product = modulus.mul(&a, &b);
                 (vec![a, b], product)
             }
-            Self::Square => {
+            Kind::Square => {
                 let a = modulus.nonzero(rng);
                 let result = modulus.square(&a);
                 (vec![a], result)
             }
-            Self::Invert => {
+            Kind::Invert => {
                 let a = modulus.nonzero(rng);
                 let result = modulus.inverse(&a);
                 (vec![a], result)
             }
-            Self::Sqrt => {
+            Kind::Sqrt => {
                 let root = modulus.nonzero(rng);
                 (vec![modulus.square(&root)], root)
             }
@@ -201,14 +247,19 @@ impl Op {
     }
 }
 
+/// The kind, and `_vartime` for the variable-time row.
 impl fmt::Display for Op {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Add => "add",
-            Self::Mul => "mul",
-            Self::Square => "square",
-            Self::Invert => "invert",
-            Self::Sqrt => "sqrt",
-        })
+        formatter.write_str(match self.kind {
+            Kind::Add => "add",
+            Kind::Mul => "mul",
+            Kind::Square => "square",
+            Kind::Invert => "invert",
+            Kind::Sqrt => "sqrt",
+        })?;
+        match self.timing {
+            Timing::Constant => Ok(()),
+            Timing::Variable => formatter.write_str("_vartime"),
+        }
     }
 }
