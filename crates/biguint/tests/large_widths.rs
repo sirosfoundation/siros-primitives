@@ -113,7 +113,7 @@ fn check_div_rem<N: Bits, M: Bits>() {
     for a in samples::<N>(6) {
         for &divisor in &divisors {
             let expected = (!divisor.is_zero()).then(|| wide(a).div_rem(wide(divisor)));
-            let result = a.div_rem(divisor).map(|(q, r)| (wide(q), wide(r)));
+            let result = a.checked_div_rem(divisor).map(|(q, r)| (wide(q), wide(r)));
             assert_eq!(result, expected, "{a:?} / {divisor:?}");
         }
     }

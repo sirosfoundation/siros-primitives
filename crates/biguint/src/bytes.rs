@@ -7,14 +7,14 @@ use crate::uint::Uint;
 
 impl<N: Bits> Uint<N> {
     /// The little-endian encoding in `ceil(N / 8)` bytes.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn to_le_bytes(&self) -> GenericArray<u8, N::Bytes> {
         GenericArray::generate(|index| self.byte(index))
     }
 
     /// The big-endian encoding in `ceil(N / 8)` bytes.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn to_be_bytes(&self) -> GenericArray<u8, N::Bytes> {
         GenericArray::generate(|index| self.byte(N::BYTES - 1 - index))
@@ -25,7 +25,7 @@ impl<N: Bits> Uint<N> {
     /// # Errors
     ///
     /// [`OutOfRange`] when a bit at or above `N` is set.
-    #[inline]
+    #[inline(always)]
     pub fn from_le_bytes(bytes: &GenericArray<u8, N::Bytes>) -> Result<Self, OutOfRange> {
         Self::from_le_byte_iter(bytes.iter().copied())
     }
@@ -35,7 +35,7 @@ impl<N: Bits> Uint<N> {
     /// # Errors
     ///
     /// [`OutOfRange`] when a bit at or above `N` is set.
-    #[inline]
+    #[inline(always)]
     pub fn from_be_bytes(bytes: &GenericArray<u8, N::Bytes>) -> Result<Self, OutOfRange> {
         Self::from_le_byte_iter(bytes.iter().rev().copied())
     }

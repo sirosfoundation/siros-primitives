@@ -3,7 +3,7 @@
 
 use core::ops::Add;
 
-use biguint::{Bits, OutOfRange, Pow, Uint, WideningMul};
+use biguint::{Bits, NonZeroUint, OutOfRange, Pow, Uint, WideningMul};
 use generic_array::GenericArray;
 use generic_array::sequence::GenericSequence;
 use typenum::{
@@ -196,7 +196,7 @@ fn division_matches_reference() {
         let values = samples::<N>();
         for &a in &values {
             for &b in &values {
-                let Some((quotient, remainder)) = a.div_rem(b) else {
+                let Some((quotient, remainder)) = a.checked_div_rem(b) else {
                     assert!(b.is_zero(), "{B}: {a:?} / {b:?} refused");
                     continue;
                 };
@@ -206,22 +206,28 @@ fn division_matches_reference() {
                     expected,
                     "{B}: {a:?} / {b:?}"
                 );
+                let divisor = NonZeroUint::new(b).expect("a nonzero divisor");
+                assert_eq!(
+                    (a / divisor, a % divisor),
+                    (quotient, remainder),
+                    "{B}: operators"
+                );
             }
         }
     }
     for_each_width!(check);
 }
 
+/// The moduli: the edges of the range and random values.
+fn moduli<N: Bits>() -> Vec<Uint<N>> {
+    let values = samples::<N>();
+    let mut moduli: Vec<Uint<N>> = values.iter().copied().take(7).collect();
+    moduli.extend(values.iter().copied().rev().take(5));
+    moduli
+}
+
 #[test]
 fn mul_mod_matches_reference() {
-    /// The moduli: the edges of the range and random values.
-    fn moduli<N: Bits>() -> Vec<Uint<N>> {
-        let values = samples::<N>();
-        let mut moduli: Vec<Uint<N>> = values.iter().copied().take(7).collect();
-        moduli.extend(values.iter().copied().rev().take(5));
-        moduli
-    }
-
     fn check<N, const B: usize, const L: usize>()
     where
         N: Bits + Add<N>,
@@ -275,6 +281,44 @@ fn mul_mod_matches_reference() {
     check_mixed::<U100, U28, U100>();
     check_mixed::<U512, U512, U521>();
     check_mixed::<U8, U1, U7>();
+}
+
+#[test]
+fn modular_sums_match_reference() {
+    /// Operands above and below each modulus, and its largest residues.
+    fn check<N: Bits, const B: usize, const L: usize>() {
+        let samples: Vec<Uint<N>> = samples::<N>().into_iter().rev().take(16).collect();
+        for modulus in moduli::<N>() {
+            let Some(divisor) = NonZeroUint::new(modulus) else {
+                continue;
+            };
+            let rm = reference::<N, B, L>(modulus);
+            let mut operands = samples.clone();
+            operands.extend([modulus - Uint::<N>::ONE, modulus >> 1usize]);
+            for &a in &operands {
+                let ra = reference::<N, B, L>(a).reduce_mod(rm);
+                assert_eq!(
+                    reference(a.neg_mod(divisor)),
+                    (rm - ra).reduce_mod(rm),
+                    "{B}: -{a:?} mod {modulus:?}"
+                );
+                for &b in &operands {
+                    let rb = reference::<N, B, L>(b).reduce_mod(rm);
+                    assert_eq!(
+                        reference(a.add_mod(b, divisor)),
+                        ra.add_mod(rb, rm),
+                        "{B}: {a:?} + {b:?} mod {modulus:?}"
+                    );
+                    assert_eq!(
+                        reference(a.sub_mod(b, divisor)),
+                        ra.add_mod(rm - rb, rm),
+                        "{B}: {a:?} - {b:?} mod {modulus:?}"
+                    );
+                }
+            }
+        }
+    }
+    for_each_width!(check);
 }
 
 #[test]

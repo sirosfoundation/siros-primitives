@@ -103,7 +103,7 @@ fn normalized_limbs() -> Vec<NormalizedLimb> {
     }
     limbs.extend([1 << 63, (1 << 63) + 1, u64::MAX, u64::MAX - 1]);
     limbs.extend((0..256).map(|_| (1 << 63) | (rng.next_u64() >> 40)));
-    limbs.into_iter().filter_map(NormalizedLimb::new).collect()
+    limbs.into_iter().map(NormalizedLimb::top_set).collect()
 }
 
 #[test]

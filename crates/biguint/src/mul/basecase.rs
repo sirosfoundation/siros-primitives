@@ -1,97 +1,83 @@
-//! The quadratic products under every multiplication: the stream product where the compiler
-//! unrolls it completely, rows of fused multiply-accumulate steps elsewhere.
+//! The quadratic product under every multiplication: one row per limb of the shorter operand. A
+//! row of up to [`UNROLLED`] products runs as two carry chains unrolled in the source: the multiply
+//! chain adds each product's low half to the high half before it, then the add chain adds the row
+//! into the output. Longer rows run loops of fused multiply-accumulate steps with one carry limb.
 
-use crate::kernel::{add_mul_row, mul_add, mul_row, split_mut};
-use crate::stream::{LimbStream, Unrolled};
+use crate::kernel::{add_mul_row, mul_row, split_mut};
+use crate::limb::CarryingAdd;
+use crate::unroll::{UNROLLED, unroll};
 
-/// The most steps of a full stream product that the compiler unrolls completely: a 9 by 9 limb
-/// product, 460 instructions against 467 for the rows (rustc 1.99, `-C target-cpu=native`). At
-/// 10 by 10 limbs the stream stays a loop of 874 instructions against 574 for the rows.
-pub(crate) const FULL_STREAM_STEPS: usize = 126;
-
-/// The most steps of a truncated stream product that the compiler unrolls completely: 12 by 12
-/// limbs modulo `2^768`, 454 instructions against 761 for the rows (rustc 1.99,
-/// `-C target-cpu=native`).
-pub(crate) const TRUNCATED_STREAM_STEPS: usize = 78;
-
-/// The steps of the stream product of an `a`-limb and a `b`-limb operand into `out` limbs: each
-/// limb of the shorter operand adds a row over the rest of the output window.
-#[inline(always)]
-pub(crate) const fn stream_steps(a: usize, b: usize, out: usize) -> usize {
-    let shorter = if a < b { a } else { b };
-    let rows = if shorter < out { shorter } else { out };
-    rows * out - rows * rows.saturating_sub(1) / 2
-}
-
-/// Writes `a * b mod 2^(64 * out.len())` to `out`: the stream product where the compiler unrolls
-/// it completely, the rows elsewhere. `out` is at most `a.len() + b.len()` limbs long.
-#[inline(always)]
+/// Writes `a * b mod 2^(64 * out.len())` to `out`. `out` is at most `a.len() + b.len()` limbs
+/// long.
+///
+/// An unoptimized build calls the kernel: inlined, every unrolled copy keeps its own stack slots
+/// in the caller's frame, and a 4096-bit product inlines dozens of kernels.
+#[cfg_attr(debug_assertions, inline(never))]
+#[cfg_attr(not(debug_assertions), inline(always))]
 pub(crate) fn basecase(out: &mut [u64], a: &[u64], b: &[u64]) {
-    let limit = if out.len() >= a.len() + b.len() {
-        FULL_STREAM_STEPS
-    } else {
-        TRUNCATED_STREAM_STEPS
-    };
-    if stream_steps(a.len(), b.len(), out.len()) <= limit {
-        stream(out, a, b);
-    } else {
-        rows(out, a, b);
-    }
-}
-
-/// Writes `a * b mod 2^(64 * out.len())` to `out` as the stream product.
-///
-/// Each limb of the shorter operand scales the longer one, zero-extended, into the output window,
-/// which advances one limb per multiplier limb. Each step is one fused multiply-accumulate with a
-/// single carry limb. The accumulation runs over the whole window, so the loop has a constant
-/// shape that the compiler unrolls completely.
-///
-/// Operands of equal length take their multipliers from `a`. LLVM then keeps each multiplier in
-/// the implicit `rdx` operand of `mulx` for its whole row; the other orientation reloads `rdx`
-/// before most products (512 bits: 205 instructions against 232).
-#[inline(always)]
-pub(crate) fn stream(out: &mut [u64], a: &[u64], b: &[u64]) {
-    for slot in out.iter_mut() {
-        *slot = 0;
-    }
-    let (a, b) = if b.len() >= a.len() { (b, a) } else { (a, b) };
-    let mut window = out;
-    for &multiplier in b {
-        let mut source = Unrolled::new(a);
-        let mut carry = 0;
-        for slot in window.iter_mut() {
-            (*slot, carry) = mul_add(multiplier, source.next_limb(), *slot, carry);
-        }
-        truncate_carry(carry);
-        window = match window.split_first_mut() {
-            Some((_, rest)) => rest,
-            None => break,
-        };
-    }
-}
-
-/// Writes `a * b mod 2^(64 * out.len())` to `out`: one fused multiply-accumulate row of the longer
-/// operand per limb of the shorter, each row one limb higher. The first row overwrites; `out`
-/// above the full product keeps its limbs.
-#[inline(always)]
-pub(crate) fn rows(out: &mut [u64], a: &[u64], b: &[u64]) {
     let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
-    let Some((&first, rest)) = short.split_first() else {
-        return;
-    };
-    {
-        let (row, above) = split_mut(out, long.len());
-        let carry = mul_row(row, long, first);
+    unroll!(index in 0..short.len() => {
+        if let Some(&multiplier) = short.get(index) {
+            let (_, window) = split_mut(out, index);
+            add_row(window, long, multiplier, index == 0);
+        }
+    });
+}
+
+/// Adds `long * multiplier` to `window`, cut at its end, or writes it there when `first`. The
+/// rows before it covered the window's limbs up to `long.len()`, so the limb above the products
+/// is fresh.
+#[inline(always)]
+fn add_row(window: &mut [u64], long: &[u64], multiplier: u64, first: bool) {
+    let len = long.len().min(window.len());
+    if len > UNROLLED {
+        let (row, above) = split_mut(window, len);
+        let carry = if first {
+            mul_row(row, long, multiplier)
+        } else {
+            add_mul_row(row, long, multiplier)
+        };
         if let Some(slot) = above.first_mut() {
             *slot = carry;
         }
+        return;
     }
-    for (index, &multiplier) in rest.iter().enumerate() {
-        let (_, window) = split_mut(out, index + 1);
-        let (row, above) = split_mut(window, long.len());
-        let carry = add_mul_row(row, long, multiplier);
-        if let Some(slot) = above.first_mut() {
-            *slot = carry;
+    // A full row ends in a limb above the window's products; a cut row's last product lands on
+    // the window's top limb, which takes its low half.
+    let full = window.len() > len;
+    let mut row = [0u64; UNROLLED + 1];
+    let (mut carry, mut high) = (0, 0);
+    unroll!(index in 0..len => {
+        if let (Some(&limb), Some(slot)) = (long.get(index), row.get_mut(index)) {
+            if full || index + 1 < len {
+                let product = u128::from(limb) * u128::from(multiplier);
+                (*slot, carry) = (product as u64).add_carry(high, carry);
+                high = (product >> 64) as u64;
+            } else {
+                *slot = limb.wrapping_mul(multiplier).wrapping_add(high).wrapping_add(carry);
+            }
+        }
+    });
+    if full && let Some(slot) = row.get_mut(len) {
+        // A high half is at most `2^64 - 2`.
+        *slot = high + carry;
+    }
+    if first {
+        unroll!(index in 0..len + usize::from(full) => {
+            if let (Some(slot), Some(&limb)) = (window.get_mut(index), row.get(index)) {
+                *slot = limb;
+            }
+        });
+    } else {
+        let mut carry = 0;
+        unroll!(index in 0..len => {
+            if let (Some(slot), Some(&limb)) = (window.get_mut(index), row.get(index)) {
+                (*slot, carry) = slot.add_carry(limb, carry);
+            }
+        });
+        if full && let (Some(slot), Some(&limb)) = (window.get_mut(len), row.get(len)) {
+            // The sum of the rows so far fits below the limb above this one.
+            *slot = limb + carry;
         }
     }
 }

@@ -90,7 +90,7 @@ impl<D: Depth> Depth for Level<D> {
 
     #[inline(always)]
     fn truncated(out: &mut [u64], a: &[u64], b: &[u64], scratch: &mut [u64]) {
-        if !truncated::streams(out.len())
+        if !truncated::quadratic(out.len())
             && scratch.len() >= truncated::scratch_len(out.len(), Self::LEVELS)
         {
             truncated::split_product::<Self, D>(out, a, b, scratch);

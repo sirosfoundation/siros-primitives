@@ -44,11 +44,16 @@ const LAYOUT: Layout<'static, Width> = Layout {
         ("div", "a / b"),
         ("mod", "a mod b"),
         ("mulmod", "a × b mod m"),
+        ("add_mod", "a + b mod m"),
+        ("sub_mod", "a − b mod m"),
     ],
     row_header: "Bits",
     rows_phrase: |widths| format!("at {} bits", sentence(widths)),
     method,
     notes: &[
+        "- Each row compares functions of one timing class, the class of `biguint`'s function: \
+         add, and mul up to 1024 bits, take a time that the width fixes; mul from 2048 bits, div, \
+         mod, mulmod, add_mod and sub_mod take a time that depends on the values.",
         "- `native` is `u64` at 64 bits and `u128` at 128 bits.",
         "- `crypto-bigint` is constant-time; its div, mod and mulmod cases run its `*_vartime` \
          functions.",
@@ -69,7 +74,7 @@ fn method(batch: u32) -> Vec<String> {
              in an N-bit integer",
         ],
         [
-            "mulmod",
+            "mulmod, add_mod, sub_mod",
             "a modulus `m` with bit N − 1 set; `a` and `b` uniform below `m`",
         ],
     ];

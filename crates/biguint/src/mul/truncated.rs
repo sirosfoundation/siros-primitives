@@ -5,12 +5,15 @@
 use crate::kernel::{add_assign, split, split_mut};
 use crate::recursion::{Depth, product_scratch};
 
-use super::basecase::{TRUNCATED_STREAM_STEPS, stream_steps, truncate_carry};
+use super::basecase::truncate_carry;
 
-/// Whether the truncated product of two `len`-limb operands runs as the unrolled stream product.
+/// The shortest operands whose truncated product splits.
+const SPLIT_LIMBS: usize = 17;
+
+/// Whether the truncated product of two `len`-limb operands runs as the quadratic product.
 #[inline(always)]
-pub(crate) const fn streams(len: usize) -> bool {
-    stream_steps(len, len, len) <= TRUNCATED_STREAM_STEPS
+pub(crate) const fn quadratic(len: usize) -> bool {
+    len < SPLIT_LIMBS
 }
 
 /// The shortest low part whose full product makes the `11/36` split pay: Karatsuba beats the
@@ -35,7 +38,7 @@ const fn high_part(len: usize) -> usize {
 /// its own split, whichever is longer.
 #[inline(always)]
 pub(crate) const fn scratch_len(len: usize, levels: usize) -> usize {
-    if levels == 0 || streams(len) {
+    if levels == 0 || quadratic(len) {
         return 0;
     }
     let high = high_part(len);

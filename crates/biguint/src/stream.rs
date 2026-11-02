@@ -43,30 +43,6 @@ impl LimbStream for ZeroExtended<'_> {
     }
 }
 
-/// The limbs of a slice, then `0` forever, read through the slice iterator.
-///
-/// Inside a product that the compiler unrolls completely, the iterator's end test folds as early
-/// as the unroll; the indexed [`ZeroExtended`] leaves the rows of such a product rolled.
-pub(crate) struct Unrolled<'a> {
-    limbs: core::slice::Iter<'a, u64>,
-}
-
-impl<'a> Unrolled<'a> {
-    #[inline(always)]
-    pub(crate) fn new(limbs: &'a [u64]) -> Self {
-        Self {
-            limbs: limbs.iter(),
-        }
-    }
-}
-
-impl LimbStream for Unrolled<'_> {
-    #[inline(always)]
-    fn next_limb(&mut self) -> u64 {
-        self.limbs.next().copied().unwrap_or(0)
-    }
-}
-
 /// Runs `step` on every slot of `slots` in order, four slots per loop iteration: the compiler
 /// keeps a carry in the flags within each group of four.
 #[inline(always)]
@@ -99,12 +75,24 @@ pub(crate) struct Op2CarryIter<A, B, O> {
 impl<A, B, O> Op2CarryIter<A, B, O> {
     #[inline(always)]
     pub(crate) const fn new(a: A, b: B) -> Self {
+        Self::with_carry(a, b, 0)
+    }
+
+    /// The streams combined from `carry` into the bottom limb.
+    #[inline(always)]
+    pub(crate) const fn with_carry(a: A, b: B, carry: u64) -> Self {
         Self {
             a,
             b,
-            carry: 0,
+            carry,
             _op: PhantomData,
         }
+    }
+
+    /// The carry or borrow into the next limb.
+    #[inline(always)]
+    pub(crate) const fn carry(&self) -> u64 {
+        self.carry
     }
 }
 
@@ -227,6 +215,18 @@ impl<A: LimbStream, O: Op1Op> LimbStream for Op1Iter<A, O> {
     #[inline(always)]
     fn next_limb(&mut self) -> u64 {
         O::op(self.a.next_limb())
+    }
+}
+
+/// The limbs of `!inner`, the two's complement `2^(64 * k) - inner` of `k` limbs once a carry of one
+/// enters the bottom limb of the sum that takes them: `a + TwosComplement(b)` with that carry is
+/// `a - b + 2^(64 * k)`, whose carry out of the top limb is set exactly when `a >= b`.
+pub(crate) struct TwosComplement<I>(pub(crate) I);
+
+impl<I: LimbStream> LimbStream for TwosComplement<I> {
+    #[inline(always)]
+    fn next_limb(&mut self) -> u64 {
+        !self.0.next_limb()
     }
 }
 
