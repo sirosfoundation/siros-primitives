@@ -99,7 +99,7 @@ cargo run -p prime-field-bench-report -- report   # BENCHMARKS.md and benchmarks
 
 ## Features
 
-None. `biguint`'s `precomputed` feature has no effect on this crate.
+None. `biguint`'s `not-precomputed` feature has no effect on this crate.
 
 ## Minimum supported Rust version
 

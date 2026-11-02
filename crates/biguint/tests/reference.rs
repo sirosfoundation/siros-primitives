@@ -401,6 +401,8 @@ fn bit_operations_match_reference() {
         for &a in &values {
             let ra = reference::<N, B, L>(a);
             assert_eq!(reference(!a), !ra);
+            assert_eq!(a.is_zero(), ra.is_zero(), "{B}: {a:?}");
+            assert_eq!(NonZeroUint::new(a).is_some(), !ra.is_zero(), "{B}: {a:?}");
             assert_eq!(a.bit_len(), ra.bit_len(), "{B}: {a:?}");
             assert_eq!(a.leading_zeros(), ra.leading_zeros(), "{B}: {a:?}");
             assert_eq!(a.trailing_zeros(), ra.trailing_zeros(), "{B}: {a:?}");
@@ -435,6 +437,7 @@ fn bit_operations_match_reference() {
                 assert_eq!(reference(a | b), ra | rb);
                 assert_eq!(reference(a ^ b), ra ^ rb);
                 assert_eq!(a.cmp(&b), ra.cmp(&rb), "{B}: {a:?} cmp {b:?}");
+                assert_eq!(a == b, ra == rb, "{B}: {a:?} == {b:?}");
                 let expected_shift = usize::try_from(rb).ok().filter(|shift| *shift < B);
                 let expected_shl = expected_shift.map_or(Reference::ZERO, |shift| ra << shift);
                 assert_eq!(reference(a << b), expected_shl, "{B}: {a:?} << {b:?}");

@@ -4,7 +4,8 @@ use generic_array::{GenericArray, IntoArrayLength};
 use typenum::Const;
 
 use crate::bits::{Bits, Bits8, Bits16, Bits32, Bits64, Bits128, Bits256, Bits384, Bits512};
-use crate::stream::{LimbStream, ZeroExtended, for_each_slot};
+use crate::scan;
+use crate::stream::{LimbSource, LimbStream, ZeroExtended, pull_limbs};
 
 /// An unsigned integer of exactly `N` bits.
 ///
@@ -12,7 +13,7 @@ use crate::stream::{LimbStream, ZeroExtended, for_each_slot};
 /// above `N` are always zero. Arithmetic and the integer and limb constructors work modulo `2^N`.
 /// The byte decoders and the checked conversions refuse a value that needs more bits.
 #[repr(transparent)]
-#[derive_where::derive_where(Clone, Copy, Default, Eq, Hash, PartialEq; GenericArray<u64, N::Limbs>)]
+#[derive_where::derive_where(Clone, Copy, Default, Eq; GenericArray<u64, N::Limbs>)]
 pub struct Uint<N: Bits> {
     pub(crate) limbs: GenericArray<u64, N::Limbs>,
 }
@@ -115,7 +116,7 @@ impl<N: Bits> Uint<N> {
     #[inline(always)]
     #[must_use]
     pub fn is_zero(&self) -> bool {
-        self.limbs.iter().all(|limb| *limb == 0)
+        scan::is_zero(&self.limbs)
     }
 
     /// Bit `index`, counted from the least significant bit; `false` at and above `N`.
@@ -134,12 +135,9 @@ impl<N: Bits> Uint<N> {
     #[inline(always)]
     #[must_use]
     pub fn bit_len(&self) -> usize {
-        for (index, limb) in self.limbs.iter().copied().enumerate().rev() {
-            if limb != 0 {
-                return index * 64 + (64 - limb.leading_zeros() as usize);
-            }
-        }
-        0
+        scan::top_nonzero(&self.limbs).map_or(0, |(index, limb)| {
+            index * 64 + (64 - limb.leading_zeros() as usize)
+        })
     }
 
     /// `N - bit_len()`.
@@ -153,12 +151,9 @@ impl<N: Bits> Uint<N> {
     #[inline(always)]
     #[must_use]
     pub fn trailing_zeros(&self) -> usize {
-        for (index, limb) in self.limbs.iter().copied().enumerate() {
-            if limb != 0 {
-                return index * 64 + limb.trailing_zeros() as usize;
-            }
-        }
-        N::BITS
+        scan::bottom_nonzero(&self.limbs).map_or(N::BITS, |(index, limb)| {
+            index * 64 + limb.trailing_zeros() as usize
+        })
     }
 
     /// The number of set bits.
@@ -180,17 +175,22 @@ impl<N: Bits> Uint<N> {
 
     /// Collects the first `ceil(N / 64)` limbs of `stream`, modulo `2^N`. Every bit of the stream at
     /// and above `bits` is zero, so the top limb is masked only when `bits` exceeds `N`; a stream
-    /// without such a bound passes `usize::MAX`. Up to four limbs the plain pull unrolls; longer
-    /// pulls run in groups of four.
+    /// without such a bound passes `usize::MAX`.
     #[inline(always)]
     pub(crate) fn from_stream(mut stream: impl LimbStream, bits: usize) -> Self {
-        let limbs = if N::LIMBS <= 4 {
-            GenericArray::generate(|_| stream.next_limb())
-        } else {
-            let mut limbs = GenericArray::<u64, N::Limbs>::default();
-            for_each_slot(&mut limbs, |slot| *slot = stream.next_limb());
-            limbs
-        };
+        Self::masked(pull_limbs(&mut stream), bits)
+    }
+
+    /// Writes the first `ceil(N / 64)` limbs of `source`, each from its index, modulo `2^N`; `bits`
+    /// as in [`Self::from_stream`].
+    #[inline(always)]
+    pub(crate) fn from_source(source: impl LimbSource, bits: usize) -> Self {
+        Self::masked(GenericArray::generate(|index| source.limb(index)), bits)
+    }
+
+    /// `limbs`, whose bits at and above `bits` are zero, modulo `2^N`.
+    #[inline(always)]
+    fn masked(limbs: GenericArray<u64, N::Limbs>, bits: usize) -> Self {
         if bits > N::BITS {
             Self::from_generic_limbs(limbs)
         } else {
@@ -198,9 +198,9 @@ impl<N: Bits> Uint<N> {
         }
     }
 
-    /// The limbs, then `0` forever.
+    /// The limbs, then `0`.
     #[inline(always)]
-    pub(crate) fn stream(&self) -> ZeroExtended<'_> {
+    pub(crate) fn source(&self) -> ZeroExtended<'_> {
         ZeroExtended::new(&self.limbs)
     }
 }

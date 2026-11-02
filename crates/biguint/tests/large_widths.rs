@@ -5,7 +5,7 @@
 
 use core::ops::Add;
 
-use biguint::{Bits, Modulus, Uint, WideningMul};
+use biguint::{Bits, Modulus, NonZeroUint, Uint, WideningMul};
 use generic_array::GenericArray;
 use generic_array::sequence::GenericSequence;
 use typenum::{Sum, U64, U128, U1024, U2048, U4096, U8192};
@@ -209,4 +209,28 @@ fn mixed_width_division_matches_reference() {
     check_div_rem::<U4096, U64>();
     // A divisor wider than the dividend: the quotient is zero.
     check_div_rem::<U2048, U4096>();
+}
+
+#[test]
+fn scans_past_sixty_four_limbs_find_the_set_bit() {
+    // Above 65 limbs, the scans read the limbs in groups of 64.
+    type U = Uint<U8192>;
+    for bit in [0, 1, 63, 64, 4095, 4096, 4159, 4160, 8127, 8128, 8191] {
+        let value = U::ONE << bit;
+        assert_eq!(value.bit_len(), bit + 1, "bit {bit}");
+        assert_eq!(value.trailing_zeros(), bit, "bit {bit}");
+        assert!(!value.is_zero(), "bit {bit}");
+        assert!(value != U::ZERO && value == U::ONE << bit, "bit {bit}");
+    }
+    assert_eq!(U::ZERO.bit_len(), 0);
+    assert_eq!(U::ZERO.trailing_zeros(), 8192);
+    // A divisor whose top limb lies in the second group of 64: the quotient and the remainder of
+    // a power of two are a shift and a mask.
+    let power = U::ONE << 6500usize;
+    let divisor = NonZeroUint::new(power).expect("a nonzero divisor");
+    let max = !U::ZERO;
+    assert_eq!(
+        max.div_rem(divisor),
+        (max >> 6500usize, max & (power - U::ONE))
+    );
 }

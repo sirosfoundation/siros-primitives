@@ -33,6 +33,7 @@ mod num;
 mod permute;
 mod pow;
 mod recursion;
+mod scan;
 mod shift;
 mod stream;
 mod uint;

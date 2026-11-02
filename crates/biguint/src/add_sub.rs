@@ -4,7 +4,7 @@ use generic_array::GenericArray;
 
 use crate::bits::Bits;
 use crate::limb::{BorrowingSub, CarryingAdd};
-use crate::stream::{AddOp, Op2CarryIter, SubOp};
+use crate::stream::{AddOp, LimbSource, Op2CarryIter, SubOp};
 use crate::uint::Uint;
 
 impl<N: Bits> Uint<N> {
@@ -54,7 +54,7 @@ impl<N: Bits, RhsN: Bits> Add<Uint<RhsN>> for Uint<N> {
     #[inline(always)]
     fn add(self, rhs: Uint<RhsN>) -> Self::Output {
         Uint::from_stream(
-            Op2CarryIter::<_, _, AddOp>::new(self.stream(), rhs.stream()),
+            Op2CarryIter::<_, _, AddOp>::new(self.source().pull(), rhs.source().pull()),
             N::BITS.max(RhsN::BITS) + 1,
         )
     }
@@ -67,7 +67,7 @@ impl<N: Bits, RhsN: Bits> Sub<Uint<RhsN>> for Uint<N> {
     #[inline(always)]
     fn sub(self, rhs: Uint<RhsN>) -> Self::Output {
         Uint::from_stream(
-            Op2CarryIter::<_, _, SubOp>::new(self.stream(), rhs.stream()),
+            Op2CarryIter::<_, _, SubOp>::new(self.source().pull(), rhs.source().pull()),
             usize::MAX,
         )
     }

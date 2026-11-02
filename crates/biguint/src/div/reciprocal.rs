@@ -214,8 +214,8 @@ fn reciprocal_word(divisor: NormalizedLimb) -> u64 {
 
 /// The reciprocal as the quotient of `(β - 1 - d) β + (β - 1)` by `d`, which fits in a limb because
 /// `β - 1 - d < d`: the compiler's 128-bit division reaches its one-instruction path, `div` on
-/// x86-64. At 128 bits a modular product takes 188 instructions this way against 215 with
-/// Algorithm 2 (rustc 1.99, `-C target-cpu=native`).
+/// x86-64. On Zen 3 a 256-bit division by a 128-bit divisor takes 91 cycles this way, against 105
+/// with Algorithm 2 and the seed table, and 111 with the seed by a 32-bit division.
 #[cfg(any(test, target_arch = "x86_64"))]
 #[inline(always)]
 fn divided_reciprocal(divisor: NormalizedLimb) -> u64 {
@@ -250,7 +250,10 @@ fn newton_reciprocal(divisor: NormalizedLimb) -> u64 {
 const SEED_NUMERATOR: u32 = (1 << 19) - 3 * (1 << 8);
 
 /// `floor(SEED_NUMERATOR / d9)` for `d9` in `256..512`, the top nine bits of a normalized limb.
-#[cfg(all(feature = "precomputed", any(test, not(target_arch = "x86_64"))))]
+#[cfg(all(
+    not(feature = "not-precomputed"),
+    any(test, not(target_arch = "x86_64"))
+))]
 #[inline(always)]
 fn reciprocal_seed(d9: u64) -> u64 {
     RECIPROCAL_SEEDS
@@ -259,17 +262,23 @@ fn reciprocal_seed(d9: u64) -> u64 {
 }
 
 /// `floor(SEED_NUMERATOR / d9)` for `d9` in `256..512`, the top nine bits of a normalized limb.
-#[cfg(all(not(feature = "precomputed"), any(test, not(target_arch = "x86_64"))))]
+#[cfg(all(feature = "not-precomputed", any(test, not(target_arch = "x86_64"))))]
 #[inline(always)]
 fn reciprocal_seed(d9: u64) -> u64 {
     u64::from(SEED_NUMERATOR.checked_div(d9 as u32).unwrap_or(0))
 }
 
 /// The seeds for `d9 = 256..512`.
-#[cfg(all(feature = "precomputed", any(test, not(target_arch = "x86_64"))))]
+#[cfg(all(
+    not(feature = "not-precomputed"),
+    any(test, not(target_arch = "x86_64"))
+))]
 static RECIPROCAL_SEEDS: [u16; 256] = reciprocal_seeds();
 
-#[cfg(all(feature = "precomputed", any(test, not(target_arch = "x86_64"))))]
+#[cfg(all(
+    not(feature = "not-precomputed"),
+    any(test, not(target_arch = "x86_64"))
+))]
 #[expect(
     clippy::indexing_slicing,
     reason = "constant evaluation: an index out of range fails the build"
