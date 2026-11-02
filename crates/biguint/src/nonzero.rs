@@ -1,75 +1,219 @@
-//! Nonzero integers: divisors and moduli that need no zero test.
-//!
-//! The representation follows the limb count. One limb is a `NonZero<u64>` and two limbs a
-//! `NonZero<u128>`, so a division by them reaches the hardware divide as the primitive division by
-//! `NonZero` does. Wider values keep their limbs; the division finds their top significant limb,
-//! which a nonzero value always has.
+//! Values that are not zero: divisors and moduli that need no zero test, and the operations on a
+//! nonzero `Uint` whose result is never zero.
 
 use core::fmt;
-use core::hash::Hash;
-use core::num::NonZero;
-use core::ops::Deref;
+use core::ops::{Add, BitOr};
 
-use generic_array::{ArrayLength, GenericArray};
-use typenum::{B0, B1, Bit, UInt, UTerm, Unsigned};
+use generic_array::GenericArray;
+use num_traits::Zero;
+use typenum::Sum;
 
 use crate::bits::Bits;
-use crate::scan;
+use crate::mul::WideningMul;
 use crate::uint::Uint;
 
-/// An `N`-bit integer that is not zero.
-#[derive_where::derive_where(Clone, Copy, Eq, Hash, PartialEq; <N as crate::bits::sealed::Sealed>::NonZeroLimbs)]
-pub struct NonZeroUint<N: Bits> {
-    value: <N as crate::bits::sealed::Sealed>::NonZeroLimbs,
-}
+/// A value that is not zero.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct NonZero<T>(T);
 
-impl<N: Bits> NonZeroUint<N> {
+/// An `N`-bit integer that is not zero.
+pub type NonZeroUint<N> = NonZero<Uint<N>>;
+
+/// The value refused by [`NonZero`]'s `TryFrom`: it is zero.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("the value is zero")]
+pub struct IsZero;
+
+impl<T: Zero> NonZero<T> {
     /// `value`, or `None` when it is zero.
     #[inline(always)]
     #[must_use]
-    pub fn new(value: Uint<N>) -> Option<Self> {
-        NonZeroLimbs::new(value.limbs).map(|value| Self { value })
+    pub fn new(value: T) -> Option<Self> {
+        (!value.is_zero()).then_some(Self(value))
     }
 
     /// The value.
     #[inline(always)]
     #[must_use]
-    pub fn get(self) -> Uint<N> {
-        Uint {
-            limbs: self.value.limbs(),
+    pub fn get(self) -> T {
+        self.0
+    }
+
+    /// A reference to the value.
+    #[inline(always)]
+    #[must_use]
+    pub const fn as_ref(&self) -> &T {
+        &self.0
+    }
+}
+
+/// The value's own formatting.
+impl<T: fmt::Debug> fmt::Debug for NonZero<T> {
+    #[inline]
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, formatter)
+    }
+}
+
+/// The value's own formatting.
+impl<T: fmt::Display> fmt::Display for NonZero<T> {
+    #[inline]
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, formatter)
+    }
+}
+
+impl<N: Bits> From<NonZeroUint<N>> for Uint<N> {
+    #[inline(always)]
+    fn from(value: NonZeroUint<N>) -> Self {
+        value.0
+    }
+}
+
+impl<N: Bits> TryFrom<Uint<N>> for NonZeroUint<N> {
+    type Error = IsZero;
+
+    #[inline(always)]
+    fn try_from(value: Uint<N>) -> Result<Self, IsZero> {
+        Self::new(value).ok_or(IsZero)
+    }
+}
+
+impl<N: Bits> Zero for Uint<N> {
+    #[inline(always)]
+    fn zero() -> Self {
+        Self::ZERO
+    }
+
+    #[inline(always)]
+    fn is_zero(&self) -> bool {
+        Uint::is_zero(self)
+    }
+}
+
+/// A nonzero value with bits set: it stays nonzero.
+impl<N: Bits, M: Bits> BitOr<Uint<M>> for NonZeroUint<N> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn bitor(self, rhs: Uint<M>) -> Self {
+        Self(self.0 | rhs)
+    }
+}
+
+/// A nonzero value with the bits of another set: it stays nonzero.
+impl<N: Bits, M: Bits> BitOr<NonZeroUint<M>> for NonZeroUint<N> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn bitor(self, rhs: NonZeroUint<M>) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl<N: Bits> NonZeroUint<N> {
+    /// `self + rhs`, or the largest value when the sum overflows.
+    #[inline(always)]
+    #[must_use]
+    pub fn saturating_add(self, rhs: Uint<N>) -> Self {
+        self.checked_add(rhs).unwrap_or(Self(!Uint::ZERO))
+    }
+
+    /// `self + rhs`, or `None` when the sum overflows.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_add(self, rhs: Uint<N>) -> Option<Self> {
+        // Without overflow the sum is at least `self`.
+        let (sum, carry) = self.0.carrying_add(rhs, false);
+        (!carry).then_some(Self(sum))
+    }
+
+    /// `self * rhs`, or the largest value when the product overflows.
+    #[inline(always)]
+    #[must_use]
+    pub fn saturating_mul(self, rhs: Self) -> Self
+    where
+        N: Add<N>,
+        Sum<N, N>: Bits,
+    {
+        self.checked_mul(rhs).unwrap_or(Self(!Uint::ZERO))
+    }
+
+    /// `self * rhs`, or `None` when the product overflows.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_mul(self, rhs: Self) -> Option<Self>
+    where
+        N: Add<N>,
+        Sum<N, N>: Bits,
+    {
+        // The product of two nonzero values is nonzero.
+        let product = self.0.widening_mul(rhs.0);
+        (product.bit_len() <= N::BITS).then(|| Self(product.resize()))
+    }
+
+    /// `self^exponent`, or `None` when it overflows. Squaring from the exponent's top bit keeps
+    /// every partial power at most the result.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_pow(self, exponent: u32) -> Option<Self>
+    where
+        N: Add<N>,
+        Sum<N, N>: Bits,
+    {
+        let mut power = Self(Uint::ONE);
+        for bit in (0..u32::BITS - exponent.leading_zeros()).rev() {
+            power = power.checked_mul(power)?;
+            if exponent >> bit & 1 == 1 {
+                power = power.checked_mul(self)?;
+            }
         }
+        Some(power)
+    }
+
+    /// The zero bits above the top set bit.
+    #[inline(always)]
+    #[must_use]
+    pub fn leading_zeros(self) -> usize {
+        self.0.leading_zeros()
+    }
+
+    /// The zero bits below the bottom set bit.
+    #[inline(always)]
+    #[must_use]
+    pub fn trailing_zeros(self) -> usize {
+        self.0.trailing_zeros()
+    }
+
+    /// `floor(log2(self))`: the index of the top set bit.
+    #[inline(always)]
+    #[must_use]
+    pub fn ilog2(self) -> usize {
+        self.0.bit_len() - 1
+    }
+
+    /// Whether exactly one bit is set.
+    #[inline(always)]
+    #[must_use]
+    pub fn is_power_of_two(self) -> bool {
+        self.0.count_ones() == 1
     }
 
     /// The value as the divisor of the primitive division, when it has at most two limbs.
     #[inline(always)]
-    pub(crate) fn native(self) -> Option<NonZero<u128>> {
-        self.value.native()
-    }
-
-    /// The limbs, in place above two limbs.
-    #[inline(always)]
-    pub(crate) fn limbs(&self) -> LimbsOf<'_, N::Limbs> {
-        self.value.limbs_of()
-    }
-}
-
-/// The limbs of a nonzero value: its stored limbs, or the limbs of its stored primitive.
-pub enum LimbsOf<'a, L: ArrayLength> {
-    /// The stored limbs.
-    InPlace(&'a GenericArray<u64, L>),
-    /// The limbs of the stored primitive.
-    Copied(GenericArray<u64, L>),
-}
-
-impl<L: ArrayLength> Deref for LimbsOf<'_, L> {
-    type Target = GenericArray<u64, L>;
-
-    #[inline(always)]
-    fn deref(&self) -> &GenericArray<u64, L> {
-        match self {
-            Self::InPlace(limbs) => limbs,
-            Self::Copied(limbs) => limbs,
+    pub(crate) fn native(self) -> Option<core::num::NonZero<u128>> {
+        match self.0.as_limbs() {
+            [low] => core::num::NonZero::new(u128::from(*low)),
+            [low, high] => core::num::NonZero::new(u128::from(*high) << 64 | u128::from(*low)),
+            _ => None,
         }
+    }
+
+    /// The limbs.
+    #[inline(always)]
+    pub(crate) fn limbs(&self) -> &GenericArray<u64, N::Limbs> {
+        &self.0.limbs
     }
 }
 
@@ -86,130 +230,4 @@ pub(crate) fn significant_len(limbs: &[u64]) -> usize {
         .skip(1)
         .rposition(|limb| *limb != 0)
         .map_or(1, |index| index + 2)
-}
-
-/// Lowercase hexadecimal with a `0x` prefix, as [`Uint`] prints.
-impl<N: Bits> fmt::Debug for NonZeroUint<N> {
-    #[inline]
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.get(), formatter)
-    }
-}
-
-/// The nonzero values of `L` limbs.
-pub trait NonZeroLimbs<L: ArrayLength>: Copy + Eq + Hash {
-    /// `limbs`, or `None` when they are all zero.
-    fn new(limbs: GenericArray<u64, L>) -> Option<Self>;
-
-    /// The limbs.
-    fn limbs(self) -> GenericArray<u64, L>;
-
-    /// The limbs, in place when they are stored as limbs.
-    fn limbs_of(&self) -> LimbsOf<'_, L>;
-
-    /// The value as a `NonZero<u128>`; `None` above two limbs.
-    fn native(self) -> Option<NonZero<u128>>;
-}
-
-/// The representation of the nonzero values of a limb count.
-pub trait NonZeroFor: ArrayLength {
-    /// The representation.
-    type Repr: NonZeroLimbs<Self>;
-}
-
-impl NonZeroFor for UInt<UTerm, B1> {
-    type Repr = NonZero<u64>;
-}
-
-impl NonZeroFor for UInt<UInt<UTerm, B1>, B0> {
-    type Repr = NonZero<u128>;
-}
-
-impl NonZeroFor for UInt<UInt<UTerm, B1>, B1> {
-    type Repr = Limbs<Self>;
-}
-
-/// Four limbs and more.
-impl<U: Unsigned, A: Bit, B: Bit, C: Bit> NonZeroFor for UInt<UInt<UInt<U, A>, B>, C>
-where
-    Self: ArrayLength,
-    GenericArray<u64, Self>: Copy + Eq + Hash,
-{
-    type Repr = Limbs<Self>;
-}
-
-impl NonZeroLimbs<UInt<UTerm, B1>> for NonZero<u64> {
-    #[inline(always)]
-    fn new(limbs: GenericArray<u64, UInt<UTerm, B1>>) -> Option<Self> {
-        let [low] = limbs.into_array();
-        Self::new(low)
-    }
-
-    #[inline(always)]
-    fn limbs(self) -> GenericArray<u64, UInt<UTerm, B1>> {
-        GenericArray::from_array([self.get()])
-    }
-
-    #[inline(always)]
-    fn limbs_of(&self) -> LimbsOf<'_, UInt<UTerm, B1>> {
-        LimbsOf::Copied(self.limbs())
-    }
-
-    #[inline(always)]
-    fn native(self) -> Option<NonZero<u128>> {
-        Some(NonZero::<u128>::from(self))
-    }
-}
-
-impl NonZeroLimbs<UInt<UInt<UTerm, B1>, B0>> for NonZero<u128> {
-    #[inline(always)]
-    fn new(limbs: GenericArray<u64, UInt<UInt<UTerm, B1>, B0>>) -> Option<Self> {
-        let [low, high] = limbs.into_array();
-        Self::new(u128::from(high) << 64 | u128::from(low))
-    }
-
-    #[inline(always)]
-    fn limbs(self) -> GenericArray<u64, UInt<UInt<UTerm, B1>, B0>> {
-        let value = self.get();
-        GenericArray::from_array([value as u64, (value >> 64) as u64])
-    }
-
-    #[inline(always)]
-    fn limbs_of(&self) -> LimbsOf<'_, UInt<UInt<UTerm, B1>, B0>> {
-        LimbsOf::Copied(self.limbs())
-    }
-
-    #[inline(always)]
-    fn native(self) -> Option<NonZero<u128>> {
-        Some(self)
-    }
-}
-
-/// Three limbs and more, not all zero.
-#[derive_where::derive_where(Clone, Copy, Eq, Hash, PartialEq; GenericArray<u64, L>)]
-pub struct Limbs<L: ArrayLength>(GenericArray<u64, L>);
-
-impl<L: ArrayLength> NonZeroLimbs<L> for Limbs<L>
-where
-    GenericArray<u64, L>: Copy + Eq + Hash,
-{
-    #[inline(always)]
-    fn new(limbs: GenericArray<u64, L>) -> Option<Self> {
-        (!scan::is_zero(&limbs)).then_some(Self(limbs))
-    }
-
-    #[inline(always)]
-    fn limbs(self) -> GenericArray<u64, L> {
-        self.0
-    }
-
-    #[inline(always)]
-    fn limbs_of(&self) -> LimbsOf<'_, L> {
-        LimbsOf::InPlace(&self.0)
-    }
-
-    #[inline(always)]
-    fn native(self) -> Option<NonZero<u128>> {
-        None
-    }
 }

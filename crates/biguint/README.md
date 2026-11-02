@@ -32,9 +32,13 @@ assert_eq!(max521.bit_len(), 521);
 
 ## Division
 
-A divisor is a `NonZeroUint`. `NonZeroUint::new` returns `None` for zero, so the check runs once
-per divisor, and `get` returns the value. `div_rem`, `/` and `%` take a `NonZeroUint` and return
-plain values.
+A divisor is a `NonZeroUint`, the alias of `NonZero<Uint<N>>`. `NonZero::new` returns `None` for
+zero, so the check runs once per divisor; `get` returns the value and `as_ref` borrows it, and
+`TryFrom` and `From` convert both ways. `div_rem`, `/` and `%` take a `NonZeroUint` and return
+plain values. The operations whose result stays nonzero return a `NonZeroUint`: `|` with any
+`Uint`, `saturating_add` and `saturating_mul`, and `checked_add`, `checked_mul` and `checked_pow`
+with an `Option`. `leading_zeros`, `trailing_zeros`, `ilog2` and `is_power_of_two` need no zero
+case.
 `checked_div_rem` takes a `Uint` and returns `None` for a zero divisor. The divisor may have any
 width, and the remainder has the divisor's.
 
