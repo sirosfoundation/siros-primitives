@@ -299,6 +299,7 @@ name = "clmul"
 version = "0.1.0"
 dependencies = [
  "biguint",
+ "const-default",
 ]
 
 [[package]]

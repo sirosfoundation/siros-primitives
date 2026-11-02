@@ -1,8 +1,76 @@
-//! The backend of builds without PCLMULQDQ or PMULL: the comb, with the GF(2^128) sum in three
-//! `u128` lanes.
+//! The backend of builds without PCLMULQDQ or PMULL: a register is two `u64` words, and the word
+//! products come from the comb.
 
 pub(crate) use crate::comb::const_clmul64 as clmul64;
 use crate::{REDUCTION, to_limbs};
+
+/// A register: two 64-bit words, word 0 first.
+pub(crate) type Register = [u64; 2];
+
+/// The register of zeros.
+pub(crate) const ZERO: Register = [0, 0];
+
+/// The register of the words `[low, high]`.
+#[inline(always)]
+pub(crate) const fn register(words: [u64; 2]) -> Register {
+    words
+}
+
+/// The words `[low, high]` of `register`.
+#[inline(always)]
+pub(crate) const fn words(register: Register) -> [u64; 2] {
+    register
+}
+
+/// `a ^ b`.
+#[inline(always)]
+pub(crate) const fn xor(a: Register, b: Register) -> Register {
+    [a[0] ^ b[0], a[1] ^ b[1]]
+}
+
+/// `a & b`.
+#[inline(always)]
+pub(crate) const fn and(a: Register, b: Register) -> Register {
+    [a[0] & b[0], a[1] & b[1]]
+}
+
+/// `a | b`.
+#[inline(always)]
+pub(crate) const fn or(a: Register, b: Register) -> Register {
+    [a[0] | b[0], a[1] | b[1]]
+}
+
+/// Each word shifted left by `bits`, below 64.
+#[inline(always)]
+pub(crate) const fn shl_words(a: Register, bits: u32) -> Register {
+    [a[0] << bits, a[1] << bits]
+}
+
+/// Each word shifted right by `bits`, below 64.
+#[inline(always)]
+pub(crate) const fn shr_words(a: Register, bits: u32) -> Register {
+    [a[0] >> bits, a[1] >> bits]
+}
+
+/// `[0, low]`: word 0 moved up to word 1.
+#[inline(always)]
+pub(crate) const fn up(a: Register) -> Register {
+    [0, a[0]]
+}
+
+/// `[high, 0]`: word 1 moved down to word 0.
+#[inline(always)]
+pub(crate) const fn down(a: Register) -> Register {
+    [a[1], 0]
+}
+
+/// The carry-less product of word `i` of `a` and word `j` of `b`, each 0 or 1.
+#[inline(always)]
+pub(crate) const fn clmul(a: Register, i: usize, b: Register, j: usize) -> Register {
+    let x = if i == 0 { a[0] } else { a[1] };
+    let y = if j == 0 { b[0] } else { b[1] };
+    to_limbs(clmul64(x, y))
+}
 
 /// The unreduced sum `low + middle * x^64 + high * x^128`.
 pub(crate) struct Accumulator {
