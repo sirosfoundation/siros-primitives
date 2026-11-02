@@ -117,13 +117,16 @@ pub fn visit<S: Suite, V: Visitor<S::Op, S::Key>>(visitor: V) -> V {
 /// Runs `run` on each input of `batch` and returns the number of runs. Each input and each
 /// result passes through [`black_box`], so the compiler can neither precompute a result nor skip
 /// one. Callgrind counts the instructions from the entry of this function to its exit, so it
-/// keeps a symbol of its own.
+/// keeps a symbol of its own. The loop calls `run` directly, so an operation that inlines into
+/// its caller inlines here whatever its size.
 #[inline(never)]
 pub fn run_batch<I, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
-    batch
-        .iter()
-        .map(|input| black_box(run(black_box(input))))
-        .fold(0, |runs, _result| runs + 1)
+    let mut runs = 0;
+    for input in batch {
+        drop(black_box(run(black_box(input))));
+        runs += 1;
+    }
+    runs
 }
 
 /// One operation on one row, with the visitor that receives its cells.

@@ -13,9 +13,9 @@ use generic_array::GenericArray;
 use crate::Modulus;
 use crate::chain::Program;
 use crate::kernel::{
-    add, add_mod, below, bit, bit_len, cios, copy, fits, fold, inv64, is_zero, jacobi, limb,
-    mul_wide, redc, reduce_once, set, shr, square_wide, sub, trailing_zeros, truncate,
-    truncate_mut,
+    add, add_mod, below, bit, bit_len, cios, copy, equal, fits, fold, inv64, is_zero, jacobi, limb,
+    mul_wide, neg_mod, redc, reduce_once, set, shr, square_wide, sub, sub_mod, trailing_zeros,
+    truncate, truncate_mut,
 };
 use crate::width::Width;
 
@@ -23,6 +23,8 @@ use crate::width::Width;
 pub(crate) type Limbs<M> = GenericArray<u64, <<M as Modulus>::Width as Bits>::Limbs>;
 /// The limbs of a partly folded product.
 pub(crate) type ExtendedLimbs<M> = GenericArray<u64, <<M as Modulus>::Width as Width>::Extended>;
+/// The limbs of a full product.
+pub(crate) type WideLimbs<M> = GenericArray<u64, <<M as Modulus>::Width as Width>::Wide>;
 
 /// The most folds a pseudo-Mersenne reduction may take before Montgomery multiplication is
 /// cheaper.
@@ -59,21 +61,45 @@ impl<M: Modulus> Shape<M> {
     );
     /// `-p^-1 mod 2^64`.
     pub(crate) const INV: u64 = inv64(limb(Self::P.as_slice(), 0));
+    /// The low limb of the modulus.
+    pub(crate) const P0: u64 = limb(Self::P.as_slice(), 0);
+    /// The top limb of the modulus.
+    pub(crate) const P_TOP: u64 = limb(Self::P.as_slice(), Self::LIMBS - 1);
     /// `c` of a pseudo-Mersenne modulus `2^BITS - c` with `c < 2^64`.
     const DEFICIT: Option<u64> = Self::deficit();
+    /// `c` of a pseudo-Mersenne modulus; `0` for any other.
+    pub(crate) const DEFICIT_VALUE: u64 = match Self::DEFICIT {
+        Some(deficit) => deficit,
+        None => 0,
+    };
     /// The folds that reduce a product below `2 p` for the deficit.
-    const FOLDS: usize = match Self::DEFICIT {
+    pub(crate) const FOLDS: usize = match Self::DEFICIT {
         Some(deficit) => folds(Self::BITS, deficit),
         None => usize::MAX,
     };
-    /// Products reduce by pseudo-Mersenne folding; elements are plain residues.
-    pub(crate) const PSEUDO_MERSENNE: bool = Self::FOLDS <= MAX_FOLDS;
-    /// Products reduce by Montgomery multiplication; elements are residues times `R`.
-    pub(crate) const MONTGOMERY: bool = !Self::PSEUDO_MERSENNE;
+    /// One limb and `p = 2^BITS - 1`: elements are plain residues in `[1, p]`, with `0` held as
+    /// `p`, so that a sum or a folded product above `p` is one at or above `2^BITS`.
+    pub(crate) const MERSENNE: bool =
+        Self::LIMBS == 1 && Self::BITS < 64 && matches!(Self::DEFICIT, Some(1));
+    /// Several limbs and `p = 2^BITS - c` that folds below `2 p` in few steps: elements are
+    /// plain residues and products fold.
+    pub(crate) const PSEUDO_MERSENNE: bool = Self::LIMBS > 1 && Self::FOLDS <= MAX_FOLDS;
+    /// Every other modulus, on one limb an unfolded `c` costing more than a product: elements
+    /// are residues times `R` and products reduce by Montgomery multiplication.
+    pub(crate) const MONTGOMERY: bool = !Self::MERSENNE && !Self::PSEUDO_MERSENNE;
+    /// One limb, and a product of two elements fits the limb.
+    pub(crate) const PRODUCT_FITS_LIMB: bool = Self::LIMBS == 1 && 2 * Self::BITS <= 64;
+    /// One limb, and the modulus is prime, by the Miller–Rabin test with the first twelve
+    /// prime bases, which decides every 64-bit number. A Montgomery product of a prime modulus
+    /// whose product fits the limb lands below `p`.
+    pub(crate) const PRIME_LIMB: bool = Self::LIMBS == 1 && is_prime(Self::P0);
     /// `R = 2^(64 L) mod p`.
     const R: Limbs<M> = Self::pow2_mod(64 * Self::LIMBS);
     /// `R^2 mod p`.
     pub(crate) const R2: Limbs<M> = Self::pow2_mod(128 * Self::LIMBS);
+    /// `R^3 mod p`: a Montgomery product by it turns the inverse of a representation into the
+    /// representation of the inverse.
+    pub(crate) const R3: Limbs<M> = Self::pow2_mod(192 * Self::LIMBS);
     /// The representation of `1`.
     pub(crate) const ONE: Limbs<M> = {
         let () = Self::VALID;
@@ -84,6 +110,12 @@ impl<M: Modulus> Shape<M> {
             set(one.as_mut_slice(), 0, 1);
             one
         }
+    };
+    /// The representation of `0`: `p` for [`Self::MERSENNE`], else zero limbs.
+    pub(crate) const ZERO: Limbs<M> = if Self::MERSENNE {
+        Self::P
+    } else {
+        M::Width::ZERO
     };
     /// `p = 3 mod 4`: a square root is `x^((p + 1) / 4)`.
     pub(crate) const THREE_MOD_FOUR: bool = limb(Self::P.as_slice(), 0) & 3 == 3;
@@ -238,6 +270,8 @@ impl<M: Modulus> Shape<M> {
                 Self::INV,
                 Self::SPARE,
             );
+        } else if Self::MERSENNE && is_zero(value) {
+            copy(out.as_mut_slice(), Self::P.as_slice());
         } else {
             copy(out.as_mut_slice(), value);
         }
@@ -258,10 +292,70 @@ impl<M: Modulus> Shape<M> {
                 Self::INV,
                 Self::SPARE,
             );
-        } else {
+        } else if !(Self::MERSENNE && equal(value, Self::P.as_slice())) {
             copy(out.as_mut_slice(), value);
         }
         out
+    }
+
+    /// The residue in `[0, p)` that a representation holds: the integer, or its Montgomery
+    /// form. The raw arithmetic below runs on these residues and leaves results in `[0, p)`.
+    #[inline(always)]
+    const fn residue(value: &[u64]) -> Limbs<M> {
+        let mut out = M::Width::ZERO;
+        if !(Self::MERSENNE && equal(value, Self::P.as_slice())) {
+            copy(out.as_mut_slice(), value);
+        }
+        out
+    }
+
+    /// The representation of a residue in `[0, p)`: [`Self::residue`] backwards.
+    #[inline(always)]
+    const fn represent(residue: Limbs<M>) -> Limbs<M> {
+        if Self::MERSENNE && is_zero(residue.as_slice()) {
+            Self::P
+        } else {
+            residue
+        }
+    }
+
+    /// The sum of two representations.
+    #[inline(always)]
+    pub(crate) const fn add_raw(a: &[u64], b: &[u64]) -> Limbs<M> {
+        let mut out = M::Width::ZERO;
+        add_mod(
+            out.as_mut_slice(),
+            Self::residue(a).as_slice(),
+            Self::residue(b).as_slice(),
+            Self::P.as_slice(),
+            Self::SPARE,
+        );
+        Self::represent(out)
+    }
+
+    /// The difference of two representations.
+    #[inline(always)]
+    pub(crate) const fn sub_raw(a: &[u64], b: &[u64]) -> Limbs<M> {
+        let mut out = M::Width::ZERO;
+        sub_mod(
+            out.as_mut_slice(),
+            Self::residue(a).as_slice(),
+            Self::residue(b).as_slice(),
+            Self::P.as_slice(),
+        );
+        Self::represent(out)
+    }
+
+    /// The negation of a representation.
+    #[inline(always)]
+    pub(crate) const fn neg_raw(a: &[u64]) -> Limbs<M> {
+        let mut out = M::Width::ZERO;
+        neg_mod(
+            out.as_mut_slice(),
+            Self::residue(a).as_slice(),
+            Self::P.as_slice(),
+        );
+        Self::represent(out)
     }
 
     /// The product of two representations.
@@ -279,10 +373,14 @@ impl<M: Modulus> Shape<M> {
             );
         } else {
             let mut wide = M::Width::WIDE_ZERO;
-            mul_wide(wide.as_mut_slice(), a, b);
+            mul_wide(
+                wide.as_mut_slice(),
+                Self::residue(a).as_slice(),
+                Self::residue(b).as_slice(),
+            );
             Self::fold_raw(&mut out, wide.as_slice());
         }
-        out
+        Self::represent(out)
     }
 
     /// The square of a representation.
@@ -290,7 +388,7 @@ impl<M: Modulus> Shape<M> {
     pub(crate) const fn square_raw(a: &[u64]) -> Limbs<M> {
         let mut out = M::Width::ZERO;
         let mut wide = M::Width::WIDE_ZERO;
-        square_wide(wide.as_mut_slice(), a);
+        square_wide(wide.as_mut_slice(), Self::residue(a).as_slice());
         if Self::MONTGOMERY {
             redc(
                 out.as_mut_slice(),
@@ -302,7 +400,7 @@ impl<M: Modulus> Shape<M> {
         } else {
             Self::fold_raw(&mut out, wide.as_slice());
         }
-        out
+        Self::represent(out)
     }
 
     /// The limbs that the value needs after the first, second and third fold, from the bound on
@@ -312,7 +410,7 @@ impl<M: Modulus> Shape<M> {
     const FOLD_LIMBS_3: usize = fold_limbs(Self::BITS, Self::DEFICIT, 3);
 
     /// The limbs that the value needs after `folds` folds.
-    const fn fold_limbs(folds: usize) -> usize {
+    pub(crate) const fn fold_limbs(folds: usize) -> usize {
         match folds {
             1 => Self::FOLD_LIMBS_1,
             2 => Self::FOLD_LIMBS_2,
@@ -454,4 +552,72 @@ const fn folds(bits: usize, deficit: u64) -> usize {
         });
     }
     MAX_FOLDS + 1
+}
+
+/// The prime bases of the Miller–Rabin test that decide every 64-bit number.
+const PRIME_BASES: [u64; 12] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
+
+/// Whether `n` is prime, by the Miller–Rabin test with [`PRIME_BASES`].
+const fn is_prime(n: u64) -> bool {
+    if n < 2 {
+        return false;
+    }
+    let mut index = 0;
+    while index < PRIME_BASES.len() {
+        let base = prime_base(index);
+        if n == base {
+            return true;
+        }
+        if n.is_multiple_of(base) {
+            return false;
+        }
+        index += 1;
+    }
+    // `n - 1 = d 2^s` with `d` odd.
+    let s = (n - 1).trailing_zeros();
+    let d = (n - 1) >> s;
+    let mut index = 0;
+    while index < PRIME_BASES.len() {
+        let mut x = pow_mod(prime_base(index), d, n);
+        let mut witness = x != 1 && x != n - 1;
+        let mut round = 1;
+        while witness && round < s {
+            x = mul_mod(x, x, n);
+            witness = x != n - 1;
+            round += 1;
+        }
+        if witness {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+/// Base `index` of [`PRIME_BASES`]; `2` beyond them.
+const fn prime_base(index: usize) -> u64 {
+    match PRIME_BASES.split_at_checked(index) {
+        Some((_, [base, ..])) => *base,
+        Some((_, [])) | None => 2,
+    }
+}
+
+/// `a b mod n`.
+const fn mul_mod(a: u64, b: u64, n: u64) -> u64 {
+    (a as u128 * b as u128 % n as u128) as u64
+}
+
+/// `base^exponent mod n`, by square-and-multiply.
+const fn pow_mod(base: u64, exponent: u64, n: u64) -> u64 {
+    let mut result = 1 % n;
+    let mut square = base % n;
+    let mut rest = exponent;
+    while rest > 0 {
+        if rest & 1 == 1 {
+            result = mul_mod(result, square, n);
+        }
+        square = mul_mod(square, square, n);
+        rest >>= 1;
+    }
+    result
 }
