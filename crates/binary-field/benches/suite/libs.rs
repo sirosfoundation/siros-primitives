@@ -65,6 +65,11 @@ trait Raw {
 /// `x^i`.
 struct Same;
 
+/// The carrier of a crate that stores the row's elements as the row does.
+const fn same() -> Same {
+    Same
+}
+
 impl<T: Raw> Carrier<T> for Same {
     fn to_crate(&self, limbs: &[u64]) -> T {
         T::from_raw(limbs)
@@ -226,12 +231,11 @@ macro_rules! raw_word {
 }
 
 /// Add and mul by the operators of a type that holds the row's elements.
-fn operators<T, V>(cells: Crate<V>) -> Carried<V, fn() -> Same>
+fn operators<T, V>(cells: Crate<V>) -> Carried<V, impl Fn() -> Same + Copy>
 where
     T: Raw + Copy + Add<Output = T> + Mul<Output = T>,
     V: Visitor<Op, Field>,
 {
-    let same: fn() -> Same = || Same;
     cells
         .carry(same)
         .binary(Op::Add, "+", |&(a, b): &(T, T)| a + b, element)
@@ -361,7 +365,7 @@ fn galois_field_2pm<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         GF8 => galois::<GFu8<AES_BITS>, V>(cells),
         GF16 => galois::<GFu16<GF16_BITS>, V>(cells),
         GF64 => galois::<GFu64<GF64_BITS>, V>(cells),
-        _ => cells.none("the polynomial is a `u128`"),
+        _ => cells.none("fields of at most 127 bits"),
     }
 }
 
@@ -598,7 +602,6 @@ fn wiedemann_tower() -> Tower {
 /// and `Ghash128`.
 fn plonky3<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     let modulus = spec(cells.key()).1.modulus;
-    let same: fn() -> Same = || Same;
     match cells.key().field.as_str() {
         GF8 => p3::<Rijndael8b, _, V>(cells.carry(same)),
         GF16 => {

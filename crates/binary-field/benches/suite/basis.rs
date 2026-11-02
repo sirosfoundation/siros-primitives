@@ -96,7 +96,7 @@ fn base_root(field: &Modulus, base: &Modulus) -> Limbs {
         })
         .collect();
     let subfield = Linear {
-        columns: Echelon::new(&frobenius, field.degree).kernel(),
+        columns: Echelon::new(&frobenius, field.degree).kernel,
     };
     assert_eq!(
         subfield.columns.len(),
@@ -164,65 +164,79 @@ impl Linear {
     }
 }
 
-/// The Gauss–Jordan elimination of a linear map: rows that pair an image with the combination of
-/// basis vectors that gives it. Each pivot row is the only row with its pivot bit; the rows
-/// without a pivot have the image zero, and their combinations span the kernel.
+/// An image and the combination of basis vectors that gives it.
+#[derive(Clone)]
+struct Row {
+    image: Limbs,
+    combination: Limbs,
+}
+
+impl Row {
+    /// Adds `other`: the image of the sum of the combinations is the sum of the images.
+    fn add(&mut self, other: &Self) {
+        xor(&mut self.image, &other.image);
+        xor(&mut self.combination, &other.combination);
+    }
+}
+
+/// The Gauss–Jordan elimination of a linear map. Each pivot row is the only row with its pivot
+/// bit set; the rows left without a pivot have the image zero.
 struct Echelon {
-    /// Each row: the image and the combination.
-    rows: Vec<(Limbs, Limbs)>,
-    /// The pivot bit of each of the first rows.
-    pivots: Vec<usize>,
+    /// Each pivot bit with its row.
+    pivots: Vec<(usize, Row)>,
+    /// The combinations of the rows without a pivot: a basis of the kernel.
+    kernel: Vec<Limbs>,
+    /// The limbs of a combination.
+    width: usize,
 }
 
 impl Echelon {
     /// The elimination of the map with `columns`, whose images have `bits` bits.
     fn new(columns: &[Limbs], bits: usize) -> Self {
-        let mut rows: Vec<(Limbs, Limbs)> = columns
+        let width = columns.len().div_ceil(64);
+        let mut rest: Vec<Row> = columns
             .iter()
             .enumerate()
             .map(|(index, column)| {
-                let mut combination = vec![0; columns.len().div_ceil(64)];
+                let mut combination = vec![0; width];
                 flip(&mut combination, index);
-                (column.clone(), combination)
+                Row {
+                    image: column.clone(),
+                    combination,
+                }
             })
             .collect();
-        let mut pivots = Vec::new();
+        let mut pivots: Vec<(usize, Row)> = Vec::new();
         for pivot in 0..bits {
-            let Some(found) = (pivots.len()..rows.len()).find(|row| bit(&rows[*row].0, pivot))
-            else {
+            let Some(found) = rest.iter().position(|row| bit(&row.image, pivot)) else {
                 continue;
             };
-            rows.swap(pivots.len(), found);
-            let (image, combination) = rows[pivots.len()].clone();
-            for (index, row) in rows.iter_mut().enumerate() {
-                if index != pivots.len() && bit(&row.0, pivot) {
-                    xor(&mut row.0, &image);
-                    xor(&mut row.1, &combination);
+            let chosen = rest.swap_remove(found);
+            for row in rest.iter_mut().chain(pivots.iter_mut().map(|(_, row)| row)) {
+                if bit(&row.image, pivot) {
+                    row.add(&chosen);
                 }
             }
-            pivots.push(pivot);
+            pivots.push((pivot, chosen));
         }
-        Self { rows, pivots }
+        Self {
+            pivots,
+            kernel: rest.into_iter().map(|row| row.combination).collect(),
+            width,
+        }
     }
 
     /// A combination whose image is `target`, or `None` when `target` is outside the image.
     fn solve(&self, target: &[u64]) -> Option<Limbs> {
-        let mut rest = target.to_vec();
-        let mut solution = vec![0; self.rows.len().div_ceil(64)];
-        for ((image, combination), pivot) in self.rows.iter().zip(&self.pivots) {
-            if bit(&rest, *pivot) {
-                xor(&mut rest, image);
-                xor(&mut solution, combination);
+        let mut rest = Row {
+            image: target.to_vec(),
+            combination: vec![0; self.width],
+        };
+        for (pivot, row) in &self.pivots {
+            if bit(&rest.image, *pivot) {
+                rest.add(row);
             }
         }
-        is_zero(&rest).then_some(solution)
-    }
-
-    /// A basis of the kernel.
-    fn kernel(&self) -> Vec<Limbs> {
-        self.rows[self.pivots.len()..]
-            .iter()
-            .map(|(_, combination)| combination.clone())
-            .collect()
+        is_zero(&rest.image).then_some(rest.combination)
     }
 }

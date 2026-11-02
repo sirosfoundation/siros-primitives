@@ -79,9 +79,10 @@ const LAYOUT: Layout<'static, Field> = Layout {
          polynomial bases of the rows, and `BinaryField16` in the Wiedemann tower.",
         "- `runtime-algebra`, `compile-algebra` and `core-algebra` are the `Gf2_128Field` of \
          longfellow-zk's prover, compiler and reference.",
-        "- `polyval` is its `hazmat::FieldElement`, in POLYVAL's representation (RFC 8452): an \
-         element `a` enters as the block of the bit reversal of `a·x⁻¹`, the map that carries \
-         POLYVAL's product to the GCM field's.",
+        "- `polyval` is its `hazmat::FieldElement`, whose product is the crate's portable \
+         constant-time code. An element `a` enters POLYVAL's representation (RFC 8452) as the \
+         block of the bit reversal of `a·x⁻¹`, the map that carries POLYVAL's product to the \
+         GCM field's.",
         "- Where a crate's basis differs from the row's (`reed-solomon-erasure`, `hekate-math` \
          from 16 bits, `plonky3` at 16 bits), operands and results pass through the field \
          isomorphism that the bench derives from the crate's tower: a root of the base \
@@ -111,7 +112,9 @@ fn method(batch: u32) -> Vec<String> {
              functions it calls; each count is that total divided by {batch}. The loop's own \
              loads and stores are part of every count. Every instruction counts as one, whatever \
              its latency: a table lookup weighs as much as an exclusive or, whatever the cache \
-             does with it. The counts are exact at any machine load. Before a case is counted, \
+             does with it. The build leaves out VPCLMULQDQ, whose 256-bit `vpclmulqdq` Valgrind \
+             cannot run. A native build may fuse two carry-less products into one such \
+             instruction. The counts are exact at any machine load. Before a case is counted, \
              every result is checked against a bit-serial reference in the bench: the \
              shift-and-add product reduced bit by bit, the extended Euclidean inverse confirmed \
              by that product, and the root `r` of `a = r²`. Elements enter and leave each crate \
