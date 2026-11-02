@@ -1,16 +1,18 @@
 //! Square roots: `x^((p + 1) / 4)` when `p = 3 mod 4`, Tonelli–Shanks otherwise.
 
 use crate::field::{Fp, Modulus};
+use crate::invert::declassify;
 use crate::params::{ROOT_POWERS, Shape};
+use crate::unrolled::select;
 
 impl<M: Modulus> Fp<M> {
     /// A square root of `self`, or `None` when `self` is a quadratic non-residue. Of the two
-    /// roots of a residue, which one is returned is unspecified. The time depends on the value.
-    #[inline]
+    /// roots of a residue, which one is returned is unspecified.
+    #[inline(always)]
     #[must_use]
     pub fn sqrt(self) -> Option<Self> {
         if Shape::<M>::THREE_MOD_FOUR {
-            let root = self.pow_program(&Shape::<M>::SQRT_CHAIN);
+            let root = self.pow_program::<false>(&Shape::<M>::SQRT_CHAIN);
             return if root.square().equals(&self) {
                 Some(root)
             } else {
@@ -27,7 +29,7 @@ impl<M: Modulus> Fp<M> {
         // round is `c^(2^offset)` with `offset + order = s`, so every power it needs is a table
         // entry: `index` counts down from `s` with the squarings that find `i`, and lands on the
         // entry of the next generator.
-        let w = self.pow_program(&Shape::<M>::SQRT_CHAIN);
+        let w = self.pow_program::<false>(&Shape::<M>::SQRT_CHAIN);
         let mut root = w.mul(self);
         let mut b = w.mul(root);
         let mut offset = 0;
@@ -49,6 +51,63 @@ impl<M: Modulus> Fp<M> {
             offset = index;
         }
         Some(root)
+    }
+
+    /// A square root of `self`, or `None` when `self` is a quadratic non-residue, in time that
+    /// depends on the modulus alone; the `Option` is built in [`declassify`].
+    ///
+    /// For `p = 1 mod 4` this is the constant-time Tonelli–Shanks of the `ff` crate (algorithm
+    /// 5 of Adj and Rodríguez-Henríquez, *Square root computation over even extension fields*,
+    /// 2012, without the non-residue test): every round of the `s` rounds runs every squaring
+    /// that a round may need and keeps the right values by conditional moves.
+    #[inline(always)]
+    pub(crate) fn sqrt_ct(self) -> Option<Self> {
+        let root = if Shape::<M>::THREE_MOD_FOUR {
+            self.pow_program::<true>(&Shape::<M>::SQRT_CHAIN)
+        } else {
+            let w = self.pow_program::<true>(&Shape::<M>::SQRT_CHAIN);
+            let mut root = w.mul_with::<true>(self);
+            let mut b = root.mul_with::<true>(w);
+            let mut z = Self::from_limbs(Shape::<M>::TWO_ADIC_ROOT);
+            let mut v = Shape::<M>::TWO_ADICITY;
+            let mut max_v = Shape::<M>::TWO_ADICITY;
+            while max_v >= 1 {
+                // `k` ends as the order exponent of `b`; up to it the squarings compute
+                // `b^(2^k)`, beyond it they square `z`, and past `v` they change nothing.
+                let mut k = 1;
+                let mut power = b.square_with::<true>();
+                let mut below_v = true;
+                let mut j = 2;
+                while j < max_v {
+                    let one = power.equals(&Self::ONE);
+                    let squared = Self::select(one, z, power).square_with::<true>();
+                    power = Self::select(one, power, squared);
+                    let next_z = Self::select(one, squared, z);
+                    below_v &= j != v;
+                    k = select(one, k as u64, j as u64) as usize;
+                    z = Self::select(below_v, next_z, z);
+                    j += 1;
+                }
+                let moved = root.mul_with::<true>(z);
+                root = Self::select(b.equals(&Self::ONE), root, moved);
+                z = z.square_with::<true>();
+                b = b.mul_with::<true>(z);
+                v = k;
+                max_v -= 1;
+            }
+            root
+        };
+        declassify(root.square_with::<true>().equals(&self), root)
+    }
+
+    /// `a` when `condition` holds, else `b`, by conditional moves.
+    #[inline(always)]
+    fn select(condition: bool, a: Self, b: Self) -> Self {
+        Self::from_limbs(Shape::<M>::select_limbs(
+            condition,
+            a.limb_array(),
+            b.limb_array(),
+        ))
     }
 
     /// `c^(2^index)` for the two-adic root `c`, with `index < TWO_ADICITY`: a table entry, or

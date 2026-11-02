@@ -1,11 +1,12 @@
-//! Every operation against `num-bigint` over a pseudo-random sweep and the edges `0`, `1` and
-//! `p - 1`, for moduli of every representation: below 2^64, Mersenne, pseudo-Mersenne, Montgomery
-//! with and without a spare bit, `p = 1 mod 4` and `p = 3 mod 4`, one and nine limbs.
+//! Every operation against `num-bigint` over a pseudo-random sweep and edges around `0`, `p / 2`
+//! and `p`, through `Fp`, `Secret` and the `const_*` twins, for moduli of every representation:
+//! below 2^64, Mersenne, pseudo-Mersenne, Montgomery with and without a spare bit, `p = 1 mod 4`
+//! and `p = 3 mod 4`, one and nine limbs.
 
 use biguint::typenum::{U7, U31, U64, U127, U254, U256, U381, U521};
 use biguint::{Bits, Uint};
 use num_bigint::BigUint;
-use prime_field::{Fp, Modulus, NotCanonical};
+use prime_field::{Fp, Modulus, NotCanonical, Secret};
 
 /// Declares one modulus marker per line: the name, the width and the little-endian limbs.
 macro_rules! moduli {
@@ -133,10 +134,40 @@ fn value<M: Modulus>(element: Fp<M>) -> BigUint {
     big(element.to_uint().as_limbs())
 }
 
-/// The sweep on the field of `M`: 64 random pairs and every pair of edges.
+/// Asserts that every result of the operation `name` on `(a, b)` is `expected`.
+fn agree<M: Modulus>(name: &str, a: &BigUint, b: &BigUint, expected: &BigUint, results: &[Fp<M>]) {
+    for (index, result) in results.iter().enumerate() {
+        assert_eq!(value(*result), *expected, "{name} #{index} of ({a}, {b})");
+    }
+}
+
+/// Asserts that `root` squares to `a` exactly when `a` is a quadratic residue.
+fn check_root<M: Modulus>(name: &str, a: &BigUint, residue: bool, root: Option<Fp<M>>) {
+    match root {
+        Some(root) => {
+            assert!(residue, "{name} of the non-residue {a}");
+            assert_eq!(value(root.square()), *a, "{name} squared");
+        }
+        None => assert!(!residue, "no {name} of the residue {a}"),
+    }
+}
+
+/// The sweep on the field of `M`: 64 random pairs and every pair of edges. Each operation runs
+/// through `Fp`, `Secret` (with a public `Fp` on either side) and the `const_*` twins. The edges
+/// include `p - 1 + 0`, whose sum has the top limb of `p` and lies below it: the rare branch of
+/// the variable-time reduction.
 fn check<M: Modulus>(rng: &mut Rng) {
     let p = big(M::MODULUS.as_limbs());
-    let edges = [BigUint::ZERO, BigUint::from(1u8), &p - 1u8];
+    let half = &p >> 1u8;
+    let edges = [
+        BigUint::ZERO,
+        BigUint::from(1u8),
+        BigUint::from(2u8),
+        half.clone(),
+        &half + 1u8,
+        &p - 2u8,
+        &p - 1u8,
+    ];
     let mut pairs: Vec<(BigUint, BigUint)> = edges
         .iter()
         .flat_map(|a| edges.iter().map(move |b| (a.clone(), b.clone())))
@@ -144,13 +175,95 @@ fn check<M: Modulus>(rng: &mut Rng) {
     pairs.extend((0..64).map(|_| (rng.below(&p), rng.below(&p))));
     for (a, b) in &pairs {
         let (x, y) = (element::<M>(a), element::<M>(b));
-        assert_eq!(value(x + y), (a + b) % &p, "add");
-        assert_eq!(value(x - y), (a + &p - b) % &p, "sub");
-        assert_eq!(value(-x), (&p - a) % &p, "neg");
-        assert_eq!(value(x.double()), (a + a) % &p, "double");
-        assert_eq!(value(x * y), a * b % &p, "mul");
-        assert_eq!(value(x.square()), a * a % &p, "square");
-        assert_eq!(value(x.pow(uint::<M::Width>(b))), a.modpow(b, &p), "pow");
+        let (s, t) = (Secret::new(x), Secret::new(y));
+        let assigned = |mut target: Secret<M>, apply: &dyn Fn(&mut Secret<M>)| {
+            apply(&mut target);
+            target.reveal()
+        };
+        let sum = (a + b) % &p;
+        let mut plain = x;
+        plain += y;
+        agree::<M>(
+            "add",
+            a,
+            b,
+            &sum,
+            &[
+                x + y,
+                (s + t).reveal(),
+                (s + y).reveal(),
+                (x + t).reveal(),
+                plain,
+                assigned(s, &|target| *target += t),
+                assigned(s, &|target| *target += y),
+                x.const_add(y),
+            ],
+        );
+        let difference = (a + &p - b) % &p;
+        let mut plain = x;
+        plain -= y;
+        agree::<M>(
+            "sub",
+            a,
+            b,
+            &difference,
+            &[
+                x - y,
+                (s - t).reveal(),
+                (s - y).reveal(),
+                (x - t).reveal(),
+                plain,
+                assigned(s, &|target| *target -= t),
+                assigned(s, &|target| *target -= y),
+                x.const_sub(y),
+            ],
+        );
+        let negation = (&p - a) % &p;
+        agree::<M>("neg", a, b, &negation, &[-x, (-s).reveal(), x.const_neg()]);
+        let double = (a + a) % &p;
+        agree::<M>(
+            "double",
+            a,
+            b,
+            &double,
+            &[x.double(), s.double().reveal(), x.const_double()],
+        );
+        let product = a * b % &p;
+        let mut plain = x;
+        plain *= y;
+        agree::<M>(
+            "mul",
+            a,
+            b,
+            &product,
+            &[
+                x * y,
+                (s * t).reveal(),
+                (s * y).reveal(),
+                (x * t).reveal(),
+                plain,
+                assigned(s, &|target| *target *= t),
+                assigned(s, &|target| *target *= y),
+                x.const_mul(y),
+            ],
+        );
+        let square = a * a % &p;
+        agree::<M>(
+            "square",
+            a,
+            b,
+            &square,
+            &[x.square(), s.square().reveal(), x.const_square()],
+        );
+        let power = a.modpow(b, &p);
+        let exponent = uint::<M::Width>(b);
+        agree::<M>(
+            "pow",
+            a,
+            b,
+            &power,
+            &[x.pow(exponent), s.pow(exponent).reveal()],
+        );
         let inverse = if *a == BigUint::ZERO {
             None
         } else {
@@ -158,22 +271,30 @@ fn check<M: Modulus>(rng: &mut Rng) {
         };
         assert_eq!(x.invert().map(value), inverse, "invert of {a}");
         assert_eq!(
-            x.invert_vartime().map(value),
+            s.invert().map(|inverse| value(inverse.reveal())),
             inverse,
-            "invert_vartime of {a}"
+            "secret invert of {a}"
         );
         let residue = *a == BigUint::ZERO || a.modpow(&(&p >> 1u8), &p) == BigUint::from(1u8);
-        match x.sqrt() {
-            Some(root) => {
-                assert!(residue, "sqrt of the non-residue {a}");
-                assert_eq!(value(root.square()), *a, "sqrt squared");
-            }
-            None => assert!(!residue, "no sqrt of the residue {a}"),
-        }
+        check_root("sqrt", a, residue, x.sqrt());
+        check_root("secret sqrt", a, residue, s.sqrt().map(Secret::reveal));
         assert_eq!(x == y, a == b, "eq");
         assert_eq!(x.is_zero(), *a == BigUint::ZERO, "is_zero");
-        assert_eq!(Fp::<M>::from_le_bytes(&x.to_le_bytes()), Ok(x), "le bytes");
-        assert_eq!(Fp::<M>::from_be_bytes(&x.to_be_bytes()), Ok(x), "be bytes");
+        let integer = uint::<M::Width>(a);
+        assert_eq!(x.to_le_bytes(), integer.to_le_bytes(), "to le bytes of {a}");
+        assert_eq!(x.to_be_bytes(), integer.to_be_bytes(), "to be bytes of {a}");
+        assert_eq!(
+            Fp::<M>::from_le_bytes(&integer.to_le_bytes()),
+            Ok(x),
+            "from le bytes of {a}"
+        );
+        assert_eq!(
+            Fp::<M>::from_be_bytes(&integer.to_be_bytes()),
+            Ok(x),
+            "from be bytes of {a}"
+        );
+        assert_eq!(Fp::<M>::try_from(integer), Ok(x), "try_from of {a}");
+        assert_eq!(Uint::from(x), integer, "Uint from {a}");
     }
     assert_eq!(Fp::<M>::from_uint(M::MODULUS), Err(NotCanonical));
     assert_eq!(

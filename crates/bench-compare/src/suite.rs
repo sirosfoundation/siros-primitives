@@ -189,30 +189,36 @@ pub fn visit<S: Suite, V: Visitor<S::Op, S::Key>>(visitor: V) -> V {
 
 /// Runs `run` on each input of `batch` and returns the number of runs. Each input and each
 /// result passes through [`black_box`], so the compiler can neither precompute a result nor skip
-/// one.
+/// one. The loop calls `run` directly, so an operation that inlines into its caller inlines here
+/// whatever its size.
 #[inline(never)]
 pub fn run_batch<I, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
-    batch
-        .iter()
-        .map(|input| black_box(run(black_box(input))))
-        .fold(0, |runs, _result| runs + 1)
+    let mut runs = 0;
+    for input in batch {
+        drop(black_box(run(black_box(input))));
+        runs += 1;
+    }
+    runs
 }
 
 /// Runs `run` on the inputs of `batch` as the chain `x = B::hide(op(x, y))` and returns the number
 /// of runs: from the second input on, the result of the previous run replaces the first operand.
 /// Each input passes through [`black_box`], each result through the barrier `B`, and the last
-/// result through [`black_box`]: each run waits for the one before it, in order.
+/// result through [`black_box`]: each run waits for the one before it, in order. The loop calls
+/// `run` directly, as [`run_batch`]'s does.
 #[inline(never)]
 pub fn run_chain<I: Chain<R>, R, B: Barrier>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
     let Some((first, rest)) = batch.split_first() else {
         return 0;
     };
-    // The last result passes through `black_box` with the number of runs.
-    black_box(rest.iter().fold(
-        (B::hide(run(black_box(first))), 1),
-        |(result, runs), input| (B::hide(run(&black_box(input).chain(result))), runs + 1),
-    ))
-    .1
+    let mut result = B::hide(run(black_box(first)));
+    let mut runs = 1;
+    for input in rest {
+        result = B::hide(run(&black_box(input).chain(result)));
+        runs += 1;
+    }
+    drop(black_box(result));
+    runs
 }
 
 /// One operation on one row, with the visitor that receives its cells.
