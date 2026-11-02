@@ -651,7 +651,8 @@ fn describe<K: Key>(
 
 /// The legend above every results table.
 const LEGEND: &str = "Each cell: throughput cycles / latency cycles per operation. \
-                      Bold: the fewest of the row. –: no such function or no chain form.";
+                      Bold: the fewest of the row, every tie bold. –: no such function or no \
+                      chain form.";
 
 /// The two parts of a cell are joined by a slash between no-break spaces, so a cell never wraps.
 const SEPARATOR: &str = "\u{a0}/\u{a0}";
@@ -687,12 +688,14 @@ fn results<K: Key>(
                 .map(|library| table.count(op, key, library))
                 .collect();
             let ours = table.count(op, key, layout.subject).map(parts);
+            // The fewest of each part as the table shows it, so that every tie is bold.
             let fewest: [Option<f64>; 2] = std::array::from_fn(|part| {
                 counts
                     .iter()
                     .flatten()
                     .filter(|count| count.deviation.is_none())
                     .filter_map(|count| parts(count)[part])
+                    .map(shown)
                     .reduce(f64::min)
             });
             let mut row = vec![key.to_string()];
@@ -716,7 +719,7 @@ fn results<K: Key>(
                             }
                             format!("{}\\*", value(*figure))
                         }
-                        (Some(figure), None) if Some(*figure) == fewest[part] => {
+                        (Some(figure), None) if Some(shown(*figure)) == fewest[part] => {
                             format!("**{}**", value(*figure))
                         }
                         (Some(figure), _) => value(*figure),
