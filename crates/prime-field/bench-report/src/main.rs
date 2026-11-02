@@ -140,7 +140,7 @@ fn method() -> Vec<String> {
 fn main() -> ExitCode {
     bench_compare::execute(
         "prime-field-bench-report",
-        &Paths::new(env!("CARGO_MANIFEST_DIR"), "prime-field.json"),
+        &Paths::new(env!("CARGO_MANIFEST_DIR")),
         &MEASURED,
         &LAYOUT,
     )

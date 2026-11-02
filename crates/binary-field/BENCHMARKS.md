@@ -95,517 +95,331 @@ Each cell measures the crate's own function:
 
 ## Results with carry-less multiplication
 
-Per operation, each row gives throughput cycles, latency cycles for the operations that have chains, and instructions. Bold marks the fewest in each row.
 The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut` appear in the tables only.
 
 ### add: a + b, constant time, with carry-less multiplication
 
 ![add: a + b, constant time, with carry-less multiplication](benchmarks/add.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 5.0 | 5.0 | 5.1 | 5.0 | **2.2** | 5.1 | 5.0 | – | – | – | – | – |
-|  | latency cycles | 3.1 | 3.1 | 3.1 | **3.0** | 3.5 | 3.0 | 3.0 | – | – | – | – | – |
-|  | instructions | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 5.1 | 2.2 | 2.2 | **2.1** | 2.6 | 2.5 | 2.9 | – | – | – | – | 2.7 |
-|  | latency cycles | 3.0 | 3.0 | **3.0** | 3.0 | 3.3 | 3.7 | 3.3 | – | – | – | – | 3.1 |
-|  | instructions | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | **8.0** |
-| GF(2⁶⁴) | throughput cycles | 2.2 | 2.2 | 2.2 | – | – | 6.3 | **2.2** | – | – | – | – | – |
-|  | latency cycles | 2.1 | **1.3** | 1.3 | – | – | 7.4 | 1.3 | – | – | – | – | – |
-|  | instructions | **8.0** | **8.0** | **8.0** | – | – | **8.0** | **8.0** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 2.2 | – | – | – | – | 8.9 | 2.3 | 2.2 | **2.2** | 2.3 | 13.5 | – |
-|  | latency cycles | 2.1 | – | – | – | – | 9.0 | 2.1 | **1.5** | 2.0 | 2.0 | 9.9 | – |
-|  | instructions | **8.0** | – | – | – | – | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – |
-| GF(2²³³) | throughput cycles | **4.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **11.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **3.5** | – | – | – | – | 16.6 | – | – | – | – | – | – |
-|  | latency cycles | **2.6** | – | – | – | – | 19.2 | – | – | – | – | – | – |
-|  | instructions | **11.0** | – | – | – | – | **11.0** | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **9.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **19.9** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **20.0** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | 5.0 / 3.1 / **8.0** | 5.0 / 3.1 / **8.0** | 5.1 / 3.1 / **8.0** | 5.0 / **3.0** / **8.0** | **2.2** / 3.5 / **8.0** | 5.1 / 3.0 / **8.0** | 5.0 / 3.0 / **8.0** | – | – | – | – | – |
+| GF(2¹⁶) | 5.1 / 3.0 / **8.0** | 2.2 / 3.0 / **8.0** | 2.2 / **3.0** / **8.0** | **2.1** / 3.0 / **8.0** | 2.6 / 3.3 / **8.0** | 2.5 / 3.7 / **8.0** | 2.9 / 3.3 / **8.0** | – | – | – | – | 2.7 / 3.1 / **8.0** |
+| GF(2⁶⁴) | 2.2 / 2.1 / **8.0** | 2.2 / **1.3** / **8.0** | 2.2 / 1.3 / **8.0** | – | – | 6.3 / 7.4 / **8.0** | **2.2** / 1.3 / **8.0** | – | – | – | – | – |
+| GF(2¹²⁸) | 2.2 / 2.1 / **8.0** | – | – | – | – | 8.9 / 9.0 / **8.0** | 2.3 / 2.1 / **8.0** | 2.2 / **1.5** / **8.0** | **2.2** / 2.0 / **8.0** | 2.3 / 2.0 / **8.0** | 13.5 / 9.9 / **8.0** | – |
+| GF(2²³³) | **4.3** / **2.3** / **11.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **3.5** / **2.6** / **11.0** | – | – | – | – | 16.6 / 19.2 / **11.0** | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **9.5** / **19.9** / **20.0** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### add_vartime: a + b, variable time, with carry-less multiplication
 
 ![add_vartime: a + b, variable time, with carry-less multiplication](benchmarks/add_vartime.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **5.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **3.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **5.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **3.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **2.2** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.1** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **2.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **3.4** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.4** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **11.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **3.6** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.4** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **11.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **7.6** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **19.9** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **20.0** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **5.0** / **3.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | **5.0** / **3.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | **2.2** / **2.1** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **2.3** / **2.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **3.4** / **2.4** / **11.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **3.6** / **2.4** / **11.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **7.6** / **19.9** / **20.0** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul: a × b, constant time, with carry-less multiplication
 
 ![mul: a × b, constant time, with carry-less multiplication](benchmarks/mul.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **8.0** | – | – | – | – | 14.0 | 16.9 | – | – | – | – | – |
-|  | latency cycles | **21.0** | – | – | – | – | 26.0 | 33.2 | – | – | – | – | – |
-|  | instructions | **31.0** | – | – | – | – | 67.0 | 59.0 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 8.2 | **8.1** | – | – | – | 53.1 | – | – | – | – | – | – |
-|  | latency cycles | **21.0** | 29.1 | – | – | – | 54.4 | – | – | – | – | – | – |
-|  | instructions | 31.0 | **18.0** | – | – | – | 236 | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 6.1 | **6.0** | – | – | – | 548 | 6.0 | – | – | – | – | – |
-|  | latency cycles | **14.8** | 20.1 | – | – | – | 554 | 19.1 | – | – | – | – | – |
-|  | instructions | 23.0 | **13.0** | – | – | – | 2,489 | **13.0** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **11.0** | – | – | – | – | 1,785 | 12.0 | 12.0 | 30.0 | – | 118 | – |
-|  | latency cycles | 17.1 | – | – | – | – | 1,822 | **16.1** | 18.7 | 30.3 | – | 134 | – |
-|  | instructions | 25.0 | – | – | – | – | 7,962 | **21.0** | **21.0** | 78.0 | – | 526 | – |
-| GF(2²³³) | throughput cycles | **53.6** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **55.1** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **136** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **34.0** | – | – | – | – | 5,737 | – | – | – | – | – | – |
-|  | latency cycles | **35.3** | – | – | – | – | 6,014 | – | – | – | – | – | – |
-|  | instructions | **70.0** | – | – | – | – | 25,585 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **275** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **283** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **910** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **8.0** / **21.0** / **31.0** | – | – | – | – | 14.0 / 26.0 / 67.0 | 16.9 / 33.2 / 59.0 | – | – | – | – | – |
+| GF(2¹⁶) | 8.2 / **21.0** / 31.0 | **8.1** / 29.1 / **18.0** | – | – | – | 53.1 / 54.4 / 236 | – | – | – | – | – | – |
+| GF(2⁶⁴) | 6.1 / **14.8** / 23.0 | **6.0** / 20.1 / **13.0** | – | – | – | 548 / 554 / 2,489 | 6.0 / 19.1 / **13.0** | – | – | – | – | – |
+| GF(2¹²⁸) | **11.0** / 17.1 / 25.0 | – | – | – | – | 1,785 / 1,822 / 7,962 | 12.0 / **16.1** / **21.0** | 12.0 / 18.7 / **21.0** | 30.0 / 30.3 / 78.0 | – | 118 / 134 / 526 | – |
+| GF(2²³³) | **53.6** / **55.1** / **136** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **34.0** / **35.3** / **70.0** | – | – | – | – | 5,737 / 6,014 / 25,585 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **275** / **283** / **910** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul_vartime: a × b, variable time, with carry-less multiplication
 
 ![mul_vartime: a × b, variable time, with carry-less multiplication](benchmarks/mul_vartime.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 5.3 | 3.8 | 84.6 | 5.5 | **2.7** | – | – | – | – | – | – | – |
-|  | latency cycles | **11.7** | 13.5 | 92.8 | 13.4 | 13.5 | – | – | – | – | – | – | – |
-|  | instructions | **11.0** | 20.0 | 323 | **11.0** | **11.0** | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **8.0** | – | 144 | 11.3 | 9.1 | – | 14.8 | – | – | – | – | 13.5 |
-|  | latency cycles | **21.0** | – | 151 | 46.1 | 27.8 | – | 30.5 | – | – | – | – | 65.2 |
-|  | instructions | 31.0 | – | 627 | **22.0** | 31.0 | – | 69.0 | – | – | – | – | 31.0 |
-| GF(2⁶⁴) | throughput cycles | **6.2** | – | 546 | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **14.8** | – | 568 | – | – | – | – | – | – | – | – | – |
-|  | instructions | **23.0** | – | 1,354 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **11.0** | – | – | – | – | – | – | – | – | 590 | – | – |
-|  | latency cycles | **17.1** | – | – | – | – | – | – | – | – | 561 | – | – |
-|  | instructions | **25.0** | – | – | – | – | – | – | – | – | 2,064 | – | – |
-| GF(2²³³) | throughput cycles | **53.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **55.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **136** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **34.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **35.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **70.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **274** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **283** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **910** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | 5.3 / **11.7** / **11.0** | 3.8 / 13.5 / 20.0 | 84.6 / 92.8 / 323 | 5.5 / 13.4 / **11.0** | **2.7** / 13.5 / **11.0** | – | – | – | – | – | – | – |
+| GF(2¹⁶) | **8.0** / **21.0** / 31.0 | – | 144 / 151 / 627 | 11.3 / 46.1 / **22.0** | 9.1 / 27.8 / 31.0 | – | 14.8 / 30.5 / 69.0 | – | – | – | – | 13.5 / 65.2 / 31.0 |
+| GF(2⁶⁴) | **6.2** / **14.8** / **23.0** | – | 546 / 568 / 1,354 | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **11.0** / **17.1** / **25.0** | – | – | – | – | – | – | – | – | 590 / 561 / 2,064 | – | – |
+| GF(2²³³) | **53.5** / **55.0** / **136** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **34.0** / **35.5** / **70.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **274** / **283** / **910** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square: a², constant time, with carry-less multiplication
 
 ![square: a², constant time, with carry-less multiplication](benchmarks/square.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **4.7** | – | – | – | – | 8.4 | 8.6 | – | – | – | – | – |
-|  | latency cycles | **17.0** | – | – | – | – | 21.1 | 25.1 | – | – | – | – | – |
-|  | instructions | **21.0** | – | – | – | – | 34.0 | 34.0 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **7.0** | – | – | – | – | 22.4 | – | – | – | – | – | – |
-|  | latency cycles | **21.0** | – | – | – | – | 35.2 | – | – | – | – | – | – |
-|  | instructions | **29.0** | – | – | – | – | 90.0 | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 6.1 | – | – | – | – | 133 | **5.1** | – | – | – | – | – |
-|  | latency cycles | **15.5** | – | – | – | – | 146 | 16.5 | – | – | – | – | – |
-|  | instructions | 23.0 | – | – | – | – | 584 | **22.0** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **6.7** | – | – | – | – | 306 | 8.0 | – | – | – | – | – |
-|  | latency cycles | **14.5** | – | – | – | – | 297 | 16.6 | – | – | – | – | – |
-|  | instructions | 28.0 | – | – | – | – | 1,271 | **16.0** | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **34.8** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **44.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **102** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **13.1** | – | – | – | – | 1,082 | – | – | – | – | – | – |
-|  | latency cycles | **19.7** | – | – | – | – | 1,127 | – | – | – | – | – | – |
-|  | instructions | **37.0** | – | – | – | – | 4,090 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **41.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **56.2** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **118** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **4.7** / **17.0** / **21.0** | – | – | – | – | 8.4 / 21.1 / 34.0 | 8.6 / 25.1 / 34.0 | – | – | – | – | – |
+| GF(2¹⁶) | **7.0** / **21.0** / **29.0** | – | – | – | – | 22.4 / 35.2 / 90.0 | – | – | – | – | – | – |
+| GF(2⁶⁴) | 6.1 / **15.5** / 23.0 | – | – | – | – | 133 / 146 / 584 | **5.1** / 16.5 / **22.0** | – | – | – | – | – |
+| GF(2¹²⁸) | **6.7** / **14.5** / 28.0 | – | – | – | – | 306 / 297 / 1,271 | 8.0 / 16.6 / **16.0** | – | – | – | – | – |
+| GF(2²³³) | **34.8** / **44.5** / **102** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **13.1** / **19.7** / **37.0** | – | – | – | – | 1,082 / 1,127 / 4,090 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **41.3** / **56.2** / **118** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square_vartime: a², variable time, with carry-less multiplication
 
 ![square_vartime: a², variable time, with carry-less multiplication](benchmarks/square_vartime.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **5.1** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **7.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 5.4 | – | – | – | – | – | **2.6** | – | – | – | – | – |
-|  | latency cycles | **7.1** | – | – | – | – | – | 10.1 | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | 11.0 | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **6.2** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **15.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **23.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **6.8** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **14.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **28.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **34.8** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **44.6** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **102** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **13.2** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **19.8** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **37.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **41.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **56.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **118** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **5.1** / **7.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | 5.4 / **7.1** / **8.0** | – | – | – | – | – | **2.6** / 10.1 / 11.0 | – | – | – | – | – |
+| GF(2⁶⁴) | **6.2** / **15.5** / **23.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **6.8** / **14.5** / **28.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **34.8** / **44.6** / **102** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **13.2** / **19.8** / **37.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **41.3** / **56.3** / **118** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert: a⁻¹, constant time, with carry-less multiplication
 
 ![invert: a⁻¹, constant time, with carry-less multiplication](benchmarks/invert.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **88.5** | – | – | – | – | 260 | 317 | – | – | – | – | – |
-|  | instructions | **182** | – | – | – | – | 804 | 518 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **204** | 421 | – | – | – | 339 | – | – | – | – | – | – |
-|  | instructions | **361** | 415 | – | – | – | 1,072 | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 1,099 | 1,228 | – | – | – | 1,257 | **1,066** | – | – | – | – | – |
-|  | instructions | 1,211 | **1,024** | – | – | – | 4,828 | 1,081 | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **2,039** | – | – | – | – | 3,420 | – | – | 5,211 | – | – | – |
-|  | instructions | **3,003** | – | – | – | – | 13,595 | – | – | 13,665 | – | – | – |
-| GF(2²³³) | throughput cycles | **11,071** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **23,596** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **5,496** | – | – | – | – | 9,766 | – | – | – | – | – | – |
-|  | instructions | **8,549** | – | – | – | – | 41,587 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **28,828** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **73,741** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **88.5** / – / **182** | – | – | – | – | 260 / – / 804 | 317 / – / 518 | – | – | – | – | – |
+| GF(2¹⁶) | **204** / – / **361** | 421 / – / 415 | – | – | – | 339 / – / 1,072 | – | – | – | – | – | – |
+| GF(2⁶⁴) | 1,099 / – / 1,211 | 1,228 / – / **1,024** | – | – | – | 1,257 / – / 4,828 | **1,066** / – / 1,081 | – | – | – | – | – |
+| GF(2¹²⁸) | **2,039** / – / **3,003** | – | – | – | – | 3,420 / – / 13,595 | – | – | 5,211 / – / 13,665 | – | – | – |
+| GF(2²³³) | **11,071** / – / **23,596** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **5,496** / – / **8,549** | – | – | – | – | 9,766 / – / 41,587 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **28,828** / – / **73,741** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert_vartime: a⁻¹, variable time, with carry-less multiplication
 
 ![invert_vartime: a⁻¹, variable time, with carry-less multiplication](benchmarks/invert_vartime.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 5.0 | **3.5** | 385 | – | – | – | – | – | – | – | – | – |
-|  | instructions | **13.0** | 15.0 | 1,362 | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **3.7** | – | 1,284 | – | – | – | 20.7 | – | – | – | – | 14.4 |
-|  | instructions | **12.0** | – | 3,481 | – | – | – | 95.0 | – | – | – | – | 25.0 |
-| GF(2⁶⁴) | throughput cycles | **363** | – | 10,299 | – | – | – | – | – | – | – | – | – |
-|  | instructions | **442** | – | 28,398 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 623 | – | – | – | – | – | **557** | 6,035 | – | 144,796 | – | – |
-|  | instructions | 727 | – | – | – | – | – | **493** | 6,373 | – | 533,598 | – | – |
-| GF(2²³³) | throughput cycles | **11,081** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **23,592** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **5,296** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8,550** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **28,802** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **73,758** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | 5.0 / – / **13.0** | **3.5** / – / 15.0 | 385 / – / 1,362 | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | **3.7** / – / **12.0** | – | 1,284 / – / 3,481 | – | – | – | 20.7 / – / 95.0 | – | – | – | – | 14.4 / – / 25.0 |
+| GF(2⁶⁴) | **363** / – / **442** | – | 10,299 / – / 28,398 | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | 623 / – / 727 | – | – | – | – | – | **557** / – / **493** | 6,035 / – / 6,373 | – | 144,796 / – / 533,598 | – | – |
+| GF(2²³³) | **11,081** / – / **23,592** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **5,296** / – / **8,550** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **28,802** / – / **73,758** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt: √a, constant time, with carry-less multiplication
 
 ![sqrt: √a, constant time, with carry-less multiplication](benchmarks/sqrt.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **4.7** | – | – | – | – | – | 9.0 | – | – | – | – | – |
-|  | instructions | **21.0** | – | – | – | – | – | 35.0 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **13.8** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **53.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 19.3 | – | – | – | – | – | **16.0** | – | – | – | – | – |
-|  | instructions | **57.0** | – | – | – | – | – | 58.0 | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **16.1** | – | – | – | – | – | 19.9 | – | – | – | – | – |
-|  | instructions | **44.0** | – | – | – | – | – | 81.0 | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **79.1** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **209** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **48.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **125** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **318** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **1,085** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **4.7** / – / **21.0** | – | – | – | – | – | 9.0 / – / 35.0 | – | – | – | – | – |
+| GF(2¹⁶) | **13.8** / – / **53.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | 19.3 / – / **57.0** | – | – | – | – | – | **16.0** / – / 58.0 | – | – | – | – | – |
+| GF(2¹²⁸) | **16.1** / – / **44.0** | – | – | – | – | – | 19.9 / – / 81.0 | – | – | – | – | – |
+| GF(2²³³) | **79.1** / – / **209** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **48.3** / – / **125** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **318** / – / **1,085** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt_vartime: √a, variable time, with carry-less multiplication
 
 ![sqrt_vartime: √a, variable time, with carry-less multiplication](benchmarks/sqrt_vartime.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **5.1** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 5.1 | – | – | – | – | – | **3.2** | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | 12.0 | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **19.8** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **57.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **16.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **44.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **77.4** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **209** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **48.7** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **125** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **343** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **1,085** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **5.1** / – / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | 5.1 / – / **8.0** | – | – | – | – | – | **3.2** / – / 12.0 | – | – | – | – | – |
+| GF(2⁶⁴) | **19.8** / – / **57.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **16.5** / – / **44.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **77.4** / – / **209** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **48.7** / – / **125** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **343** / – / **1,085** | – | – | – | – | – | – | – | – | – | – | – |
 
 ## Results without carry-less multiplication
 
-Per operation, each row gives throughput cycles, latency cycles for the operations that have chains, and instructions. Bold marks the fewest in each row.
 The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut` appear in the tables only.
 
 ### add: a + b, constant time, without carry-less multiplication
 
 ![add: a + b, constant time, without carry-less multiplication](benchmarks/add-without-clmul.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 5.0 | 5.0 | 5.0 | 5.0 | **2.1** | 5.0 | 5.0 | – | – | – | – | – |
-|  | latency cycles | 3.0 | 3.0 | 3.0 | **3.0** | 3.0 | 3.0 | 3.0 | – | – | – | – | – |
-|  | instructions | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 5.0 | **2.1** | 2.1 | 2.1 | 2.3 | 2.4 | 2.3 | – | – | – | – | 2.1 |
-|  | latency cycles | 3.0 | **3.0** | 3.0 | 3.0 | 3.1 | 3.2 | 3.0 | – | – | – | – | 3.0 |
-|  | instructions | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | **8.0** |
-| GF(2⁶⁴) | throughput cycles | **2.2** | 2.2 | 2.2 | – | – | 2.9 | 2.2 | – | – | – | – | – |
-|  | latency cycles | 1.3 | **1.3** | **1.3** | – | – | 2.2 | 1.3 | – | – | – | – | – |
-|  | instructions | **8.0** | **8.0** | **8.0** | – | – | **8.0** | **8.0** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **2.2** | – | – | – | – | 3.9 | 2.6 | 2.2 | 2.2 | 2.2 | 5.1 | – |
-|  | latency cycles | **1.3** | – | – | – | – | 3.5 | 2.0 | 2.1 | 2.1 | 2.1 | 3.2 | – |
-|  | instructions | **8.0** | – | – | – | – | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – |
-| GF(2²³³) | throughput cycles | **2.8** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.4** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **2.7** | – | – | – | – | 8.3 | – | – | – | – | – | – |
-|  | latency cycles | **2.6** | – | – | – | – | 8.5 | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | 11.0 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **6.4** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **23.9** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **14.0** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | 5.0 / 3.0 / **8.0** | 5.0 / 3.0 / **8.0** | 5.0 / 3.0 / **8.0** | 5.0 / **3.0** / **8.0** | **2.1** / 3.0 / **8.0** | 5.0 / 3.0 / **8.0** | 5.0 / 3.0 / **8.0** | – | – | – | – | – |
+| GF(2¹⁶) | 5.0 / 3.0 / **8.0** | **2.1** / **3.0** / **8.0** | 2.1 / 3.0 / **8.0** | 2.1 / 3.0 / **8.0** | 2.3 / 3.1 / **8.0** | 2.4 / 3.2 / **8.0** | 2.3 / 3.0 / **8.0** | – | – | – | – | 2.1 / 3.0 / **8.0** |
+| GF(2⁶⁴) | **2.2** / 1.3 / **8.0** | 2.2 / **1.3** / **8.0** | 2.2 / **1.3** / **8.0** | – | – | 2.9 / 2.2 / **8.0** | 2.2 / 1.3 / **8.0** | – | – | – | – | – |
+| GF(2¹²⁸) | **2.2** / **1.3** / **8.0** | – | – | – | – | 3.9 / 3.5 / **8.0** | 2.6 / 2.0 / **8.0** | 2.2 / 2.1 / **8.0** | 2.2 / 2.1 / **8.0** | 2.2 / 2.1 / **8.0** | 5.1 / 3.2 / **8.0** | – |
+| GF(2²³³) | **2.8** / **2.4** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **2.7** / **2.6** / **8.0** | – | – | – | – | 8.3 / 8.5 / 11.0 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **6.4** / **23.9** / **14.0** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### add_vartime: a + b, variable time, without carry-less multiplication
 
 ![add_vartime: a + b, variable time, without carry-less multiplication](benchmarks/add_vartime-without-clmul.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **5.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **3.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **5.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **3.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **2.2** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **1.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **2.2** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **1.4** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **2.7** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.6** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **2.7** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.4** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **6.2** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **23.9** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **14.0** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **5.0** / **3.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | **5.0** / **3.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | **2.2** / **1.3** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **2.2** / **1.4** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **2.7** / **2.6** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **2.7** / **2.4** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **6.2** / **23.9** / **14.0** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul: a × b, constant time, without carry-less multiplication
 
 ![mul: a × b, constant time, without carry-less multiplication](benchmarks/mul-without-clmul.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 28.0 | – | – | – | – | **14.2** | 16.8 | – | – | – | – | – |
-|  | latency cycles | 40.2 | – | – | – | – | **25.0** | 33.4 | – | – | – | – | – |
-|  | instructions | 109 | – | – | – | – | 67.0 | **59.0** | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 45.0 | **30.6** | – | – | – | 54.1 | – | – | – | – | – | – |
-|  | latency cycles | **52.0** | 58.4 | – | – | – | 53.7 | – | – | – | – | – | – |
-|  | instructions | 138 | **133** | – | – | – | 236 | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 66.0 | 104 | – | – | – | 550 | **47.3** | – | – | – | – | – |
-|  | latency cycles | **78.4** | 121 | – | – | – | 548 | 84.7 | – | – | – | – | – |
-|  | instructions | 247 | 259 | – | – | – | 2,489 | **153** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 235 | – | – | – | – | 1,763 | 162 | 174 | 578 | – | **122** | – |
-|  | latency cycles | 232 | – | – | – | – | 1,764 | 187 | 182 | 577 | – | **133** | – |
-|  | instructions | 831 | – | – | – | – | 7,962 | **499** | 542 | 2,064 | – | 526 | – |
-| GF(2²³³) | throughput cycles | **819** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **854** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **2,696** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **887** | – | – | – | – | 5,734 | – | – | – | – | – | – |
-|  | latency cycles | **950** | – | – | – | – | 5,738 | – | – | – | – | – | – |
-|  | instructions | **2,990** | – | – | – | – | 25,585 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **4,972** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **4,924** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **17,241** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | 28.0 / 40.2 / 109 | – | – | – | – | **14.2** / **25.0** / 67.0 | 16.8 / 33.4 / **59.0** | – | – | – | – | – |
+| GF(2¹⁶) | 45.0 / **52.0** / 138 | **30.6** / 58.4 / **133** | – | – | – | 54.1 / 53.7 / 236 | – | – | – | – | – | – |
+| GF(2⁶⁴) | 66.0 / **78.4** / 247 | 104 / 121 / 259 | – | – | – | 550 / 548 / 2,489 | **47.3** / 84.7 / **153** | – | – | – | – | – |
+| GF(2¹²⁸) | 235 / 232 / 831 | – | – | – | – | 1,763 / 1,764 / 7,962 | 162 / 187 / **499** | 174 / 182 / 542 | 578 / 577 / 2,064 | – | **122** / **133** / 526 | – |
+| GF(2²³³) | **819** / **854** / **2,696** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **887** / **950** / **2,990** | – | – | – | – | 5,734 / 5,738 / 25,585 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **4,972** / **4,924** / **17,241** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul_vartime: a × b, variable time, without carry-less multiplication
 
 ![mul_vartime: a × b, variable time, without carry-less multiplication](benchmarks/mul_vartime-without-clmul.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 5.3 | 3.7 | 81.9 | 5.3 | **2.9** | – | – | – | – | – | – | – |
-|  | latency cycles | **10.5** | 13.4 | 83.9 | 12.5 | 12.7 | – | – | – | – | – | – | – |
-|  | instructions | **11.0** | 20.0 | 323 | **11.0** | **11.0** | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 45.0 | – | 143 | **8.4** | 8.8 | – | 14.6 | – | – | – | – | 11.4 |
-|  | latency cycles | 52.0 | – | 148 | 38.1 | **25.9** | – | 30.1 | – | – | – | – | 56.0 |
-|  | instructions | 138 | – | 627 | **22.0** | 31.0 | – | 69.0 | – | – | – | – | 31.0 |
-| GF(2⁶⁴) | throughput cycles | **66.0** | – | 542 | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **78.6** | – | 561 | – | – | – | – | – | – | – | – | – |
-|  | instructions | **247** | – | 1,354 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **235** | – | – | – | – | – | – | – | – | 547 | – | – |
-|  | latency cycles | **232** | – | – | – | – | – | – | – | – | 546 | – | – |
-|  | instructions | **831** | – | – | – | – | – | – | – | – | 2,064 | – | – |
-| GF(2²³³) | throughput cycles | **819** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **852** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **2,696** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **886** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **940** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **2,990** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **4,982** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **4,926** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **17,241** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | 5.3 / **10.5** / **11.0** | 3.7 / 13.4 / 20.0 | 81.9 / 83.9 / 323 | 5.3 / 12.5 / **11.0** | **2.9** / 12.7 / **11.0** | – | – | – | – | – | – | – |
+| GF(2¹⁶) | 45.0 / 52.0 / 138 | – | 143 / 148 / 627 | **8.4** / 38.1 / **22.0** | 8.8 / **25.9** / 31.0 | – | 14.6 / 30.1 / 69.0 | – | – | – | – | 11.4 / 56.0 / 31.0 |
+| GF(2⁶⁴) | **66.0** / **78.6** / **247** | – | 542 / 561 / 1,354 | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **235** / **232** / **831** | – | – | – | – | – | – | – | – | 547 / 546 / 2,064 | – | – |
+| GF(2²³³) | **819** / **852** / **2,696** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **886** / **940** / **2,990** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **4,982** / **4,926** / **17,241** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square: a², constant time, without carry-less multiplication
 
 ![square: a², constant time, without carry-less multiplication](benchmarks/square-without-clmul.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **4.6** | – | – | – | – | 8.1 | 8.6 | – | – | – | – | – |
-|  | latency cycles | **17.0** | – | – | – | – | 21.0 | 25.0 | – | – | – | – | – |
-|  | instructions | **21.0** | – | – | – | – | 34.0 | 34.0 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 25.8 | – | – | – | – | **22.0** | – | – | – | – | – | – |
-|  | latency cycles | **31.0** | – | – | – | – | 35.0 | – | – | – | – | – | – |
-|  | instructions | **78.0** | – | – | – | – | 90.0 | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 49.3 | – | – | – | – | 129 | **27.0** | – | – | – | – | – |
-|  | latency cycles | **23.0** | – | – | – | – | 143 | 45.0 | – | – | – | – | – |
-|  | instructions | 214 | – | – | – | – | 584 | **92.0** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **30.7** | – | – | – | – | 304 | 39.0 | – | – | – | – | – |
-|  | latency cycles | 60.7 | – | – | – | – | 293 | **44.0** | – | – | – | – | – |
-|  | instructions | 146 | – | – | – | – | 1,271 | **127** | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **48.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **56.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **184** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **93.4** | – | – | – | – | 1,015 | – | – | – | – | – | – |
-|  | latency cycles | **102** | – | – | – | – | 1,104 | – | – | – | – | – | – |
-|  | instructions | **327** | – | – | – | – | 4,090 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **220** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **235** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **937** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **4.6** / **17.0** / **21.0** | – | – | – | – | 8.1 / 21.0 / 34.0 | 8.6 / 25.0 / 34.0 | – | – | – | – | – |
+| GF(2¹⁶) | 25.8 / **31.0** / **78.0** | – | – | – | – | **22.0** / 35.0 / 90.0 | – | – | – | – | – | – |
+| GF(2⁶⁴) | 49.3 / **23.0** / 214 | – | – | – | – | 129 / 143 / 584 | **27.0** / 45.0 / **92.0** | – | – | – | – | – |
+| GF(2¹²⁸) | **30.7** / 60.7 / 146 | – | – | – | – | 304 / 293 / 1,271 | 39.0 / **44.0** / **127** | – | – | – | – | – |
+| GF(2²³³) | **48.0** / **56.0** / **184** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **93.4** / **102** / **327** | – | – | – | – | 1,015 / 1,104 / 4,090 | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **220** / **235** / **937** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square_vartime: a², variable time, without carry-less multiplication
 
 ![square_vartime: a², variable time, without carry-less multiplication](benchmarks/square_vartime-without-clmul.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **5.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **7.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 5.3 | – | – | – | – | – | **2.6** | – | – | – | – | – |
-|  | latency cycles | **7.0** | – | – | – | – | – | 10.0 | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | 11.0 | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **49.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **23.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **214** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **30.7** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **63.6** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **146** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **48.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **56.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **184** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **93.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **102** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **327** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **220** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **235** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **937** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **5.3** / **7.0** / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | 5.3 / **7.0** / **8.0** | – | – | – | – | – | **2.6** / 10.0 / 11.0 | – | – | – | – | – |
+| GF(2⁶⁴) | **49.3** / **23.0** / **214** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **30.7** / **63.6** / **146** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **48.0** / **56.0** / **184** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **93.5** / **102** / **327** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **220** / **235** / **937** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert: a⁻¹, constant time, without carry-less multiplication
 
 ![invert: a⁻¹, constant time, without carry-less multiplication](benchmarks/invert-without-clmul.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **239** | – | – | – | – | 255 | 311 | – | – | – | – | – |
-|  | instructions | 604 | – | – | – | – | 804 | **518** | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 481 | 1,116 | – | – | – | **337** | – | – | – | – | – | – |
-|  | instructions | 1,294 | 3,917 | – | – | – | **1,072** | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 2,202 | 14,020 | – | – | – | **1,249** | 3,247 | – | – | – | – | – |
-|  | instructions | 6,675 | 32,533 | – | – | – | **4,828** | 6,830 | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 12,320 | – | – | – | – | **3,262** | – | – | 144,137 | – | – | – |
-|  | instructions | 28,386 | – | – | – | – | **13,595** | – | – | 525,085 | – | – | – |
-| GF(2²³³) | throughput cycles | **21,352** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **73,276** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | 40,729 | – | – | – | – | **9,625** | – | – | – | – | – | – |
-|  | instructions | 123,663 | – | – | – | – | **41,587** | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **188,274** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **765,628** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **239** / – / 604 | – | – | – | – | 255 / – / 804 | 311 / – / **518** | – | – | – | – | – |
+| GF(2¹⁶) | 481 / – / 1,294 | 1,116 / – / 3,917 | – | – | – | **337** / – / **1,072** | – | – | – | – | – | – |
+| GF(2⁶⁴) | 2,202 / – / 6,675 | 14,020 / – / 32,533 | – | – | – | **1,249** / – / **4,828** | 3,247 / – / 6,830 | – | – | – | – | – |
+| GF(2¹²⁸) | 12,320 / – / 28,386 | – | – | – | – | **3,262** / – / **13,595** | – | – | 144,137 / – / 525,085 | – | – | – |
+| GF(2²³³) | **21,352** / – / **73,276** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | 40,729 / – / 123,663 | – | – | – | – | **9,625** / – / **41,587** | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **188,274** / – / **765,628** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert_vartime: a⁻¹, variable time, without carry-less multiplication
 
 ![invert_vartime: a⁻¹, variable time, without carry-less multiplication](benchmarks/invert_vartime-without-clmul.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 5.3 | **3.0** | 380 | – | – | – | – | – | – | – | – | – |
-|  | instructions | **13.0** | 15.0 | 1,361 | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **3.4** | – | 1,197 | – | – | – | 20.3 | – | – | – | – | 9.8 |
-|  | instructions | **12.0** | – | 3,474 | – | – | – | 95.0 | – | – | – | – | 25.0 |
-| GF(2⁶⁴) | throughput cycles | **1,136** | – | 9,740 | – | – | – | – | – | – | – | – | – |
-|  | instructions | **3,571** | – | 27,942 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 3,608 | – | – | – | – | – | **976** | 11,574 | – | 147,346 | – | – |
-|  | instructions | 11,364 | – | – | – | – | – | **3,897** | 31,431 | – | 533,598 | – | – |
-| GF(2²³³) | throughput cycles | **21,314** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **73,264** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **40,768** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **123,661** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **189,244** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **765,630** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | 5.3 / – / **13.0** | **3.0** / – / 15.0 | 380 / – / 1,361 | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | **3.4** / – / **12.0** | – | 1,197 / – / 3,474 | – | – | – | 20.3 / – / 95.0 | – | – | – | – | 9.8 / – / 25.0 |
+| GF(2⁶⁴) | **1,136** / – / **3,571** | – | 9,740 / – / 27,942 | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | 3,608 / – / 11,364 | – | – | – | – | – | **976** / – / **3,897** | 11,574 / – / 31,431 | – | 147,346 / – / 533,598 | – | – |
+| GF(2²³³) | **21,314** / – / **73,264** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **40,768** / – / **123,661** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **189,244** / – / **765,630** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt: √a, constant time, without carry-less multiplication
 
 ![sqrt: √a, constant time, without carry-less multiplication](benchmarks/sqrt-without-clmul.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **4.6** | – | – | – | – | – | 8.6 | – | – | – | – | – |
-|  | instructions | **21.0** | – | – | – | – | – | 35.0 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **13.6** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **53.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 83.6 | – | – | – | – | – | **40.4** | – | – | – | – | – |
-|  | instructions | 250 | – | – | – | – | – | **161** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 180 | – | – | – | – | – | **124** | – | – | – | – | – |
-|  | instructions | 603 | – | – | – | – | – | **444** | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **108** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **523** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **140** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **663** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **5,073** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **17,072** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **4.6** / – / **21.0** | – | – | – | – | – | 8.6 / – / 35.0 | – | – | – | – | – |
+| GF(2¹⁶) | **13.6** / – / **53.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | 83.6 / – / 250 | – | – | – | – | – | **40.4** / – / **161** | – | – | – | – | – |
+| GF(2¹²⁸) | 180 / – / 603 | – | – | – | – | – | **124** / – / **444** | – | – | – | – | – |
+| GF(2²³³) | **108** / – / **523** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **140** / – / **663** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **5,073** / – / **17,072** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt_vartime: √a, variable time, without carry-less multiplication
 
 ![sqrt_vartime: √a, variable time, without carry-less multiplication](benchmarks/sqrt_vartime-without-clmul.svg)
 
-| Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **5.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 5.3 | – | – | – | – | – | **3.2** | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | 12.0 | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **85.8** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **250** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **180** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **603** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **108** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **523** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **141** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **663** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **5,072** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **17,072** | – | – | – | – | – | – | – | – | – | – | – |
+Each cell: throughput cycles / latency cycles / instructions per operation. Bold: the fewest of the row. –: no such function or no chain form.
+
+| Field | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GF(2⁸) | **5.0** / – / **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | 5.3 / – / **8.0** | – | – | – | – | – | **3.2** / – / 12.0 | – | – | – | – | – |
+| GF(2⁶⁴) | **85.8** / – / **250** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | **180** / – / **603** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | **108** / – / **523** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | **141** / – / **663** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | **5,072** / – / **17,072** | – | – | – | – | – | – | – | – | – | – | – |
 
 ## Reproduce
 

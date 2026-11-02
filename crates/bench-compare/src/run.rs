@@ -45,13 +45,13 @@ pub struct Paths {
 
 impl Paths {
     /// The paths of the tool at `manifest_dir`, which lives in the library's directory; the
-    /// record is `target/benchmarks/<record>` under the workspace root.
+    /// record is `benchmarks/record.json` there, next to the charts.
     #[must_use]
-    pub fn new(manifest_dir: &str, record: &str) -> Self {
+    pub fn new(manifest_dir: &str) -> Self {
         let library = Path::new(manifest_dir).join("..");
         let root = library.join("..").join("..");
         Self {
-            record: root.join("target").join("benchmarks").join(record),
+            record: library.join("benchmarks").join("record.json"),
             root,
             library,
         }
