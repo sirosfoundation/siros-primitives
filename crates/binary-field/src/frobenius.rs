@@ -13,6 +13,7 @@ use const_default::ConstDefault;
 use generic_array::GenericArray;
 use typenum::U128;
 
+use crate::arith::Field;
 use crate::chain::{Chain, Chains, MAX_STEPS};
 use crate::element::Limbs;
 use crate::plan::{Plan, Polynomial, TABLE_BUDGET, TIER, Tier};
@@ -85,12 +86,7 @@ impl<P: Polynomial> Frobenius<P> {
     /// `x^(2^power)` for step `step` of the chain: the step's table applications, then squarings.
     /// A `step` past the chain squares `power` times.
     #[inline(always)]
-    pub(crate) fn apply(
-        x: Poly<P::Degree>,
-        step: usize,
-        power: usize,
-        square: impl Fn(Poly<P::Degree>) -> Poly<P::Degree>,
-    ) -> Poly<P::Degree> {
+    pub(crate) fn apply(x: Poly<P::Degree>, step: usize, power: usize) -> Poly<P::Degree> {
         let mut x = x;
         let (counts, squarings) = match (
             Self::POWERS.applications.get(step),
@@ -113,7 +109,7 @@ impl<P: Polynomial> Frobenius<P> {
         tables!(0 1 2 3 4 5 6 7);
         let mut squared = 0;
         while squared < squarings {
-            x = square(x);
+            x = Field::<P>::lanes_square(x);
             squared += 1;
         }
         x

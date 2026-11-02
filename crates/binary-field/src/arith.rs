@@ -11,6 +11,7 @@ use typenum::{U64, U128};
 
 use crate::frobenius::Frobenius;
 use crate::invert::{Inversion, inverse};
+use crate::kernel::spread_half;
 use crate::plan::{Plan, Polynomial, Shape, Wide};
 use crate::representation::{Representation, Storage};
 use crate::table::Tables;
@@ -180,15 +181,27 @@ impl<P: Polynomial> Field<P> {
     pub(crate) fn lanes_square(a: Lanes<P>) -> Lanes<P> {
         match Plan::<P>::SHAPE {
             Shape::Word => {
-                let square = a.clmul_words(0, a, 0).resize::<U64>();
+                let square = Self::word_poly_square(a).resize::<U64>();
                 Self::reduce_word(square).resize()
             }
-            Shape::Words => Self::fold_words(a.clmul_words(0, a, 0)),
+            Shape::Words => Self::fold_words(Self::word_poly_square(a)),
             Shape::Lane => {
                 let square = a.resize::<U128>().widening_square();
                 Self::fold_lane(square.resize(), (square >> 128).resize()).resize()
             }
             Shape::Lanes => Self::reduce_lanes(a.widening_square()),
+        }
+    }
+
+    /// The square of a polynomial of at most 64 coefficients, in 128 bits: one carry-less product
+    /// with hardware word products, and otherwise the bits spread to twice their position, which
+    /// takes no product.
+    #[inline(always)]
+    fn word_poly_square(a: Lanes<P>) -> Poly<U128> {
+        if clmul::HARDWARE {
+            a.clmul_words(0, a, 0)
+        } else {
+            a.resize::<U64>().widening_square()
         }
     }
 
@@ -213,6 +226,40 @@ impl<P: Polynomial> Field<P> {
         let middle = a_sum.clmul_words(0, b_sum, 0) ^ low ^ high;
         let middle = middle ^ (high << 64) ^ high.clmul_words(1, r, 0);
         low ^ (middle << 64) ^ middle.clmul_words(1, r, 0)
+    }
+
+    /// `p mod f` for `n` up to 64 and a product `p` whose part `h` at and above `x^n` has `h r`
+    /// below `x^n`: one shifted copy per tap, without the overflow of a full product. The odd
+    /// product of a square root is one when `2d <= n`, as `h` keeps at most `n / 2` bits.
+    #[inline(always)]
+    fn fold_short(product: Poly<U128>) -> Lanes<P> {
+        let degree = Plan::<P>::DEGREE;
+        let taps = Plan::<P>::TAPS;
+        let high = (product >> degree).resize::<U64>();
+        let mut sum = (product.resize::<U64>() & Poly::of(low_mask(degree))) ^ high;
+        each!(index < taps.len() => {
+            if let Some(&tap) = taps.get(index)
+                && tap > 0
+            {
+                sum ^= high << tap;
+            }
+        });
+        sum.resize()
+    }
+
+    /// `a c mod f` for `n = 128`, `d` below 64 and `a` below `x^64`: two word products give
+    /// `low + high x^128` with `high` below `x^63`, whose product with `r` stays below `x^128`, so
+    /// one fold ends it.
+    #[inline(always)]
+    fn word_mul_lane(a: Poly<U128>, c: Poly<U128>) -> Poly<U128> {
+        let middle = a.clmul_words(0, c, 1);
+        let low = a.clmul_words(0, c, 0) ^ (middle << 64);
+        let high = middle >> 64;
+        if Plan::<P>::FOLD_BY_PRODUCTS {
+            low ^ high.clmul_words(0, Poly::<U64>::of(Plan::<P>::R_WORD), 0)
+        } else {
+            Self::fold_lane(low, high)
+        }
     }
 
     /// `low + high x^128 mod f` for `n = 128` and `d` below 64, by shifts within words, as
@@ -252,7 +299,9 @@ impl<P: Polynomial> Field<P> {
         sum
     }
 
-    /// `p mod f` for a product `p` of two polynomials of the field, by rounds of folds.
+    /// `p mod f` for a product `p` of two polynomials of the field: two rounds of products with
+    /// `r` by hardware word products; otherwise one fold of shifted copies with its overflow added
+    /// first when `2d <= n`, and rounds of them beyond.
     #[inline(always)]
     fn reduce_lanes(product: Poly<Wide<P>>) -> Lanes<P> {
         let degree = Plan::<P>::DEGREE;
@@ -264,6 +313,8 @@ impl<P: Polynomial> Field<P> {
             low ^= folded.resize();
             let spill = (folded >> degree).resize::<U64>().widening_mul(r);
             low ^ spill.resize()
+        } else if Plan::<P>::ONE_SPILL {
+            low ^ Self::fold_lanes((product >> degree).resize::<P::Degree>())
         } else {
             // Rounds of shifted copies, one per tap.
             let mut rest = product >> degree;
@@ -282,14 +333,66 @@ impl<P: Polynomial> Field<P> {
         }
     }
 
+    /// `h x^n mod f` for `h` below `x^n` and `2d <= n`, by shifts of the whole polynomial, as
+    /// `(h + t) r mod x^n` for the overflow `t` of `h r`: `t r` stays below `x^n`. Each shift
+    /// works on `n` bits, the width of `h`.
+    #[inline(always)]
+    fn fold_lanes(high: Lanes<P>) -> Lanes<P> {
+        let degree = Plan::<P>::DEGREE;
+        let taps = Plan::<P>::TAPS;
+        let mut overflow = Lanes::<P>::ZERO;
+        each!(index < taps.len() => {
+            if let Some(&tap) = taps.get(index)
+                && tap > 0
+            {
+                overflow ^= high >> (degree - tap);
+            }
+        });
+        let high = high ^ overflow;
+        let mut sum = high;
+        each!(index < taps.len() => {
+            if let Some(&tap) = taps.get(index)
+                && tap > 0
+            {
+                sum ^= high << tap;
+            }
+        });
+        sum
+    }
+
     /// `sqrt(a) = e(x) + sqrt(x) o(x)` for the even and odd coefficients `e(x^2)` and `x o(x^2)` of
-    /// `a`, which the masks and shifts within words gather, a word pair at a time.
+    /// `a`, which the masks and shifts within words gather. Up to 64 bits one gather takes `a` and
+    /// `a / x` side by side in the two words of a register, and one word product multiplies `o`.
+    /// At 128 bits `o` fills one word: two word products and one fold.
     #[inline(always)]
     pub(crate) fn lanes_sqrt(a: Lanes<P>) -> Lanes<P> {
         if Plan::<P>::SQRT_BY_SPLIT {
-            let even = gather(a);
-            let odd = gather(a.shr_within_words(1));
-            even ^ Self::lanes_mul(odd, Tables::<P>::sqrt_x())
+            let root_x = Tables::<P>::sqrt_x();
+            match Plan::<P>::SHAPE {
+                Shape::Word | Shape::Words => {
+                    let wide = a.resize::<U128>();
+                    let halves = gather_within(wide ^ (wide.shr_within_words(1) << 64));
+                    let product = halves.clmul_words(1, root_x, 0);
+                    let odd = if Plan::<P>::ONE_SPILL {
+                        Self::fold_short(product)
+                    } else if matches!(Plan::<P>::SHAPE, Shape::Word) {
+                        Self::reduce_word(product.resize::<U64>()).resize()
+                    } else {
+                        Self::fold_words(product)
+                    };
+                    halves.resize::<P::Degree>() ^ odd
+                }
+                Shape::Lane => {
+                    let even = gather(a);
+                    let odd = gather(a.shr_within_words(1));
+                    even ^ Self::word_mul_lane(odd.resize(), root_x.resize()).resize()
+                }
+                Shape::Lanes => {
+                    let even = gather(a);
+                    let odd = gather(a.shr_within_words(1));
+                    even ^ Self::lanes_mul(odd, root_x)
+                }
+            }
         } else {
             let mut power = a;
             each!(_step < Plan::<P>::DEGREE - 1 => {
@@ -308,14 +411,17 @@ impl<P: Polynomial> Field<P> {
         Self::reduce_word(clmul::clmul64(a, b) as u64)
     }
 
-    /// `a^2 mod f`: the constant-time linear map of squaring up to degree 8, a carry-less square
-    /// above, where the map takes four parity gathers.
+    /// `a^2 mod f`: the constant-time linear map of squaring up to degree 8; above, where the map
+    /// takes four parity gathers, a carry-less square with hardware word products and the spread
+    /// of the bits otherwise.
     #[inline(always)]
     pub(crate) fn word_square(a: u64) -> u64 {
         if Plan::<P>::DEGREE <= 8 {
             Tables::<P>::frobenius(a, 1)
-        } else {
+        } else if clmul::HARDWARE {
             Self::reduce_word(clmul::clmul64(a, a) as u64)
+        } else {
+            Self::reduce_word(spread_half(a))
         }
     }
 
@@ -485,7 +591,7 @@ impl<P: Polynomial> Inversion for Tabulated<P> {
 
     #[inline(always)]
     fn frobenius(x: Lanes<P>, step: usize, power: usize) -> Lanes<P> {
-        Frobenius::<P>::apply(x, step, power, Field::<P>::lanes_square)
+        Frobenius::<P>::apply(x, step, power)
     }
 
     #[inline(always)]
@@ -525,13 +631,7 @@ impl<N: clmul::Width> Masks<N> {
 /// of each word, then the packing of those halves into words, of words into word pairs, and so on.
 #[inline(always)]
 fn gather<N: clmul::Width>(a: Poly<N>) -> Poly<N> {
-    let within = Masks::<N>::WITHIN;
-    let mut x = a & within[0];
-    each!(level < 5 => {
-        if let Some(&mask) = within.get(level + 1) {
-            x = (x | x.shr_within_words(1u32 << level)) & mask;
-        }
-    });
+    let mut x = gather_within(a);
     let half = N::BITS.div_ceil(2);
     each!(level < 5 => {
         let chunk = 32 << level;
@@ -539,6 +639,20 @@ fn gather<N: clmul::Width>(a: Poly<N>) -> Poly<N> {
             && let Some(&mask) = Masks::<N>::BLOCKS.get(level)
         {
             x = (x | (x >> chunk)) & mask;
+        }
+    });
+    x
+}
+
+/// The coefficients at the even positions of each word of `a`, moved to half their position
+/// within the word.
+#[inline(always)]
+fn gather_within<N: clmul::Width>(a: Poly<N>) -> Poly<N> {
+    let within = Masks::<N>::WITHIN;
+    let mut x = a & within[0];
+    each!(level < 5 => {
+        if let Some(&mask) = within.get(level + 1) {
+            x = (x | x.shr_within_words(1u32 << level)) & mask;
         }
     });
     x

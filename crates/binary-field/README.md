@@ -79,14 +79,13 @@ plan knows which through `clmul::HARDWARE`. "With tables" means the default buil
 | Product | `Gf2`, degree up to 8, by default | Logarithm and antilogarithm tables of a generator |
 | Product | degree up to 64 | One carry-less product of the words |
 | Product | above | Karatsuba's three word products per pair of registers (Karatsuba and Ofman, 1962), schoolbook across registers |
-| Reduction | degree up to 64 and `2d <= n`, with `d` the degree of `r` | One shifted copy per tap, with the overflow of the fold added first |
 | Reduction | degree above 64, `2d <= n` and `d` below 64, with hardware word products | Two rounds of carry-less products with `r`, the second for the overflow of the first (Gueron and Kounavis, 2010); a square of degree 128 takes the shifted copies of the next row |
-| Reduction | degree 128 and `d` below 64 | One shifted copy per tap, with the overflow of the fold added first |
-| Reduction | otherwise, such as `x^233 + x^74 + 1` | Rounds of shifted copies per tap, as many as the taps need |
+| Reduction | `2d <= n`, with `d` the degree of `r`, such as `x^233 + x^74 + 1` | One shifted copy of the overflow per tap, with the overflow of the fold added first |
+| Reduction | otherwise | Rounds of shifted copies per tap, as many as the taps need |
 | Square | `Gf2` with tables, degree up to 8, and up to 16 with `precomputed` | The table of every square |
 | Square | `Gf2` with the default tables, degree 9 to 16 | The images of the two bytes |
 | Square | degree up to 8 | A constant-time linear map: each output byte is the parities of an input byte under eight row masks, by two products (Warren, Hacker's Delight, 7-1 and 7-6) |
-| Square | degree up to 16, and up to 64 with `2d <= n` | The carry-less product of the word with itself, then the reduction |
+| Square | degree up to 16, and up to 64 with `2d <= n` | The carry-less product of the word with itself with hardware word products, its bits spread to twice their position otherwise; then the reduction |
 | Square | otherwise | The bits spread to twice their position: a byte shuffle of a nibble table with SSSE3, the carry-less product of each word with itself with PCLMULQDQ or PMULL, interleaving otherwise; then the reduction |
 | Inverse | `Gf2` with tables, degree up to 8, and up to 16 with `precomputed` | The table of every inverse |
 | Inverse | otherwise | `a^(2^n - 2)` along a short addition chain for `n - 1` (Itoh and Tsujii, 1988; Knuth, TAOCP vol. 2, 4.6.3): one product and one Frobenius power per step, 10 products for GF(2¹²⁸) |
@@ -96,7 +95,7 @@ plan knows which through `clmul::HARDWARE`. "With tables" means the default buil
 | Square root | `Gf2` with tables, degree up to 8, and up to 16 with `precomputed` | The table of every root |
 | Square root | `Gf2` with the default tables, degree 9 to 16 | The images of the two bytes |
 | Square root | degree up to 16 | The constant-time linear map of `a^(2^(n-1))` |
-| Square root | degree up to 1024 | Even and odd coefficient split: `sqrt(a) = e(x) + sqrt(x) o(x)`, with `sqrt(x) = x^(2^(n-1))` a compile-time constant |
+| Square root | degree up to 1024 | Even and odd coefficient split: `sqrt(a) = e(x) + sqrt(x) o(x)`, with `sqrt(x) = x^(2^(n-1))` a compile-time constant. `o` has half the coefficients: up to 64 bits one gather splits `a` and `a / x` side by side in a register, and at 128 bits `sqrt(x) o(x)` takes two word products and one fold |
 | Square root | larger degree | The Frobenius map, `n - 1` squarings at run time; the const evaluator refuses the longer chain |
 | Trace | any | The parity of `a & m`, where bit `k` of the compile-time mask `m` is the trace of `x^k` from Newton's identities on the coefficients of `f` |
 | GCM view | `GF(2^128)` with the GCM polynomial | Bit reversal of the big-endian block, the order of NIST SP 800-38D |

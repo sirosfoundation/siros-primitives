@@ -45,8 +45,9 @@ The target features of the build select the backend at compile time:
 | little-endian `aarch64` | `aes` | Advanced SIMD | PMULL | PMULL |
 | any other | | Pairs of `u64` | The comb | Bit interleaving |
 
-The comb multiplies five interleaved bit lanes of each word by integer multiplication. With
-`sse4.1`, `pextrq` moves the high half of a register out.
+The comb multiplies four interleaved bit lanes of the low 60 bits of one word by those of the
+other, and the top 4 bits by each lane, by integer multiplication: 20 products. With `sse4.1`,
+`pextrq` moves the high half of a register out.
 
 `RUSTFLAGS="-C target-feature=+pclmulqdq,+sse4.1"` enables both `x86_64` features,
 `-C target-feature=+aes` enables PMULL, and `-C target-cpu=native` enables what the build machine
