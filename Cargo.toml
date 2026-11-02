@@ -89,3 +89,6 @@ allow_attributes_without_reason = "deny"
 must_use_candidate = "deny"
 return_self_not_must_use = "deny"
 result_unit_err = "deny"
+
+[profile.test]
+opt-level = 1
