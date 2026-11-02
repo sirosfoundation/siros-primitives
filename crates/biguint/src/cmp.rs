@@ -1,7 +1,24 @@
 use core::cmp::Ordering;
+use core::hash::{Hash, Hasher};
 
 use crate::bits::Bits;
+use crate::scan;
 use crate::uint::Uint;
+
+impl<N: Bits> PartialEq for Uint<N> {
+    #[inline(always)]
+    fn eq(&self, rhs: &Self) -> bool {
+        scan::equal(&self.limbs, &rhs.limbs)
+    }
+}
+
+/// Hashes the limbs, which equal values share.
+impl<N: Bits> Hash for Uint<N> {
+    #[inline(always)]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.limbs.hash(state);
+    }
+}
 
 impl<N: Bits> Ord for Uint<N> {
     #[inline(always)]

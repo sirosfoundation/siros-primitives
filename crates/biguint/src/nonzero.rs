@@ -13,6 +13,7 @@ use generic_array::{ArrayLength, GenericArray};
 use typenum::{B0, B1, Bit, UInt, UTerm, Unsigned};
 
 use crate::bits::Bits;
+use crate::scan;
 use crate::uint::Uint;
 
 /// An `N`-bit integer that is not zero.
@@ -31,7 +32,8 @@ impl<N: Bits> NonZeroUint<N> {
 
     /// The value.
     #[inline(always)]
-    pub(crate) fn get(self) -> Uint<N> {
+    #[must_use]
+    pub fn get(self) -> Uint<N> {
         Uint {
             limbs: self.value.limbs(),
         }
@@ -42,6 +44,21 @@ impl<N: Bits> NonZeroUint<N> {
     pub(crate) fn native(self) -> Option<NonZero<u128>> {
         self.value.native()
     }
+}
+
+/// The count of the limbs of a nonzero value up to its top nonzero one.
+///
+/// The count feeds every step of a division. A scan from the top with a branch per limb predicts
+/// it from the divisors before; a branch-free scan puts its latency on the division's path, which
+/// costs 60 cycles at 512 bits.
+#[inline(always)]
+pub(crate) fn significant_len(limbs: &[u64]) -> usize {
+    // A nonzero value whose upper limbs are zero has its nonzero limb at the bottom.
+    limbs
+        .iter()
+        .skip(1)
+        .rposition(|limb| *limb != 0)
+        .map_or(1, |index| index + 2)
 }
 
 /// Lowercase hexadecimal with a `0x` prefix, as [`Uint`] prints.
@@ -138,7 +155,7 @@ where
 {
     #[inline(always)]
     fn new(limbs: GenericArray<u64, L>) -> Option<Self> {
-        limbs.iter().any(|limb| *limb != 0).then_some(Self(limbs))
+        (!scan::is_zero(&limbs)).then_some(Self(limbs))
     }
 
     #[inline(always)]

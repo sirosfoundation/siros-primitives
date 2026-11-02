@@ -2,13 +2,10 @@
 //! with a carry of one into the bottom limb, and `-a` is `0 - a`. The addend's type selects the
 //! correction that brings the sum below the modulus.
 
-use generic_array::GenericArray;
-use generic_array::sequence::GenericSequence;
-
 use crate::bits::Bits;
 use crate::kernel::{add_assign, fits, reduced, sub_assign, subtract_if_above};
 use crate::nonzero::NonZeroUint;
-use crate::stream::{AddOp, LimbStream, Op2CarryIter, TwosComplement, ZeroExtended, for_each_slot};
+use crate::stream::{AddOp, LimbSource, Op2CarryIter, TwosComplement, ZeroExtended, pull_limbs};
 use crate::uint::Uint;
 
 impl<N: Bits> Uint<N> {
@@ -21,7 +18,7 @@ impl<N: Bits> Uint<N> {
             reduce_operand(self, modulus, &value),
             reduce_operand(rhs, modulus, &value),
         );
-        sum_mod(&a, b.stream(), &value)
+        sum_mod(&a, b.source(), &value)
     }
 
     /// `(self - rhs) mod modulus`.
@@ -33,7 +30,7 @@ impl<N: Bits> Uint<N> {
             reduce_operand(self, modulus, &value),
             reduce_operand(rhs, modulus, &value),
         );
-        sum_mod(&a, TwosComplement(b.stream()), &value)
+        sum_mod(&a, TwosComplement(b.source()), &value)
     }
 
     /// `-self mod modulus`.
@@ -42,7 +39,7 @@ impl<N: Bits> Uint<N> {
     pub fn neg_mod(self, modulus: NonZeroUint<N>) -> Self {
         let value = modulus.get();
         let a = reduce_operand(self, modulus, &value);
-        sum_mod(&Self::ZERO, TwosComplement(a.stream()), &value)
+        sum_mod(&Self::ZERO, TwosComplement(a.source()), &value)
     }
 }
 
@@ -68,7 +65,7 @@ pub(crate) fn top<N: Bits>(value: &Uint<N>) -> u64 {
 }
 
 /// The second operand of [`sum_mod`], with the correction that brings the sum below the modulus.
-pub(crate) trait Addend: LimbStream {
+pub(crate) trait Addend: LimbSource {
     /// The carry into the bottom limb of the sum.
     const CARRY_IN: u64;
 
@@ -94,7 +91,7 @@ impl Addend for ZeroExtended<'_> {
 
 /// `2^(64 * k) - b`: the sum is `a - b + 2^(64 * k)`, which carries out exactly when `a >= b`.
 /// Without the carry, `a - b` borrowed, and the modulus is added back.
-impl<I: LimbStream> Addend for TwosComplement<I> {
+impl<S: LimbSource> Addend for TwosComplement<S> {
     const CARRY_IN: u64 = 1;
 
     #[inline(always)]
@@ -109,14 +106,9 @@ impl<I: LimbStream> Addend for TwosComplement<I> {
 /// `(a + addend) mod modulus` for `a` and the addend's value below `modulus`.
 #[inline(always)]
 pub(crate) fn sum_mod<N: Bits, B: Addend>(a: &Uint<N>, addend: B, modulus: &Uint<N>) -> Uint<N> {
-    let mut sum = Op2CarryIter::<_, _, AddOp>::with_carry(a.stream(), addend, B::CARRY_IN);
-    let mut limbs = if N::LIMBS <= 4 {
-        GenericArray::<u64, N::Limbs>::generate(|_| sum.next_limb())
-    } else {
-        let mut limbs = GenericArray::<u64, N::Limbs>::default();
-        for_each_slot(&mut limbs, |slot| *slot = sum.next_limb());
-        limbs
-    };
+    let mut sum =
+        Op2CarryIter::<_, _, AddOp>::with_carry(a.source().pull(), addend.pull(), B::CARRY_IN);
+    let mut limbs = pull_limbs::<N::Limbs>(&mut sum);
     B::correct(&mut limbs, sum.carry(), &modulus.limbs);
     // Below the modulus, the bits above `N` are zero.
     Uint { limbs }

@@ -7,7 +7,7 @@ use crate::kernel::{
     add_assign, add_limb, add_to, compare, fits, split, split_mut, sub_assign, sub_limb,
 };
 use crate::recursion::{Depth, product_scratch};
-use crate::stream::{LimbStream, Op2CarryIter, SubOp, ZeroExtended};
+use crate::stream::{LimbSource, LimbStream, Op2CarryIter, SubOp, ZeroExtended};
 
 use super::basecase;
 
@@ -49,8 +49,10 @@ pub(crate) fn karatsuba<D: Depth>(out: &mut [u64], a: &[u64], b: &[u64], scratch
 fn abs_difference(out: &mut [u64], x: &[u64], y: &[u64]) -> bool {
     let below = compare(x, y).is_lt();
     let (larger, smaller) = select_unpredictable(below, (y, x), (x, y));
-    let mut difference =
-        Op2CarryIter::<_, _, SubOp>::new(ZeroExtended::new(larger), ZeroExtended::new(smaller));
+    let mut difference = Op2CarryIter::<_, _, SubOp>::new(
+        ZeroExtended::new(larger).pull(),
+        ZeroExtended::new(smaller).pull(),
+    );
     for slot in out {
         *slot = difference.next_limb();
     }
