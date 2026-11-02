@@ -10,8 +10,9 @@ cargo run -p biguint-bench-report -- bench [--machine <description>]
 cargo run -p biguint-bench-report -- report
 ```
 
-`bench` builds the `compare` bench of `biguint` with `-C target-cpu=native -C target-feature=-sse4a`
-(Valgrind runs no `extrq`) in `target/benchmarks` and runs it. The bench counts the instructions of
+`bench` builds the `compare` bench of `biguint` with
+`-C target-cpu=native -C target-feature=-sse4a,-vpclmulqdq` (Valgrind runs no `extrq` and no
+256-bit `vpclmulqdq`) in `target/benchmarks` and runs it. The bench counts the instructions of
 every case under Valgrind's Callgrind, one process per case, on all the threads that the run may
 use. `bench` records the counts, the commit, the compiler and the machine in
 `target/benchmarks/biguint.json`. `--machine` adds a description of the machine.
