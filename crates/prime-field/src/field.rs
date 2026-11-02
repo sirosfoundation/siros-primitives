@@ -1,4 +1,5 @@
 use core::fmt;
+use core::hash::{Hash, Hasher};
 use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -34,7 +35,7 @@ pub trait Modulus: Copy + 'static {
 /// multiplication. The representation is private; the conversions take and return canonical
 /// integers.
 #[repr(transparent)]
-#[derive_where::derive_where(Clone, Copy, Eq, Hash, PartialEq; Limbs<M>)]
+#[derive_where::derive_where(Clone, Copy, Eq; Limbs<M>)]
 pub struct Fp<M: Modulus> {
     limbs: Limbs<M>,
 }
@@ -117,7 +118,7 @@ impl<M: Modulus> Fp<M> {
     pub fn from_le_bytes(
         bytes: &GenericArray<u8, <M::Width as Bits>::Bytes>,
     ) -> Result<Self, NotCanonical> {
-        Self::from_uint(Uint::from_le_bytes(bytes).map_err(|OutOfRange { .. }| NotCanonical)?)
+        Self::from_integer(Uint::from_le_bytes(bytes).map_err(|OutOfRange { .. }| NotCanonical)?)
     }
 
     /// Decodes the big-endian encoding of the canonical integer, in `ceil(width / 8)` bytes.
@@ -129,21 +130,39 @@ impl<M: Modulus> Fp<M> {
     pub fn from_be_bytes(
         bytes: &GenericArray<u8, <M::Width as Bits>::Bytes>,
     ) -> Result<Self, NotCanonical> {
-        Self::from_uint(Uint::from_be_bytes(bytes).map_err(|OutOfRange { .. }| NotCanonical)?)
+        Self::from_integer(Uint::from_be_bytes(bytes).map_err(|OutOfRange { .. }| NotCanonical)?)
     }
 
     /// The little-endian encoding of the canonical integer.
     #[inline(always)]
     #[must_use]
     pub fn to_le_bytes(self) -> GenericArray<u8, <M::Width as Bits>::Bytes> {
-        self.to_uint().to_le_bytes()
+        self.integer().to_le_bytes()
     }
 
     /// The big-endian encoding of the canonical integer.
     #[inline(always)]
     #[must_use]
     pub fn to_be_bytes(self) -> GenericArray<u8, <M::Width as Bits>::Bytes> {
-        self.to_uint().to_be_bytes()
+        self.integer().to_be_bytes()
+    }
+
+    /// [`Self::from_uint`] by the run-time kernels, in time that depends on whether `value` is
+    /// canonical alone.
+    #[inline(always)]
+    fn from_integer(value: Uint<M::Width>) -> Result<Self, NotCanonical> {
+        let limbs = value.into_limbs();
+        if Shape::<M>::below_p(&limbs) {
+            Ok(Self::from_limbs(Shape::<M>::representation_of(&limbs)))
+        } else {
+            Err(NotCanonical)
+        }
+    }
+
+    /// [`Self::to_uint`] by the run-time kernels, in constant time.
+    #[inline(always)]
+    fn integer(self) -> Uint<M::Width> {
+        Uint::from_generic_limbs(Shape::<M>::integer_of(&self.limbs))
     }
 
     /// Whether the element is `0`.
@@ -379,9 +398,25 @@ impl<M: Modulus> Default for Fp<M> {
     }
 }
 
+impl<M: Modulus> PartialEq for Fp<M> {
+    /// One pass that folds the differences of the limbs, which the compiler vectorizes for
+    /// elements in memory; the comparison of the derived equality calls `bcmp` above 64 bytes.
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        self.equals(other)
+    }
+}
+
+impl<M: Modulus> Hash for Fp<M> {
+    #[inline(always)]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.limbs.hash(state);
+    }
+}
+
 impl<M: Modulus> fmt::Debug for Fp<M> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "Fp({:?})", self.to_uint())
+        write!(formatter, "Fp({:?})", self.integer())
     }
 }
 
@@ -468,13 +503,13 @@ impl<M: Modulus> TryFrom<Uint<M::Width>> for Fp<M> {
 
     #[inline(always)]
     fn try_from(value: Uint<M::Width>) -> Result<Self, NotCanonical> {
-        Self::from_uint(value)
+        Self::from_integer(value)
     }
 }
 
 impl<M: Modulus> From<Fp<M>> for Uint<M::Width> {
     #[inline(always)]
     fn from(element: Fp<M>) -> Self {
-        element.to_uint()
+        element.integer()
     }
 }

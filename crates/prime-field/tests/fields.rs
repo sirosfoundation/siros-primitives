@@ -280,8 +280,21 @@ fn check<M: Modulus>(rng: &mut Rng) {
         check_root("secret sqrt", a, residue, s.sqrt().map(Secret::reveal));
         assert_eq!(x == y, a == b, "eq");
         assert_eq!(x.is_zero(), *a == BigUint::ZERO, "is_zero");
-        assert_eq!(Fp::<M>::from_le_bytes(&x.to_le_bytes()), Ok(x), "le bytes");
-        assert_eq!(Fp::<M>::from_be_bytes(&x.to_be_bytes()), Ok(x), "be bytes");
+        let integer = uint::<M::Width>(a);
+        assert_eq!(x.to_le_bytes(), integer.to_le_bytes(), "to le bytes of {a}");
+        assert_eq!(x.to_be_bytes(), integer.to_be_bytes(), "to be bytes of {a}");
+        assert_eq!(
+            Fp::<M>::from_le_bytes(&integer.to_le_bytes()),
+            Ok(x),
+            "from le bytes of {a}"
+        );
+        assert_eq!(
+            Fp::<M>::from_be_bytes(&integer.to_be_bytes()),
+            Ok(x),
+            "from be bytes of {a}"
+        );
+        assert_eq!(Fp::<M>::try_from(integer), Ok(x), "try_from of {a}");
+        assert_eq!(Uint::from(x), integer, "Uint from {a}");
     }
     assert_eq!(Fp::<M>::from_uint(M::MODULUS), Err(NotCanonical));
     assert_eq!(

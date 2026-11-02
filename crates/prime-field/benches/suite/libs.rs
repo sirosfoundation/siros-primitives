@@ -254,53 +254,92 @@ fn this_crate<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
-/// `Fp` in the variable-time rows, `Secret` in the constant-time rows.
+/// `Fp` in the variable-time rows, `Secret` in the constant-time rows. Each operation inlines
+/// into the batch loop.
 fn ours<M: Modulus, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     cells
-        .case(vartime(Kind::Add), "+", pair::<Fp<M>>, |&(a, b)| a + b)
-        .case(vartime(Kind::Sub), "-", pair::<Fp<M>>, |&(a, b)| a - b)
-        .case(vartime(Kind::Mul), "*", pair::<Fp<M>>, |&(a, b)| a * b)
-        .case(vartime(Kind::Square), "square", one::<Fp<M>>, |a| {
-            a.square()
-        })
-        .case(vartime(Kind::Invert), "invert", one::<Fp<M>>, |a| {
-            a.invert()
-        })
-        .case(vartime(Kind::Sqrt), "sqrt", one::<Fp<M>>, |a| a.sqrt())
+        .case(
+            vartime(Kind::Add),
+            "+",
+            pair::<Fp<M>>,
+            #[inline(always)]
+            |&(a, b)| a + b,
+        )
+        .case(
+            vartime(Kind::Sub),
+            "-",
+            pair::<Fp<M>>,
+            #[inline(always)]
+            |&(a, b)| a - b,
+        )
+        .case(
+            vartime(Kind::Mul),
+            "*",
+            pair::<Fp<M>>,
+            #[inline(always)]
+            |&(a, b)| a * b,
+        )
+        .case(
+            vartime(Kind::Square),
+            "square",
+            one::<Fp<M>>,
+            #[inline(always)]
+            |a| a.square(),
+        )
+        .case(
+            vartime(Kind::Invert),
+            "invert",
+            one::<Fp<M>>,
+            #[inline(always)]
+            |a| a.invert(),
+        )
+        .case(
+            vartime(Kind::Sqrt),
+            "sqrt",
+            one::<Fp<M>>,
+            #[inline(always)]
+            |a| a.sqrt(),
+        )
         .case(
             constant(Kind::Add),
             "Secret +",
             pair::<Secret<M>>,
+            #[inline(always)]
             |&(a, b)| a + b,
         )
         .case(
             constant(Kind::Sub),
             "Secret -",
             pair::<Secret<M>>,
+            #[inline(always)]
             |&(a, b)| a - b,
         )
         .case(
             constant(Kind::Mul),
             "Secret *",
             pair::<Secret<M>>,
+            #[inline(always)]
             |&(a, b)| a * b,
         )
         .case(
             constant(Kind::Square),
             "Secret::square",
             one::<Secret<M>>,
+            #[inline(always)]
             |a| a.square(),
         )
         .case(
             constant(Kind::Invert),
             "Secret::invert",
             one::<Secret<M>>,
+            #[inline(always)]
             |a| a.invert(),
         )
         .case(
             constant(Kind::Sqrt),
             "Secret::sqrt",
             one::<Secret<M>>,
+            #[inline(always)]
             |a| a.sqrt(),
         )
 }

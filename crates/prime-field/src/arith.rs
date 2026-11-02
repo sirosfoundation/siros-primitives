@@ -2,17 +2,18 @@
 //! constant-time kernels of [`Secret`](crate::Secret), on the representation that the modulus
 //! selects.
 //!
-//! `CT` selects the constant-time form. The variable-time form takes a branch where the modelled
-//! cycles of the branch with its mispredictions undercut the conditional moves: the final
-//! subtraction of a product whose result rarely reaches `p` ([`Shape::FINAL_BRANCH`]). There the
-//! top limb alone decides: a smaller top limb ends the product, any other takes `p` off in place,
-//! and `p` comes back in the rare case that the subtraction borrows. Every other reduction
-//! subtracts `p` from a copy and selects by the borrow with conditional moves; a sum or a
-//! difference reaches `p` or borrows for half the operands, so a branch there mispredicts half
-//! the time.
+//! `CT` selects the constant-time form. The variable-time form takes a branch where the cycles
+//! of the branch with its mispredictions undercut the conditional moves: the final subtraction
+//! of a product whose result rarely reaches `p` ([`Shape::FINAL_BRANCH`]). There the top limb
+//! alone decides: a smaller top limb ends the product, any other takes `p` off, and `p` comes
+//! back in the rare case that the subtraction borrows. Every other reduction runs without a
+//! branch, since a sum or a difference reaches `p` or borrows for half the operands: it either
+//! selects between two carry chains by conditional moves, or adds `p` under the mask of a
+//! borrow, whichever costs fewer instructions for the limbs of `p` ([`Shape::REDUCE_MASKED`],
+//! [`Shape::SUB_MASKED`]).
 
 use crate::field::Modulus;
-use crate::kernel::{limb, low_limb, set, shifted_limb};
+use crate::kernel::{equal, is_zero, limb, low_limb, set, shifted_limb};
 use crate::params::{ExtendedLimbs, Limbs, Shape, WideLimbs};
 use crate::unrolled::{adc, mac, sbb, select, unroll};
 use crate::width::Width;
@@ -35,9 +36,20 @@ impl<M: Modulus> Shape<M> {
             return Self::single(Self::sub1(limb(a, 0), limb(b, 0)));
         }
         let (difference, borrow) = Self::sub_limbs(a, b);
-        let mut wrapped = difference;
-        Self::add_p(&mut wrapped);
-        Self::select_limbs(borrow != 0, &wrapped, &difference)
+        let spread = 0u64.wrapping_sub(u64::from(borrow));
+        if Self::SUB_MASKED {
+            return Self::add_masked(difference, spread);
+        }
+        let (wrapped, carry) = Self::add_limbs(&difference, &Self::P);
+        // On `L + 1` limbs the difference carries `-borrow` on top: adding `p` carries out of
+        // the top exactly when the difference borrowed. With a spare bit, the carry out of the
+        // limbs alone tells.
+        let wrapped_out = if Self::SPARE {
+            carry
+        } else {
+            adc(carry, spread, 0).1
+        };
+        Self::select_limbs(wrapped_out != 0, &wrapped, &difference)
     }
 
     /// `-a`.
@@ -79,6 +91,46 @@ impl<M: Modulus> Shape<M> {
             Self::montgomery_reduce::<CT>(wide)
         }
     }
+
+    /// Whether the integer `value` lies below `p`, by the borrow of `value - p`.
+    #[inline(always)]
+    pub(crate) fn below_p(value: &Limbs<M>) -> bool {
+        Self::sub_limbs(value, &Self::P).1 != 0
+    }
+
+    /// The representation of the integer `value < p`, in constant time: its Montgomery form by a
+    /// product with `R^2`, `p` for `0` in a Mersenne field, else the integer.
+    #[inline(always)]
+    pub(crate) fn representation_of(value: &Limbs<M>) -> Limbs<M> {
+        if Self::MONTGOMERY {
+            Self::mul::<true>(value, &Self::R2)
+        } else if Self::MERSENNE {
+            Self::select_limbs(is_zero(value), &Self::P, value)
+        } else {
+            *value
+        }
+    }
+
+    /// The integer below `p` that the representation `value` holds, in constant time: a
+    /// Montgomery product by the integer `1`, `0` for `p` in a Mersenne field, else the
+    /// representation.
+    #[inline(always)]
+    pub(crate) fn integer_of(value: &Limbs<M>) -> Limbs<M> {
+        if Self::MONTGOMERY {
+            Self::mul::<true>(value, &Self::UNIT)
+        } else if Self::MERSENNE {
+            Self::select_limbs(equal(value, &Self::P), &M::Width::ZERO, value)
+        } else {
+            *value
+        }
+    }
+
+    /// The integer `1`.
+    const UNIT: Limbs<M> = {
+        let mut out = M::Width::ZERO;
+        set(out.as_mut_slice(), 0, 1);
+        out
+    };
 
     /// Montgomery products reduce the full product row by row, where the modulus folds its
     /// reduction rows: `-p^-1 = 1 mod 2^64` makes each row's multiplier a limb of the product.
@@ -194,11 +246,13 @@ impl<M: Modulus> Shape<M> {
         } else if Self::SHIFT_REDC {
             // With `p^-1 = 1 + 2^32 mod 2^64`, `m = low p^-1` is `low + (low << 32)`, and
             // `(m p) >> 64 = m - (m >> 32) - e` for the carry `e` of that sum, as in winter-math's
-            // `mont_red_cst`. The result `high - (m p >> 64)` lies in `(-p, p)`.
+            // `mont_red_cst`. `m >> 32` is the 32-bit sum of the halves of `low`, which does not
+            // wait for `m`. The result `high - (m p >> 64)` lies in `(-p, p)`.
             let product = u128::from(a) * u128::from(b);
             let (low, high) = (product as u64, (product >> 64) as u64);
             let (m, e) = adc(0, low, low << 32);
-            let (quotient, _) = sbb(e, m, m >> 32);
+            let shifted = u64::from(((low >> 32) as u32).wrapping_add(low as u32));
+            let (quotient, _) = sbb(e, m, shifted);
             let (result, borrow) = sbb(0, high, quotient);
             select(borrow != 0, result.wrapping_add(Self::P0), result)
         } else {
@@ -251,28 +305,18 @@ impl<M: Modulus> Shape<M> {
         (out, borrow)
     }
 
-    /// `t -= p` in place; the borrow out of the top limb.
+    /// `t + (p & mask)` modulo `2^(64 L)`. The limbs of `p` that are zero or all ones fold the
+    /// mask away.
     #[inline(always)]
-    fn sub_p(t: &mut Limbs<M>) -> u8 {
-        let mut borrow = 0;
-        unroll!(j in 0, Self::LIMBS => {
-            let (difference, borrow_out) =
-                sbb(borrow, limb(t.as_slice(), j), limb(Self::P.as_slice(), j));
-            set(t.as_mut_slice(), j, difference);
-            borrow = borrow_out;
-        });
-        borrow
-    }
-
-    /// `t += p` in place, modulo `2^(64 L)`.
-    #[inline(always)]
-    fn add_p(t: &mut Limbs<M>) {
+    fn add_masked(mut t: Limbs<M>, mask: u64) -> Limbs<M> {
         let mut carry = 0;
         unroll!(j in 0, Self::LIMBS => {
-            let (sum, carry_out) = adc(carry, limb(t.as_slice(), j), limb(Self::P.as_slice(), j));
+            let (sum, carry_out) =
+                adc(carry, limb(t.as_slice(), j), limb(Self::P.as_slice(), j) & mask);
             set(t.as_mut_slice(), j, sum);
             carry = carry_out;
         });
+        t
     }
 
     /// `a` when `condition` holds, else `b`, limb by limb with conditional moves.
@@ -289,31 +333,88 @@ impl<M: Modulus> Shape<M> {
         out
     }
 
-    /// `top 2^(64 L) + t mod p` for a value below `2 p`, by conditional moves.
+    /// `top 2^(64 L) + t mod p` for a value below `2 p`, without a branch: `t - p`, then `t` back
+    /// by conditional moves, or `p` back under a mask when [`Self::REDUCE_MASKED`] holds.
     #[inline(always)]
     fn reduce_select(t: Limbs<M>, top: u8) -> Limbs<M> {
-        let mut reduced = t;
-        let borrow = Self::sub_p(&mut reduced);
-        Self::select_limbs(borrow > top, &t, &reduced)
+        // `-top`, taken while a carry out of a sum still stands in the flags.
+        let spread = 0u64.wrapping_sub(u64::from(top));
+        let (reduced, borrow) = Self::sub_limbs(&t, &Self::P);
+        if Self::REDUCE_MASKED {
+            // `top 2^(64 L) + t - p` borrows exactly when the value stays below `p`.
+            let below = if Self::SPARE {
+                borrow
+            } else {
+                sbb(borrow, u64::from(top), 0).1
+            };
+            return Self::add_masked(reduced, 0u64.wrapping_sub(u64::from(below)));
+        }
+        // `borrow - top`: `1` exactly when the value stays below `p`, since a set top implies a
+        // borrow.
+        let keep = if Self::SPARE {
+            u64::from(borrow)
+        } else {
+            adc(borrow, spread, 0).0
+        };
+        Self::select_limbs(keep != 0, &t, &reduced)
     }
 
     /// The final reduction of a product, `top 2^(64 L) + t mod p` for a value below `2 p`: by a
     /// branch on the top limb in the variable-time form when [`Self::FINAL_BRANCH`] holds.
     #[inline(always)]
-    fn reduce_final<const CT: bool>(mut t: Limbs<M>, top: u8) -> Limbs<M> {
+    fn reduce_final<const CT: bool>(t: Limbs<M>, top: u8) -> Limbs<M> {
         if CT || !Self::FINAL_BRANCH {
             return Self::reduce_select(t, top);
         }
         if top != 0 || limb(t.as_slice(), Self::LIMBS - 1) >= Self::P_TOP {
             // Below `p` only when the top limbs are equal; the top absorbs the borrow of a value at
             // or above `2^(64 L)`.
-            let borrow = Self::sub_p(&mut t);
-            if borrow > top {
-                Self::add_p(&mut t);
-            }
+            let (reduced, borrow) = Self::sub_limbs(&t, &Self::P);
+            return if borrow > top {
+                Self::add_masked(reduced, u64::MAX)
+            } else {
+                reduced
+            };
         }
         t
     }
+
+    /// The instructions that masking limb `value` of `p` costs: none for zero and all ones,
+    /// a 32-bit move for `2^32 - 1`, a move and an `and` otherwise.
+    const fn masked_limb_cost(value: u64) -> usize {
+        match value {
+            0 | u64::MAX => 0,
+            0xffff_ffff => 1,
+            _ => 2,
+        }
+    }
+
+    /// The instructions that masking `p` costs.
+    const MASK_COST: usize = {
+        let mut cost = 0;
+        let mut j = 0;
+        while j < Self::LIMBS {
+            cost += Self::masked_limb_cost(limb(Self::P.as_slice(), j));
+            j += 1;
+        }
+        cost
+    };
+
+    /// The final subtraction adds `p` back under a mask where that costs fewer instructions than
+    /// the conditional moves: the masked form adds a carry chain, the mask, the masked limbs of
+    /// `p`, and without a spare bit a carry kept in a register (`setb`, `movzx`, `sbb`); the
+    /// conditional form copies and moves each limb, and without a spare bit keeps the carry by
+    /// `sbb` and `adc`. Only moduli whose limbs are mostly all ones gain (P-521).
+    pub(crate) const REDUCE_MASKED: bool =
+        Self::LIMBS + Self::MASK_COST + 1 + if Self::SPARE { 0 } else { 3 }
+            < 2 * Self::LIMBS + if Self::SPARE { 0 } else { 2 };
+
+    /// A difference adds `p` under the mask of its borrow where masking `p` costs fewer
+    /// instructions than the conditional form's copy, carry chain and conditional move per limb,
+    /// with its `sbb` and `adc` that keep the borrow without a spare bit. Every modulus gains
+    /// but those of arbitrary limbs with a spare bit (BN254, BLS12-381).
+    pub(crate) const SUB_MASKED: bool =
+        Self::MASK_COST + 1 < 2 * Self::LIMBS + if Self::SPARE { 0 } else { 2 };
 
     /// A product's final subtraction is a branch in the variable-time form: a Montgomery product
     /// reaches `p` with probability about `p / 4R` (Walter, *Montgomery exponentiation needs no
@@ -471,10 +572,24 @@ impl<M: Modulus> Shape<M> {
         Self::reduce_final::<CT>(out, limb(folded.as_slice(), Self::LIMBS) as u8)
     }
 
-    /// `out = (value mod 2^BITS) + (value >> BITS) c` over the first `len` limbs of `out`.
+    /// `out = (value mod 2^BITS) + (value >> BITS) c` over the first `len` limbs of `out`. For
+    /// `c = 1` (P-521) the fold is a sum, on the carry chain of `adc`.
     #[inline(always)]
     fn fold_once(out: &mut ExtendedLimbs<M>, len: usize, value: &[u64]) {
         let deficit = Self::DEFICIT_VALUE;
+        if deficit == 1 {
+            let mut carry = 0;
+            unroll!(j in 0, len => {
+                let (sum, carry_out) = adc(
+                    carry,
+                    shifted_limb(value, Self::BITS, j),
+                    low_limb(value, Self::BITS, j),
+                );
+                set(out.as_mut_slice(), j, sum);
+                carry = carry_out;
+            });
+            return;
+        }
         let mut carry = 0;
         unroll!(j in 0, len => {
             let (sum, high) = mac(

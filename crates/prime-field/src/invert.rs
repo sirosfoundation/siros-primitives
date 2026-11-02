@@ -254,51 +254,72 @@ impl Matrix {
     /// adds `f` to `g`, or `-f` when `zeta` is negative, in which case `f` then takes the old
     /// `g`; every step halves `g`, which doubles the factors of `f`, and lowers `zeta`.
     #[inline(always)]
-    fn divsteps<const VARTIME: bool>(masks: Masks, zeta: &mut i64, mut f: u64, mut g: u64) -> Self {
+    fn divsteps<const VARTIME: bool>(masks: Masks, zeta: &mut i64, f: u64, g: u64) -> Self {
+        if VARTIME {
+            Self::divsteps_vartime(zeta, f, g)
+        } else {
+            Self::divsteps_masked(masks, zeta, f, g)
+        }
+    }
+
+    /// The steps with branches; the even steps of a run of trailing zeros of `g` run at once.
+    #[inline(always)]
+    fn divsteps_vartime(zeta: &mut i64, mut f: u64, mut g: u64) -> Self {
         let (mut u, mut v, mut q, mut r) = (1i64, 0i64, 0i64, 1i64);
         let mut remaining = BATCH as u32;
         while remaining > 0 {
-            if VARTIME {
-                // Every trailing zero of `g` is a step that only halves `g`.
-                let zeros = g.trailing_zeros().min(remaining);
-                g >>= zeros;
-                u <<= zeros;
-                v <<= zeros;
-                *zeta -= i64::from(zeros);
-                remaining -= zeros;
-                if remaining == 0 {
-                    break;
-                }
-                if *zeta < 0 {
-                    *zeta = -*zeta - 2;
-                    (f, g) = (g, g.wrapping_sub(f));
-                    (u, v, q, r) = (q, r, q - u, r - v);
-                } else {
-                    *zeta -= 1;
-                    g = g.wrapping_add(f);
-                    q += u;
-                    r += v;
-                }
+            let zeros = g.trailing_zeros().min(remaining);
+            g >>= zeros;
+            u <<= zeros;
+            v <<= zeros;
+            *zeta -= i64::from(zeros);
+            remaining -= zeros;
+            if remaining == 0 {
+                break;
+            }
+            if *zeta < 0 {
+                *zeta = -*zeta - 2;
+                (f, g) = (g, g.wrapping_sub(f));
+                (u, v, q, r) = (q, r, q - u, r - v);
             } else {
-                let negate = masks.negative(*zeta);
-                let odd = masks.odd(g);
-                let x = (f ^ negate).wrapping_sub(negate);
-                let y = (u ^ negate as i64).wrapping_sub(negate as i64);
-                let z = (v ^ negate as i64).wrapping_sub(negate as i64);
-                g = g.wrapping_add(x & odd);
-                q = q.wrapping_add(y & odd as i64);
-                r = r.wrapping_add(z & odd as i64);
-                let swap = negate & odd;
-                *zeta = (*zeta ^ swap as i64) - 1;
-                f = f.wrapping_add(g & swap);
-                u = u.wrapping_add(q & swap as i64);
-                v = v.wrapping_add(r & swap as i64);
+                *zeta -= 1;
+                g = g.wrapping_add(f);
+                q += u;
+                r += v;
             }
             g >>= 1;
             u <<= 1;
             v <<= 1;
             remaining -= 1;
         }
+        Self { u, v, q, r }
+    }
+
+    /// The steps with masked selections. The factors take the same steps in two lanes, `(u, v)`
+    /// beside `(q, r)`, which the compiler may pair in vector registers.
+    #[inline(always)]
+    fn divsteps_masked(masks: Masks, zeta: &mut i64, mut f: u64, mut g: u64) -> Self {
+        let mut top = [1i64, 0];
+        let mut bottom = [0i64, 1];
+        let mut remaining = BATCH;
+        while remaining > 0 {
+            let negate = masks.negative(*zeta);
+            let odd = masks.odd(g);
+            let x = (f ^ negate).wrapping_sub(negate);
+            g = g.wrapping_add(x & odd);
+            let swap = negate & odd;
+            *zeta = (*zeta ^ swap as i64) - 1;
+            f = f.wrapping_add(g & swap);
+            for (high, low) in top.iter_mut().zip(bottom.iter_mut()) {
+                let y = (*high ^ negate as i64).wrapping_sub(negate as i64);
+                *low = low.wrapping_add(y & odd as i64);
+                *high = high.wrapping_add(*low & swap as i64) << 1;
+            }
+            g >>= 1;
+            remaining -= 1;
+        }
+        let [u, v] = top;
+        let [q, r] = bottom;
         Self { u, v, q, r }
     }
 }
