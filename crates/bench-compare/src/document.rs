@@ -417,8 +417,13 @@ fn results<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> 
     ];
     if let Some(unplotted) = table.crates.get(CHARTED..).filter(|rest| !rest.is_empty()) {
         let names: Vec<String> = unplotted.iter().map(|name| format!("`{name}`")).collect();
+        let verb = if names.len() == 1 {
+            "appears"
+        } else {
+            "appear"
+        };
         lines.push(format!(
-            "The charts show the first {CHARTED} crates; {} appears in the tables only.",
+            "The charts show the first {CHARTED} crates; {} {verb} in the tables only.",
             sentence(&names)
         ));
     }
