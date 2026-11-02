@@ -5,7 +5,7 @@
 use std::process::ExitCode;
 
 use bench_compare::run_batch;
-use binary_field::{Aes, B233, B571, Gcm, Gf2, Poly16, Poly64, Poly256, Polynomial, Pow, Square};
+use binary_field::{Aes, B233, B571, Gcm, Gf2, Poly16, Poly64, Poly256, Polynomial, Pow, Secret};
 use prime_field::biguint::Uint;
 use prime_field::biguint::typenum::{U31, U64, U254, U256, U381, U521};
 use prime_field::{Fp, Modulus, Secret};
@@ -170,25 +170,35 @@ fn prime<M: Modulus>() -> Result<usize, Unhandled> {
         + run_batch(&single, |a| a.sqrt()))
 }
 
-/// Runs the sum, the product, `square`, `sqrt`, `trace`, `times_x`, `over_x` and, with hardware
-/// carry-less products, `invert` over the field of `P`. Without them the plan of every field
-/// inverts by the Euclidean algorithm, whose time depends on the value.
+/// Runs every operation of `Secret` over the field of `P`: the sum, the difference and the
+/// product of two secrets and of a secret and a public element on either side, the negation,
+/// `square`, `sqrt` and `invert`.
 fn binary<P: Polynomial>() -> Result<usize, Unhandled> {
-    let (a, b) = (Gf2::<P>::X.pow(A), Gf2::<P>::X.pow(B));
+    let (a, b) = (
+        Secret::new(Gf2::<P>::X.pow(A)),
+        Secret::new(Gf2::<P>::X.pow(B)),
+    );
+    let public = Gf2::<P>::X.pow(B);
     let mut pair = [(a, b)];
     let mut single = [a];
     classify(&mut pair)?;
     classify(&mut single)?;
-    let operations = run_batch(&pair, |&(a, b)| a + b)
+    Ok(run_batch(&pair, |&(a, b)| a + b)
+        + run_batch(&pair, |&(a, b)| a - b)
         + run_batch(&pair, |&(a, b)| a * b)
+        + run_batch(&single, |&a| a * public)
+        + run_batch(&single, |&a| public * a)
+        + run_batch(&single, |&a| a + public)
+        + run_batch(&single, |&a| public - a)
+        + run_batch(&single, |&a| -a)
+        + run_batch(&single, |&a| {
+            let mut x = a;
+            x *= public;
+            x += a;
+            x -= public;
+            x
+        })
         + run_batch(&single, |&a| a.square())
-        + run_batch(&single, |a| a.sqrt())
-        + run_batch(&single, Gf2::trace)
-        + run_batch(&single, |a| a.times_x())
-        + run_batch(&single, |a| a.over_x());
-    Ok(if clmul::HARDWARE {
-        operations + run_batch(&single, |a| a.invert())
-    } else {
-        operations
-    })
+        + run_batch(&single, |&a| a.sqrt())
+        + run_batch(&single, |&a| a.invert()))
 }

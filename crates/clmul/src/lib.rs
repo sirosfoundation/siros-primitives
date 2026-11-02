@@ -17,9 +17,12 @@
 mod comb;
 mod limbs;
 #[cfg(feature = "biguint")]
+mod poly;
+#[cfg(feature = "biguint")]
 mod uint;
 
-// The backend of the build's target features: `clmul64` and the GF(2^128) `Accumulator`.
+// The backend of the build's target features: its registers, `clmul64` and the GF(2^128)
+// `Accumulator`.
 #[cfg(all(target_arch = "x86_64", target_feature = "pclmulqdq"))]
 #[path = "pclmulqdq.rs"]
 mod backend;
@@ -57,6 +60,8 @@ pub const HARDWARE: bool = cfg!(any(
 
 pub use comb::const_clmul64;
 pub use limbs::{clmul_into, const_clmul_into};
+#[cfg(feature = "biguint")]
+pub use poly::{Lane, Poly, Width};
 #[cfg(feature = "biguint")]
 pub use uint::{CarrylessMul, const_carryless_mul, const_widening_carryless_mul};
 
