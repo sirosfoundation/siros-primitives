@@ -14,7 +14,7 @@ cargo run -p biguint-bench-report -- report
 (Valgrind runs no `extrq`) in `target/benchmarks` and runs it. The bench counts the instructions of
 every case under Valgrind's Callgrind, one process per case, on all the threads that the run may
 use. `bench` records the counts, the commit, the compiler and the machine in
-`target/benchmarks/run.json`. `--machine` adds a description of the machine.
+`target/benchmarks/biguint.json`. `--machine` adds a description of the machine.
 
 `report` reads that record and writes the document and the charts.
 

@@ -9,7 +9,7 @@
 | CPU | AMD Ryzen 9 5950X 16-Core Processor (`znver3`) |
 | Compiler | rustc 1.99.1 (58cf8f9c3 2026-10-13), LLVM 23.1.1, `bench` profile, `-C target-cpu=native -C target-feature=-sse4a` |
 | Counter | Valgrind 3.22.0, Callgrind |
-| Crates | ark-ff 0.6.0, crypto-bigint 0.5.5, k256 0.13.4, p256 0.13.2, halo2curves 0.10.0, p3-field 0.9.0-rc.2, winter-math 0.13.1, runtime-algebra 0.1.0, compile-algebra 0.1.0 |
+| Crates | ark-ff 0.6.0, crypto-bigint 0.7.10, k256 0.13.4, p256 0.13.2, halo2curves 0.10.0, p3-field 0.9.0-rc.2, winter-math 0.13.1, runtime-algebra 0.1.0, compile-algebra 0.1.0 |
 
 ## Method
 

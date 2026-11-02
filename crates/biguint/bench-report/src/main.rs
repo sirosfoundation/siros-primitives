@@ -101,7 +101,7 @@ fn method(batch: u32) -> Vec<String> {
 fn main() -> ExitCode {
     bench_compare::execute(
         "biguint-bench-report",
-        &Paths::new(env!("CARGO_MANIFEST_DIR"), "run.json"),
+        &Paths::new(env!("CARGO_MANIFEST_DIR"), "biguint.json"),
         &MEASURED,
         &LAYOUT,
     )
