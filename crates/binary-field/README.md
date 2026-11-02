@@ -77,9 +77,12 @@ plan knows which through `clmul::HARDWARE`. "With tables" means the default buil
 |---|---|---|
 | Product | `Gf2`, degree up to 8, with `precomputed` | The table of every product |
 | Product | `Gf2`, degree up to 8, by default | Logarithm and antilogarithm tables of a generator |
+| Product | degree 9 to 16, without hardware word products | Integer products of three bit lanes of spacing 3, two lane products per 64-bit product: five products |
 | Product | degree up to 64 | One carry-less product of the words |
+| Product | degree 128, `d` below 64, with hardware word products | `a0 b + a1 c` for `a = a0 + a1 x^64` and `c = x^64 b mod f = b0 x^64 + b1 r`: one word product gives `c`, four give `u + w x^64`, and the top word of `w` folds by one product with `r`, without overflow |
 | Product | above | Karatsuba's three word products per pair of registers (Karatsuba and Ofman, 1962), schoolbook across registers |
-| Reduction | degree above 64, `2d <= n` and `d` below 64, with hardware word products | Two rounds of carry-less products with `r`, the second for the overflow of the first (Gueron and Kounavis, 2010); a square of degree 128 takes the shifted copies of the next row |
+| Reduction | degree 33 to 64, `2d <= n`, with hardware word products | `(h + t) r mod x^n` for the part `h` at and above `x^n` and the overflow `t` of `h r`: shifts give `t`, one carry-less product the fold |
+| Reduction | degree above 128, `2d <= n` and `d` below 64, with hardware word products | Two rounds of carry-less products with `r`, the second for the overflow of the first (Gueron and Kounavis, 2010) |
 | Reduction | `2d <= n`, with `d` the degree of `r`, such as `x^233 + x^74 + 1` | One shifted copy of the overflow per tap, with the overflow of the fold added first |
 | Reduction | otherwise | Rounds of shifted copies per tap, as many as the taps need |
 | Square | `Gf2` with tables, degree up to 8, and up to 16 with `precomputed` | The table of every square |

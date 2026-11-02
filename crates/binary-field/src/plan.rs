@@ -53,8 +53,9 @@ pub(crate) enum Shape {
     Word,
     /// Two words, folded by shifts per tap with the overflow added first: `n` from 33 to 64.
     Words,
-    /// Two registers of words for `n = 128`: Karatsuba's three products, then two folds by
-    /// carry-less products with `r`.
+    /// One register for `n = 128`: with hardware word products and `d` below 64,
+    /// `a0 b + a1 (x^64 b mod f)` by six word products and one fold; otherwise Karatsuba's three
+    /// products and folds by shifts.
     Lane,
     /// Any other degree: a whole product, then rounds of folds.
     Lanes,

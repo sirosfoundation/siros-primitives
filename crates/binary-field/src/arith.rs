@@ -11,7 +11,7 @@ use typenum::{U64, U128};
 
 use crate::frobenius::Frobenius;
 use crate::invert::{Inversion, inverse};
-use crate::kernel::spread_half;
+use crate::kernel::{clmul16, spread_half};
 use crate::plan::{Plan, Polynomial, Shape, Wide};
 use crate::representation::{Representation, Storage};
 use crate::table::Tables;
@@ -205,27 +205,61 @@ impl<P: Polynomial> Field<P> {
         }
     }
 
-    /// `p mod f` for `n` from 33 to 64 and a product `p` of two words.
+    /// `p mod f` for `n` from 33 to 64 and a product `p` of two words. With hardware word products,
+    /// `(h + t) r mod x^n` for the part `h` at and above `x^n` and the overflow `t` of `h r` is one
+    /// word product, with `t` from shifts of `h`; otherwise shifts per tap give it.
     #[inline(always)]
     fn fold_words(product: Poly<U128>) -> Lanes<P> {
         let degree = Plan::<P>::DEGREE;
-        let low = product.resize::<U64>() & Poly::of(low_mask(degree));
-        let high = (product >> degree).resize::<U64>();
-        Self::fold_word(low, high).resize()
+        let mask = Poly::of(low_mask(degree));
+        if Plan::<P>::FOLD_BY_PRODUCTS && degree == 64 {
+            // `h` is word 1, so the shifts within words give `t` in word 1 without a move.
+            let r = Poly::<U64>::of(Plan::<P>::R_WORD);
+            let raised = product ^ Self::overflow(product);
+            (product ^ raised.clmul_words(1, r, 0)).resize()
+        } else if Plan::<P>::FOLD_BY_PRODUCTS {
+            let r = Poly::<U64>::of(Plan::<P>::R_WORD);
+            let high = (product >> degree).resize::<U64>();
+            let raised = high ^ Self::overflow(high);
+            let folded = raised.clmul_words(0, r, 0).resize::<U64>();
+            ((product.resize::<U64>() ^ folded) & mask).resize()
+        } else {
+            let low = product.resize::<U64>() & mask;
+            let high = (product >> degree).resize::<U64>();
+            Self::fold_word(low, high).resize()
+        }
     }
 
-    /// `a b mod f` for `n = 128` and `d` below 64: Karatsuba's three word products give
-    /// `low + middle x^64 + high x^128`; the top word of `high` folds by its product with `r` into
-    /// the middle, and the top word of the middle into the bottom (Gueron and Kounavis, 2010).
+    /// The overflow of `h r` past `x^n` for `h` below `x^n` in each word of `high`, by one shift per
+    /// tap: `n` up to 64.
+    #[inline(always)]
+    fn overflow<N: clmul::Width>(high: Poly<N>) -> Poly<N> {
+        let degree = Plan::<P>::DEGREE;
+        let taps = Plan::<P>::TAPS;
+        let mut overflow = Poly::<N>::ZERO;
+        each!(index < taps.len() => {
+            if let Some(&tap) = taps.get(index)
+                && tap > 0
+            {
+                overflow ^= high.shr_within_words((degree - tap) as u32);
+            }
+        });
+        overflow
+    }
+
+    /// `a b mod f` for `n = 128` and `d` below 64, as `a0 b + a1 c` with `c = x^64 b mod f =
+    /// b0 x^64 + b1 r`, which one word product gives. The four word products by `a0` and `a1`
+    /// sum to `u + w x^64`, and the top word of `w` folds once by its product with `r`: it is below
+    /// `x^63`, so the fold leaves no overflow. The products of `w` come first, as the fold waits
+    /// on them.
     #[inline(always)]
     fn lane_mul(a: Poly<U128>, b: Poly<U128>) -> Poly<U128> {
         let r = Poly::<U64>::of(Plan::<P>::R_WORD);
-        let low = a.clmul_words(0, b, 0);
-        let high = a.clmul_words(1, b, 1);
-        let (a_sum, b_sum) = (a ^ (a >> 64), b ^ (b >> 64));
-        let middle = a_sum.clmul_words(0, b_sum, 0) ^ low ^ high;
-        let middle = middle ^ (high << 64) ^ high.clmul_words(1, r, 0);
-        low ^ (middle << 64) ^ middle.clmul_words(1, r, 0)
+        let c = (b << 64) ^ b.clmul_words(1, r, 0);
+        let w = a.clmul_words(0, b, 1) ^ a.clmul_words(1, c, 1);
+        let folded = w.clmul_words(1, r, 0);
+        let u = a.clmul_words(0, b, 0) ^ a.clmul_words(1, c, 0);
+        u ^ (w << 64) ^ folded
     }
 
     /// `p mod f` for `n` up to 64 and a product `p` whose part `h` at and above `x^n` has `h r`
@@ -405,10 +439,15 @@ impl<P: Polynomial> Field<P> {
     // ---------------------------------------------------------------------------------------
     // The word of an element of a field of degree up to 16.
 
-    /// `a b mod f`.
+    /// `a b mod f`: one hardware word product, or without one, the integer products of three bit
+    /// lanes from degree 9, where they take fewer instructions than the comb of 64-bit words.
     #[inline(always)]
     pub(crate) fn word_mul(a: u64, b: u64) -> u64 {
-        Self::reduce_word(clmul::clmul64(a, b) as u64)
+        if clmul::HARDWARE || Plan::<P>::DEGREE <= 8 {
+            Self::reduce_word(clmul::clmul64(a, b) as u64)
+        } else {
+            Self::reduce_word(clmul16(a, b))
+        }
     }
 
     /// `a^2 mod f`: the constant-time linear map of squaring up to degree 8; above, where the map

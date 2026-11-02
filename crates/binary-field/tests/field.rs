@@ -2,7 +2,7 @@
 //! axioms, and published test vectors.
 
 use binary_field::generic_array::GenericArray;
-use binary_field::typenum::{U8, U16, U17, U64, U127, U128, U163};
+use binary_field::typenum::{U8, U16, U17, U41, U64, U127, U128, U163};
 use binary_field::{
     Aes, B233, B571, Gcm, Gf2, Gf2p8, Gf2p128, Poly16, Poly64, Poly256, Polynomial, Pow, Secret,
     Square,
@@ -24,6 +24,7 @@ macro_rules! field {
 field!(F8High, U8, [7, 6, 1, 0]);
 field!(F16High, U16, [12, 10, 3, 0]);
 field!(F17, U17, [3, 0]);
+field!(F41, U41, [3, 0]);
 field!(F64High, U64, [40, 39, 33, 0]);
 field!(F127High, U127, [97, 0]);
 field!(F128Tap63, U128, [63, 62, 17, 0]);
@@ -216,6 +217,7 @@ fn fields_match_the_bit_serial_reference() {
             check_field::<F8High>(200);
             check_field::<F16High>(200);
             check_field::<F17>(100);
+            check_field::<F41>(100);
             check_field::<F64High>(60);
             check_field::<F127High>(40);
             check_field::<F128Tap63>(40);

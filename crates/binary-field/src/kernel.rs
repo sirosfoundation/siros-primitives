@@ -173,6 +173,33 @@ pub(crate) const fn truncate(acc: &mut [u64], degree: usize) {
     }
 }
 
+/// The bits below `2^32` at the positions congruent to 0, 1 and 2 modulo 3.
+const THIRDS: [u64; 3] = [0x4924_9249, 0x9249_2492, 0x2492_4924];
+
+/// The carry-less product of `a` and `b`, each below `2^16`, by integer products of three
+/// interleaved bit lanes: lane `k` keeps the bits at the positions congruent to `k` modulo 3, at
+/// most 6 of a 16-bit value, so at most 6 terms meet at a position of the integer product of two
+/// lanes and their count fits the 3 bits up to the next position of its lane. The product of two
+/// lanes stays below `2^32`, so one 64-bit product of a lane by two lanes 32 bits apart gives two
+/// lane products: five products give the nine.
+#[inline(always)]
+pub(crate) const fn clmul16(a: u64, b: u64) -> u64 {
+    let [m0, m1, m2] = THIRDS;
+    let (x0, x1, x2) = (a & m0, a & m1, a & m2);
+    let (y0, y1, y2) = (b & m0, b & m1, b & m2);
+    let y01 = y0 | (y1 << 32);
+    // `[x0 y0, x0 y1]`, `[x1 y0, x1 y1]`, `[x2 y0, x2 y1]`, `[x0 y2, x1 y2]` and `x2 y2`.
+    let p0 = x0.wrapping_mul(y01);
+    let p1 = x1.wrapping_mul(y01);
+    let p2 = x2.wrapping_mul(y01);
+    let q = (x0 | (x1 << 32)).wrapping_mul(y2);
+    let r = x2.wrapping_mul(y2);
+    let lane0 = p0 ^ ((q ^ p2) >> 32);
+    let lane1 = p1 ^ r ^ (p0 >> 32);
+    let lane2 = q ^ p2 ^ (p1 >> 32);
+    (lane0 & m0) | (lane1 & m1) | (lane2 & m2)
+}
+
 /// The 32 low bits of `half`, each moved to twice its position.
 #[inline(always)]
 pub(crate) const fn spread_half(half: u64) -> u64 {
