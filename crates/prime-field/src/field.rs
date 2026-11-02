@@ -25,8 +25,8 @@ pub trait Modulus: Copy + 'static {
 /// An element of the prime field of `M`, held as `L = ceil(width / 64)` limbs.
 ///
 /// The operations take the path with the fewest instructions, and their time may depend on the
-/// values; [`Secret`](crate::Secret) holds an element whose operations run in constant time. The
-/// `const_*` methods compute in constant contexts.
+/// values; [`ConstantTime`](crate::ConstantTime) holds an element whose operations run in constant
+/// time. The `const_*` methods compute in constant contexts.
 ///
 /// A one-limb Mersenne modulus `2^k - 1` (Mersenne-31) holds plain residues in `[1, p]`, with
 /// `0` held as `p`. A modulus `2^k - c` of several limbs with `c < 2^64` small against `2^k`
@@ -280,19 +280,19 @@ impl<M: Modulus> Fp<M> {
         Self::from_limbs(Shape::<M>::square_raw(self.limbs()))
     }
 
-    /// `self + rhs`, in constant time: the default and the `Secret` operation alike.
+    /// `self + rhs`, in constant time: the default and the `ConstantTime` operation alike.
     #[inline(always)]
     pub(crate) fn add_with(self, rhs: Self) -> Self {
         Self::from_limbs(Shape::<M>::add(&self.limbs, &rhs.limbs))
     }
 
-    /// `self - rhs`, in constant time: the default and the `Secret` operation alike.
+    /// `self - rhs`, in constant time: the default and the `ConstantTime` operation alike.
     #[inline(always)]
     pub(crate) fn sub_with(self, rhs: Self) -> Self {
         Self::from_limbs(Shape::<M>::sub(&self.limbs, &rhs.limbs))
     }
 
-    /// `-self`, in constant time: the default and the `Secret` operation alike.
+    /// `-self`, in constant time: the default and the `ConstantTime` operation alike.
     #[inline(always)]
     pub(crate) fn neg_with(self) -> Self {
         Self::from_limbs(Shape::<M>::neg(&self.limbs))

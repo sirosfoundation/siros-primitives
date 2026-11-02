@@ -50,6 +50,33 @@ macro_rules! division_steps {
             }
         }
 
+        /// [`div_2_by_1`] with both corrections applied under masks, so that no branch and no
+        /// select depends on the operands.
+        #[inline(always)]
+        pub(super) fn div_2_by_1_masked(
+            high_word: $word,
+            low: $word,
+            divisor: $word,
+            reciprocal: $word,
+        ) -> ($word, $word) {
+            let estimate =
+                <$double>::from(reciprocal) * <$double>::from(high_word) + join(high_word, low);
+            let fraction = estimate as $word;
+            let quotient = high(estimate).wrapping_add(1);
+            let remainder = low.wrapping_sub(quotient.wrapping_mul(divisor));
+            // All ones when the candidate is one too large: the remainder wrapped past the
+            // fraction.
+            let excess = below(fraction, remainder);
+            let quotient = quotient.wrapping_add(excess);
+            let remainder = remainder.wrapping_add(divisor & excess);
+            // All ones when it is one too small.
+            let short = !below(remainder, divisor);
+            (
+                quotient.wrapping_sub(short),
+                remainder.wrapping_sub(divisor & short),
+            )
+        }
+
         /// `(quotient - 1, remainder + divisor)` when `excess` holds, `(quotient, remainder)`
         /// otherwise. `excess` holds in about half the steps, so a branch on it mispredicts; the
         /// unpredictable selects become conditional moves, which LLVM keeps inside a loop.
@@ -202,6 +229,12 @@ impl Reciprocal {
     #[inline(always)]
     pub(super) fn div_rem(self, high: u64, low: u64) -> (u64, u64) {
         limb::div_2_by_1(high, low, self.divisor, self.reciprocal)
+    }
+    /// [`Self::div_rem`] with its corrections under masks: no branch and no select depends on
+    /// `high` or `low`.
+    #[inline(always)]
+    pub(super) fn div_rem_masked(self, high: u64, low: u64) -> (u64, u64) {
+        limb::div_2_by_1_masked(high, low, self.divisor, self.reciprocal)
     }
 }
 

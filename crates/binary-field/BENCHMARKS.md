@@ -58,15 +58,15 @@ Each cell measures the crate's own function:
 
 | Operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| add | `Secret +` | `+` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `+` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `+` over GF(2⁸) and GF(2¹⁶) | `add` over GF(2⁸) and GF(2¹⁶) | `+` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `+` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `+` over GF(2¹²⁸) | `+` over GF(2¹⁶) |
+| add | `ConstantTime +` | `+` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `+` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `+` over GF(2⁸) and GF(2¹⁶) | `add` over GF(2⁸) and GF(2¹⁶) | `+` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `+` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `+` over GF(2¹²⁸) | `+` over GF(2¹⁶) |
 | add_vartime | `+` | – | – | – | – | – | – | – | – | – | – | – |
-| mul | `Secret *` | `*` over GF(2¹⁶) and GF(2⁶⁴) | – | – | – | `*` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `*` over GF(2⁸), GF(2⁶⁴) and GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | – | `*` over GF(2¹²⁸) | – |
+| mul | `ConstantTime *` | `*` over GF(2¹⁶) and GF(2⁶⁴) | – | – | – | `*` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `*` over GF(2⁸), GF(2⁶⁴) and GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | – | `*` over GF(2¹²⁸) | – |
 | mul_vartime | `*` | `*` over GF(2⁸) | `*` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `*` over GF(2⁸) and GF(2¹⁶) | `mul` over GF(2⁸) and GF(2¹⁶) | – | `*` over GF(2¹⁶) | – | – | `mulf` over GF(2¹²⁸) | – | `*` over GF(2¹⁶) |
-| square | `Secret::square` | – | – | – | – | `square` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `square` over GF(2⁸), GF(2⁶⁴) and GF(2¹²⁸) | – | – | – | – | – |
+| square | `ConstantTime::square` | – | – | – | – | `square` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `square` over GF(2⁸), GF(2⁶⁴) and GF(2¹²⁸) | – | – | – | – | – |
 | square_vartime | `square` | – | – | – | – | – | `square` over GF(2¹⁶) | – | – | – | – | – |
-| invert | `Secret::invert` | `checked_recip` over GF(2¹⁶) and GF(2⁶⁴) | – | – | – | `invert` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `try_inverse` over GF(2⁸) and GF(2⁶⁴) | – | `invert` over GF(2¹²⁸) | – | – | – |
+| invert | `ConstantTime::invert` | `checked_recip` over GF(2¹⁶) and GF(2⁶⁴) | – | – | – | `invert` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `try_inverse` over GF(2⁸) and GF(2⁶⁴) | – | `invert` over GF(2¹²⁸) | – | – | – |
 | invert_vartime | `invert` | `checked_recip` over GF(2⁸) | `inverse` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | – | – | – | `try_inverse` over GF(2¹⁶) and GF(2¹²⁸) | `invert` over GF(2¹²⁸) | – | `invert` over GF(2¹²⁸) | – | `inverse` over GF(2¹⁶) |
-| sqrt | `Secret::sqrt` | – | – | – | – | – | `try_sqrt` over GF(2⁸), GF(2⁶⁴) and GF(2¹²⁸) | – | – | – | – | – |
+| sqrt | `ConstantTime::sqrt` | – | – | – | – | – | `try_sqrt` over GF(2⁸), GF(2⁶⁴) and GF(2¹²⁸) | – | – | – | – | – |
 | sqrt_vartime | `sqrt` | – | – | – | – | – | `try_sqrt` over GF(2¹⁶) | – | – | – | – | – |
 
 - `gf256` is its `gf2p16` and `gf2p64`, and at 8 bits the AES field that its `gf` macro declares; the macro's default modes are log and antilog tables up to 8 bits and Barrett reduction above.

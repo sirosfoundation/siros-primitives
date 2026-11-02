@@ -17,6 +17,7 @@
 
 mod arith;
 mod chain;
+mod ct;
 mod element;
 mod error;
 mod frobenius;
@@ -26,7 +27,6 @@ mod linear;
 mod plan;
 mod reduce;
 mod representation;
-mod secret;
 mod standard;
 mod table;
 
@@ -39,11 +39,11 @@ pub use generic_array;
 /// The type-level integers that name degrees.
 pub use typenum;
 
+pub use biguint::ConstantTime;
 pub use biguint::{Exponent, One, Pow, Square, Uint};
 pub use element::{Bytes, Gf2, Limbs};
 pub use error::OutOfField;
 pub use plan::Polynomial;
-pub use secret::Secret;
 pub use standard::{
     Aes, B233, B571, Gcm, Gf2p8, Gf2p16, Gf2p64, Gf2p128, Gf2p233, Gf2p256, Gf2p571, Poly16,
     Poly64, Poly256,

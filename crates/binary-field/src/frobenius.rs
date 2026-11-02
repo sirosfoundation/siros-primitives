@@ -3,7 +3,7 @@
 //! the images of the windows of `x`: one lookup per window of 3, 4 or 8 bits. With `precomputed`
 //! every power of the chain has a byte table. The default build has the tables of 3 or 4 bits that
 //! cost least within its budget, and composes the other powers from them and squarings.
-//! `not-precomputed` squares. The lookups index the tables by the value, so `Secret` squares.
+//! `not-precomputed` squares. The lookups index the tables by the value, so `ConstantTime` squares.
 
 use core::marker::PhantomData;
 

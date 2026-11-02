@@ -1,7 +1,7 @@
 //! Every operation against `num-bigint` over a pseudo-random sweep and edges around `0`, `p / 2`
-//! and `p`, through `Fp`, `Secret` and the `const_*` twins, for moduli of every representation:
-//! below 2^64, Mersenne, pseudo-Mersenne, Montgomery with and without a spare bit, `p = 1 mod 4`
-//! and `p = 3 mod 4`, one and nine limbs.
+//! and `p`, through `Fp`, `ConstantTime` and the `const_*` twins, for moduli of every
+//! representation: below 2^64, Mersenne, pseudo-Mersenne, Montgomery with and without a spare
+//! bit, `p = 1 mod 4` and `p = 3 mod 4`, one and nine limbs.
 
 use biguint::typenum::{U7, U127, U256};
 use biguint::{Bits, Uint};
@@ -10,7 +10,7 @@ use prime_field::standard::{
     BabyBear, Bls12381Base, Bn254Scalar, Goldilocks, Mersenne31, P256Base, P256Scalar, P521Base,
     Secp256k1Base, Tom256Base, Tom256Scalar,
 };
-use prime_field::{Fp, Modulus, NotCanonical, Secret};
+use prime_field::{ConstantTime, Fp, Modulus, NotCanonical};
 
 /// Declares one modulus marker per line: the name, the width and the little-endian limbs.
 macro_rules! moduli {
@@ -120,9 +120,9 @@ fn check_root<M: Modulus>(name: &str, a: &BigUint, residue: bool, root: Option<F
 }
 
 /// The sweep on the field of `M`: 64 random pairs and every pair of edges. Each operation runs
-/// through `Fp`, `Secret` (with a public `Fp` on either side) and the `const_*` twins. The edges
-/// include `p - 1 + 0`, whose sum has the top limb of `p` and lies below it: the rare branch of
-/// the variable-time reduction.
+/// through `Fp`, `ConstantTime` (with a public `Fp` on either side) and the `const_*` twins. The
+/// edges include `p - 1 + 0`, whose sum has the top limb of `p` and lies below it: the rare branch
+/// of the variable-time reduction.
 fn check<M: Modulus>(rng: &mut Rng) {
     let p = big(M::MODULUS.as_limbs());
     let half = &p >> 1u8;
@@ -142,8 +142,9 @@ fn check<M: Modulus>(rng: &mut Rng) {
     pairs.extend((0..64).map(|_| (rng.below(&p), rng.below(&p))));
     for (a, b) in &pairs {
         let (x, y) = (element::<M>(a), element::<M>(b));
-        let (s, t) = (Secret::new(x), Secret::new(y));
-        let assigned = |mut target: Secret<M>, apply: &dyn Fn(&mut Secret<M>)| {
+        let (s, t) = (ConstantTime::new(x), ConstantTime::new(y));
+        let assigned = |mut target: ConstantTime<Fp<M>>,
+                        apply: &dyn Fn(&mut ConstantTime<Fp<M>>)| {
             apply(&mut target);
             target.reveal()
         };
@@ -244,7 +245,12 @@ fn check<M: Modulus>(rng: &mut Rng) {
         );
         let residue = *a == BigUint::ZERO || a.modpow(&(&p >> 1u8), &p) == BigUint::from(1u8);
         check_root("sqrt", a, residue, x.sqrt());
-        check_root("secret sqrt", a, residue, s.sqrt().map(Secret::reveal));
+        check_root(
+            "secret sqrt",
+            a,
+            residue,
+            s.sqrt().map(ConstantTime::reveal),
+        );
         assert_eq!(x == y, a == b, "eq");
         assert_eq!(x.is_zero(), *a == BigUint::ZERO, "is_zero");
         let integer = uint::<M::Width>(a);

@@ -4,8 +4,8 @@
 use binary_field::generic_array::GenericArray;
 use binary_field::typenum::{U8, U16, U17, U41, U64, U127, U128, U163};
 use binary_field::{
-    Aes, B233, B571, Gcm, Gf2, Gf2p8, Gf2p128, Poly16, Poly64, Poly256, Polynomial, Pow, Secret,
-    Square,
+    Aes, B233, B571, ConstantTime, Gcm, Gf2, Gf2p8, Gf2p128, Poly16, Poly64, Poly256, Polynomial,
+    Pow, Square,
 };
 
 /// Declares the field of `x^degree + sum(x^tap)`.
@@ -153,10 +153,10 @@ fn check_field<P: Polynomial>(rounds: usize) {
     assert_eq!(Gf2::<P>::ONE.invert(), Some(Gf2::<P>::ONE));
 }
 
-/// The operations of `Secret`, which run other algorithms than the defaults of `Gf2` for the fields
-/// with tables, against the defaults, which the caller checks against the references.
+/// The operations of `ConstantTime`, which run other algorithms than the defaults of `Gf2` for the
+/// fields with tables, against the defaults, which the caller checks against the references.
 fn check_secret<P: Polynomial>(a: Gf2<P>, b: Gf2<P>) {
-    let (x, y) = (Secret::new(a), Secret::new(b));
+    let (x, y) = (ConstantTime::new(a), ConstantTime::new(b));
     let degree = Gf2::<P>::DEGREE;
     assert_eq!((x * y).reveal(), a * b, "secret mul at degree {degree}");
     assert_eq!(
@@ -182,7 +182,7 @@ fn check_secret<P: Polynomial>(a: Gf2<P>, b: Gf2<P>) {
         "secret sqrt at degree {degree}"
     );
     assert_eq!(
-        x.invert().map(Secret::reveal),
+        x.invert().map(ConstantTime::reveal),
         a.invert(),
         "secret inverse at degree {degree}"
     );

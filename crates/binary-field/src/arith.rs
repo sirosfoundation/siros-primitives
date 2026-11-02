@@ -1,5 +1,6 @@
 //! The arithmetic of a field on the registers its plan chooses: the default operations, which may
-//! index tables and take time that depends on the values, and the constant-time ones of `Secret`.
+//! index tables and take time that depends on the values, and the constant-time ones of
+//! `ConstantTime`.
 
 use core::marker::PhantomData;
 use core::ops::{BitAnd, BitXor, Shl, Shr};
@@ -563,7 +564,7 @@ impl<P: Polynomial> Field<P> {
     }
 
     // ---------------------------------------------------------------------------------------
-    // The operations on elements: the defaults, and those of `Secret`.
+    // The operations on elements: the defaults, and those of `ConstantTime`.
 
     /// `a b`, the default.
     #[inline(always)]

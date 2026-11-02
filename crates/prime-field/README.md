@@ -15,7 +15,7 @@ from the modulus at compile time.
 ```rust
 use prime_field::biguint::Uint;
 use prime_field::standard::secp256k1::Base as Fq;
-use prime_field::Secret;
+use prime_field::ConstantTime;
 
 // The fastest path; the time may depend on the values.
 let x = Fq::from_u64(7);
@@ -26,10 +26,10 @@ assert_eq!(four.sqrt().map(|root| root.square()), Some(four));
 assert_eq!(x.sqrt(), None);
 
 // Constant time.
-let k = Secret::new(x);
-let d = k * Secret::new(y) + k.square();
+let k = ConstantTime::new(x);
+let d = k * ConstantTime::new(y) + k.square();
 assert_eq!(d.reveal(), Fq::from_u64(50));
-assert_eq!(k.invert().map(Secret::reveal), Some(y));
+assert_eq!(k.invert().map(ConstantTime::reveal), Some(y));
 
 // Constant contexts.
 const SEVEN: Fq = Fq::from_u64(7);
@@ -85,19 +85,22 @@ operator traits; the const twins `const_add`, `const_sub`, `const_neg`, `const_d
 `MODULUS` and `BITS`. `from_uint` and the byte decoders return `NotCanonical` for a value at or
 above the modulus.
 
-`Secret<M>` holds an `Fp<M>` in the same memory; `Secret::new` and `Secret::reveal` cost nothing.
-Its operators combine two secrets, or a secret and a public `Fp` on either side, into a secret.
-It offers `square`, `double`, `pow` by a public exponent, `invert` and `sqrt`.
+`ConstantTime<Fp<M>>`, from the [`constant-time`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/constant-time)
+crate and re-exported here, holds an `Fp<M>` in the same memory; `ConstantTime::new` and
+`ConstantTime::reveal` cost nothing. Its operators combine two wrapped elements, or a wrapped and
+a public `Fp` on either side, into a wrapped element. It offers `square`, `double`, `pow` by a
+public exponent, `invert` and `sqrt`.
 
 ## Timing
 
 `Fp` takes the fastest path; its time may depend on the values.
 
-`Secret` takes one path for every operand value: no branch and no memory address depends on a
-secret. `invert` and `sqrt` disclose through the `Option` whether the result exists. `pow` takes
-a time that depends on the exponent. CI runs every `Secret` operation under Valgrind's memcheck
-with [`ct-check`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/ct-check), which fails on a branch or a memory address that depends on a
-secret.
+`ConstantTime` takes one path for every wrapped value: no branch and no memory address
+depends on it. `invert` and `sqrt` disclose through the `Option` whether the result exists. `pow`
+takes a time that depends on the exponent. CI runs every `ConstantTime` operation under
+Valgrind's memcheck with
+[`ct-check`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/ct-check), which
+fails on a branch or a memory address that depends on a wrapped value.
 
 ## Representation
 

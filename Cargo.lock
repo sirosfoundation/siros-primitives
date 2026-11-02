@@ -215,6 +215,7 @@ dependencies = [
  "bench-compare",
  "bnum",
  "const-default",
+ "constant-time",
  "crypto-bigint 0.7.10",
  "derive-where",
  "generic-array 1.4.5",
@@ -244,6 +245,7 @@ dependencies = [
  "clmul",
  "compile-algebra",
  "const-default",
+ "constant-time",
  "core-algebra",
  "derive-where",
  "g2p",
@@ -363,6 +365,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
+name = "constant-time"
+version = "0.1.0"
+
+[[package]]
 name = "core-algebra"
 version = "0.1.0"
 source = "git+https://github.com/longfellow-zk/longfellow-zk?rev=61a8a735964d1b22bccf79bf14ef6767249cdf92#61a8a735964d1b22bccf79bf14ef6767249cdf92"
@@ -450,6 +456,7 @@ name = "ct-check"
 version = "0.0.0"
 dependencies = [
  "bench-compare",
+ "biguint",
  "binary-field",
  "prime-field",
  "serde",
@@ -1303,6 +1310,7 @@ dependencies = [
  "biguint",
  "compile-algebra",
  "const-default",
+ "constant-time",
  "core-algebra",
  "crypto-bigint 0.7.10",
  "derive-where",

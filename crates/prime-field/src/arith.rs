@@ -1,6 +1,6 @@
 //! The runtime arithmetic of a field: the variable-time kernels of [`Fp`](crate::Fp) and the
-//! constant-time kernels of [`Secret`](crate::Secret), on the representation that the modulus
-//! selects.
+//! constant-time kernels of [`ConstantTime`](crate::ConstantTime), on the representation that the
+//! modulus selects.
 //!
 //! `CT` selects the constant-time form. The variable-time form takes a branch where the cycles
 //! of the branch with its mispredictions undercut the conditional moves: the final subtraction

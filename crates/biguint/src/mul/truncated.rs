@@ -60,9 +60,9 @@ pub(crate) const fn scratch_len(len: usize, levels: usize) -> usize {
 /// Writes `a * b mod 2^(64 * n)` to `out`, all three `n` limbs long: with `a = a0 + a1 β^m` and
 /// `b = b0 + b1 β^m`, the low `n` limbs of the full product `a0 * b0` at depth `F`, plus `a1 * b0`
 /// and `a0 * b1` modulo `β^(n - m)` at depth `C`, added at limb `m`. `scratch` holds
-/// [`scratch_len`] limbs for the levels of `F`.
+/// [`scratch_len`] limbs for the levels of `F`. `MASKED` as for [`Depth::product_with`].
 #[inline(always)]
-pub(crate) fn split_product<F: Depth, C: Depth>(
+pub(crate) fn split_product<F: Depth, C: Depth, const MASKED: bool>(
     out: &mut [u64],
     a: &[u64],
     b: &[u64],
@@ -74,15 +74,15 @@ pub(crate) fn split_product<F: Depth, C: Depth>(
     let (b0, b1) = split(b, low);
     {
         let (full, scratch) = split_mut(scratch, 2 * low);
-        F::product(full, a0, b0, scratch);
+        F::product_with::<MASKED>(full, a0, b0, scratch);
         for (slot, &limb) in out.iter_mut().zip(full.iter()) {
             *slot = limb;
         }
     }
     let (cross, scratch) = split_mut(scratch, high);
     let (_, top) = split_mut(out, low);
-    C::truncated(cross, a1, split(b0, high).0, scratch);
+    C::truncated_with::<MASKED>(cross, a1, split(b0, high).0, scratch);
     truncate_carry(add_assign(top, cross));
-    C::truncated(cross, b1, split(a0, high).0, scratch);
+    C::truncated_with::<MASKED>(cross, b1, split(a0, high).0, scratch);
     truncate_carry(add_assign(top, cross));
 }

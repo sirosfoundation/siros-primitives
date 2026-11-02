@@ -17,11 +17,11 @@
 
 mod arith;
 mod chain;
+mod ct;
 mod field;
 mod invert;
 mod kernel;
 mod params;
-mod secret;
 mod sqrt;
 pub mod standard;
 mod unrolled;
@@ -30,6 +30,6 @@ mod width;
 /// The integers that elements convert from and to.
 pub use biguint;
 
+pub use biguint::ConstantTime;
 pub use field::{Fp, Modulus, NotCanonical};
-pub use secret::Secret;
 pub use width::Width;

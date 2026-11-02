@@ -10,6 +10,7 @@
 //! from 4 to 8 limbs, a modulus that fills its limbs reduces it by Barrett's reduction instead.
 
 mod barrett;
+mod ct;
 mod montgomery;
 
 use core::fmt;
@@ -19,6 +20,7 @@ use core::ops::{Add, Mul, Neg, Sub};
 use generic_array::GenericArray;
 
 use crate::bits::Bits;
+use crate::div::ct::MaskedDivisor;
 use crate::div::{DiscardQuotient, Invariant, Top};
 use crate::kernel::split_mut;
 use crate::modular::sum_mod;
@@ -28,6 +30,7 @@ use crate::recursion::{Depth, Halvings};
 use crate::stream::TwosComplement;
 use crate::uint::Uint;
 use barrett::Barrett;
+pub use ct::ConstantTimeResidue;
 
 /// A nonzero modulus with its reduction prepared: [`Modulus::scope`] computes with its residues.
 pub struct Modulus<N: Bits> {
@@ -35,6 +38,8 @@ pub struct Modulus<N: Bits> {
     value: Uint<N>,
     /// `m` prepared for division.
     divisor: Invariant<N::Limbs>,
+    /// `m` prepared for divisions in constant time.
+    masked: MaskedDivisor<N::Limbs>,
     /// The form of the residues.
     form: Form<N>,
     /// The residue `1` in that form.
@@ -101,6 +106,7 @@ impl<N: Bits> From<NonZeroUint<N>> for Modulus<N> {
     fn from(modulus: NonZeroUint<N>) -> Self {
         let value = modulus.get();
         let divisor = Invariant::new(&value.limbs, significant_len(&value.limbs));
+        let masked = MaskedDivisor::new(&value.limbs);
         // `2^(64 * limb) mod m`.
         let power = |limb: usize| {
             let mut dividend = GenericArray::<u64, N::ProductWindow>::default();
@@ -120,6 +126,7 @@ impl<N: Bits> From<NonZeroUint<N>> for Modulus<N> {
                 one: power(N::LIMBS),
                 value,
                 divisor,
+                masked,
             }
         } else {
             let form = if barrett::applies(N::LIMBS) && significant_len(&value.limbs) == N::LIMBS {
@@ -132,6 +139,7 @@ impl<N: Bits> From<NonZeroUint<N>> for Modulus<N> {
                 one: power(0),
                 value,
                 divisor,
+                masked,
             }
         }
     }

@@ -4,7 +4,8 @@
 use core::hint::select_unpredictable;
 
 use crate::kernel::{
-    add_assign, add_limb, add_to, compare, fits, split, split_mut, sub_assign, sub_limb,
+    add_assign, add_flipped, add_limb, add_limb_masked, add_to, compare, fits, mask_of,
+    negate_masked, split, split_mut, sub_assign, sub_into, sub_limb, sub_limb_masked,
 };
 use crate::recursion::{Depth, product_scratch};
 use crate::stream::{LimbSource, LimbStream, Op2CarryIter, SubOp, ZeroExtended};
@@ -20,8 +21,16 @@ pub(crate) const THRESHOLD: usize = 16;
 /// With `a = a0 + a1 * β^h` and `b = b0 + b1 * β^h`, `h = ceil(n / 2)`, the product is
 /// `v0 + (v0 + vinf - vm1) * β^h + vinf * β^2h` for `v0 = a0 * b0`, `vinf = a1 * b1` and
 /// `vm1 = (a0 - a1) * (b0 - b1)`.
+///
+/// `MASKED` takes the signs of the differences and the carries under masks: no branch and no
+/// memory address depends on the operands.
 #[inline(always)]
-pub(crate) fn karatsuba<D: Depth>(out: &mut [u64], a: &[u64], b: &[u64], scratch: &mut [u64]) {
+pub(crate) fn karatsuba<D: Depth, const MASKED: bool>(
+    out: &mut [u64],
+    a: &[u64],
+    b: &[u64],
+    scratch: &mut [u64],
+) {
     let half = a.len() - a.len() / 2;
     let (a_low, a_high) = split(a, half);
     let (b_low, b_high) = split(b, half);
@@ -30,23 +39,29 @@ pub(crate) fn karatsuba<D: Depth>(out: &mut [u64], a: &[u64], b: &[u64], scratch
         // `|a0 - a1|` and `|b0 - b1|` wait in the limbs that `v0` fills last.
         let (lower, _) = split_mut(out, 2 * half);
         let (a_difference, b_difference) = split_mut(lower, half);
-        let negative = abs_difference(a_difference, a_low, a_high)
-            != abs_difference(b_difference, b_low, b_high);
-        D::product(difference_product, a_difference, b_difference, scratch);
+        let negative = abs_difference::<MASKED>(a_difference, a_low, a_high)
+            ^ abs_difference::<MASKED>(b_difference, b_low, b_high);
+        D::product_with::<MASKED>(difference_product, a_difference, b_difference, scratch);
         negative
     };
     {
         let (lower, upper) = split_mut(out, 2 * half);
-        D::product(upper, a_high, b_high, scratch);
-        D::product(lower, a_low, b_low, scratch);
+        D::product_with::<MASKED>(upper, a_high, b_high, scratch);
+        D::product_with::<MASKED>(lower, a_low, b_low, scratch);
     }
-    interpolate(out, difference_product, negative, half);
+    interpolate::<MASKED>(out, difference_product, negative, half);
 }
 
-/// Writes `|x - y|` to `out`, as long as `x`, and returns whether `x < y`. `y` is at most as long
-/// as `x`.
+/// Writes `|x - y|` to `out`, as long as `x`, and returns `1` when `x < y`, `0` otherwise. `y` is
+/// at most as long as `x`. `MASKED` negates the difference under the mask of its borrow; otherwise
+/// a comparison picks the operands.
 #[inline(always)]
-fn abs_difference(out: &mut [u64], x: &[u64], y: &[u64]) -> bool {
+fn abs_difference<const MASKED: bool>(out: &mut [u64], x: &[u64], y: &[u64]) -> u64 {
+    if MASKED {
+        let borrow = sub_into(out, x, y);
+        negate_masked(out, mask_of(borrow));
+        return borrow;
+    }
     let below = compare(x, y).is_lt();
     let (larger, smaller) = select_unpredictable(below, (y, x), (x, y));
     let mut difference = Op2CarryIter::<_, _, SubOp>::new(
@@ -56,14 +71,21 @@ fn abs_difference(out: &mut [u64], x: &[u64], y: &[u64]) -> bool {
     for slot in out {
         *slot = difference.next_limb();
     }
-    below
+    u64::from(below)
 }
 
 /// Turns `out = v0 | vinf` into the product, given `|vm1|` and the sign of `vm1`. With
 /// `v0 = L0 | H0` and `vinf = L1 | H1` split at `half` limbs, the product is
-/// `L0 + (H0 + L0 + L1) β^h + (H0 + L1 + H1) β^2h + H1 β^3h - vm1 β^h`.
+/// `L0 + (H0 + L0 + L1) β^h + (H0 + L1 + H1) β^2h + H1 β^3h - vm1 β^h`. `negative` is `1` when
+/// `vm1` is negative. `MASKED` adds or subtracts `|vm1|` under a mask and ripples every carry
+/// through every limb.
 #[inline(always)]
-fn interpolate(out: &mut [u64], difference_product: &[u64], negative: bool, half: usize) {
+fn interpolate<const MASKED: bool>(
+    out: &mut [u64],
+    difference_product: &[u64],
+    negative: u64,
+    half: usize,
+) {
     let (carry_at_2h, mut carry_at_3h) = {
         let (v0, vinf) = split_mut(out, 2 * half);
         let (l0, h0) = split_mut(v0, half);
@@ -72,13 +94,21 @@ fn interpolate(out: &mut [u64], difference_product: &[u64], negative: bool, half
         let carry_x = add_assign(l1, h0);
         let carry_at_2h = carry_x + add_to(h0, l1, l0);
         let (l1_low, l1_high) = split_mut(l1, h1.len());
-        let carry_at_3h = carry_x + add_limb(l1_high, add_assign(l1_low, h1));
+        let carry_at_3h = carry_x + carry_limb::<MASKED>(l1_high, add_assign(l1_low, h1));
         (carry_at_2h, carry_at_3h)
     };
     let (_, from_h) = split_mut(out, half);
     let borrow_at_3h = {
         let (middle, _) = split_mut(from_h, 2 * half);
-        if negative {
+        if MASKED {
+            // `middle + dp` when negative, `middle + !dp + 1 = middle - dp + 2^(64 k)` otherwise:
+            // the carry out of the sum is the carry of the addition, or one less than the borrow
+            // of the subtraction.
+            let mask = mask_of(negative);
+            let carry = add_flipped(middle, difference_product, !mask);
+            carry_at_3h += carry & mask;
+            (carry ^ 1) & !mask & 1
+        } else if negative != 0 {
             carry_at_3h += add_assign(middle, difference_product);
             0
         } else {
@@ -87,10 +117,10 @@ fn interpolate(out: &mut [u64], difference_product: &[u64], negative: bool, half
     };
     // The carries and the borrow cancel to a product that fits in `out`.
     let (_, from_2h) = split_mut(from_h, half);
-    fits(add_limb(from_2h, carry_at_2h));
+    fits(carry_limb::<MASKED>(from_2h, carry_at_2h));
     let (_, from_3h) = split_mut(from_2h, half);
-    fits(add_limb(from_3h, carry_at_3h));
-    fits(sub_limb(from_3h, borrow_at_3h));
+    fits(carry_limb::<MASKED>(from_3h, carry_at_3h));
+    fits(borrow_limb::<MASKED>(from_3h, borrow_at_3h));
 }
 
 /// The scratch limbs of [`blocks`] for a `len`-limb shorter operand: a block product and the
@@ -104,8 +134,14 @@ pub(crate) const fn blocks_scratch(len: usize, levels: usize) -> usize {
 /// products of `short` with the blocks of `long` that are as long as `short`, added at their
 /// offsets, then the shorter last block by the quadratic product. Without `blocks_scratch` limbs of
 /// `scratch`, the whole product runs as the quadratic product.
+/// `MASKED` as for [`karatsuba`].
 #[inline(always)]
-pub(crate) fn blocks<D: Depth>(out: &mut [u64], long: &[u64], short: &[u64], scratch: &mut [u64]) {
+pub(crate) fn blocks<D: Depth, const MASKED: bool>(
+    out: &mut [u64],
+    long: &[u64],
+    short: &[u64],
+    scratch: &mut [u64],
+) {
     let len = short.len();
     if scratch.len() < blocks_scratch(len, D::LEVELS) {
         basecase(out, long, short);
@@ -120,22 +156,22 @@ pub(crate) fn blocks<D: Depth>(out: &mut [u64], long: &[u64], short: &[u64], scr
     let mut rest = long;
     while rest.len() >= len {
         let (block, tail) = split(rest, len);
-        D::product(block_product, block, short, scratch);
-        add_block(out, block_product, offset, len);
+        D::product_with::<MASKED>(block_product, block, short, scratch);
+        add_block::<MASKED>(out, block_product, offset, len);
         offset += len;
         rest = tail;
     }
     if !rest.is_empty() {
         let (last_product, _) = split_mut(block_product, len + rest.len());
         basecase(last_product, short, rest);
-        add_block(out, last_product, offset, len);
+        add_block::<MASKED>(out, last_product, offset, len);
     }
 }
 
 /// Adds the block product `block` at limb `offset` of `out`: its low `len` limbs onto the limbs
 /// that the previous block left there, its other limbs onto limbs that no block has written.
 #[inline(always)]
-fn add_block(out: &mut [u64], block: &[u64], offset: usize, len: usize) {
+fn add_block<const MASKED: bool>(out: &mut [u64], block: &[u64], offset: usize, len: usize) {
     let (_, window) = split_mut(out, offset);
     let (window, _) = split_mut(window, block.len());
     let (overlap, fresh) = split_mut(window, len);
@@ -145,5 +181,25 @@ fn add_block(out: &mut [u64], block: &[u64], offset: usize, len: usize) {
         *slot = limb;
     }
     // The blocks so far sum to less than `2^(64 * (offset + block.len()))`.
-    fits(add_limb(fresh, carry));
+    fits(carry_limb::<MASKED>(fresh, carry));
+}
+
+/// [`add_limb`], or under `MASKED` [`add_limb_masked`].
+#[inline(always)]
+fn carry_limb<const MASKED: bool>(out: &mut [u64], carry: u64) -> u64 {
+    if MASKED {
+        add_limb_masked(out, carry)
+    } else {
+        add_limb(out, carry)
+    }
+}
+
+/// [`sub_limb`], or under `MASKED` [`sub_limb_masked`].
+#[inline(always)]
+fn borrow_limb<const MASKED: bool>(out: &mut [u64], borrow: u64) -> u64 {
+    if MASKED {
+        sub_limb_masked(out, borrow)
+    } else {
+        sub_limb(out, borrow)
+    }
 }

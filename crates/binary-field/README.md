@@ -10,8 +10,9 @@ Binary Galois fields `GF(2^n) = GF(2)[x] / (f(x))` for any degree `n` and any ir
 `Gf2<P>` is an element of the field declared by the polynomial `P`. It provides addition,
 multiplication, squaring, inversion, powers by exponents of any width, square roots, traces, and
 `x` and `x^-1` multiples. Its operations take the fastest path, which may index tables and take
-time that depends on the value. `Secret<P>` wraps an element whose operations take one path for
-every value, and reveals it on request.
+time that depends on the value. `ConstantTime<Gf2<P>>`, re-exported from
+[`constant-time`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/constant-time),
+wraps an element whose operations take one path for every value, and reveals it on request.
 
 Bit `i` of an element's value is the coefficient of `x^i`.
 
@@ -63,10 +64,11 @@ responsibility.
 
 ## Timing
 
-`Secret` takes one path for every value; `invert` discloses whether the input is zero. `Gf2` may
-index tables with the value, and `pow` takes a time that depends on the exponent. CI runs every
-`Secret` operation under Valgrind's memcheck with [`ct-check`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/ct-check), which fails on a
-branch or a memory address that depends on a secret.
+`ConstantTime` takes one path for every wrapped value; `invert` discloses whether the input is
+zero. `Gf2` may index tables with the value, and `pow` takes a time that depends on the exponent.
+CI runs every `ConstantTime` operation under Valgrind's memcheck with
+[`ct-check`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/ct-check), which
+fails on a branch or a memory address that depends on a wrapped value.
 
 ## Backends
 
@@ -81,7 +83,7 @@ without them. Enable them with `RUSTFLAGS="-C target-feature=+pclmulqdq,+sse4.1"
 |---|---|
 | default | at most 16 KiB per field |
 | `precomputed` | the fastest tables, of any size |
-| `not-precomputed` | none; every operation computes as `Secret` does |
+| `not-precomputed` | none; every operation computes as `ConstantTime` does |
 
 `not-precomputed` wins over `precomputed`: either feature, set by any dependent, decides the whole
 build.

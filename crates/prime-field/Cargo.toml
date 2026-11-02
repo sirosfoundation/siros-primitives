@@ -13,6 +13,7 @@ rust-version.workspace = true
 
 [dependencies]
 biguint = { version = "0.1.0", path = "../biguint", default-features = false }
+constant-time = { version = "0.1.0", path = "../constant-time" }
 const-default.workspace = true
 derive-where.workspace = true
 generic-array.workspace = true

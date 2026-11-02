@@ -26,8 +26,8 @@ pub type Bytes<P> = <<P as Polynomial>::Degree as Bits>::Bytes;
 /// general register for degrees up to 16, and `clmul::Poly`'s vector registers above.
 ///
 /// The operations take the fastest algorithm of the plan, and their time may depend on the
-/// values: table lookups, and branches on zero. [`Secret`](crate::Secret) holds an element whose
-/// operations take one path for every value.
+/// values: table lookups, and branches on zero. [`ConstantTime`](crate::ConstantTime) holds an
+/// element whose operations take one path for every value.
 #[repr(transparent)]
 #[derive_where::derive_where(Clone, Copy, Default, Eq, Hash, PartialEq; Element<P>)]
 pub struct Gf2<P: Polynomial> {

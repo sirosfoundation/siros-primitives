@@ -14,7 +14,7 @@ use prime_field::standard::{
     BabyBear, Bls12381Base, Bn254Scalar, Goldilocks, Mersenne31, P256Base, P256Scalar, P521Base,
     Secp256k1Base, Tom256Base,
 };
-use prime_field::{Fp, Modulus, Secret};
+use prime_field::{ConstantTime, Fp, Modulus};
 use runtime_algebra::field::RuntimeSerializableField;
 
 use super::{Field, Kind, Op, Timing};
@@ -247,13 +247,13 @@ impl<M: Modulus> ToLimbs for Fp<M> {
     }
 }
 
-impl<M: Modulus> FromLimbs for Secret<M> {
+impl<M: Modulus> FromLimbs for ConstantTime<Fp<M>> {
     fn from_limbs(limbs: &[u64]) -> Self {
         Self::new(Fp::from_limbs(limbs))
     }
 }
 
-impl<M: Modulus> ToLimbs for Secret<M> {
+impl<M: Modulus> ToLimbs for ConstantTime<Fp<M>> {
     fn to_limbs(&self) -> Option<Limbs> {
         self.reveal().to_limbs()
     }
@@ -276,7 +276,7 @@ fn this_crate<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
-/// `Fp` in the variable-time rows, `Secret` in the constant-time rows. Each operation inlines
+/// `Fp` in the variable-time rows, `ConstantTime` in the constant-time rows. Each operation inlines
 /// into the batch loop.
 fn ours<M: Modulus, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     cells
@@ -324,43 +324,43 @@ fn ours<M: Modulus, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         )
         .chained(
             constant(Kind::Add),
-            "Secret +",
-            pair::<Secret<M>>,
+            "ConstantTime +",
+            pair::<ConstantTime<Fp<M>>>,
             #[inline(always)]
             |&(a, b)| a + b,
         )
         .chained(
             constant(Kind::Sub),
-            "Secret -",
-            pair::<Secret<M>>,
+            "ConstantTime -",
+            pair::<ConstantTime<Fp<M>>>,
             #[inline(always)]
             |&(a, b)| a - b,
         )
         .chained(
             constant(Kind::Mul),
-            "Secret *",
-            pair::<Secret<M>>,
+            "ConstantTime *",
+            pair::<ConstantTime<Fp<M>>>,
             #[inline(always)]
             |&(a, b)| a * b,
         )
         .chained(
             constant(Kind::Square),
-            "Secret::square",
-            one::<Secret<M>>,
+            "ConstantTime::square",
+            one::<ConstantTime<Fp<M>>>,
             #[inline(always)]
             |a| a.square(),
         )
         .case(
             constant(Kind::Invert),
-            "Secret::invert",
-            one::<Secret<M>>,
+            "ConstantTime::invert",
+            one::<ConstantTime<Fp<M>>>,
             #[inline(always)]
             |a| a.invert(),
         )
         .case(
             constant(Kind::Sqrt),
-            "Secret::sqrt",
-            one::<Secret<M>>,
+            "ConstantTime::sqrt",
+            one::<ConstantTime<Fp<M>>>,
             #[inline(always)]
             |a| a.sqrt(),
         )

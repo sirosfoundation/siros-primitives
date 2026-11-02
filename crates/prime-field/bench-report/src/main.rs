@@ -75,8 +75,8 @@ const LAYOUT: Layout<'static, Field> = Layout {
          constant-time row those whose time depends on no value. Each function sits in the row of \
          its class, as its source shows it: a branch, a loop bound or a memory address that \
          depends on a value makes it variable time.",
-        "- `prime-field` runs `Fp` in the variable-time rows and `Secret` in the constant-time \
-         rows.",
+        "- `prime-field` runs `Fp` in the variable-time rows and `ConstantTime` in the \
+         constant-time rows.",
         "- `prime-field`, `ark-ff`, `crypto-bigint`, `halo2curves` and `runtime-algebra` are \
          generic over the modulus; `k256`, `p256`, `p3-*` and `winter-math` are written for \
          their field.",
