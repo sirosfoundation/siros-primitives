@@ -4,8 +4,9 @@
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
 ![Rust 1.88+](https://img.shields.io/badge/rustc-1.88+-blue.svg)
 
-Big-integer, carry-less and binary-field arithmetic in pure Rust. Every crate is `no_std` and free of allocation
-and panics. `unsafe` appears only in `clmul`, at the calls into its PCLMULQDQ and PMULL backends.
+Big-integer, carry-less and binary-field arithmetic in pure Rust. Every crate is `no_std` and free
+of allocation and panics. `unsafe` appears only in `clmul`, at the calls into its PCLMULQDQ and
+PMULL backends.
 
 ## Crates
 

@@ -57,8 +57,10 @@ limb counts, the fold steps of the reduction, the word `r` of the carry-less fol
 
 The degree and the taps select each algorithm at compile time, and every limb count, shift and
 loop bound folds to a constant, so each field compiles to straight-line code. The word products
-come from [`clmul`](../clmul): PCLMULQDQ, PMULL, or a const comb in builds without them; the
-plan knows which through `clmul::HARDWARE`.
+come from
+[`clmul`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/clmul):
+PCLMULQDQ, PMULL, or a const comb in builds without them; the plan knows which through
+`clmul::HARDWARE`.
 
 | Operation | Case | Algorithm |
 |---|---|---|
