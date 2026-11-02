@@ -413,7 +413,6 @@ version = "0.0.0"
 dependencies = [
  "bench-compare",
  "binary-field",
- "clmul",
  "prime-field",
  "serde",
  "serde_json",

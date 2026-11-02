@@ -17,10 +17,6 @@ use crate::reduce::const_reduce;
 /// The entries of a table indexed by an element of a field of degree up to 16.
 const ELEMENTS: usize = 1 << 16;
 
-/// The entries of the exponential table of a field of degree up to 8: the exponents up to four
-/// times the group order, the sum of two logarithms of the zero marker.
-const EXPONENTS: usize = 1024;
-
 /// The constants and tables of the field with the polynomial `P`.
 pub(crate) struct Tables<P>(PhantomData<P>);
 
@@ -36,9 +32,8 @@ impl<P: Polynomial> Tables<P> {
         Self::SQRT_X
     }
 
-    /// A generator of the multiplicative group, its logarithm table with the zero marker `2q`
-    /// for `q = 2^n - 1`, and the exponential table up to `4q`, zero from `2q`.
-    const LOGARITHMS: &'static Logarithms = &logarithms(Plan::<P>::DEGREE, Plan::<P>::TAPS);
+    /// The product of every pair of elements of a field of degree up to 8, `a b` at `256 b + a`.
+    const PRODUCTS: &'static [u8; ELEMENTS] = &products(Plan::<P>::DEGREE, Plan::<P>::TAPS);
 
     /// The squares of the bytes, and of the bytes times `x^8`.
     const SQUARES: &'static [[u16; 256]; 2] =
@@ -49,21 +44,12 @@ impl<P: Polynomial> Tables<P> {
     /// The inverse of every element, `0` for `0`.
     const INVERSES: &'static [u16; ELEMENTS] = &inverses(Plan::<P>::DEGREE, Plan::<P>::TAPS);
 
-    /// `a b` by the logarithm tables: `exp[log a + log b]`, where the zero marker sends any sum
-    /// with it into the zeros of the exponential table. Degrees up to 8.
+    /// `a b` by the table of products, for degrees up to 8: the index `256 b + a` takes `b` into
+    /// the row, so a factor that a loop keeps fixes the row.
     #[inline(always)]
     pub(crate) fn mul(a: u64, b: u64) -> u64 {
-        let tables = Self::LOGARITHMS;
-        let log = |value: u64| -> usize {
-            tables
-                .log
-                .get(value as usize)
-                .copied()
-                .map_or(0, usize::from)
-        };
-        tables
-            .exp
-            .get(log(a) + log(b))
+        Self::PRODUCTS
+            .get(((b << 8) | a) as usize)
             .copied()
             .map_or(0, u64::from)
     }
@@ -180,40 +166,39 @@ const fn small_pow(a: u64, exponent: u64, degree: usize, taps: &[usize]) -> u64 
     result
 }
 
-/// The logarithm and exponential tables of a field of degree up to 8, empty above.
-pub(crate) struct Logarithms {
-    /// `log[a]` for `a` nonzero; `log[0] = 2q`, the zero marker.
-    log: [u16; 256],
-    /// `exp[i] = g^(i mod q)` below `2q`, `0` from `2q` to `4q`.
-    exp: [u8; EXPONENTS],
-}
-
-/// The tables of [`Logarithms`] for the field of degree `degree` with `taps`.
+/// The product of every pair of elements of a field of degree up to 8, `a b` at `256 b + a`, by
+/// the logarithms along the powers of a generator `g`: `a b = g^((log a + log b) mod q)`. Empty
+/// above degree 8.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its table's length"
 )]
-const fn logarithms(degree: usize, taps: &[usize]) -> Logarithms {
-    let mut tables = Logarithms {
-        log: [0; 256],
-        exp: [0; EXPONENTS],
-    };
+const fn products(degree: usize, taps: &[usize]) -> [u8; ELEMENTS] {
+    let mut table = [0; ELEMENTS];
     if degree > 8 {
-        return tables;
+        return table;
     }
     let order = (1 << degree) - 1;
     let generator = generator(degree, taps);
+    let (mut log, mut exp) = ([0usize; 256], [0u8; 256]);
     let mut power = 1;
     let mut index = 0;
     while index < order {
-        tables.log[power as usize] = index as u16;
-        tables.exp[index] = power as u8;
-        tables.exp[index + order] = power as u8;
+        log[power as usize] = index;
+        exp[index] = power as u8;
         power = small_mul(power, generator, degree, taps);
         index += 1;
     }
-    tables.log[0] = 2 * order as u16;
-    tables
+    let mut a = 1;
+    while a <= order {
+        let mut b = 1;
+        while b <= order {
+            table[(b << 8) | a] = exp[(log[a] + log[b]) % order];
+            b += 1;
+        }
+        a += 1;
+    }
+    table
 }
 
 /// A generator of the multiplicative group of a field of degree up to 16: the first element
