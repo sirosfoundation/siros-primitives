@@ -50,6 +50,13 @@ const LAYOUT: Layout<'static, Width> = Layout {
         Operation::new("mulmod", "mulmod", "a × b mod m"),
         Operation::new("add_mod", "add_mod", "a + b mod m"),
         Operation::new("sub_mod", "sub_mod", "a − b mod m"),
+        Operation::new("add_ct", "add, constant time", "a + b"),
+        Operation::new("mul_ct", "mul, constant time", "a × b"),
+        Operation::new("div_ct", "div, constant time", "a / b"),
+        Operation::new("mod_ct", "mod, constant time", "a mod b"),
+        Operation::new("mulmod_ct", "mulmod, constant time", "a × b mod m"),
+        Operation::new("add_mod_ct", "add_mod, constant time", "a + b mod m"),
+        Operation::new("sub_mod_ct", "sub_mod, constant time", "a − b mod m"),
     ],
     row_header: "Bits",
     rows_phrase: |widths| format!("at {} bits", sentence(widths)),
@@ -60,6 +67,8 @@ const LAYOUT: Layout<'static, Width> = Layout {
         "Every result matches `num-bigint` before it is measured.",
         "A row compares the functions of `biguint`'s timing class: fixed for add and for mul up \
          to 1024 bits, variable for the rest.",
+        "A constant-time table compares `ConstantTime<Uint>` with every function whose time the \
+         width fixes; divisors and moduli are public.",
     ],
 };
 

@@ -44,7 +44,7 @@ impl Suite for Biguint {
     /// that wraps modulo `2^bits` and a crate that returns the exact result both pass.
     fn samples(op: Op, key: &Width) -> Vec<Sample> {
         let bits = key.bits as usize;
-        let mut rng = Rng(((op as u64) << 32) | bits as u64);
+        let mut rng = Rng(((op.base() as u64) << 32) | bits as u64);
         (0..BATCH)
             .map(|_| {
                 let operands = op.operands(bits, &mut rng);
@@ -89,11 +89,25 @@ pub enum Op {
     AddMod,
     /// `(a - b) mod m`.
     SubMod,
+    /// [`Add`](Self::Add) by functions whose time depends on no value.
+    AddCt,
+    /// [`Mul`](Self::Mul) in constant time.
+    MulCt,
+    /// [`Div`](Self::Div) in constant time.
+    DivCt,
+    /// [`Mod`](Self::Mod) in constant time.
+    ModCt,
+    /// [`MulMod`](Self::MulMod) in constant time.
+    MulModCt,
+    /// [`AddMod`](Self::AddMod) in constant time.
+    AddModCt,
+    /// [`SubMod`](Self::SubMod) in constant time.
+    SubModCt,
 }
 
 impl Op {
     /// Every operation, in measurement order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 14] = [
         Self::Add,
         Self::Mul,
         Self::Div,
@@ -101,7 +115,40 @@ impl Op {
         Self::MulMod,
         Self::AddMod,
         Self::SubMod,
+        Self::AddCt,
+        Self::MulCt,
+        Self::DivCt,
+        Self::ModCt,
+        Self::MulModCt,
+        Self::AddModCt,
+        Self::SubModCt,
     ];
+
+    /// The operation that this one computes: itself, or the operation of a constant-time one.
+    pub const fn base(self) -> Self {
+        match self {
+            Self::Add | Self::AddCt => Self::Add,
+            Self::Mul | Self::MulCt => Self::Mul,
+            Self::Div | Self::DivCt => Self::Div,
+            Self::Mod | Self::ModCt => Self::Mod,
+            Self::MulMod | Self::MulModCt => Self::MulMod,
+            Self::AddMod | Self::AddModCt => Self::AddMod,
+            Self::SubMod | Self::SubModCt => Self::SubMod,
+        }
+    }
+
+    /// The constant-time operation of the same computation.
+    pub const fn constant_time(self) -> Self {
+        match self {
+            Self::Add | Self::AddCt => Self::AddCt,
+            Self::Mul | Self::MulCt => Self::MulCt,
+            Self::Div | Self::DivCt => Self::DivCt,
+            Self::Mod | Self::ModCt => Self::ModCt,
+            Self::MulMod | Self::MulModCt => Self::MulModCt,
+            Self::AddMod | Self::AddModCt => Self::AddModCt,
+            Self::SubMod | Self::SubModCt => Self::SubModCt,
+        }
+    }
 
     /// One operand set of width `bits`:
     /// - add, mul: two uniform `bits`-bit values;
@@ -113,9 +160,18 @@ impl Op {
     fn operands(self, bits: usize, rng: &mut Rng) -> Vec<Limbs> {
         let limbs = bits / 64;
         match self {
-            Self::Add | Self::Mul => vec![rng.uniform(limbs), rng.uniform(limbs)],
-            Self::Div | Self::Mod => vec![rng.exact(limbs, bits), rng.exact(limbs, bits / 2)],
-            Self::MulMod | Self::AddMod | Self::SubMod => {
+            Self::Add | Self::Mul | Self::AddCt | Self::MulCt => {
+                vec![rng.uniform(limbs), rng.uniform(limbs)]
+            }
+            Self::Div | Self::Mod | Self::DivCt | Self::ModCt => {
+                vec![rng.exact(limbs, bits), rng.exact(limbs, bits / 2)]
+            }
+            Self::MulMod
+            | Self::AddMod
+            | Self::SubMod
+            | Self::MulModCt
+            | Self::AddModCt
+            | Self::SubModCt => {
                 let modulus = rng.exact(limbs, bits);
                 vec![rng.below(&modulus), rng.below(&modulus), modulus]
             }
@@ -124,7 +180,7 @@ impl Op {
 
     /// The exact result of the operation on `operands`.
     fn exact(self, operands: &[BigUint]) -> BigUint {
-        match (self, operands) {
+        match (self.base(), operands) {
             (Self::Add, [a, b]) => a + b,
             (Self::Mul, [a, b]) => a * b,
             (Self::Div, [a, b]) => a / b,
@@ -147,6 +203,13 @@ impl fmt::Display for Op {
             Self::MulMod => "mulmod",
             Self::AddMod => "add_mod",
             Self::SubMod => "sub_mod",
+            Self::AddCt => "add_ct",
+            Self::MulCt => "mul_ct",
+            Self::DivCt => "div_ct",
+            Self::ModCt => "mod_ct",
+            Self::MulModCt => "mulmod_ct",
+            Self::AddModCt => "add_mod_ct",
+            Self::SubModCt => "sub_mod_ct",
         })
     }
 }

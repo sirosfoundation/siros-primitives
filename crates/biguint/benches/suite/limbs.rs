@@ -4,7 +4,7 @@ use core::num::NonZero;
 
 use bench_compare::{Cells, Chain, Limbs, Visitor};
 use biguint::generic_array::GenericArray;
-use biguint::{Bits, NonZeroUint, Uint};
+use biguint::{Bits, ConstantTime, NonZeroUint, Uint};
 use num_bigint::BigUint;
 
 /// An operand type built from limbs.
@@ -89,6 +89,18 @@ impl<N: Bits> FromLimbs for NonZeroUint<N> {
 impl<N: Bits> ToLimbs for Uint<N> {
     fn to_limbs(&self) -> Option<Limbs> {
         Some(self.as_limbs().to_vec())
+    }
+}
+
+impl<T: FromLimbs> FromLimbs for ConstantTime<T> {
+    fn from_limbs(limbs: &[u64]) -> Self {
+        Self::new(T::from_limbs(limbs))
+    }
+}
+
+impl<T: ToLimbs + Copy> ToLimbs for ConstantTime<T> {
+    fn to_limbs(&self) -> Option<Limbs> {
+        self.reveal().to_limbs()
     }
 }
 

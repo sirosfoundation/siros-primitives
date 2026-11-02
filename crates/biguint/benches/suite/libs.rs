@@ -9,7 +9,7 @@ use core::ops::Add;
 
 use bench_compare::{Cells, Chain, Limbs, Row, Visitor};
 use biguint::typenum::{Sum, U1024 as Bits1024, U2048 as Bits2048, U4096 as Bits4096};
-use biguint::{Bits, Bits64, Bits128, Bits256, Bits384, Bits512, NonZeroUint, Uint};
+use biguint::{Bits, Bits64, Bits128, Bits256, Bits384, Bits512, ConstantTime, NonZeroUint, Uint};
 use num_bigint::BigUint;
 
 use super::limbs::{FromLimbs, Offer, ToLimbs};
@@ -33,7 +33,14 @@ enum Timing {
 /// operations branch on the values.
 const fn row_timing(op: Op, bits: u32) -> Timing {
     match op {
-        Op::Add => Timing::Fixed,
+        Op::Add
+        | Op::AddCt
+        | Op::MulCt
+        | Op::DivCt
+        | Op::ModCt
+        | Op::MulModCt
+        | Op::AddModCt
+        | Op::SubModCt => Timing::Fixed,
         Op::Mul if bits <= 1024 => Timing::Fixed,
         Op::Mul | Op::Div | Op::Mod | Op::MulMod | Op::AddMod | Op::SubMod => Timing::Variable,
     }
@@ -49,28 +56,52 @@ const fn mismatch(op: Op, bits: u32, timing: Timing) -> Option<&'static str> {
     }
 }
 
-/// Offers cases of a stated timing class.
+/// Offers cases of a stated timing class: a competitor's function `f` for the operation `op`
+/// fills the table of `op` when its class is the row's, and the constant-time table of `op` when
+/// its time is fixed.
 trait Timed<V> {
-    /// Offers the case that runs the crate's `function` for `op`, whose time is of the class
-    /// `timing`, or an absent cell when the row's class differs.
+    /// Offers the cases that run the crate's `function` for `op`, whose time is of the class
+    /// `timing`, or absent cells where the class differs.
     fn timed<I, R: ToLimbs>(
         self,
         op: Op,
         timing: Timing,
         function: &'static str,
-        prepare: impl Fn(&[Limbs]) -> I,
+        prepare: impl Fn(&[Limbs]) -> I + Copy,
         run: impl Fn(&I) -> R + Copy,
     ) -> Self;
 
-    /// Offers the case of [`timed`](Self::timed) with its chain form, `x = op(x, y)`.
+    /// Offers the cases of [`timed`](Self::timed) with their chain form, `x = op(x, y)`.
     fn timed_chained<I: Chain<R>, R: ToLimbs>(
         self,
         op: Op,
         timing: Timing,
         function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I + Copy,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self;
+
+    /// Offers the variable-time `function` for `op` in the table of `op` alone, or an absent cell
+    /// where the row's class differs; the crate offers its constant-time cell itself.
+    fn variable<I, R: ToLimbs>(
+        self,
+        op: Op,
+        function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
     ) -> Self;
+
+    /// Offers the case of [`variable`](Self::variable) with its chain form.
+    fn variable_chained<I: Chain<R>, R: ToLimbs>(
+        self,
+        op: Op,
+        function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self;
+
+    /// Records the absent cells of `op` in both tables, for `reason`.
+    fn missing(self, op: Op, reason: &'static str) -> Self;
 }
 
 impl<V: Visitor<Op, Width>> Timed<V> for Crate<V> {
@@ -79,12 +110,16 @@ impl<V: Visitor<Op, Width>> Timed<V> for Crate<V> {
         op: Op,
         timing: Timing,
         function: &'static str,
-        prepare: impl Fn(&[Limbs]) -> I,
+        prepare: impl Fn(&[Limbs]) -> I + Copy,
         run: impl Fn(&I) -> R + Copy,
     ) -> Self {
-        match mismatch(op, self.key().bits, timing) {
+        let cells = match mismatch(op, self.key().bits, timing) {
             None => self.case(op, function, prepare, run),
             Some(reason) => self.absent(op, reason),
+        };
+        match timing {
+            Timing::Fixed => cells.case(op.constant_time(), function, prepare, run),
+            Timing::Variable => cells.absent(op.constant_time(), VARIABLE_TIME),
         }
     }
 
@@ -93,15 +128,52 @@ impl<V: Visitor<Op, Width>> Timed<V> for Crate<V> {
         op: Op,
         timing: Timing,
         function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I + Copy,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self {
+        let cells = match mismatch(op, self.key().bits, timing) {
+            None => self.chained(op, function, prepare, run),
+            Some(reason) => self.absent(op, reason),
+        };
+        match timing {
+            Timing::Fixed => cells.chained(op.constant_time(), function, prepare, run),
+            Timing::Variable => cells.absent(op.constant_time(), VARIABLE_TIME),
+        }
+    }
+
+    fn variable<I, R: ToLimbs>(
+        self,
+        op: Op,
+        function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
     ) -> Self {
-        match mismatch(op, self.key().bits, timing) {
+        match mismatch(op, self.key().bits, Timing::Variable) {
+            None => self.case(op, function, prepare, run),
+            Some(reason) => self.absent(op, reason),
+        }
+    }
+
+    fn variable_chained<I: Chain<R>, R: ToLimbs>(
+        self,
+        op: Op,
+        function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self {
+        match mismatch(op, self.key().bits, Timing::Variable) {
             None => self.chained(op, function, prepare, run),
             Some(reason) => self.absent(op, reason),
         }
     }
+
+    fn missing(self, op: Op, reason: &'static str) -> Self {
+        self.absent(op, reason).absent(op.constant_time(), reason)
+    }
 }
+
+/// The reason for an absent constant-time cell of a function whose time depends on the values.
+const VARIABLE_TIME: &str = "variable time";
 
 /// The reason for a cell whose function's time depends on the values, in a fixed-time row.
 const VARIABLE_IN_FIXED_ROW: &str = "variable time in a fixed-time row";
@@ -238,6 +310,55 @@ where
             #[inline(always)]
             |&(a, b, modulus)| a.sub_mod(b, modulus),
         )
+        .chained(
+            Op::AddCt,
+            "ConstantTime +",
+            pair::<ConstantTime<Uint<N>>>,
+            #[inline(always)]
+            |&(a, b)| a + b,
+        )
+        .case(
+            Op::MulCt,
+            "ConstantTime *",
+            pair::<ConstantTime<Uint<N>>>,
+            #[inline(always)]
+            |&(a, b)| a * b,
+        )
+        .case(
+            Op::DivCt,
+            "ConstantTime::div_rem",
+            two::<ConstantTime<Uint<N>>, NonZeroUint<N>>,
+            #[inline(always)]
+            |&(a, divisor)| a.div_rem(divisor).0,
+        )
+        .case(
+            Op::ModCt,
+            "ConstantTime::div_rem",
+            two::<ConstantTime<Uint<N>>, NonZeroUint<N>>,
+            #[inline(always)]
+            |&(a, divisor)| a.div_rem(divisor).1,
+        )
+        .chained(
+            Op::MulModCt,
+            "ConstantTime::mul_mod",
+            three::<ConstantTime<Uint<N>>, NonZeroUint<N>>,
+            #[inline(always)]
+            |&(a, b, modulus)| a.mul_mod(b, modulus),
+        )
+        .chained(
+            Op::AddModCt,
+            "ConstantTime::add_mod",
+            three::<ConstantTime<Uint<N>>, NonZeroUint<N>>,
+            #[inline(always)]
+            |&(a, b, modulus)| a.add_mod(b, modulus),
+        )
+        .chained(
+            Op::SubModCt,
+            "ConstantTime::sub_mod",
+            three::<ConstantTime<Uint<N>>, NonZeroUint<N>>,
+            #[inline(always)]
+            |&(a, b, modulus)| a.sub_mod(b, modulus),
+        )
 }
 
 /// Offers add, mul, div and mod of the primitive `$t`. The divisor is a `NonZero<$t>`; the
@@ -297,7 +418,7 @@ fn native_u64<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
 
 /// `u128`.
 fn native_u128<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
-    primitive!(cells, u128).absent(Op::MulMod, "no 256-bit native type")
+    primitive!(cells, u128).missing(Op::MulMod, "no 256-bit native type")
 }
 
 /// The widths above 128 bits, which have no primitive integer.
@@ -372,29 +493,47 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
             #[inline(always)]
             |(a, b)| a.wrapping_mul(b),
         )
-        .timed(
+        .variable(
             Op::Div,
-            Timing::Variable,
             "wrapping_div_vartime",
             two::<Uint<L>, NonZero<Uint<L>>>,
             #[inline(always)]
             |(a, divisor)| a.wrapping_div_vartime(divisor),
         )
-        .timed(
+        .case(
+            Op::DivCt,
+            "div_rem",
+            two::<Uint<L>, NonZero<Uint<L>>>,
+            #[inline(always)]
+            |(a, divisor)| a.div_rem(divisor).0,
+        )
+        .variable(
             Op::Mod,
-            Timing::Variable,
             "rem_vartime",
             two::<Uint<L>, NonZero<Uint<L>>>,
             #[inline(always)]
             |(a, divisor)| a.rem_vartime(divisor),
         )
-        .timed_chained(
+        .case(
+            Op::ModCt,
+            "rem",
+            two::<Uint<L>, NonZero<Uint<L>>>,
+            #[inline(always)]
+            |(a, divisor)| a.rem(divisor),
+        )
+        .variable_chained(
             Op::MulMod,
-            Timing::Variable,
             "mul_mod_vartime",
             three::<Uint<L>, NonZero<Uint<L>>>,
             #[inline(always)]
             |(a, b, modulus)| a.mul_mod_vartime(b, modulus),
+        )
+        .case(
+            Op::MulModCt,
+            "mul_mod",
+            three::<Uint<L>, NonZero<Uint<L>>>,
+            #[inline(always)]
+            |(a, b, modulus)| a.mul_mod(b, modulus),
         )
         .timed(
             Op::AddMod,
@@ -462,7 +601,7 @@ fn bnum<const N: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
         Div: Timing::Variable => wrapping_div,
         Mod: Timing::Variable => wrapping_rem,
     )
-    .absent(Op::MulMod, NO_WIDE_PRODUCT);
+    .missing(Op::MulMod, NO_WIDE_PRODUCT);
     modular_sums!(cells, bnum::Uint<N>)
 }
 
@@ -627,7 +766,7 @@ mod parity {
                 /// `uint` at the width of `$t`.
                 pub(super) fn $adapter<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
                     let cells = parity_ops!(cells, $t, $words)
-                        .absent(Op::MulMod, NO_WIDE_PRODUCT);
+                        .missing(Op::MulMod, NO_WIDE_PRODUCT);
                     modular_sums!(cells, $t)
                 }
             )*
