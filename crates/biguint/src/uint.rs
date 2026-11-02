@@ -178,16 +178,24 @@ impl<N: Bits> Uint<N> {
         N::BITS - self.count_ones()
     }
 
-    /// Collects the first `ceil(N / 64)` limbs of `stream`, modulo `2^N`. Up to four limbs the
-    /// plain pull unrolls; longer pulls run in groups of four.
+    /// Collects the first `ceil(N / 64)` limbs of `stream`, modulo `2^N`. Every bit of the stream at
+    /// and above `bits` is zero, so the top limb is masked only when `bits` exceeds `N`; a stream
+    /// without such a bound passes `usize::MAX`. Up to four limbs the plain pull unrolls; longer
+    /// pulls run in groups of four.
     #[inline(always)]
-    pub(crate) fn from_stream(mut stream: impl LimbStream) -> Self {
-        if N::LIMBS <= 4 {
-            return Self::from_generic_limbs(GenericArray::generate(|_| stream.next_limb()));
+    pub(crate) fn from_stream(mut stream: impl LimbStream, bits: usize) -> Self {
+        let limbs = if N::LIMBS <= 4 {
+            GenericArray::generate(|_| stream.next_limb())
+        } else {
+            let mut limbs = GenericArray::<u64, N::Limbs>::default();
+            for_each_slot(&mut limbs, |slot| *slot = stream.next_limb());
+            limbs
+        };
+        if bits > N::BITS {
+            Self::from_generic_limbs(limbs)
+        } else {
+            Self { limbs }
         }
-        let mut limbs = GenericArray::<u64, N::Limbs>::default();
-        for_each_slot(&mut limbs, |slot| *slot = stream.next_limb());
-        Self::from_generic_limbs(limbs)
     }
 
     /// The limbs, then `0` forever.

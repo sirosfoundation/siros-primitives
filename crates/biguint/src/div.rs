@@ -128,7 +128,7 @@ fn remainder<L: ArrayLength, W: ArrayLength, M: Bits>(
             } else if let Some(divisor) = normalized.get(..len) {
                 divide_by_limbs(window, divisor, leading, quotient);
             }
-            Uint::from_stream(ShrBits::new(ZeroExtended::new(window), shift))
+            Uint::from_stream(ShrBits::new(ZeroExtended::new(window), shift), usize::MAX)
         }
     })
 }

@@ -4,8 +4,9 @@
 //! yields the limbs of a slice and then `0` forever ([`ZeroExtended`]). The zero fill is the end
 //! marker, so the hot loop handles plain `u64` limbs. Carries fall out of the algebra: [`AddOp`] on
 //! two exhausted operands with a pending carry yields the carry limb. `Uint::from_stream` pulls
-//! exactly `ceil(N / 64)` limbs and masks the top one. Every combinator inlines. The compiler unrolls a short pull into
-//! straight-line code; a long one runs four limbs per iteration ([`for_each_slot`]).
+//! exactly `ceil(N / 64)` limbs and masks the top one when the operation may set bits above `N`.
+//! Every combinator inlines. The compiler unrolls a short pull into straight-line code; a long one
+//! runs four limbs per iteration ([`for_each_slot`]).
 
 use core::marker::PhantomData;
 

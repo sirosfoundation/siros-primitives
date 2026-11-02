@@ -10,7 +10,10 @@ impl<N: Bits, RhsN: Bits> BitAnd<Uint<RhsN>> for Uint<N> {
 
     #[inline(always)]
     fn bitand(self, rhs: Uint<RhsN>) -> Self::Output {
-        Uint::from_stream(Op2Iter::<_, _, AndOp>::new(self.stream(), rhs.stream()))
+        Uint::from_stream(
+            Op2Iter::<_, _, AndOp>::new(self.stream(), rhs.stream()),
+            N::BITS.min(RhsN::BITS),
+        )
     }
 }
 
@@ -20,7 +23,10 @@ impl<N: Bits, RhsN: Bits> BitOr<Uint<RhsN>> for Uint<N> {
 
     #[inline(always)]
     fn bitor(self, rhs: Uint<RhsN>) -> Self::Output {
-        Uint::from_stream(Op2Iter::<_, _, OrOp>::new(self.stream(), rhs.stream()))
+        Uint::from_stream(
+            Op2Iter::<_, _, OrOp>::new(self.stream(), rhs.stream()),
+            N::BITS.max(RhsN::BITS),
+        )
     }
 }
 
@@ -30,7 +36,10 @@ impl<N: Bits, RhsN: Bits> BitXor<Uint<RhsN>> for Uint<N> {
 
     #[inline(always)]
     fn bitxor(self, rhs: Uint<RhsN>) -> Self::Output {
-        Uint::from_stream(Op2Iter::<_, _, XorOp>::new(self.stream(), rhs.stream()))
+        Uint::from_stream(
+            Op2Iter::<_, _, XorOp>::new(self.stream(), rhs.stream()),
+            N::BITS.max(RhsN::BITS),
+        )
     }
 }
 
@@ -40,6 +49,6 @@ impl<N: Bits> Not for Uint<N> {
 
     #[inline(always)]
     fn not(self) -> Self::Output {
-        Uint::from_stream(Op1Iter::<_, NotOp>::new(self.stream()))
+        Uint::from_stream(Op1Iter::<_, NotOp>::new(self.stream()), usize::MAX)
     }
 }
