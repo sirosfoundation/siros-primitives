@@ -5,22 +5,16 @@
 ![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
 Big-integer, prime-field, carry-less and binary-field arithmetic in pure Rust. Every crate is
-`no_std` and free of allocation and panics. `unsafe` appears only in `clmul`, at the calls into its
-PCLMULQDQ and PMULL backends, and at the inline assembly of two unpublished tools: Valgrind's
-client requests in `ct-check`, the barriers of the latency chains in `bench-compare`.
-
-## Crates
+`no_std` and free of allocation and panics. Rust 1.93 or newer.
 
 | Crate | Description |
 |---|---|
-| [`biguint`](crates/biguint) | Fixed-width unsigned integers of any bit width, with Karatsuba multiplication and divide-and-conquer division |
-| [`prime-field`](crates/prime-field) | Prime fields declared by their modulus; Montgomery, Mersenne or pseudo-Mersenne arithmetic chosen at compile time; `Fp` takes the fastest path, `Secret` runs every operation in constant time |
-| [`clmul`](crates/clmul) | Carry-less multiplication of 64-bit words, limb slices and GF(2^128) elements, on PCLMULQDQ, PMULL or a const portable comb |
-| [`binary-field`](crates/binary-field) | Binary Galois fields GF(2^n) of any degree, declared by their polynomial, with every algorithm choice folded at compile time |
+| [`biguint`](crates/biguint) | Fixed-width unsigned integers of any bit width |
+| [`prime-field`](crates/prime-field) | Prime fields declared by their modulus; `Fp` is variable-time, `Secret` constant-time |
+| [`clmul`](crates/clmul) | Carry-less multiplication of words, limb slices and GF(2^128) elements |
+| [`binary-field`](crates/binary-field) | Binary fields GF(2^n) of any degree, declared by their polynomial |
 
-## Minimum supported Rust version
-
-Every crate builds with Rust 1.93 or newer.
+`bench-compare`, the `*-bench-report` tools and `ct-check` are unpublished tools.
 
 ## Development
 
@@ -33,15 +27,6 @@ cargo run -p ct-check   # constant time under Valgrind's memcheck
 
 ## License
 
-All crates in this repository are licensed under either of
-
-- [Apache License, Version 2.0](LICENSE-APACHE)
-- [MIT license](LICENSE-MIT)
-
-at your option.
-
-### Contribution
-
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
-the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
-additional terms or conditions.
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option. Unless you state otherwise, a contribution you submit
+is dual licensed as above.
