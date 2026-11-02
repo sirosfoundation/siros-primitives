@@ -5,6 +5,7 @@
 //! the carry stays an ordinary register and each step consumes its own flags.
 
 use core::cmp::Ordering;
+use core::hint::select_unpredictable;
 
 use crate::limb::{BorrowingSub, CarryingAdd};
 use crate::stream::{LimbStream, ZeroExtended, for_each_slot};
@@ -85,6 +86,50 @@ pub(crate) fn sub_assign(out: &mut [u64], a: &[u64]) -> u64 {
     borrow
 }
 
+/// The borrow out of `a - b` for equally long `a` and `b`, without storing the difference.
+#[inline(always)]
+pub(crate) fn borrow_of(a: &[u64], b: &[u64]) -> u64 {
+    let mut source = ZeroExtended::new(b);
+    a.iter().fold(0, |borrow, &limb| {
+        limb.sub_borrow(source.next_limb(), borrow).1
+    })
+}
+
+/// Subtracts `b & mask` from the equally long `out` and returns the borrow out of the top limb.
+#[inline(always)]
+pub(crate) fn sub_masked(out: &mut [u64], b: &[u64], mask: u64) -> u64 {
+    let mut source = ZeroExtended::new(b);
+    let mut borrow = 0;
+    for_each_slot(out, |slot| {
+        (*slot, borrow) = slot.sub_borrow(source.next_limb() & mask, borrow);
+    });
+    borrow
+}
+
+/// Subtracts `divisor` from the equally long `part` when `part >= divisor`, and returns whether
+/// it did. The top limbs decide when they differ; equal top limbs take the subtraction unless it
+/// borrows, without a branch.
+#[inline(always)]
+pub(crate) fn subtract_if_above(part: &mut [u64], divisor: &[u64]) -> bool {
+    let (Some(&top), Some(&divisor_top)) = (part.last(), divisor.last()) else {
+        return false;
+    };
+    if top < divisor_top {
+        false
+    } else if top > divisor_top {
+        fits(sub_assign(part, divisor));
+        true
+    } else {
+        let above = borrow_of(part, divisor) == 0;
+        fits(sub_masked(
+            part,
+            divisor,
+            select_unpredictable(above, u64::MAX, 0),
+        ));
+        above
+    }
+}
+
 /// Writes `a + b` to `out`, all equally long, and returns the carry out of the top limb.
 #[inline(always)]
 pub(crate) fn add_to(out: &mut [u64], a: &[u64], b: &[u64]) -> u64 {
@@ -159,6 +204,11 @@ pub(crate) fn split_mut(slice: &mut [u64], mid: usize) -> (&mut [u64], &mut [u64
     let mid = mid.min(slice.len());
     slice.split_at_mut(mid)
 }
+
+/// Drops the quotient, `0` or `1`, of a value below twice the divisor that [`subtract_if_above`]
+/// brought below the divisor.
+#[inline(always)]
+pub(crate) fn reduced(_quotient: bool) {}
 
 /// Drops the carry or borrow out of the top of a result that is known to fit: the carries out of
 /// the steps that build it cancel.

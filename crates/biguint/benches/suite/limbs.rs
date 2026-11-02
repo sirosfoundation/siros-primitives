@@ -4,7 +4,7 @@ use core::num::NonZero;
 
 use bench_compare::{Cells, Limbs, Visitor};
 use biguint::generic_array::GenericArray;
-use biguint::{Bits, Uint};
+use biguint::{Bits, NonZeroUint, Uint};
 use num_bigint::BigUint;
 
 /// An operand type built from limbs.
@@ -64,6 +64,12 @@ impl<N: Bits> FromLimbs for Uint<N> {
         let limbs = GenericArray::try_from_slice(limbs)
             .unwrap_or_else(|_| panic!("{} limbs for a {}-limb integer", limbs.len(), N::LIMBS));
         Self::from_generic_limbs(*limbs)
+    }
+}
+
+impl<N: Bits> FromLimbs for NonZeroUint<N> {
+    fn from_limbs(limbs: &[u64]) -> Self {
+        Self::new(<Uint<N> as FromLimbs>::from_limbs(limbs)).expect("a nonzero divisor")
     }
 }
 

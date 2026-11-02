@@ -81,17 +81,29 @@ pub enum Op {
     Mod,
     /// `(a * b) mod m`.
     MulMod,
+    /// `(a + b) mod m`.
+    AddMod,
+    /// `(a - b) mod m`.
+    SubMod,
 }
 
 impl Op {
     /// Every operation, in measurement order.
-    pub const ALL: [Self; 5] = [Self::Add, Self::Mul, Self::Div, Self::Mod, Self::MulMod];
+    pub const ALL: [Self; 7] = [
+        Self::Add,
+        Self::Mul,
+        Self::Div,
+        Self::Mod,
+        Self::MulMod,
+        Self::AddMod,
+        Self::SubMod,
+    ];
 
     /// One operand set of width `bits`:
     /// - add, mul: two uniform `bits`-bit values;
     /// - div, mod: a dividend of exactly `bits` bits and a divisor of exactly `bits / 2` bits;
-    /// - mulmod: a modulus `m` of exactly `bits` bits and two uniform values below `m`, as
-    ///   `[a, b, m]`.
+    /// - mulmod, add_mod, sub_mod: a modulus `m` of exactly `bits` bits and two uniform values
+    ///   below `m`, as `[a, b, m]`.
     ///
     /// "Exactly `n` bits" means that bit `n - 1` is set.
     fn operands(self, bits: usize, rng: &mut Rng) -> Vec<Limbs> {
@@ -99,7 +111,7 @@ impl Op {
         match self {
             Self::Add | Self::Mul => vec![rng.uniform(limbs), rng.uniform(limbs)],
             Self::Div | Self::Mod => vec![rng.exact(limbs, bits), rng.exact(limbs, bits / 2)],
-            Self::MulMod => {
+            Self::MulMod | Self::AddMod | Self::SubMod => {
                 let modulus = rng.exact(limbs, bits);
                 vec![rng.below(&modulus), rng.below(&modulus), modulus]
             }
@@ -114,6 +126,8 @@ impl Op {
             (Self::Div, [a, b]) => a / b,
             (Self::Mod, [a, b]) => a % b,
             (Self::MulMod, [a, b, modulus]) => a * b % modulus,
+            (Self::AddMod, [a, b, modulus]) => (a + b) % modulus,
+            (Self::SubMod, [a, b, modulus]) => (a + modulus - b) % modulus,
             (op, operands) => panic!("{op} on {} operands", operands.len()),
         }
     }
@@ -127,6 +141,8 @@ impl fmt::Display for Op {
             Self::Div => "div",
             Self::Mod => "mod",
             Self::MulMod => "mulmod",
+            Self::AddMod => "add_mod",
+            Self::SubMod => "sub_mod",
         })
     }
 }

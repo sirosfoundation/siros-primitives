@@ -1,9 +1,8 @@
 //! Multiplication of any widths. The operand lengths are type-level constants, so the choice
 //! between the strategies below folds away at compile time:
 //!
-//! - products whose stream the compiler unrolls into straight-line code: the stream product;
-//! - longer products below the Karatsuba threshold: rows of fused multiply-accumulate steps with
-//!   one carry limb;
+//! - products below the Karatsuba threshold: the quadratic product, in rows unrolled in the
+//!   source;
 //! - longer full products: Karatsuba, in blocks of the shorter operand when the lengths differ;
 //! - longer products modulo `2^N` of two `N`-bit operands: the full product of the low parts and
 //!   the truncated cross products of the high parts, which split again.
@@ -20,11 +19,9 @@ use typenum::Sum;
 use crate::bits::Bits;
 use crate::recursion::{Depth, Halvings};
 use crate::uint::Uint;
-use basecase::{FULL_STREAM_STEPS, TRUNCATED_STREAM_STEPS, stream, stream_steps};
 use karatsuba::{THRESHOLD, blocks};
 
 pub(crate) use basecase::basecase;
-use basecase::rows;
 
 /// Multiplication into a width that holds the full product.
 pub trait WideningMul<Rhs = Self> {
@@ -40,7 +37,7 @@ pub trait WideningMul<Rhs = Self> {
 impl<N: Bits, RhsN: Bits> Mul<Uint<RhsN>> for Uint<N> {
     type Output = Self;
 
-    #[inline]
+    #[inline(always)]
     fn mul(self, rhs: Uint<RhsN>) -> Self::Output {
         Uint::from_generic_limbs(truncated_product::<N, _>(&self.limbs, &rhs.limbs))
     }
@@ -55,7 +52,7 @@ where
 {
     type Output = Uint<Sum<N, RhsN>>;
 
-    #[inline]
+    #[inline(always)]
     fn widening_mul(self, rhs: Uint<RhsN>) -> Self::Output {
         Uint::from_generic_limbs(full_product::<Sum<N, RhsN>, _, _>(&self.limbs, &rhs.limbs))
     }
@@ -66,16 +63,12 @@ where
 struct Shape<A, B, O>(core::marker::PhantomData<(A, B, O)>);
 
 impl<A: ArrayLength, B: ArrayLength, O: ArrayLength> Shape<A, B, O> {
-    const STREAM_STEPS: usize = stream_steps(A::USIZE, B::USIZE, O::USIZE);
-    /// A full product unrolls as a stream.
-    const FULL_STREAM: bool = Self::STREAM_STEPS <= FULL_STREAM_STEPS;
-    /// A truncated product unrolls as a stream.
-    const TRUNCATED_STREAM: bool = Self::STREAM_STEPS <= TRUNCATED_STREAM_STEPS;
     /// The shorter operand reaches the Karatsuba threshold.
-    const KARATSUBA: bool = !Self::FULL_STREAM && min(A::USIZE, B::USIZE) >= THRESHOLD;
-    /// Both operands fill the output, which the stream product does not unroll.
+    const KARATSUBA: bool = min(A::USIZE, B::USIZE) >= THRESHOLD;
+    /// Both operands fill the output, which is long enough for the split to beat the quadratic
+    /// product.
     const TRUNCATED_SPLIT: bool =
-        !Self::TRUNCATED_STREAM && A::USIZE == O::USIZE && B::USIZE == O::USIZE;
+        A::USIZE == O::USIZE && B::USIZE == O::USIZE && !truncated::quadratic(O::USIZE);
 }
 
 const fn min(a: usize, b: usize) -> usize {
@@ -89,10 +82,8 @@ pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength>(
     b: &GenericArray<u64, B>,
 ) -> GenericArray<u64, P::Limbs> {
     let mut product = GenericArray::<u64, P::Limbs>::default();
-    if Shape::<A, B, P::Limbs>::FULL_STREAM {
-        stream(&mut product, a, b);
-    } else if !Shape::<A, B, P::Limbs>::KARATSUBA {
-        rows(&mut product, a, b);
+    if !Shape::<A, B, P::Limbs>::KARATSUBA {
+        basecase::product(&mut product, a, b);
     } else if A::USIZE == B::USIZE {
         // The difference products need about seven eighths of the product's limbs.
         karatsuba_into::<P>(
@@ -135,13 +126,11 @@ fn truncated_product<N: Bits, B: ArrayLength>(
     b: &GenericArray<u64, B>,
 ) -> GenericArray<u64, N::Limbs> {
     let mut product = GenericArray::<u64, N::Limbs>::default();
-    if Shape::<N::Limbs, B, N::Limbs>::TRUNCATED_STREAM {
-        stream(&mut product, a, b);
-    } else if Shape::<N::Limbs, B, N::Limbs>::TRUNCATED_SPLIT {
+    if Shape::<N::Limbs, B, N::Limbs>::TRUNCATED_SPLIT {
         let mut scratch = GenericArray::<u64, N::TruncatedScratch>::default();
         Halvings::truncated(&mut product, a, b, &mut scratch);
     } else {
-        rows(&mut product, a, b);
+        basecase::product(&mut product, a, b);
     }
     product
 }
