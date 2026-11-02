@@ -77,7 +77,6 @@ impl<P: Polynomial> Plan<P> {
     /// The reduction folds the overflow of each product by carry-less products with `r`; otherwise
     /// it shifts and adds the overflow once per tap.
     pub(crate) const FOLD_BY_CLMUL: bool = Self::R_DEGREE < 64
-        && Self::DEGREE >= 64
         && reduction_cost(Self::DEGREE, Self::R_DEGREE, true, Self::SHIFTING_TAPS)
             < reduction_cost(Self::DEGREE, Self::R_DEGREE, false, Self::SHIFTING_TAPS);
     /// The number of fold steps of the chosen reduction.
@@ -88,7 +87,7 @@ impl<P: Polynomial> Plan<P> {
     /// Squares are carry-less products of each limb with itself; otherwise bit spreads.
     pub(crate) const SQUARE_BY_CLMUL: bool = clmul::HARDWARE;
     /// Products of this many limbs and more use Karatsuba.
-    pub(crate) const KARATSUBA_THRESHOLD: usize = if clmul::HARDWARE { 8 } else { 2 };
+    pub(crate) const KARATSUBA_THRESHOLD: usize = if clmul::HARDWARE { 7 } else { 2 };
 
     /// The inverse is `a^(2^n - 2)` by Itoh and Tsujii; otherwise the extended Euclidean algorithm
     /// over GF(2)[x].
@@ -176,12 +175,11 @@ const fn r_word(taps: &[usize]) -> u64 {
 /// The fold step `index`: the bits `lo..hi` of the accumulator that it multiplies by `r` and adds
 /// at `lo - n`. The steps run from the top of the product down. A chunked plan takes at most 64
 /// bits per step, aligned to `n`, so that each step is one word product; a plan that is not
-/// chunked takes the whole overflow at once.
+/// chunked takes the whole overflow at once. Beyond the last step the range is empty.
 const fn step(degree: usize, r_degree: usize, chunked: bool, index: usize) -> (usize, usize) {
     let mut top = 2 * degree - 1;
     let mut current = 0;
-    loop {
-        assert!(top > degree, "no fold step at this index");
+    while top > degree {
         let lo = step_low(degree, top, chunked);
         if current == index {
             return (lo, top);
@@ -189,6 +187,7 @@ const fn step(degree: usize, r_degree: usize, chunked: bool, index: usize) -> (u
         top = next_top(degree, r_degree, lo, top);
         current += 1;
     }
+    (degree, degree)
 }
 
 /// The low bit of the step that folds the bits below `top`.

@@ -24,7 +24,7 @@ impl Stream {
             *limb = self.next();
         }
         let degree = Gf2::<P>::DEGREE;
-        if degree % 64 != 0 {
+        if !degree.is_multiple_of(64) {
             limbs[degree / 64] &= (1 << (degree % 64)) - 1;
         }
         Gf2::from_limbs(limbs).unwrap()

@@ -15,7 +15,7 @@ use crate::kernel::{
 };
 use crate::mul::{Depth, Levels};
 use crate::plan::{Plan, Polynomial, Scratch, Wide};
-use crate::reduce::{fold_by_shifts, reduce};
+use crate::reduce::{const_reduce, reduce};
 
 /// The limbs of an element of the field with the polynomial `P`.
 pub type Limbs<P> = <<P as Polynomial>::Degree as Bits>::Limbs;
@@ -187,11 +187,9 @@ impl<P: Polynomial> Gf2<P> {
     #[inline]
     #[must_use]
     pub fn over_x(self) -> Self {
-        let mut limbs = GenericArray::<u64, Limbs<P>>::DEFAULT;
-        let constant = self.as_limbs().first().is_some_and(|limb| limb & 1 == 1);
-        let mut shifted = self.into_limbs();
-        shift_right_one(&mut shifted);
-        copy(&mut limbs, &shifted);
+        let constant = bit(self.as_limbs(), 0);
+        let mut limbs = self.into_limbs();
+        shift_right_one(&mut limbs);
         Self::from_limbs_masked(limbs, &Self::X_INVERSE, constant)
     }
 
@@ -295,7 +293,7 @@ const fn r_limbs<P: Polynomial>() -> GenericArray<u64, Limbs<P>> {
     limbs
 }
 
-/// `x^-1`: `x f(x) / x = x^n + r`, so `x (x^(n-1) + (r - 1) / x) = x^n + r - 1 = f - 1 = 1`.
+/// `x^-1 = x^(n-1) + (r - 1) / x`: its product with `x` is `x^n + r - 1 = f - 1 = 1`.
 const fn x_inverse<P: Polynomial>() -> GenericArray<u64, Limbs<P>> {
     let mut limbs = GenericArray::<u64, Limbs<P>>::DEFAULT;
     set_bit(limbs.as_mut_slice(), Plan::<P>::DEGREE - 1);
@@ -354,7 +352,7 @@ const fn sqrt_x<P: Polynomial>() -> GenericArray<u64, Limbs<P>> {
     let mut count = 1;
     while count < Plan::<P>::DEGREE {
         spread(wide.as_mut_slice(), power.as_slice());
-        fold_by_shifts::<P>(wide.as_mut_slice(), scratch.as_mut_slice());
+        const_reduce::<P>(wide.as_mut_slice(), scratch.as_mut_slice());
         copy(
             power.as_mut_slice(),
             head(wide.as_slice(), Plan::<P>::LIMBS),
@@ -423,10 +421,14 @@ impl<P: Polynomial> Sub for Gf2<P> {
     }
 }
 
+#[expect(
+    clippy::suspicious_op_assign_impl,
+    reason = "subtraction in characteristic 2 is addition"
+)]
 impl<P: Polynomial> SubAssign for Gf2<P> {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
+        *self += rhs;
     }
 }
 

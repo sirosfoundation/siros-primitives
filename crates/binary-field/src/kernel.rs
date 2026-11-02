@@ -108,10 +108,10 @@ pub(crate) const fn extract(dst: &mut [u64], src: &[u64], lo: usize, hi: usize) 
         src = src_tail;
         window = window_tail;
     }
-    if (hi - lo) % 64 != 0 {
-        if let Some(top) = head_mut(dst, len).last_mut() {
-            *top &= (1 << ((hi - lo) % 64)) - 1;
-        }
+    if !(hi - lo).is_multiple_of(64)
+        && let Some(top) = head_mut(dst, len).last_mut()
+    {
+        *top &= (1 << ((hi - lo) % 64)) - 1;
     }
 }
 
@@ -181,10 +181,10 @@ pub(crate) const fn clear_bits(acc: &mut [u64], lo: usize, hi: usize) {
 pub(crate) const fn truncate(acc: &mut [u64], degree: usize) {
     let (_, above) = split_mut(acc, degree.div_ceil(64));
     clear(above);
-    if degree % 64 != 0 {
-        if let Some(top) = head_mut(acc, degree.div_ceil(64)).last_mut() {
-            *top &= (1 << (degree % 64)) - 1;
-        }
+    if !degree.is_multiple_of(64)
+        && let Some(top) = head_mut(acc, degree.div_ceil(64)).last_mut()
+    {
+        *top &= (1 << (degree % 64)) - 1;
     }
 }
 
