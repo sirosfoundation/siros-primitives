@@ -98,7 +98,7 @@ impl<N: Bits> Uint<N> {
     /// The little-endian limbs.
     #[inline(always)]
     #[must_use]
-    pub fn into_limbs(self) -> GenericArray<u64, N::Limbs> {
+    pub const fn into_limbs(self) -> GenericArray<u64, N::Limbs> {
         self.limbs
     }
 
