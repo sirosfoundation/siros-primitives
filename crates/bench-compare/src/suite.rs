@@ -191,7 +191,47 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
         run: impl Fn(&I) -> R + Copy,
         read: impl Fn(&R) -> Option<Limbs>,
     ) -> Self {
-        self.offer(op, Call::Api(function), prepare, run, read)
+        self.api_with(
+            op,
+            function,
+            || (),
+            |&(), set| prepare(set),
+            run,
+            |&(), result| read(result),
+        )
+    }
+
+    /// Offers the case that runs the crate's `function` for `op`, as [`api`](Self::api) does,
+    /// with `setup` building what `prepare` and `read` share, such as a change of basis. `setup`
+    /// runs once, before the case is checked, and only for a case that is checked.
+    #[must_use]
+    pub fn api_with<S, I, R>(
+        mut self,
+        op: O,
+        function: &'static str,
+        setup: impl FnOnce() -> S,
+        prepare: impl Fn(&S, &[Limbs]) -> I,
+        run: impl Fn(&I) -> R + Copy,
+        read: impl Fn(&S, &R) -> Option<Limbs>,
+    ) -> Self {
+        if op != self.row.op {
+            return self;
+        }
+        self.offered += 1;
+        let id = self.id();
+        self.row.visitor.note(&id, &Call::Api(function));
+        if self.row.visitor.wants(&id) {
+            let shared = setup();
+            let draw = self.row.draw;
+            let samples = self.row.samples.get_or_insert_with(|| draw(id.op, &id.key));
+            let batch: Vec<I> = samples
+                .iter()
+                .map(|sample| prepare(&shared, &sample.operands))
+                .collect();
+            check(&id, samples, &batch, run, |result| read(&shared, result));
+            self.row.visitor = self.row.visitor.measure(&id, &batch, run);
+        }
+        self
     }
 
     /// Records that the crate has no case for `op`, for `reason`.
@@ -201,33 +241,6 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
             self.offered += 1;
             let id = self.id();
             self.row.visitor.note(&id, &Call::Absent(reason));
-        }
-        self
-    }
-
-    fn offer<I, R>(
-        mut self,
-        op: O,
-        call: Call,
-        prepare: impl Fn(&[Limbs]) -> I,
-        run: impl Fn(&I) -> R + Copy,
-        read: impl Fn(&R) -> Option<Limbs>,
-    ) -> Self {
-        if op != self.row.op {
-            return self;
-        }
-        self.offered += 1;
-        let id = self.id();
-        self.row.visitor.note(&id, &call);
-        if self.row.visitor.wants(&id) {
-            let draw = self.row.draw;
-            let samples = self.row.samples.get_or_insert_with(|| draw(id.op, &id.key));
-            let batch: Vec<I> = samples
-                .iter()
-                .map(|sample| prepare(&sample.operands))
-                .collect();
-            check(&id, samples, &batch, run, read);
-            self.row.visitor = self.row.visitor.measure(&id, &batch, run);
         }
         self
     }

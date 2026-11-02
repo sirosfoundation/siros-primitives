@@ -79,24 +79,20 @@ PCLMULQDQ, PMULL, or a const comb in builds without them; the plan knows which t
 | GCM view | `GF(2^128)` with the GCM polynomial | Bit reversal of the big-endian block, the order of NIST SP 800-38D |
 | POLYVAL view | the same field | Bit reversal of the little-endian block times `x`: RFC 8452 works in the reciprocal polynomial with a factor `x^-128`, and this map is the field isomorphism that carries its sum and product |
 
-### Instruction counts
+## Benchmarks
 
-Callgrind counts of one operation, `-C target-cpu=native` on a Zen 3, compared with the crates
-that implement the same degree. The table-based crates win at 8 and 16 bits with lookups that
-depend on the cache; every other case is on par or ahead.
+[BENCHMARKS.md](https://github.com/sirosfoundation/siros-primitives/blob/main/crates/binary-field/BENCHMARKS.md)
+compares `binary-field` with gf256, galois_field_2pm, g2p, reed-solomon-erasure, hekate-math,
+Plonky3, longfellow-zk's `runtime-algebra`, `compile-algebra` and `core-algebra`, polyval and
+ghash on add, mul, square, invert and sqrt over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³),
+GF(2²⁵⁶) and GF(2⁵⁷¹), in instructions per operation that Callgrind counts. The unpublished
+[`binary-field-bench-report`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/binary-field/bench-report)
+regenerates it:
 
-| Degree | Operation | binary-field | Others |
-|---|---|---|---|
-| 8 | mul | 20 | gf256 Barrett 18, gf256 table 15, g2p table 7 |
-| 8 | invert | 161 | gf256 Barrett 124, gf256 table 9 |
-| 16 | mul | 20 | g2p table 18, gf256 table 32 |
-| 16 | invert | 301 | gf256 Barrett 388, g2p table 22 |
-| 64 | mul | 15 | gf256 Barrett 13, hekate-math tower 3658 |
-| 64 | invert | 982 | gf256 Barrett 1270, hekate-math tower 7889 |
-| 128 | mul | 22 | longfellow-zk runtime 24, compile 77, core 2123; polyval 62, ghash 65; hekate-math tower 14670 |
-| 128 | square | 17 | |
-| 128 | invert | 2172 | longfellow-zk runtime 6567, compile 13663, core 549785; hekate-math tower 29880 |
-| 571 | mul / square / invert | 430 / 101 / 60748 | |
+```sh
+cargo run -p binary-field-bench-report -- bench    # Callgrind counts of the native build
+cargo run -p binary-field-bench-report -- report   # BENCHMARKS.md and benchmarks/*.svg
+```
 
 ## Minimum supported Rust version
 

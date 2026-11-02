@@ -8,9 +8,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::error::Error;
 use crate::record::{Cell, Key, Record, Version};
 
-/// The `RUSTFLAGS` of the build: code for the CPU that runs the bench, without SSE4a, whose
-/// `extrq` Valgrind 3.22 cannot execute.
-const RUSTFLAGS: &str = "-C target-cpu=native -C target-feature=-sse4a";
+/// The `RUSTFLAGS` of the build: code for the CPU that runs the bench, without SSE4a and
+/// VPCLMULQDQ, whose `extrq` and 256-bit `vpclmulqdq` Valgrind 3.22 cannot execute.
+const RUSTFLAGS: &str = "-C target-cpu=native -C target-feature=-sse4a,-vpclmulqdq";
 
 /// The locations that a report tool reads and writes.
 pub struct Paths {

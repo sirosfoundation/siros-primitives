@@ -204,7 +204,7 @@ fn gcm_view_matches_the_gcm_test_vectors() {
 
 #[test]
 fn gcm_view_matches_the_ghash_crate() {
-    use ghash::universal_hash::{KeyInit, UniversalHash};
+    use ghash::universal_hash::UniversalHash;
     let mut stream = Stream(0x6854);
     for _ in 0..50 {
         let h = stream.element::<Gcm>().to_gcm_block();
@@ -245,7 +245,7 @@ fn polyval_view_matches_rfc_8452() {
 
 #[test]
 fn polyval_view_matches_the_polyval_crate() {
-    use polyval::universal_hash::{KeyInit, UniversalHash};
+    use polyval::universal_hash::UniversalHash;
     let mut stream = Stream(0x7056);
     for _ in 0..50 {
         let h = stream.element::<Gcm>().to_polyval_block();
