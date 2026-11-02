@@ -70,6 +70,9 @@ The modulus selects the algorithm at compile time; the limb loops unroll to the 
 Timing: `add`, `sub`, `neg`, `mul` and `square` take one path for every operand value, and
 `invert` for every nonzero value. Each selection by a secret condition is a mask that passes
 through `core::hint::black_box`, which keeps the compiler from turning it into a branch.
+CI runs these operations on secret operands under Valgrind's memcheck with
+[`ct-check`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/ct-check),
+which fails on a branch or a memory address that depends on them.
 `invert_vartime`, `pow` and `sqrt` take time that depends on the values.
 
 ## Benchmarks

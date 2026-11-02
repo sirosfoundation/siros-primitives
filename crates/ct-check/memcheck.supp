@@ -1,0 +1,15 @@
+# The exemptions of the check, as Valgrind suppressions. `fun:` matches mangled symbol names.
+#
+# The `Option` that an inversion returns discloses whether the input is zero. Each library builds
+# that `Option` in `invert::declassify`, a function with a symbol of its own. These entries exempt
+# a conditional jump whose innermost frame is that function.
+{
+   prime-field invert: the Option discloses a zero input
+   Memcheck:Cond
+   fun:*11prime_field6invert10declassify*
+}
+{
+   binary-field invert: the Option discloses a zero input
+   Memcheck:Cond
+   fun:*12binary_field6invert10declassify*
+}

@@ -83,7 +83,9 @@ Timing: addition, product, `square`, `sqrt`, `trace`, `times_x` and `over_x` tak
 every value, and `invert` by Itoh and Tsujii for every nonzero value. The Euclidean `invert` takes
 time that depends on the value, and `pow` on the exponent. A selection by a secret bit is a mask
 that passes through `core::hint::black_box`, which keeps the compiler from turning it into a
-branch.
+branch. CI runs the constant-time operations on secret operands under Valgrind's memcheck with
+[`ct-check`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/ct-check),
+which fails on a branch or a memory address that depends on them.
 
 ## Benchmarks
 
