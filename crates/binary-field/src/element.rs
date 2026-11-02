@@ -1,53 +1,54 @@
-//! The field element and its arithmetic.
+//! The field element and its default arithmetic.
 
 use core::fmt;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use biguint::{Bits, One, Square, Uint};
+use clmul::Poly;
 use const_default::ConstDefault;
 use generic_array::GenericArray;
 
+use crate::arith::{Element, Field};
 use crate::error::OutOfField;
-use crate::invert::invert;
-use crate::kernel::{
-    bit, copy, gather, head, is_zero, mask, masked_parity, set_bit, spread, square_limbs, truncate,
-    xor_shifted,
-};
-use crate::mul::{Depth, Levels};
-use crate::plan::{Plan, Polynomial, Scratch, Wide};
-use crate::reduce::{const_reduce, reduce};
+use crate::kernel::{bit, mask, masked_parity, set_bit, truncate, xor_shifted};
+use crate::plan::{Plan, Polynomial};
+use crate::representation::Storage;
 
 /// The limbs of an element of the field with the polynomial `P`.
 pub type Limbs<P> = <<P as Polynomial>::Degree as Bits>::Limbs;
 /// The bytes of an element of the field with the polynomial `P`.
 pub type Bytes<P> = <<P as Polynomial>::Degree as Bits>::Bytes;
-/// The limbs of a product before reduction.
-pub(crate) type WideLimbs<P> = <Wide<P> as Bits>::Limbs;
-/// The limbs of the scratch of a product.
-pub(crate) type ScratchLimbs<P> = <Scratch<P> as Bits>::Limbs;
 
 /// An element of `GF(2^n) = GF(2)[x] / (f(x))`, for the polynomial `f` that `P` declares.
 ///
-/// The element is a polynomial of degree below `n` in `ceil(n / 64)` little-endian `u64` limbs;
-/// bit `i` of the value is the coefficient of `x^i`. Addition is XOR. The products, squares,
-/// inverses, square roots and traces take the algorithms that the degree and the taps select at
-/// compile time; see the crate documentation.
+/// The element is a polynomial of degree below `n`; bit `i` of its value is the coefficient of
+/// `x^i`. The field's plan picks its registers at compile time: a byte or a 16-bit word in a
+/// general register for degrees up to 16 with the `precomputed` feature, whose default operations
+/// index tables, and `clmul::Poly`'s vector registers otherwise.
+///
+/// The operations take the fastest algorithm of the plan, and their time may depend on the
+/// values: table lookups, and branches on zero. [`Secret`](crate::Secret) holds an element whose
+/// operations take one path for every value.
 #[repr(transparent)]
-#[derive_where::derive_where(Clone, Copy, Default, Eq, Hash, PartialEq; Uint<P::Degree>)]
+#[derive_where::derive_where(Clone, Copy, Default, Eq, Hash, PartialEq; Element<P>)]
 pub struct Gf2<P: Polynomial> {
-    value: Uint<P::Degree>,
+    value: Element<P>,
 }
 
 impl<P: Polynomial> Gf2<P> {
     /// The degree `n` of the field.
     pub const DEGREE: usize = Plan::<P>::DEGREE;
     /// `0`.
-    pub const ZERO: Self = Self { value: Uint::ZERO };
+    pub const ZERO: Self = Self {
+        value: Element::<P>::ZERO,
+    };
     /// `1`.
-    pub const ONE: Self = Self { value: Uint::ONE };
+    pub const ONE: Self = Self {
+        value: Element::<P>::ONE,
+    };
     /// `x`, the class of the indeterminate.
     pub const X: Self = Self {
-        value: Uint::from_u64(2),
+        value: Element::<P>::X,
     };
 
     /// `r(x) = f(x) - x^n`, in the limbs of an element.
@@ -56,15 +57,25 @@ impl<P: Polynomial> Gf2<P> {
     const X_INVERSE: GenericArray<u64, Limbs<P>> = x_inverse::<P>();
     /// Bit `i` is the trace of `x^i`.
     const TRACE_MASK: GenericArray<u64, Limbs<P>> = trace_mask::<P>();
-    /// `sqrt(x) = x^(2^(n-1))`.
-    const SQRT_X: GenericArray<u64, Limbs<P>> = sqrt_x::<P>();
+
+    /// The element of the registers `value`.
+    #[inline(always)]
+    pub(crate) const fn of(value: Element<P>) -> Self {
+        Self { value }
+    }
+
+    /// The registers.
+    #[inline(always)]
+    pub(crate) const fn value(self) -> Element<P> {
+        self.value
+    }
 
     /// The element with the polynomial `value`, whose degree must be below `n`.
     ///
     /// # Errors
     ///
     /// A bit of `value` at or above `n` is set.
-    #[inline]
+    #[inline(always)]
     pub fn from_u64(value: u64) -> Result<Self, OutOfField> {
         Self::from_uint(Uint::<biguint::Bits64>::from_u64(value))
     }
@@ -74,7 +85,7 @@ impl<P: Polynomial> Gf2<P> {
     /// # Errors
     ///
     /// A bit of `value` at or above `n` is set.
-    #[inline]
+    #[inline(always)]
     pub fn from_u128(value: u128) -> Result<Self, OutOfField> {
         Self::from_uint(Uint::<biguint::Bits128>::from_u128(value))
     }
@@ -84,11 +95,9 @@ impl<P: Polynomial> Gf2<P> {
     /// # Errors
     ///
     /// A bit of `value` at or above `n` is set.
-    #[inline]
+    #[inline(always)]
     pub fn from_uint<M: Bits>(value: Uint<M>) -> Result<Self, OutOfField> {
-        Ok(Self {
-            value: value.try_resize()?,
-        })
+        Ok(Self::of(Element::<P>::from_uint(value.try_resize()?)))
     }
 
     /// The element whose little-endian `limbs` hold its polynomial.
@@ -96,11 +105,11 @@ impl<P: Polynomial> Gf2<P> {
     /// # Errors
     ///
     /// A bit at or above `n` is set.
-    #[inline]
+    #[inline(always)]
     pub fn from_limbs(limbs: GenericArray<u64, Limbs<P>>) -> Result<Self, OutOfField> {
         let value = Uint::from_generic_limbs(limbs);
         if value.into_limbs() == limbs {
-            Ok(Self { value })
+            Ok(Self::of(Element::<P>::from_uint(value)))
         } else {
             Err(OutOfField)
         }
@@ -111,11 +120,11 @@ impl<P: Polynomial> Gf2<P> {
     /// # Errors
     ///
     /// A bit at or above `n` is set.
-    #[inline]
+    #[inline(always)]
     pub fn from_le_bytes(bytes: &GenericArray<u8, Bytes<P>>) -> Result<Self, OutOfField> {
-        Ok(Self {
-            value: Uint::from_le_bytes(bytes)?,
-        })
+        Ok(Self::of(Element::<P>::from_uint(Uint::from_le_bytes(
+            bytes,
+        )?)))
     }
 
     /// The element whose big-endian `bytes` hold its polynomial.
@@ -123,113 +132,108 @@ impl<P: Polynomial> Gf2<P> {
     /// # Errors
     ///
     /// A bit at or above `n` is set.
-    #[inline]
+    #[inline(always)]
     pub fn from_be_bytes(bytes: &GenericArray<u8, Bytes<P>>) -> Result<Self, OutOfField> {
-        Ok(Self {
-            value: Uint::from_be_bytes(bytes)?,
-        })
+        Ok(Self::of(Element::<P>::from_uint(Uint::from_be_bytes(
+            bytes,
+        )?)))
     }
 
     /// The polynomial as an integer of `n` bits.
     #[inline(always)]
     #[must_use]
-    pub const fn into_uint(self) -> Uint<P::Degree> {
-        self.value
+    pub fn into_uint(self) -> Uint<P::Degree> {
+        self.value.uint()
+    }
+
+    /// The element of the polynomial `poly`: every `Poly<n>` has degree below `n`.
+    #[inline(always)]
+    #[must_use]
+    pub fn from_poly(poly: Poly<P::Degree>) -> Self {
+        Self::of(Element::<P>::from_poly(poly))
+    }
+
+    /// The polynomial in `clmul`'s vector registers, where the element lives, except up to degree
+    /// 16 with `precomputed`: there it moves from a general register.
+    #[inline(always)]
+    #[must_use]
+    pub fn into_poly(self) -> Poly<P::Degree> {
+        self.value.poly()
     }
 
     /// The little-endian limbs of the polynomial.
     #[inline(always)]
     #[must_use]
-    pub const fn as_limbs(&self) -> &[u64] {
-        self.value.as_limbs()
-    }
-
-    /// The little-endian limbs of the polynomial.
-    #[inline(always)]
-    #[must_use]
-    pub const fn into_limbs(self) -> GenericArray<u64, Limbs<P>> {
-        self.value.into_limbs()
+    pub fn into_limbs(self) -> GenericArray<u64, Limbs<P>> {
+        self.into_uint().into_limbs()
     }
 
     /// The little-endian bytes of the polynomial.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn to_le_bytes(&self) -> GenericArray<u8, Bytes<P>> {
-        self.value.to_le_bytes()
+        self.into_uint().to_le_bytes()
     }
 
     /// The big-endian bytes of the polynomial.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn to_be_bytes(&self) -> GenericArray<u8, Bytes<P>> {
-        self.value.to_be_bytes()
+        self.into_uint().to_be_bytes()
     }
 
     /// Whether the element is `0`.
     #[inline(always)]
     #[must_use]
     pub fn is_zero(&self) -> bool {
-        is_zero(self.as_limbs())
+        self.value == Element::<P>::ZERO
     }
 
     /// `self * x`: a shift, with `r` added when the top coefficient falls off.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn times_x(self) -> Self {
-        let carried = bit(self.as_limbs(), Plan::<P>::DEGREE - 1);
+        let value = self.into_limbs();
+        let carried = bit(&value, Plan::<P>::DEGREE - 1);
         let mut limbs = GenericArray::<u64, Limbs<P>>::DEFAULT;
-        xor_shifted(&mut limbs, self.as_limbs(), 1);
+        xor_shifted(&mut limbs, &value, 1);
         truncate(&mut limbs, Plan::<P>::DEGREE);
         Self::from_limbs_masked(limbs, &Self::R, carried)
     }
 
     /// `self / x`: a shift, with `x^-1` added when the constant coefficient falls off.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn over_x(self) -> Self {
-        let constant = bit(self.as_limbs(), 0);
         let mut limbs = self.into_limbs();
+        let constant = bit(&limbs, 0);
         shift_right_one(&mut limbs);
         Self::from_limbs_masked(limbs, &Self::X_INVERSE, constant)
     }
 
     /// The multiplicative inverse, or `None` for `0`.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn invert(self) -> Option<Self> {
-        invert(self)
+        if self.is_zero() {
+            None
+        } else {
+            Some(Self::of(Field::<P>::invert(self.value)))
+        }
     }
 
     /// The square root. Every element of a field of characteristic 2 has exactly one.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn sqrt(self) -> Self {
-        if Plan::<P>::SQRT_BY_SPLIT {
-            // `a = e(x^2) + x o(x^2)` for the even and odd coefficients, so
-            // `sqrt(a) = e(x) + sqrt(x) o(x)`.
-            let mut even = GenericArray::<u64, Limbs<P>>::DEFAULT;
-            let mut odd = GenericArray::<u64, Limbs<P>>::DEFAULT;
-            gather(&mut even, self.as_limbs(), 0);
-            gather(&mut odd, self.as_limbs(), 1);
-            Self::from_reduced(even) + Self::from_reduced(odd) * Self::from_reduced(Self::SQRT_X)
-        } else {
-            (1..Plan::<P>::DEGREE).fold(self, |power, _| power.square())
-        }
+        Self::of(Field::<P>::sqrt(self.value))
     }
 
     /// The trace `a + a^2 + a^4 + ... + a^(2^(n-1))`, which is `0` or `1`.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn trace(&self) -> bool {
-        masked_parity(self.as_limbs(), &Self::TRACE_MASK)
-    }
-
-    /// The element of reduced `limbs`.
-    #[inline(always)]
-    pub(crate) const fn from_reduced(limbs: GenericArray<u64, Limbs<P>>) -> Self {
-        Self {
-            value: Uint::from_generic_limbs(limbs),
-        }
+        masked_parity(&self.into_limbs(), &Self::TRACE_MASK)
     }
 
     /// `limbs`, plus `addend` when `add` holds, without a branch.
@@ -243,31 +247,7 @@ impl<P: Polynomial> Gf2<P> {
         for (slot, &limb) in limbs.iter_mut().zip(addend.iter()) {
             *slot ^= limb & take;
         }
-        Self::from_reduced(limbs)
-    }
-
-    /// The reduced product `self * rhs`.
-    #[inline(always)]
-    fn product(&self, rhs: &Self) -> Self {
-        let mut wide = GenericArray::<u64, WideLimbs<P>>::DEFAULT;
-        let mut scratch = GenericArray::<u64, ScratchLimbs<P>>::DEFAULT;
-        Levels::product(
-            &mut wide,
-            self.as_limbs(),
-            rhs.as_limbs(),
-            &mut scratch,
-            Plan::<P>::KARATSUBA_THRESHOLD,
-        );
-        Self::reduced(wide, &mut scratch)
-    }
-
-    /// The element of the product `wide`, reduced.
-    #[inline(always)]
-    fn reduced(mut wide: GenericArray<u64, WideLimbs<P>>, scratch: &mut [u64]) -> Self {
-        reduce::<P>(&mut wide, scratch);
-        let mut limbs = GenericArray::<u64, Limbs<P>>::DEFAULT;
-        copy(&mut limbs, head(&wide, Plan::<P>::LIMBS));
-        Self::from_reduced(limbs)
+        Self::of(Element::<P>::from_uint(Uint::from_generic_limbs(limbs)))
     }
 }
 
@@ -339,46 +319,23 @@ const fn trace_mask<P: Polynomial>() -> GenericArray<u64, Limbs<P>> {
     mask
 }
 
-/// `sqrt(x) = x^(2^(n-1))`, by `n - 1` squarings, each a bit spread and a shift-and-add
-/// reduction. Degrees above the plan's limit skip it, and their square roots square at runtime.
-const fn sqrt_x<P: Polynomial>() -> GenericArray<u64, Limbs<P>> {
-    let mut power = GenericArray::<u64, Limbs<P>>::DEFAULT;
-    if !Plan::<P>::SQRT_BY_SPLIT {
-        return power;
-    }
-    set_bit(power.as_mut_slice(), 1);
-    let mut wide = GenericArray::<u64, WideLimbs<P>>::DEFAULT;
-    let mut scratch = GenericArray::<u64, WideLimbs<P>>::DEFAULT;
-    let mut count = 1;
-    while count < Plan::<P>::DEGREE {
-        spread(wide.as_mut_slice(), power.as_slice());
-        const_reduce::<P>(wide.as_mut_slice(), scratch.as_mut_slice());
-        copy(
-            power.as_mut_slice(),
-            head(wide.as_slice(), Plan::<P>::LIMBS),
-        );
-        count += 1;
-    }
-    power
-}
-
 impl<P: Polynomial> fmt::Debug for Gf2<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Gf2({:?})", self.value)
+        write!(f, "Gf2({:?})", self.into_uint())
     }
 }
 
 impl<P: Polynomial> From<Uint<P::Degree>> for Gf2<P> {
     #[inline(always)]
     fn from(value: Uint<P::Degree>) -> Self {
-        Self { value }
+        Self::of(Element::<P>::from_uint(value))
     }
 }
 
 impl<P: Polynomial> From<Gf2<P>> for Uint<P::Degree> {
     #[inline(always)]
     fn from(element: Gf2<P>) -> Self {
-        element.value
+        element.into_uint()
     }
 }
 
@@ -386,18 +343,12 @@ impl<P: Polynomial> One for Gf2<P> {
     const ONE: Self = Self::ONE;
 }
 
-#[expect(
-    clippy::suspicious_arithmetic_impl,
-    reason = "addition in characteristic 2 is XOR"
-)]
 impl<P: Polynomial> Add for Gf2<P> {
     type Output = Self;
 
     #[inline(always)]
     fn add(self, rhs: Self) -> Self {
-        Self {
-            value: self.value ^ rhs.value,
-        }
+        Self::of(self.value.add(rhs.value))
     }
 }
 
@@ -444,35 +395,25 @@ impl<P: Polynomial> Neg for Gf2<P> {
 impl<P: Polynomial> Mul for Gf2<P> {
     type Output = Self;
 
-    #[inline]
+    #[inline(always)]
     fn mul(self, rhs: Self) -> Self {
-        self.product(&rhs)
+        Self::of(Field::<P>::mul(self.value, rhs.value))
     }
 }
 
 impl<P: Polynomial> MulAssign for Gf2<P> {
-    #[inline]
+    #[inline(always)]
     fn mul_assign(&mut self, rhs: Self) {
-        *self = self.product(&rhs);
+        *self = *self * rhs;
     }
 }
 
 impl<P: Polynomial> Square for Gf2<P> {
     type Output = Self;
 
-    /// `self * self`: in characteristic 2 the cross terms cancel, so the square of each limb is
-    /// its own carry-less product, or the spread of its bits to the even positions.
-    #[inline]
+    /// `self * self`: in characteristic 2 the cross terms cancel.
+    #[inline(always)]
     fn square(self) -> Self {
-        let mut wide = GenericArray::<u64, WideLimbs<P>>::DEFAULT;
-        let mut scratch = GenericArray::<u64, ScratchLimbs<P>>::DEFAULT;
-        if Plan::<P>::SQUARE_BY_CLMUL {
-            square_limbs(&mut wide, self.as_limbs(), |limb| {
-                clmul::clmul64(limb, limb)
-            });
-        } else {
-            spread(&mut wide, self.as_limbs());
-        }
-        Self::reduced(wide, &mut scratch)
+        Self::of(Field::<P>::square(self.value))
     }
 }
