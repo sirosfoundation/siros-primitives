@@ -54,6 +54,9 @@ pub enum Outcome {
 pub struct Count {
     /// The function.
     pub function: String,
+    /// How its results deviate from the row's definition, in one phrase; `None` for a function
+    /// that meets it.
+    pub deviation: Option<String>,
     /// The loop of independent operations.
     pub batch: Events,
     /// The chain; absent for a case without a chain form.

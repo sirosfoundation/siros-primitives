@@ -108,6 +108,9 @@ trait Offer<V> {
 
     /// Records `reason` for both timings of `kind`.
     fn neither(self, kind: Kind, reason: &'static str) -> Self;
+
+    /// Declares the deviation of the next case from its row's definition, when it has one.
+    fn declare(self, deviation: Option<&'static str>) -> Self;
 }
 
 impl<V: Visitor<Op, Field>> Offer<V> for Crate<V> {
@@ -141,7 +144,20 @@ impl<V: Visitor<Op, Field>> Offer<V> for Crate<V> {
         self.absent(vartime(kind), reason)
             .absent(constant(kind), reason)
     }
+
+    fn declare(self, deviation: Option<&'static str>) -> Self {
+        match deviation {
+            Some(deviation) => self.deviating(deviation),
+            None => self,
+        }
+    }
 }
+
+/// The deviation of a sum or a difference that leaves the reduction for later.
+const SKIPPED_REDUCTION: &str = "skips the final reduction; the result is not canonical";
+
+/// The deviation of a result that leaves the normalization for later.
+const SKIPPED_NORMALIZATION: &str = "skips the final normalization; the result is not canonical";
 
 /// The two operands of a set.
 fn pair<T: FromLimbs>(set: &[Limbs]) -> (T, T) {
@@ -394,13 +410,35 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
     let read = |e: &F| Some(from_le_bytes(&e.into_bigint().to_bytes_le()));
     let read_option = |e: &Option<F>| e.as_ref().and_then(read);
     let mut cells = cells
-        .chain(vartime(Kind::Add), "+", two, |&(a, b)| a + b, read)
-        .chain(vartime(Kind::Sub), "-", two, |&(a, b)| a - b, read)
-        .chain(vartime(Kind::Mul), "*", two, |&(a, b)| a * b, read)
+        .chain(
+            vartime(Kind::Add),
+            "+",
+            two,
+            #[inline(always)]
+            |&(a, b)| a + b,
+            read,
+        )
+        .chain(
+            vartime(Kind::Sub),
+            "-",
+            two,
+            #[inline(always)]
+            |&(a, b)| a - b,
+            read,
+        )
+        .chain(
+            vartime(Kind::Mul),
+            "*",
+            two,
+            #[inline(always)]
+            |&(a, b)| a * b,
+            read,
+        )
         .chain(
             vartime(Kind::Square),
             "square",
             single,
+            #[inline(always)]
             |a| a.square(),
             read,
         )
@@ -408,6 +446,7 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
             vartime(Kind::Invert),
             "inverse",
             single,
+            #[inline(always)]
             |a| a.inverse(),
             read_option,
         )
@@ -415,6 +454,7 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
             vartime(Kind::Sqrt),
             "sqrt",
             single,
+            #[inline(always)]
             |a| a.sqrt(),
             read_option,
         );
@@ -535,23 +575,32 @@ fn monty<
 ) -> Crate<V> {
     type Form<MOD, const L: usize> = crypto_bigint::modular::ConstMontyForm<MOD, L>;
     ops!(cells, Form<MOD, L>, constant, vartime, NO_VARIABLE_TIME,
-        add: |(a, b)| a + b,
-        sub: |(a, b)| a - b,
-        mul: |(a, b)| a * b,
-        square: |a| a.square(),
+        add: #[inline(always)] |(a, b)| a + b,
+        sub: #[inline(always)] |(a, b)| a - b,
+        mul: #[inline(always)] |(a, b)| a * b,
+        square: #[inline(always)] |a| a.square(),
     )
-    .case(constant(Kind::Invert), "invert", one::<Form<MOD, L>>, |a| {
-        a.invert()
-    })
+    .case(
+        constant(Kind::Invert),
+        "invert",
+        one::<Form<MOD, L>>,
+        #[inline(always)]
+        |a| a.invert(),
+    )
     .case(
         vartime(Kind::Invert),
         "invert_vartime",
         one::<Form<MOD, L>>,
+        #[inline(always)]
         |a| a.invert_vartime(),
     )
-    .case(constant(Kind::Sqrt), "sqrt", one::<Form<MOD, L>>, |a| {
-        a.sqrt()
-    })
+    .case(
+        constant(Kind::Sqrt),
+        "sqrt",
+        one::<Form<MOD, L>>,
+        #[inline(always)]
+        |a| a.sqrt(),
+    )
     .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME)
 }
 
@@ -580,9 +629,10 @@ impl FromLimbs for k256::FieldElement {
     }
 }
 
+/// k256's own normalization, which every k256 case declares: its results are not normalized.
 impl ToLimbs for k256::FieldElement {
     fn to_limbs(&self) -> Option<Limbs> {
-        Some(from_be_bytes(&self.to_bytes()))
+        Some(from_be_bytes(&self.normalize().to_bytes()))
     }
 }
 
@@ -619,36 +669,73 @@ impl ToLimbs for p256::Scalar {
 /// reduction to a later `normalize`. `p256`'s scalar adds `invert_vartime`, Stein's algorithm.
 fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
-        "secp256k1 base" => ops!(cells, k256::FieldElement, constant, vartime, NO_VARIABLE_TIME,
-            add: |&(a, b)| a + b,
-            sub: |&(a, b)| a - b,
-            mul: |&(a, b)| a * b,
-            square: |a| a.square(),
-        )
-        .case(
-            constant(Kind::Invert),
-            "invert",
-            one::<k256::FieldElement>,
-            |a| a.invert(),
-        )
-        .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
-        .case(
-            constant(Kind::Sqrt),
-            "sqrt",
-            one::<k256::FieldElement>,
-            |a| a.sqrt(),
-        )
-        .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME),
+        "secp256k1 base" => {
+            type Element = k256::FieldElement;
+            let mut cells = cells
+                .deviating(SKIPPED_REDUCTION)
+                .chained(
+                    constant(Kind::Add),
+                    "+",
+                    pair::<Element>,
+                    #[inline(always)]
+                    |&(a, b)| a + b,
+                )
+                .deviating(SKIPPED_REDUCTION)
+                .chained(
+                    constant(Kind::Sub),
+                    "-",
+                    pair::<Element>,
+                    #[inline(always)]
+                    |&(a, b)| a - b,
+                )
+                .deviating(SKIPPED_NORMALIZATION)
+                .chained(
+                    constant(Kind::Mul),
+                    "*",
+                    pair::<Element>,
+                    #[inline(always)]
+                    |&(a, b)| a * b,
+                )
+                .deviating(SKIPPED_NORMALIZATION)
+                .chained(
+                    constant(Kind::Square),
+                    "square",
+                    one::<Element>,
+                    #[inline(always)]
+                    |a| a.square(),
+                )
+                .deviating(SKIPPED_NORMALIZATION)
+                .case(
+                    constant(Kind::Invert),
+                    "invert",
+                    one::<Element>,
+                    #[inline(always)]
+                    |a| a.invert(),
+                )
+                .deviating(SKIPPED_NORMALIZATION)
+                .case(
+                    constant(Kind::Sqrt),
+                    "sqrt",
+                    one::<Element>,
+                    #[inline(always)]
+                    |a| a.sqrt(),
+                );
+            for kind in KINDS {
+                cells = cells.absent(vartime(kind), NO_VARIABLE_TIME);
+            }
+            cells
+        }
         "P-256 base" => ops!(cells, p256::FieldElement, constant, vartime, NO_VARIABLE_TIME,
-            add: |&(a, b)| a + b,
-            sub: |&(a, b)| a - b,
-            mul: |&(a, b)| a * b,
-            square: |a| a.square(),
+            add: #[inline(always)] |&(a, b)| a + b,
+            sub: #[inline(always)] |&(a, b)| a - b,
+            mul: #[inline(always)] |&(a, b)| a * b,
+            square: #[inline(always)] |a| a.square(),
         )
         .case(
             constant(Kind::Invert),
             "invert",
             one::<p256::FieldElement>,
+            #[inline(always)]
             |a| a.invert(),
         )
         .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
@@ -656,6 +743,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             constant(Kind::Sqrt),
             "sqrt",
             one::<p256::FieldElement>,
+            #[inline(always)]
             |a| a.sqrt(),
         )
         .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME),
@@ -663,14 +751,17 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             use p256::elliptic_curve::ff::Field;
             use p256::elliptic_curve::ops::Invert;
             ops!(cells, p256::Scalar, constant, vartime, NO_VARIABLE_TIME,
-                add: |&(a, b)| a + b,
-                sub: |&(a, b)| a - b,
-                mul: |&(a, b)| a * b,
-                square: |a| a.square(),
+                add: #[inline(always)] |&(a, b)| a + b,
+                sub: #[inline(always)] |&(a, b)| a - b,
+                mul: #[inline(always)] |&(a, b)| a * b,
+                square: #[inline(always)] |a| a.square(),
             )
-            .case(constant(Kind::Invert), "invert", one::<p256::Scalar>, |a| {
-                p256::Scalar::invert(a)
-            })
+            .case(
+                constant(Kind::Invert),
+                "invert",
+                one::<p256::Scalar>,
+                p256::Scalar::invert,
+            )
             .case(
                 vartime(Kind::Invert),
                 "invert_vartime",
@@ -737,14 +828,26 @@ fn ff_field<F: halo2curves::ff::Field + FromLimbs + ToLimbs, V: Visitor<Op, Fiel
     cells: Crate<V>,
 ) -> Crate<V> {
     ops!(cells, F, constant, vartime, NO_VARIABLE_TIME,
-        add: |&(a, b)| a + b,
-        sub: |&(a, b)| a - b,
-        mul: |&(a, b)| a * b,
-        square: |a| a.square(),
+        add: #[inline(always)] |&(a, b)| a + b,
+        sub: #[inline(always)] |&(a, b)| a - b,
+        mul: #[inline(always)] |&(a, b)| a * b,
+        square: #[inline(always)] |a| a.square(),
     )
-    .case(vartime(Kind::Invert), "invert", one::<F>, |a| a.invert())
+    .case(
+        vartime(Kind::Invert),
+        "invert",
+        one::<F>,
+        #[inline(always)]
+        |a| a.invert(),
+    )
     .absent(constant(Kind::Invert), NO_CONSTANT_TIME)
-    .case(constant(Kind::Sqrt), "sqrt", one::<F>, |a| a.sqrt())
+    .case(
+        constant(Kind::Sqrt),
+        "sqrt",
+        one::<F>,
+        #[inline(always)]
+        |a| a.sqrt(),
+    )
     .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME)
 }
 
@@ -761,6 +864,8 @@ macro_rules! p3_field {
             }
         }
 
+        /// Plonky3's own normalization, which the cases of a non-canonical [`Representation`]
+        /// declare.
         impl ToLimbs for $t {
             fn to_limbs(&self) -> Option<Limbs> {
                 use p3_field::PrimeField64;
@@ -778,37 +883,124 @@ p3_field!(p3_goldilocks::Goldilocks, u64);
 fn plonky3<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     use p3_field::Field as _;
     match cells.key().field.as_str() {
-        "Mersenne-31" => p3::<p3_mersenne_31::Mersenne31, V>(cells, true, |a| a.try_sqrt()),
-        "BabyBear" => p3::<p3_baby_bear::BabyBear, V>(cells, false, |a| a.try_sqrt()),
-        "Goldilocks" => p3::<p3_goldilocks::Goldilocks, V>(cells, false, |a| a.try_sqrt()),
+        "Mersenne-31" => p3::<p3_mersenne_31::Mersenne31, V>(
+            cells,
+            true,
+            #[inline(always)]
+            |a| a.try_sqrt(),
+            Representation::ZeroAsP,
+        ),
+        "BabyBear" => p3::<p3_baby_bear::BabyBear, V>(
+            cells,
+            false,
+            #[inline(always)]
+            |a| a.try_sqrt(),
+            Representation::Canonical,
+        ),
+        "Goldilocks" => p3::<p3_goldilocks::Goldilocks, V>(
+            cells,
+            false,
+            #[inline(always)]
+            |a| a.try_sqrt(),
+            Representation::Below2To64,
+        ),
         _ => cells.none("Plonky3 declares no such field"),
+    }
+}
+
+/// The values that a Plonky3 field stores, which `as_canonical_u64` normalizes.
+#[derive(Clone, Copy)]
+enum Representation {
+    /// Every value lies below `p`: BabyBear's Montgomery form.
+    Canonical,
+    /// Every value lies below 2^31, and `p` is a second encoding of zero: Mersenne-31.
+    ZeroAsP,
+    /// Every value lies below 2^64: Goldilocks.
+    Below2To64,
+}
+
+impl Representation {
+    /// How the results of `kind` deviate from canonical residues; `None` when they are canonical.
+    /// An inverse or a square root of a nonzero element is nonzero, so it never takes the second
+    /// encoding of zero.
+    const fn deviation(self, kind: Kind) -> Option<&'static str> {
+        match (self, kind) {
+            (Self::ZeroAsP, Kind::Add | Kind::Sub | Kind::Mul | Kind::Square) => {
+                Some("returns p for a zero result, which is not canonical")
+            }
+            (Self::Below2To64, _) => Some(SKIPPED_REDUCTION),
+            (Self::Canonical, _) | (Self::ZeroAsP, Kind::Invert | Kind::Sqrt) => None,
+        }
     }
 }
 
 /// A Plonky3 field: `+`, `*`, `square`, `try_inverse` and `try_sqrt` decide their corrections and
 /// steps with `if` on the value; Mersenne-31's `-` is arithmetic alone, BabyBear's and
 /// Goldilocks' `-` branch on the borrow. `subtraction_constant` tells the arithmetic `-`; `sqrt` is the
-/// field's own `try_sqrt`, which BabyBear specializes in an inherent method.
+/// field's own `try_sqrt`, which BabyBear specializes in an inherent method; `representation`
+/// tells which results deviate from canonical residues.
 fn p3<F: p3_field::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
     cells: Crate<V>,
     subtraction_constant: bool,
     sqrt: impl Fn(&F) -> Option<F> + Copy,
+    representation: Representation,
 ) -> Crate<V> {
     let (sub_row, sub_other, sub_reason) = if subtraction_constant {
         (constant(Kind::Sub), vartime(Kind::Sub), NO_VARIABLE_TIME)
     } else {
         (vartime(Kind::Sub), constant(Kind::Sub), NO_CONSTANT_TIME)
     };
+    let deviation = |kind| representation.deviation(kind);
     let mut cells = cells
-        .chained(vartime(Kind::Add), "+", pair::<F>, |&(a, b)| a + b)
-        .chained(sub_row, "-", pair::<F>, |&(a, b)| a - b)
+        .declare(deviation(Kind::Add))
+        .chained(
+            vartime(Kind::Add),
+            "+",
+            pair::<F>,
+            #[inline(always)]
+            |&(a, b)| a + b,
+        )
+        .declare(deviation(Kind::Sub))
+        .chained(
+            sub_row,
+            "-",
+            pair::<F>,
+            #[inline(always)]
+            |&(a, b)| a - b,
+        )
         .absent(sub_other, sub_reason)
-        .chained(vartime(Kind::Mul), "*", pair::<F>, |&(a, b)| a * b)
-        .chained(vartime(Kind::Square), "square", one::<F>, |a| a.square())
-        .case(vartime(Kind::Invert), "try_inverse", one::<F>, |a| {
-            a.try_inverse()
-        })
-        .case(vartime(Kind::Sqrt), "try_sqrt", one::<F>, move |a| sqrt(a));
+        .declare(deviation(Kind::Mul))
+        .chained(
+            vartime(Kind::Mul),
+            "*",
+            pair::<F>,
+            #[inline(always)]
+            |&(a, b)| a * b,
+        )
+        .declare(deviation(Kind::Square))
+        .chained(
+            vartime(Kind::Square),
+            "square",
+            one::<F>,
+            #[inline(always)]
+            |a| a.square(),
+        )
+        .declare(deviation(Kind::Invert))
+        .case(
+            vartime(Kind::Invert),
+            "try_inverse",
+            one::<F>,
+            #[inline(always)]
+            |a| a.try_inverse(),
+        )
+        .declare(deviation(Kind::Sqrt))
+        .case(
+            vartime(Kind::Sqrt),
+            "try_sqrt",
+            one::<F>,
+            #[inline(always)]
+            move |a| sqrt(a),
+        );
     for kind in [Kind::Add, Kind::Mul, Kind::Square, Kind::Invert, Kind::Sqrt] {
         cells = cells.absent(constant(kind), NO_CONSTANT_TIME);
     }
@@ -837,14 +1029,18 @@ fn winter_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     use winter_math::fields::f64::BaseElement;
     match cells.key().field.as_str() {
         "Goldilocks" => ops!(cells, BaseElement, constant, vartime, NO_VARIABLE_TIME,
-            add: |&(a, b)| a + b,
-            sub: |&(a, b)| a - b,
-            mul: |&(a, b)| a * b,
-            square: |a| a.square(),
+            add: #[inline(always)] |&(a, b)| a + b,
+            sub: #[inline(always)] |&(a, b)| a - b,
+            mul: #[inline(always)] |&(a, b)| a * b,
+            square: #[inline(always)] |a| a.square(),
         )
-        .case(constant(Kind::Invert), "inv", one::<BaseElement>, |a| {
-            a.inv()
-        })
+        .case(
+            constant(Kind::Invert),
+            "inv",
+            one::<BaseElement>,
+            #[inline(always)]
+            |a| a.inv(),
+        )
         .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
         .neither(Kind::Sqrt, NO_SQRT),
         _ => cells.none("winter-math declares no such field"),
@@ -891,7 +1087,10 @@ fn runtime_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 fn runtime<const W: usize, F: RuntimeSerializableField<W>, V: Visitor<Op, Field>>(
     field: F,
     cells: Crate<V>,
-) -> Crate<V> {
+) -> Crate<V>
+where
+    F::E: Copy,
+{
     let element = |limbs: &[u64]| {
         field
             .words64_to_element(&array::<W>(limbs))
@@ -911,6 +1110,7 @@ fn runtime<const W: usize, F: RuntimeSerializableField<W>, V: Visitor<Op, Field>
             constant(Kind::Add),
             "addf",
             two,
+            #[inline(always)]
             |(a, b)| field.addf(a, b),
             read,
         )
@@ -918,6 +1118,7 @@ fn runtime<const W: usize, F: RuntimeSerializableField<W>, V: Visitor<Op, Field>
             constant(Kind::Sub),
             "subf",
             two,
+            #[inline(always)]
             |(a, b)| field.subf(a, b),
             read,
         )
@@ -925,6 +1126,7 @@ fn runtime<const W: usize, F: RuntimeSerializableField<W>, V: Visitor<Op, Field>
             constant(Kind::Mul),
             "mulf",
             two,
+            #[inline(always)]
             |(a, b)| field.mulf(a, b),
             read,
         )
@@ -936,6 +1138,7 @@ fn runtime<const W: usize, F: RuntimeSerializableField<W>, V: Visitor<Op, Field>
             vartime(Kind::Invert),
             "invert",
             single,
+            #[inline(always)]
             |a| field.invert(a),
             read,
         )
@@ -979,24 +1182,27 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
         Some(value)
     };
     cells
-        .chain(
+        .api(
             vartime(Kind::Add),
             "addf",
             two,
+            #[inline(always)]
             |(a, b)| field.addf(a, b),
             read,
         )
-        .chain(
+        .api(
             vartime(Kind::Sub),
             "subf",
             two,
+            #[inline(always)]
             |(a, b)| field.subf(a, b),
             read,
         )
-        .chain(
+        .api(
             vartime(Kind::Mul),
             "mulf",
             two,
+            #[inline(always)]
             |(a, b)| field.mulf(a, b),
             read,
         )
@@ -1004,6 +1210,7 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
             vartime(Kind::Invert),
             "invert",
             single,
+            #[inline(always)]
             |a| field.invert(a),
             read,
         )

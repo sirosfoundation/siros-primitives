@@ -27,7 +27,9 @@ use crate::barrier::{Gpr, REGISTERS, Xmm};
 use crate::counters::{Counters, Counts, pin};
 use crate::error::Error;
 use crate::record::{Cell, Class, Count, Events, Latency, Line, Load, Outcome, Sibling, Sweep};
-use crate::suite::{Call, CaseId, Chain, Inputs, Rng, Suite, Visitor, run_batch, run_chain, visit};
+use crate::suite::{
+    Call, CaseId, Chain, Function, Inputs, Rng, Suite, Visitor, run_batch, run_chain, visit,
+};
 
 /// The counted repetitions of every case.
 pub const REPETITIONS: usize = 31;
@@ -155,7 +157,7 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
     for (id, call) in &cells {
         let name = id.to_string();
         let outcome = match call {
-            Call::Api(function) | Call::Chained(function) => {
+            Call::Case(function) => {
                 let case = measuring
                     .cases
                     .iter()
@@ -333,7 +335,7 @@ impl Case {
     /// The cell of the case, which runs `function`: its latency is its chain form with the fewest
     /// cycles per step. A chain step under one cycle, in any form, is an
     /// [`Error::Reassociated`].
-    fn count(&self, function: &str) -> Result<Count, Error> {
+    fn count(&self, function: &Function) -> Result<Count, Error> {
         let latencies = self
             .chains
             .iter()
@@ -353,7 +355,8 @@ impl Case {
             })
             .collect::<Result<Vec<_>, Error>>()?;
         Ok(Count {
-            function: function.to_owned(),
+            function: function.name.to_owned(),
+            deviation: function.deviation.map(str::to_owned),
             batch: self.batch.events(&self.id)?,
             chain: latencies
                 .into_iter()

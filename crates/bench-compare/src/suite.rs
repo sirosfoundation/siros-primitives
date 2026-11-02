@@ -85,16 +85,26 @@ impl<O: fmt::Display, K: fmt::Display> fmt::Display for CaseId<O, K> {
 /// What a cell runs.
 #[derive(Clone, Copy, Debug)]
 pub enum Call {
-    /// The crate's function for the operation, by name.
-    Api(&'static str),
-    /// The crate's function for the operation, by name, which also runs as a chain.
-    Chained(&'static str),
+    /// The crate's function for the operation.
+    Case(Function),
     /// No case; the reason.
     Absent(&'static str),
 }
 
+/// A crate's function for an operation.
+#[derive(Clone, Copy, Debug)]
+pub struct Function {
+    /// The function, by name.
+    pub name: &'static str,
+    /// How its results deviate from the row's definition, in one phrase, such as a skipped final
+    /// reduction; `None` for a function that meets it.
+    pub deviation: Option<&'static str>,
+}
+
 /// An input whose first operand the result of the operation can replace: one step of the chain
-/// `x = op(x, y)`. The chain applies where the result has the type of the first operand.
+/// `x = op(x, y)`. The chain applies where the result has the type of the first operand and the
+/// other operands are `Copy`: a step copies them, which a chain of the operation alone does not
+/// do, and a copy of an allocated value would allocate.
 pub trait Chain<R> {
     /// This input with `result` as its first operand.
     #[must_use]
@@ -108,15 +118,15 @@ impl<T> Chain<T> for T {
     }
 }
 
-impl<A, B: Clone> Chain<A> for (A, B) {
+impl<A, B: Copy> Chain<A> for (A, B) {
     fn chain(&self, result: A) -> Self {
-        (result, self.1.clone())
+        (result, self.1)
     }
 }
 
-impl<A, B: Clone, C: Clone> Chain<A> for (A, B, C) {
+impl<A, B: Copy, C: Copy> Chain<A> for (A, B, C) {
     fn chain(&self, result: A) -> Self {
-        (result, self.1.clone(), self.2.clone())
+        (result, self.1, self.2)
     }
 }
 
@@ -240,7 +250,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Row<O, K, V> {
     }
 
     /// Offers the cells of `lib` through `adapter`. Panics unless the adapter offers exactly one
-    /// cell for the row's operation.
+    /// cell for the row's operation, and unless every deviation it declares reaches a case.
     #[must_use]
     pub fn lib(
         self,
@@ -251,11 +261,18 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Row<O, K, V> {
             row: self,
             lib,
             offered: 0,
+            deviation: None,
         });
         assert_eq!(
             cells.offered, 1,
             "{lib} offers {} cells for {} on {}",
             cells.offered, cells.row.op, cells.row.key
+        );
+        assert!(
+            cells.deviation.is_none(),
+            "{lib} declares a deviation that no case of {} on {} takes",
+            cells.row.op,
+            cells.row.key
         );
         cells.row
     }
@@ -267,12 +284,32 @@ pub struct Cells<O, K, V> {
     row: Row<O, K, V>,
     lib: &'static str,
     offered: usize,
+    /// The deviation that [`deviating`](Self::deviating) declared for the next case.
+    deviation: Option<&'static str>,
 }
 
 impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
     /// The row key.
     pub const fn key(&self) -> &K {
         &self.row.key
+    }
+
+    /// Declares that the next case deviates from the row's definition, as `deviation` says in one
+    /// phrase, such as "skips the final reduction; the result is not canonical". The case's
+    /// `read` applies the crate's own normalization: a result is accepted when it equals an
+    /// accepted result after that normalization, and the report marks the cell. Panics when the
+    /// next cell is absent.
+    #[must_use]
+    pub fn deviating(self, deviation: &'static str) -> Self {
+        assert!(
+            self.deviation.is_none(),
+            "{}: two deviations for one case",
+            self.lib
+        );
+        Self {
+            deviation: Some(deviation),
+            ..self
+        }
     }
 
     /// Offers the case that runs the crate's `function` for `op`. `prepare` builds the input of
@@ -312,7 +349,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
     ) -> Self {
         self.case(
             op,
-            Call::Api(function),
+            function,
             Case {
                 setup,
                 prepare,
@@ -358,7 +395,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
     ) -> Self {
         self.case(
             op,
-            Call::Chained(function),
+            function,
             Case {
                 setup,
                 prepare,
@@ -369,12 +406,13 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
         )
     }
 
-    /// Offers `case` for `op`: when the visitor wants it, checks it if the visitor asks, measures
-    /// it, and hands its inputs to `chain`.
+    /// Offers `case`, which runs the crate's `function`, for `op`, with the deviation declared
+    /// before it: when the visitor wants it, checks it if the visitor asks, measures it, and hands
+    /// its inputs to `chain`.
     fn case<S, I, R, Setup, Prepare, Run, Read>(
         mut self,
         op: O,
-        call: Call,
+        function: &'static str,
         case: Case<Setup, Prepare, Run, Read>,
         chain: impl FnOnce(V, &CaseId<O, K>, &Inputs<'_, I>) -> V,
     ) -> Self
@@ -384,11 +422,16 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
         Run: Fn(&I) -> R + Copy,
         Read: Fn(&S, &R) -> Option<Limbs>,
     {
+        let deviation = self.deviation.take();
         if op != self.row.op {
             return self;
         }
         self.offered += 1;
         let id = self.id();
+        let call = Call::Case(Function {
+            name: function,
+            deviation,
+        });
         self.row.visitor.note(&id, &call);
         if self.row.visitor.wants(&id) {
             let shared = (case.setup)();
@@ -412,9 +455,15 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
         self
     }
 
-    /// Records that the crate has no case for `op`, for `reason`.
+    /// Records that the crate has no case for `op`, for `reason`. Panics after a deviation that
+    /// no case took.
     #[must_use]
     pub fn absent(mut self, op: O, reason: &'static str) -> Self {
+        assert!(
+            self.deviation.is_none(),
+            "{}: a deviation declared for the absent cell of {op}",
+            self.lib
+        );
         if op == self.row.op {
             self.offered += 1;
             let id = self.id();

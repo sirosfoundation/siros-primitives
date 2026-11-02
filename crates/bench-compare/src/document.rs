@@ -472,7 +472,8 @@ fn protocol() -> Vec<String> {
              and in vector registers in another, each chain a case of its own in the sweep; it \
              can only add moves between the two, so the latency is the chain with fewer cycles. \
              A larger result passes through memory, in a single chain. The chain applies where \
-             the result has the type of the first operand."
+             the result has the type of the first operand and the other operands are plain \
+             values: a step copies them, and the copy of an allocated value would allocate."
         ),
     ]
 }
@@ -640,9 +641,14 @@ fn results<K: Key>(
     let mut lines = vec![
         heading,
         String::new(),
-        "Per operation, each row gives throughput cycles, latency cycles for the operations that \
-         have chains, and instructions. Bold marks the fewest in each row."
-            .to_owned(),
+        format!(
+            "Per operation, each row gives throughput cycles, latency cycles for the operations \
+             that have chains, and instructions. Bold marks the fewest in each row among the \
+             functions that meet the row's definition. A `\\*` marks the figure of a function \
+             that deviates from it where the figure is below `{}`'s; the note under the table \
+             says how the function deviates.",
+            layout.subject
+        ),
     ];
     if let Some(unplotted) = table.crates.get(CHARTED..).filter(|rest| !rest.is_empty()) {
         let names: Vec<String> = unplotted.iter().map(|name| format!("`{name}`")).collect();
@@ -666,14 +672,27 @@ fn results<K: Key>(
         }
         metrics.push(("instructions", |count| Some(count.batch.instructions)));
         let mut rows = Vec::new();
+        // Each starred cell: its crate, its deviation and its row.
+        let mut starred: Vec<(&str, &str, &K)> = Vec::new();
         for key in &table.keys {
+            let ours = table.count(op, key, layout.subject);
             for (index, (label, metric)) in metrics.iter().enumerate() {
-                let values: Vec<Option<f64>> = table
+                let figures: Vec<Option<(f64, Option<&str>)>> = table
                     .crates
                     .iter()
-                    .map(|library| table.count(op, key, library).and_then(metric))
+                    .map(|library| {
+                        table.count(op, key, library).and_then(|count| {
+                            metric(count).map(|figure| (figure, count.deviation.as_deref()))
+                        })
+                    })
                     .collect();
-                let fewest = values.iter().flatten().copied().reduce(f64::min);
+                let fewest = figures
+                    .iter()
+                    .flatten()
+                    .filter(|(_, deviation)| deviation.is_none())
+                    .map(|(figure, _)| *figure)
+                    .reduce(f64::min);
+                let our_figure = ours.and_then(metric);
                 let mut row = vec![
                     if index == 0 {
                         key.to_string()
@@ -682,11 +701,23 @@ fn results<K: Key>(
                     },
                     (*label).to_owned(),
                 ];
-                row.extend(values.iter().map(|figure| match figure {
-                    Some(figure) if Some(*figure) == fewest => format!("**{}**", value(*figure)),
-                    Some(figure) => value(*figure),
-                    None => "–".to_owned(),
-                }));
+                for (library, figure) in table.crates.iter().zip(&figures) {
+                    row.push(match figure {
+                        Some((figure, Some(deviation)))
+                            if our_figure.is_some_and(|ours| *figure < ours) =>
+                        {
+                            if !starred.contains(&(library, deviation, key)) {
+                                starred.push((library, deviation, key));
+                            }
+                            format!("{}\\*", value(*figure))
+                        }
+                        Some((figure, None)) if Some(*figure) == fewest => {
+                            format!("**{}**", value(*figure))
+                        }
+                        Some((figure, _)) => value(*figure),
+                        None => "–".to_owned(),
+                    });
+                }
                 rows.push(row);
             }
         }
@@ -705,9 +736,36 @@ fn results<K: Key>(
             &rows,
             &("rl".to_owned() + &"r".repeat(table.crates.len())),
         ));
+        lines.extend(deviations(layout, &starred));
     }
     lines.push(String::new());
     lines
+}
+
+/// The notes under a table on its starred cells: per crate and deviation, the rows of its stars.
+fn deviations<K: Key>(layout: &Layout<'_, K>, starred: &[(&str, &str, &K)]) -> Vec<String> {
+    let mut groups: Vec<(&str, &str, Vec<K>)> = Vec::new();
+    for (library, deviation, key) in starred {
+        match groups
+            .iter_mut()
+            .find(|(other, reason, _)| other == library && reason == deviation)
+        {
+            Some((_, _, keys)) => keys.push((*key).clone()),
+            None => groups.push((library, deviation, vec![(*key).clone()])),
+        }
+    }
+    groups
+        .into_iter()
+        .flat_map(|(library, deviation, keys)| {
+            [
+                String::new(),
+                format!(
+                    "\\* `{library}` {}: {deviation}.",
+                    (layout.rows_phrase)(&keys)
+                ),
+            ]
+        })
+        .collect()
 }
 
 fn reproduce(tool: &str) -> Vec<String> {

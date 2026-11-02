@@ -125,7 +125,7 @@ fn method() -> Vec<String> {
              each crate in its own representation; the conversions lie outside the counted \
              region. The functions that a case calls, such as the allocator of \
              `compile-algebra`, are part of its counts. The chains are those of add, sub, mul \
-             and square."
+             and square, except `compile-algebra`'s, whose step would copy an allocated operand."
         ),
         String::new(),
     ];
