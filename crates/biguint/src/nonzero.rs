@@ -2,14 +2,13 @@
 //! nonzero `Uint` whose result is never zero.
 
 use core::fmt;
-use core::ops::{Add, BitOr};
+use core::ops::BitOr;
 
 use generic_array::GenericArray;
 use num_traits::Zero;
-use typenum::Sum;
 
 use crate::bits::Bits;
-use crate::mul::WideningMul;
+use crate::num::One;
 use crate::uint::Uint;
 
 /// A value that is not zero.
@@ -62,6 +61,11 @@ impl<T: fmt::Display> fmt::Display for NonZero<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, formatter)
     }
+}
+
+/// The value's one, which [`One`]'s contract keeps nonzero.
+impl<T: One> One for NonZero<T> {
+    const ONE: Self = Self(T::ONE);
 }
 
 impl<N: Bits> From<NonZeroUint<N>> for Uint<N> {
@@ -117,7 +121,7 @@ impl<N: Bits> NonZeroUint<N> {
     #[inline(always)]
     #[must_use]
     pub fn saturating_add(self, rhs: Uint<N>) -> Self {
-        self.checked_add(rhs).unwrap_or(Self(!Uint::ZERO))
+        Self(self.0.saturating_add(rhs))
     }
 
     /// `self + rhs`, or `None` when the sum overflows.
@@ -125,43 +129,29 @@ impl<N: Bits> NonZeroUint<N> {
     #[must_use]
     pub fn checked_add(self, rhs: Uint<N>) -> Option<Self> {
         // Without overflow the sum is at least `self`.
-        let (sum, carry) = self.0.carrying_add(rhs, false);
-        (!carry).then_some(Self(sum))
+        self.0.checked_add(rhs).map(Self)
     }
 
     /// `self * rhs`, or the largest value when the product overflows.
     #[inline(always)]
     #[must_use]
-    pub fn saturating_mul(self, rhs: Self) -> Self
-    where
-        N: Add<N>,
-        Sum<N, N>: Bits,
-    {
-        self.checked_mul(rhs).unwrap_or(Self(!Uint::ZERO))
+    pub fn saturating_mul(self, rhs: Self) -> Self {
+        Self(self.0.saturating_mul(rhs.0))
     }
 
     /// `self * rhs`, or `None` when the product overflows.
     #[inline(always)]
     #[must_use]
-    pub fn checked_mul(self, rhs: Self) -> Option<Self>
-    where
-        N: Add<N>,
-        Sum<N, N>: Bits,
-    {
-        // The product of two nonzero values is nonzero.
-        let product = self.0.widening_mul(rhs.0);
-        (product.bit_len() <= N::BITS).then(|| Self(product.resize()))
+    pub fn checked_mul(self, rhs: Self) -> Option<Self> {
+        // The exact product of two nonzero values is nonzero.
+        self.0.checked_mul(rhs.0).map(Self)
     }
 
     /// `self^exponent`, or `None` when it overflows. Squaring from the exponent's top bit keeps
     /// every partial power at most the result.
     #[inline(always)]
     #[must_use]
-    pub fn checked_pow(self, exponent: u32) -> Option<Self>
-    where
-        N: Add<N>,
-        Sum<N, N>: Bits,
-    {
+    pub fn checked_pow(self, exponent: u32) -> Option<Self> {
         let mut power = Self(Uint::ONE);
         for bit in (0..u32::BITS - exponent.leading_zeros()).rev() {
             power = power.checked_mul(power)?;

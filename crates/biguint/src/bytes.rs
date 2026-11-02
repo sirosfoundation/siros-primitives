@@ -53,18 +53,7 @@ impl<N: Bits> Uint<N> {
     /// [`OutOfRange`] when a bit at or above `N` is set.
     #[inline(always)]
     pub fn from_le_bytes(bytes: &GenericArray<u8, N::Bytes>) -> Result<Self, OutOfRange> {
-        let (chunks, top) = bytes.as_chunks::<8>();
-        // Past the chunks, the low bytes of the top limb.
-        Self::checked(GenericArray::generate(|index| {
-            chunks.get(index).map_or_else(
-                || {
-                    top.iter()
-                        .rev()
-                        .fold(0, |value, &byte| (value << 8) | u64::from(byte))
-                },
-                |chunk| u64::from_le_bytes(*chunk),
-            )
-        }))
+        Self::checked(le_limbs::<N>(bytes))
     }
 
     /// Decodes [`Self::to_be_bytes`].
@@ -74,21 +63,21 @@ impl<N: Bits> Uint<N> {
     /// [`OutOfRange`] when a bit at or above `N` is set.
     #[inline(always)]
     pub fn from_be_bytes(bytes: &GenericArray<u8, N::Bytes>) -> Result<Self, OutOfRange> {
-        let (top, chunks) = bytes.as_rchunks::<8>();
-        // Chunk `index` from the end; past the chunks, the low bytes of the top limb.
-        Self::checked(GenericArray::generate(|index| {
-            chunks
-                .len()
-                .checked_sub(index + 1)
-                .and_then(|chunk| chunks.get(chunk))
-                .map_or_else(
-                    || {
-                        top.iter()
-                            .fold(0, |value, &byte| (value << 8) | u64::from(byte))
-                    },
-                    |chunk| u64::from_be_bytes(*chunk),
-                )
-        }))
+        Self::checked(be_limbs::<N>(bytes))
+    }
+
+    /// The little-endian `bytes`, modulo `2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn wrapping_from_le_bytes(bytes: &GenericArray<u8, N::Bytes>) -> Self {
+        Self::from_generic_limbs(le_limbs::<N>(bytes))
+    }
+
+    /// The big-endian `bytes`, modulo `2^N`.
+    #[inline(always)]
+    #[must_use]
+    pub fn wrapping_from_be_bytes(bytes: &GenericArray<u8, N::Bytes>) -> Self {
+        Self::from_generic_limbs(be_limbs::<N>(bytes))
     }
 
     /// The value of `limbs`, refused when a bit at or above `N` is set.
@@ -100,4 +89,41 @@ impl<N: Bits> Uint<N> {
             Err(OutOfRange { width: N::BITS })
         }
     }
+}
+
+/// The limbs of the little-endian `bytes`, with every bit of the top limb.
+#[inline(always)]
+fn le_limbs<N: Bits>(bytes: &GenericArray<u8, N::Bytes>) -> GenericArray<u64, N::Limbs> {
+    let (chunks, top) = bytes.as_chunks::<8>();
+    // Past the chunks, the low bytes of the top limb.
+    GenericArray::generate(|index| {
+        chunks.get(index).map_or_else(
+            || {
+                top.iter()
+                    .rev()
+                    .fold(0, |value, &byte| (value << 8) | u64::from(byte))
+            },
+            |chunk| u64::from_le_bytes(*chunk),
+        )
+    })
+}
+
+/// The limbs of the big-endian `bytes`, with every bit of the top limb.
+#[inline(always)]
+fn be_limbs<N: Bits>(bytes: &GenericArray<u8, N::Bytes>) -> GenericArray<u64, N::Limbs> {
+    let (top, chunks) = bytes.as_rchunks::<8>();
+    // Chunk `index` from the end; past the chunks, the low bytes of the top limb.
+    GenericArray::generate(|index| {
+        chunks
+            .len()
+            .checked_sub(index + 1)
+            .and_then(|chunk| chunks.get(chunk))
+            .map_or_else(
+                || {
+                    top.iter()
+                        .fold(0, |value, &byte| (value << 8) | u64::from(byte))
+                },
+                |chunk| u64::from_be_bytes(*chunk),
+            )
+    })
 }

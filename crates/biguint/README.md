@@ -10,7 +10,8 @@ panics.
 `Uint<N>` holds an integer of exactly `N` bits for any `typenum` width `N`, in `ceil(N / 64)`
 little-endian `u64` limbs. It provides wrapping arithmetic, carrying addition and subtraction,
 widening multiplication, division by a divisor of any width, modular arithmetic, shifts,
-rotations, comparisons, byte encodings and exact conversions.
+rotations, comparisons, byte encodings and exact conversions. `<<` and `>>` take an amount of any
+primitive integer type or any `Uint`; an amount that is negative or at least `N` gives `0`.
 
 ## Example
 
@@ -52,6 +53,29 @@ assert_eq!(a / divisor, U256::from_u64(123));
 assert_eq!(a % divisor, U128::from_u64(4));
 assert_eq!(a.checked_div_rem(U128::ZERO), None);
 ```
+
+## num-traits
+
+`Uint` implements these `num-traits` traits, each with the inherent method of the same name:
+
+- `Zero`, `One`, `ConstZero`, `ConstOne`, `Bounded`;
+- `Pow<u32>`, `MulAdd`, modulo `2^N`;
+- `CheckedAdd`, `CheckedSub`, `CheckedMul`, `CheckedNeg`, `CheckedShl`, `CheckedShr`;
+- `WrappingAdd`, `WrappingSub`, `WrappingMul`, `WrappingNeg`, `WrappingShl`, `WrappingShr`;
+- `SaturatingAdd`, `SaturatingSub`, `SaturatingMul`;
+- `OverflowingAdd`, `OverflowingSub`, `OverflowingMul`;
+- `ToPrimitive`, `FromPrimitive`, `NumCast`;
+- `ToBytes`, `FromBytes`, on `ceil(N / 8)` bytes.
+
+`checked_shl` and `checked_shr` return `None` for a shift of `N` or more; `wrapping_shl` and
+`wrapping_shr` shift by the amount modulo `N`. `FromBytes` reads the bytes modulo `2^N`.
+`to_f32` and `to_f64` round to the nearest float, ties to even. `FromPrimitive` keeps the integer
+part of a float. `NumCast` reads its source through `to_u128` and returns `None` from `2^128` up.
+
+`checked_div` and `checked_rem` are inherent methods only: `CheckedDiv`, `CheckedRem`, `Num`,
+`Unsigned`, `PrimInt` and `Euclid` require `Div<Self>` and `Rem<Self>`, which panic on a zero
+divisor. `NonZero<T>` has the crate's `One` wherever `T` has it. `num-traits`' `One` requires
+`Mul<Output = Self>`, and a product of two nonzero `Uint`s can wrap to zero.
 
 ## Modular arithmetic
 
