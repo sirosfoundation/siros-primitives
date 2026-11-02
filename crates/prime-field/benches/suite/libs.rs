@@ -17,7 +17,9 @@ use prime_field::standard::{
 use prime_field::{Fp, Modulus, Secret};
 use runtime_algebra::field::RuntimeSerializableField;
 
-use super::{Field, Kind, Op, Timing};
+use num_bigint::BigUint;
+
+use super::{Field, Kind, Op, Timing, big, limbs, spec};
 
 /// The limbs of the modulus of `M`, zero-extended to `L` limbs.
 const fn words<M: Modulus, const L: usize>() -> [u64; L] {
@@ -68,9 +70,6 @@ const fn constant(kind: Kind) -> Op {
 const NO_VARIABLE_TIME: &str = "no variable-time function";
 /// The reason for an absent constant-time cell of a crate whose function runs in variable time.
 const NO_CONSTANT_TIME: &str = "no constant-time function";
-/// The reasons for operations that a crate lacks in both classes.
-const NO_SQUARE: &str = "no squaring function";
-const NO_SQRT: &str = "no square root";
 
 /// An operand type built from canonical limbs.
 trait FromLimbs {
@@ -187,6 +186,38 @@ fn one<T: FromLimbs>(set: &[Limbs]) -> T {
         _ => panic!("{} operands where one was drawn", set.len()),
     }
 }
+
+/// The bits of `exponent` from its top set bit down.
+fn bits_from_top(exponent: &BigUint) -> Vec<bool> {
+    (0..exponent.bits())
+        .rev()
+        .map(|bit| exponent.bit(bit))
+        .collect()
+}
+
+/// The exponents of the field `key` that compose an inverse, `p − 2`, and a square root,
+/// `(p + 1) / 4`, the latter only for `p ≡ 3 (mod 4)`; each as its bits from the top.
+fn exponents(key: &Field) -> (Vec<bool>, Option<Vec<bool>>) {
+    let p = big(spec(key).modulus);
+    let root = (&p % 4u32 == BigUint::from(3u32)).then(|| bits_from_top(&((&p + 1u32) >> 2)));
+    (bits_from_top(&(p - 2u32)), root)
+}
+
+/// `a` to the power of `bits`, from the top set bit down, by square-and-multiply with `product`:
+/// the sequence of products follows the public exponent alone, so it takes the time class of
+/// `product`.
+fn power<E>(a: &E, bits: &[bool], product: impl Fn(&E, &E) -> E) -> E
+where
+    E: Clone,
+{
+    bits.iter().skip(1).fold(a.clone(), |r, &set| {
+        let square = product(&r, &r);
+        if set { product(&square, a) } else { square }
+    })
+}
+
+/// The reason for an absent square root where `p ≡ 1 (mod 4)`, which no single power yields.
+const NO_SQRT_POWER: &str = "no square root; p ≡ 1 (mod 4) needs more than a power";
 
 /// `limbs` as an array of exactly `L` limbs.
 fn array<const L: usize>(limbs: &[u64]) -> [u64; L] {
@@ -824,6 +855,8 @@ fn halo2curves<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 fn ff_field<F: halo2curves::ff::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
     cells: Crate<V>,
 ) -> Crate<V> {
+    let modulus = spec(cells.key()).modulus;
+    let inverse_exponent = limbs(&(big(modulus) - 2u32), modulus.len());
     ops!(cells, F, constant, vartime, NO_VARIABLE_TIME,
         add: #[inline(always)] |&(a, b)| a + b,
         sub: #[inline(always)] |&(a, b)| a - b,
@@ -837,7 +870,13 @@ fn ff_field<F: halo2curves::ff::Field + FromLimbs + ToLimbs, V: Visitor<Op, Fiel
         #[inline(always)]
         |a| a.invert(),
     )
-    .absent(constant(Kind::Invert), NO_CONSTANT_TIME)
+    .case(
+        constant(Kind::Invert),
+        "pow(p − 2)",
+        one::<F>,
+        #[inline(always)]
+        |a| a.pow(&inverse_exponent),
+    )
     .case(
         constant(Kind::Sqrt),
         "sqrt",
@@ -1039,7 +1078,7 @@ fn winter_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             |a| a.inv(),
         )
         .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
-        .neither(Kind::Sqrt, NO_SQRT),
+        .neither(Kind::Sqrt, NO_SQRT_POWER),
         _ => cells.none("winter-math declares no such field"),
     }
 }
@@ -1113,6 +1152,19 @@ where
         _ => panic!("{} operands where one was drawn", set.len()),
     };
     let read = |e: &F::E| Some(field.to_words64(e).to_vec());
+    let (inverse, root) = exponents(cells.key());
+    let (inverse, root) = (&inverse, root.as_deref());
+    let cells = match root {
+        Some(root) => cells.api(
+            constant(Kind::Sqrt),
+            "mulf to (p + 1) / 4",
+            single,
+            #[inline(always)]
+            |a| power(a, root, |x, y| field.mulf(x, y)),
+            read,
+        ),
+        None => cells.absent(constant(Kind::Sqrt), NO_SQRT_POWER),
+    };
     cells
         .chain(
             constant(Kind::Add),
@@ -1141,7 +1193,15 @@ where
         .absent(vartime(Kind::Add), NO_VARIABLE_TIME)
         .absent(vartime(Kind::Sub), NO_VARIABLE_TIME)
         .absent(vartime(Kind::Mul), NO_VARIABLE_TIME)
-        .neither(Kind::Square, NO_SQUARE)
+        .chain(
+            constant(Kind::Square),
+            "mulf(a, a)",
+            single,
+            #[inline(always)]
+            |a| field.mulf(a, a),
+            read,
+        )
+        .absent(vartime(Kind::Square), NO_VARIABLE_TIME)
         .api(
             vartime(Kind::Invert),
             "invert",
@@ -1150,8 +1210,15 @@ where
             |a| field.invert(a),
             read,
         )
-        .absent(constant(Kind::Invert), NO_CONSTANT_TIME)
-        .neither(Kind::Sqrt, NO_SQRT)
+        .api(
+            constant(Kind::Invert),
+            "mulf to p − 2",
+            single,
+            #[inline(always)]
+            |a| power(a, inverse, |x, y| field.mulf(x, y)),
+            read,
+        )
+        .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1189,7 +1256,8 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
         value.resize(4, 0);
         Some(value)
     };
-    cells
+    let (_, root) = exponents(cells.key());
+    let cells = cells
         .api(
             vartime(Kind::Add),
             "addf",
@@ -1226,6 +1294,25 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
         .absent(constant(Kind::Sub), NO_CONSTANT_TIME)
         .absent(constant(Kind::Mul), NO_CONSTANT_TIME)
         .absent(constant(Kind::Invert), NO_CONSTANT_TIME)
-        .neither(Kind::Square, NO_SQUARE)
-        .neither(Kind::Sqrt, NO_SQRT)
+        .api(
+            vartime(Kind::Square),
+            "mulf(a, a)",
+            single,
+            #[inline(always)]
+            |a| field.mulf(a, a),
+            read,
+        )
+        .absent(constant(Kind::Square), NO_CONSTANT_TIME)
+        .absent(constant(Kind::Sqrt), NO_CONSTANT_TIME);
+    match root.as_deref() {
+        Some(root) => cells.api(
+            vartime(Kind::Sqrt),
+            "mulf to (p + 1) / 4",
+            single,
+            #[inline(always)]
+            |a| power(a, root, |x, y| field.mulf(x, y)),
+            read,
+        ),
+        None => cells.absent(vartime(Kind::Sqrt), NO_SQRT_POWER),
+    }
 }

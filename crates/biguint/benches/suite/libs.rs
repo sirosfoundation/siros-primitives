@@ -259,27 +259,46 @@ macro_rules! primitive {
                 two::<$t, NonZero<$t>>,
                 #[inline(always)] |&(a, divisor)| a % divisor,
             )
-            .absent(Op::MulMod, NO_MUL_MOD)
-            .absent(Op::AddMod, NO_ADD_MOD)
-            .absent(Op::SubMod, NO_ADD_MOD)
+            // The plain compositions that a user writes, for operands below `m`; they branch on
+            // the values.
+            .timed(
+                Op::AddMod,
+                Timing::Variable,
+                "overflowing_add, then - m",
+                three::<$t, $t>,
+                #[inline(always)]
+                |&(a, b, m)| {
+                    let (s, c) = a.overflowing_add(b);
+                    if c || s >= m { s.wrapping_sub(m) } else { s }
+                },
+            )
+            .timed(
+                Op::SubMod,
+                Timing::Variable,
+                "-, else wrapping_sub then + m",
+                three::<$t, $t>,
+                #[inline(always)]
+                |&(a, b, m)| if a >= b { a - b } else { a.wrapping_sub(b).wrapping_add(m) },
+            )
     };
 }
 
 /// `u64`.
 fn native_u64<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
-    primitive!(cells, u64)
+    primitive!(cells, u64).timed_chained(
+        Op::MulMod,
+        Timing::Variable,
+        "u128 product % m",
+        three::<u64, u64>,
+        #[inline(always)]
+        |&(a, b, m)| ((u128::from(a) * u128::from(b)) % u128::from(m)) as u64,
+    )
 }
 
 /// `u128`.
 fn native_u128<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
-    primitive!(cells, u128)
+    primitive!(cells, u128).absent(Op::MulMod, "no 256-bit native type")
 }
-
-/// The reason for an absent mulmod case.
-const NO_MUL_MOD: &str = "no modular product";
-
-/// The reason for an absent add_mod or sub_mod case.
-const NO_ADD_MOD: &str = "no modular sum or difference";
 
 /// The widths above 128 bits, which have no primitive integer.
 fn native_none<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
@@ -395,21 +414,61 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
         )
 }
 
+/// Offers add_mod and sub_mod of `$t`, for operands below `m`, as the plain compositions of its
+/// overflowing sum and difference and a comparison; they branch on the values.
+macro_rules! modular_sums {
+    ($cells:expr, $t:ty) => {
+        $cells
+            .timed(
+                Op::AddMod,
+                Timing::Variable,
+                "overflowing_add, then - m",
+                three::<$t, $t>,
+                #[inline(always)]
+                |&(a, b, m)| {
+                    let (s, c) = a.overflowing_add(b);
+                    if c || s >= m {
+                        s.overflowing_sub(m).0
+                    } else {
+                        s
+                    }
+                },
+            )
+            .timed(
+                Op::SubMod,
+                Timing::Variable,
+                "-, else overflowing_sub then + m",
+                three::<$t, $t>,
+                #[inline(always)]
+                |&(a, b, m)| {
+                    if a >= b {
+                        a - b
+                    } else {
+                        a.overflowing_sub(b).0.overflowing_add(m).0
+                    }
+                },
+            )
+    };
+}
+
 /// `bnum` at `N` bytes: its sum and its wrapping product run every limb; its division branches on
 /// the values.
 fn bnum<const N: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
     let cells = chained_by_value!(cells, bnum::Uint<N>, Add: Timing::Fixed => wrapping_add);
-    by_value!(
+    let cells = by_value!(
         cells,
         bnum::Uint<N>,
         Mul: Timing::Fixed => wrapping_mul,
         Div: Timing::Variable => wrapping_div,
         Mod: Timing::Variable => wrapping_rem,
     )
-    .absent(Op::MulMod, NO_MUL_MOD)
-    .absent(Op::AddMod, NO_ADD_MOD)
-    .absent(Op::SubMod, NO_ADD_MOD)
+    .absent(Op::MulMod, NO_WIDE_PRODUCT);
+    modular_sums!(cells, bnum::Uint<N>)
 }
+
+/// The reason for an absent mulmod of a crate whose product wraps at the width: no type holds the
+/// 2N-bit product to reduce.
+const NO_WIDE_PRODUCT: &str = "no 2N-bit product to reduce";
 
 /// `num-bigint`, which allocates each result and returns it exactly. Every operation's time depends
 /// on the lengths of its normalized operands.
@@ -447,7 +506,14 @@ fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
             #[inline(always)]
             |(a, b)| a % b,
         )
-        .absent(Op::MulMod, NO_MUL_MOD)
+        .timed(
+            Op::MulMod,
+            Timing::Variable,
+            "(&a * &b) % &m",
+            three::<BigUint, BigUint>,
+            #[inline(always)]
+            |(a, b, modulus)| (a * b) % modulus,
+        )
         .timed(
             Op::AddMod,
             Timing::Variable,
@@ -476,7 +542,7 @@ fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
 mod parity {
     use bench_compare::{Limbs, Visitor};
 
-    use super::{Crate, NO_ADD_MOD, NO_MUL_MOD, Op, Timed, Timing, Width, pair};
+    use super::{Crate, NO_WIDE_PRODUCT, Op, Timed, Timing, Width, pair, three};
     use crate::suite::limbs::{FromLimbs, ToLimbs};
 
     /// The `construct_uint!` type `$t` of `$words` words, with its limb conversions.
@@ -560,10 +626,9 @@ mod parity {
 
                 /// `uint` at the width of `$t`.
                 pub(super) fn $adapter<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
-                    parity_ops!(cells, $t, $words)
-                        .absent(Op::MulMod, NO_MUL_MOD)
-                        .absent(Op::AddMod, NO_ADD_MOD)
-                        .absent(Op::SubMod, NO_ADD_MOD)
+                    let cells = parity_ops!(cells, $t, $words)
+                        .absent(Op::MulMod, NO_WIDE_PRODUCT);
+                    modular_sums!(cells, $t)
                 }
             )*
         };

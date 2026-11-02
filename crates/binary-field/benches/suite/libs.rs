@@ -55,9 +55,6 @@ pub fn offer<V: Visitor<Op, Field>>(row: Row<Op, Field, V>) -> Row<Op, Field, V>
 }
 
 /// The reasons for absent cells that several crates share.
-const NO_SQUARE: &str = "no squaring function";
-const NO_SQRT: &str = "no square root";
-const NO_INVERSE: &str = "no inverse function";
 const GF128_ONLY: &str = "GF(2¹²⁸) only";
 
 /// Carries a row's elements, as limbs, to a crate's elements of type `T` and back.
@@ -259,15 +256,51 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
         }
     }
 
-    /// Records that the crate has no case for `kind` in either row, for `reason`.
-    fn absent(self, kind: Kind, reason: &'static str) -> Self {
-        Self {
-            cells: self
-                .cells
-                .absent(kind.in_row(CONSTANT), reason)
-                .absent(kind.in_row(VARIABLE), reason),
-            ..self
-        }
+    /// The square, square root and inverse among `kinds`, which the crate lacks, composed from its
+    /// product `product`, of the class `timing`, over the row's field of degree `n`: `a · a`;
+    /// `a^(2^(n−1))` by n − 1 squarings; `a^(2^n − 2)` by n − 2 steps `x ← x² · a` from `x = a`,
+    /// then a square.
+    fn composed<T: Copy>(
+        self,
+        kinds: &[Kind],
+        timing: Timing,
+        product: impl Fn(T, T) -> T + Copy,
+        read: fn(&C, &T) -> Option<Limbs>,
+    ) -> Self
+    where
+        C: Carrier<T>,
+    {
+        let n = self.cells.key().bits;
+        kinds.iter().fold(self, |cells, kind| match kind {
+            Kind::Square => cells.chained_unary(
+                Kind::Square,
+                timing,
+                "a * a",
+                #[inline(always)]
+                move |&a: &T| product(a, a),
+                read,
+            ),
+            Kind::Sqrt => cells.unary(
+                Kind::Sqrt,
+                timing,
+                "a^(2^(n−1)) by *",
+                #[inline(always)]
+                move |&a: &T| (1..n).fold(a, |root, _| product(root, root)),
+                read,
+            ),
+            Kind::Invert => cells.unary(
+                Kind::Invert,
+                timing,
+                "a^(2^n − 2) by *",
+                #[inline(always)]
+                move |&a: &T| {
+                    let x = (2..n).fold(a, |x, _| product(product(x, x), a));
+                    product(x, x)
+                },
+                read,
+            ),
+            Kind::Add | Kind::Mul => panic!("{kind:?} has no composition"),
+        })
     }
 
     /// The cells.
@@ -511,7 +544,12 @@ raw_word! {
 macro_rules! gf256_ops {
     ($cells:expr, $t:ty, $timing:expr) => {
         operators::<$t, V>($cells, $timing)
-            .absent(Kind::Square, NO_SQUARE)
+            .composed(
+                &[Kind::Square, Kind::Sqrt],
+                $timing,
+                |a: $t, b| a * b,
+                element,
+            )
             .unary(
                 Kind::Invert,
                 $timing,
@@ -520,7 +558,6 @@ macro_rules! gf256_ops {
                 |&a: &$t| a.checked_recip(),
                 maybe,
             )
-            .absent(Kind::Sqrt, NO_SQRT)
             .cells()
     };
 }
@@ -560,7 +597,12 @@ where
     V: Visitor<Op, Field>,
 {
     operators::<T, V>(cells, VARIABLE)
-        .absent(Kind::Square, NO_SQUARE)
+        .composed(
+            &[Kind::Square, Kind::Sqrt],
+            VARIABLE,
+            |a: T, b| a * b,
+            element,
+        )
         .unary(
             Kind::Invert,
             VARIABLE,
@@ -569,7 +611,6 @@ where
             |a: &T| a.inverse(),
             element,
         )
-        .absent(Kind::Sqrt, NO_SQRT)
         .cells()
 }
 
@@ -612,9 +653,12 @@ where
     V: Visitor<Op, Field>,
 {
     operators::<T, V>(cells, VARIABLE)
-        .absent(Kind::Square, NO_SQUARE)
-        .absent(Kind::Invert, NO_INVERSE)
-        .absent(Kind::Sqrt, NO_SQRT)
+        .composed(
+            &[Kind::Square, Kind::Invert, Kind::Sqrt],
+            VARIABLE,
+            |a: T, b| a * b,
+            element,
+        )
         .cells()
 }
 
@@ -717,9 +761,12 @@ fn rs_erasure<T: Raw + Copy, V: Visitor<Op, Field>>(
             move |&(a, b): &(T, T)| mul(a, b),
             element,
         )
-        .absent(Kind::Square, NO_SQUARE)
-        .absent(Kind::Invert, NO_INVERSE)
-        .absent(Kind::Sqrt, NO_SQRT)
+        .composed(
+            &[Kind::Square, Kind::Invert, Kind::Sqrt],
+            VARIABLE,
+            mul,
+            element,
+        )
         .cells()
 }
 
@@ -793,7 +840,7 @@ fn hekate_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
                 |a: &Block8| a.invert(),
                 element,
             )
-            .absent(Kind::Sqrt, NO_SQRT)
+            .composed(&[Kind::Sqrt], CONSTANT, |a: Block8, b| a * b, element)
             .cells(),
         GF16 => hekate::<Block16, V>(cells.carry(tower)),
         GF64 => hekate::<Block64, V>(cells.carry(tower)),
@@ -839,7 +886,7 @@ fn hekate<T: BinaryFieldExtras + Raw, V: Visitor<Op, Field>>(
             |a: &T| a.invert(),
             element,
         )
-        .absent(Kind::Sqrt, NO_SQRT)
+        .composed(&[Kind::Sqrt], CONSTANT, |a: T, b| a * b, element)
         .cells()
 }
 
@@ -1013,7 +1060,12 @@ where
             |(a, b)| field.mulf(a, b),
             element,
         )
-        .absent(Kind::Square, NO_SQUARE)
+        .composed(
+            &[Kind::Square, Kind::Sqrt],
+            mul,
+            move |a, b| field.mulf(&a, &b),
+            element,
+        )
         .unary(
             Kind::Invert,
             invert,
@@ -1022,7 +1074,6 @@ where
             |a| field.invert(a),
             element,
         )
-        .absent(Kind::Sqrt, NO_SQRT)
         .cells()
 }
 
@@ -1124,9 +1175,12 @@ fn polyval<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
                 |&(a, b): &(FieldElement, _)| a * b,
                 element,
             )
-            .absent(Kind::Square, NO_SQUARE)
-            .absent(Kind::Invert, NO_INVERSE)
-            .absent(Kind::Sqrt, NO_SQRT)
+            .composed(
+                &[Kind::Square, Kind::Invert, Kind::Sqrt],
+                CONSTANT,
+                |a: FieldElement, b| a * b,
+                element,
+            )
             .cells(),
         _ => cells.none(GF128_ONLY),
     }
