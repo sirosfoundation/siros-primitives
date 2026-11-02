@@ -78,6 +78,8 @@ jobs:
           targets: thumbv7em-none-eabi,aarch64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      # biguint's default build, with the reciprocal seed table.
+      - run: cargo clippy --locked -p biguint --all-targets -- -D warnings
       # A 32-bit target without `std`, `adx` or carry-less instructions: the portable carry path,
       # the comb and the `no_std` build.
       - run: cargo clippy --locked -p biguint -p prime-field -p clmul -p binary-field --target thumbv7em-none-eabi -- -D warnings

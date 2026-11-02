@@ -6,8 +6,7 @@
 //! A product cut below its full length adds even and odd rows into two outputs, whose carry chains
 //! run side by side, and adds the two at the end: with multiply-accumulate rows up to
 //! [`ACCUMULATE_LIMBS`] limbs, with rows of two chains beyond. Rows longer than [`UNROLLED`] run
-//! loops of multiply-accumulate steps. Modelled on Zen 3 (llvm-mca, the bench's loop), each choice
-//! takes the fewest cycles in latency and in throughput together at its sizes.
+//! loops of multiply-accumulate steps.
 //!
 //! [`product`] takes its lengths as types and unrolls rows and limbs in the source, so each length
 //! simplifies once. [`basecase`] takes slices, whose lengths become constants only where it is

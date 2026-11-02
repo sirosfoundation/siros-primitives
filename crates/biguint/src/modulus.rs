@@ -21,7 +21,7 @@ use crate::div::{DiscardQuotient, Invariant};
 use crate::kernel::split_mut;
 use crate::modular::sum_mod;
 use crate::mul::{basecase, karatsuba};
-use crate::nonzero::NonZeroUint;
+use crate::nonzero::{NonZeroUint, significant_len};
 use crate::recursion::{Depth, Halvings};
 use crate::stream::TwosComplement;
 use crate::uint::Uint;
@@ -94,14 +94,7 @@ impl<N: Bits> From<NonZeroUint<N>> for Modulus<N> {
     #[inline(always)]
     fn from(modulus: NonZeroUint<N>) -> Self {
         let value = modulus.get();
-        // A nonzero value whose upper limbs are zero has its nonzero limb at the bottom.
-        let len = value
-            .limbs
-            .iter()
-            .skip(1)
-            .rposition(|limb| *limb != 0)
-            .map_or(1, |index| index + 2);
-        let divisor = Invariant::new(&value.limbs, len);
+        let divisor = Invariant::new(&value.limbs, significant_len(&value.limbs));
         // `2^(64 * limb) mod m`.
         let power = |limb: usize| {
             let mut dividend = GenericArray::<u64, N::ProductWindow>::default();
@@ -392,7 +385,7 @@ impl<'id, N: Bits> Add for Residue<'id, N> {
     #[inline(always)]
     fn add(self, rhs: Self) -> Self::Output {
         Self {
-            value: sum_mod(&self.value, rhs.value.stream(), &self.ring.modulus.value),
+            value: sum_mod(&self.value, rhs.value.source(), &self.ring.modulus.value),
             ring: self.ring,
         }
     }
@@ -407,7 +400,7 @@ impl<'id, N: Bits> Sub for Residue<'id, N> {
         Self {
             value: sum_mod(
                 &self.value,
-                TwosComplement(rhs.value.stream()),
+                TwosComplement(rhs.value.source()),
                 &self.ring.modulus.value,
             ),
             ring: self.ring,
@@ -424,7 +417,7 @@ impl<'id, N: Bits> Neg for Residue<'id, N> {
         Self {
             value: sum_mod(
                 &Uint::ZERO,
-                TwosComplement(self.value.stream()),
+                TwosComplement(self.value.source()),
                 &self.ring.modulus.value,
             ),
             ring: self.ring,

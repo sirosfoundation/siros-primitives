@@ -15,17 +15,19 @@ pub(crate) mod reciprocal;
 use core::num::NonZero;
 use core::ops::{Add, Div, Rem};
 
-use generic_array::sequence::GenericSequence;
 use generic_array::{ArrayLength, GenericArray};
 use typenum::Sum;
 
 use crate::bits::Bits;
 use crate::bits::sealed::Sealed;
-use crate::kernel::{add_assign, fits, split, split_mut, sub_mul_row, subtract_if_above};
+use crate::kernel::{
+    add_assign, fits, shl_bits_into, shr_bits_into, split, split_mut, sub_mul_row,
+    subtract_if_above,
+};
 use crate::mul::WideningMul;
-use crate::nonzero::NonZeroUint;
+use crate::nonzero::{NonZeroUint, significant_len};
 use crate::recursion::Halvings;
-use crate::stream::{LimbStream, ShlBits, ShrBits, ZeroExtended, funnel_left, funnel_right};
+use crate::stream::{LimbSource, ShlBits, ZeroExtended, funnel_left, funnel_right};
 use crate::uint::Uint;
 use reciprocal::{NormalizedLimb, Reciprocal, Reciprocal3By2, join};
 
@@ -104,14 +106,8 @@ pub(crate) fn divide<W: ArrayLength, M: Bits>(
     {
         return native(dividend, divisor, quotient);
     }
-    let divisor = divisor.get().limbs;
-    // A nonzero value whose upper limbs are zero has its nonzero limb at the bottom.
-    let len = divisor
-        .iter()
-        .skip(1)
-        .rposition(|limb| *limb != 0)
-        .map_or(1, |index| index + 2);
-    long::<_, W, M>(dividend, &divisor, len, quotient)
+    let limbs = divisor.get().limbs;
+    long::<_, W, M>(dividend, &limbs, significant_len(&limbs), quotient)
 }
 
 /// [`divide`] by a divisor that may be zero: `None` for zero.
@@ -223,11 +219,10 @@ impl<L: ArrayLength> Invariant<L> {
                 shift,
             },
             _ => Self::Limbs {
-                normalized: if shift == 0 {
-                    divisor.clone()
-                } else {
-                    let mut shifted = ShlBits::new(ZeroExtended::new(divisor), shift);
-                    GenericArray::generate(|_| shifted.next_limb())
+                normalized: {
+                    let mut normalized = GenericArray::default();
+                    shl_bits_into(&mut normalized, divisor, shift);
+                    normalized
                 },
                 len,
                 shift,
@@ -308,11 +303,13 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
         let (significant, _) = split(normalized, len);
         divide_by_limbs(&mut window, significant, leading, quotient);
     }
+    let mut remainder = GenericArray::<u64, M::Limbs>::default();
     if shift == 0 {
-        Uint::from_stream(ZeroExtended::new(&window), usize::MAX)
+        shr_bits_into(&mut remainder, &window, 0);
     } else {
-        Uint::from_stream(ShrBits::new(ZeroExtended::new(&window), shift), usize::MAX)
+        shr_bits_into(&mut remainder, &window, shift);
     }
+    Uint::from_generic_limbs(remainder)
 }
 
 /// The dividend shifted left by `shift` in a window of `W` limbs: the bits shifted out of its top
@@ -320,14 +317,7 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
 #[inline(always)]
 fn shifted_window<W: ArrayLength>(dividend: &[u64], shift: u32) -> GenericArray<u64, W> {
     let mut window = GenericArray::<u64, W>::default();
-    let (body, above) = split_mut(&mut window, dividend.len());
-    let mut shifted = ShlBits::new(ZeroExtended::new(dividend), shift);
-    for slot in body {
-        *slot = shifted.next_limb();
-    }
-    if let Some(slot) = above.first_mut() {
-        *slot = dividend.last().map_or(0, |&top| funnel_left(0, top, shift));
-    }
+    shl_bits_into(&mut window, dividend, shift);
     window
 }
 
@@ -345,13 +335,12 @@ impl<W: ArrayLength, L: ArrayLength> Shape<W, L> {
 /// limb, then one limb per dividend limb.
 #[inline(always)]
 fn normalized_from_top(dividend: &[u64], shift: u32) -> (u64, impl Iterator<Item = u64> + '_) {
-    let spill = dividend.last().map_or(0, |&top| funnel_left(0, top, shift));
+    let shifted = ShlBits::new(ZeroExtended::new(dividend), shift);
+    let spill = shifted.limb(dividend.len());
     // A range of indices gives the loops a trip count that the compiler computes.
-    let limb_at = |index: usize| dividend.get(index).copied().unwrap_or(0);
-    let limbs = (0..dividend.len()).rev().map(move |index| {
-        let below = index.checked_sub(1).map_or(0, limb_at);
-        funnel_left(limb_at(index), below, shift)
-    });
+    let limbs = (0..dividend.len())
+        .rev()
+        .map(move |index| shifted.limb(index));
     (spill, limbs)
 }
 
