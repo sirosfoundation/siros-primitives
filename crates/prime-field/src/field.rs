@@ -201,23 +201,42 @@ impl<M: Modulus> Fp<M> {
         Self::from_limbs(Shape::<M>::square_raw(self.limbs()))
     }
 
-    /// `self^exponent`, by square-and-multiply from the top set bit of the exponent. The time
-    /// depends on the exponent, so the exponent is public.
+    /// `self^exponent`, by sliding windows of odd powers over the bits of the exponent, from
+    /// the top set bit. The time depends on the exponent, so the exponent is public.
     #[inline]
     #[must_use]
     pub fn pow<E: Bits>(self, exponent: Uint<E>) -> Self {
-        self.pow_limbs(exponent.as_limbs())
-    }
-
-    /// `self^exponent` over the limbs of the exponent, as [`Self::pow`].
-    #[inline]
-    pub(crate) fn pow_limbs(self, exponent: &[u64]) -> Self {
+        let exponent = exponent.as_limbs();
+        let bits = bit_len(exponent);
+        let window = pow_window(bits);
+        // `table[i] = self^(2 i + 1)`.
+        let mut table = [self; 1 << (POW_WINDOW - 1)];
+        let square = self.square();
+        let mut previous = self;
+        for entry in table.iter_mut().take(1 << (window - 1)).skip(1) {
+            previous = previous.mul(square);
+            *entry = previous;
+        }
         let mut result = Self::ONE;
-        for index in (0..bit_len(exponent)).rev() {
-            result = result.square();
-            if bit(exponent, index) {
-                result = result.mul(self);
+        let mut index = bits;
+        while index > 0 {
+            if !bit(exponent, index - 1) {
+                result = result.square();
+                index -= 1;
+                continue;
             }
+            let width = window.min(index);
+            let mut value = 0;
+            for offset in 0..width {
+                value = (value << 1) | usize::from(bit(exponent, index - 1 - offset));
+            }
+            let trailing = value.trailing_zeros() as usize;
+            let used = width - trailing;
+            for _ in 0..used {
+                result = result.square();
+            }
+            result = result.mul(table_entry(&table, (value >> trailing) / 2));
+            index -= used;
         }
         result
     }
@@ -234,6 +253,40 @@ impl<M: Modulus> Fp<M> {
     #[inline(always)]
     pub(crate) const fn equals(&self, rhs: &Self) -> bool {
         equal(self.limbs(), rhs.limbs())
+    }
+}
+
+/// The widest window of [`Fp::pow`]: its table holds `2^(POW_WINDOW - 1)` odd powers.
+const POW_WINDOW: usize = 6;
+
+/// The window width that minimizes the table and the multiplications of a `bits`-bit exponent:
+/// `2^(w - 1) - 1` table products and about `bits / (w + 1)` window products.
+#[inline(always)]
+const fn pow_window(bits: usize) -> usize {
+    let mut best = 1;
+    let mut window = 2;
+    while window <= POW_WINDOW {
+        let cost = (1 << (window - 1)) - 1 + bits / (window + 1);
+        let best_cost = (1 << (best - 1)) - 1 + bits / (best + 1);
+        if cost < best_cost {
+            best = window;
+        }
+        window += 1;
+    }
+    best
+}
+
+/// Entry `index` of the window table; the base beyond the table.
+#[inline(always)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "the index is checked against the length"
+)]
+fn table_entry<M: Modulus>(table: &[Fp<M>; 1 << (POW_WINDOW - 1)], index: usize) -> Fp<M> {
+    if index < table.len() {
+        table[index]
+    } else {
+        table[0]
     }
 }
 

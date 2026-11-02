@@ -10,12 +10,14 @@
 //! variable-time variant skips the even steps of a batch at once by the trailing zeros of `g`
 //! and stops when `g` reaches zero.
 //!
-//! For moduli of at most 64 bits a Fermat exponentiation `x^(p - 2)` is cheaper than the batches,
-//! and the exponent is public, so it runs in constant time with respect to `x`.
+//! For moduli of at most 64 bits a Fermat exponentiation `x^(p - 2)` by an addition chain is
+//! cheaper than the batches, and the chain depends on the exponent alone, so it runs in constant
+//! time with respect to `x`.
 
 use crate::field::{Fp, Modulus};
 use core::hint::black_box;
 
+use crate::chain::Program;
 use crate::kernel::{add, equal, fits, is_zero, limb, mul_add, neg_mod, set, sub};
 use crate::params::{ExtendedLimbs, Limbs, Shape};
 use crate::width::Width;
@@ -51,7 +53,7 @@ impl<M: Modulus> Fp<M> {
             return if self.is_zero() {
                 None
             } else {
-                Some(self.pow_limbs(Shape::<M>::P_MINUS_TWO.as_slice()))
+                Some(self.pow_program(&Shape::<M>::FERMAT_CHAIN))
             };
         }
         // `f = d y` and `g = e y` modulo `p` throughout, with `f` odd; `d` and `e` carry the
@@ -349,9 +351,16 @@ impl<M: Modulus> Shape<M> {
     };
 
     /// `p - 2`, the Fermat exponent.
-    pub(crate) const P_MINUS_TWO: Limbs<M> = {
+    const P_MINUS_TWO: Limbs<M> = {
         let mut out = M::Width::ZERO;
         fits(sub(out.as_mut_slice(), Self::P.as_slice(), &[2]));
         out
+    };
+
+    /// The addition chain of `x^(p - 2)`, for moduli of at most [`FERMAT_BITS`] bits.
+    pub(crate) const FERMAT_CHAIN: Program<M> = if Self::BITS <= FERMAT_BITS {
+        Program::for_exponent(Self::P_MINUS_TWO.as_slice())
+    } else {
+        Program::EMPTY
     };
 }
