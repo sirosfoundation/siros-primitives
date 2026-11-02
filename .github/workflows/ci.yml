@@ -33,6 +33,21 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo test --locked --workspace --all-features
 
+  test-clmul:
+    name: Test clmul and binary-field with ${{ matrix.target-features }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # The PCLMULQDQ backend, without and with `pextrq`.
+        target-features: ["+pclmulqdq", "+pclmulqdq,+sse4.1"]
+    env:
+      RUSTFLAGS: -C target-feature=${{ matrix.target-features }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/rust-toolchain
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo test --locked -p clmul -p binary-field --all-features
+
   fmt:
     name: Format
     runs-on: ubuntu-latest
@@ -48,11 +63,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/rust-toolchain
         with:
-          targets: thumbv7em-none-eabi
+          targets: thumbv7em-none-eabi,aarch64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-      # A 32-bit target without `std` or `adx`: the portable carry path and the `no_std` build.
-      - run: cargo clippy --locked -p biguint -p prime-field --target thumbv7em-none-eabi -- -D warnings
+      # A 32-bit target without `std`, `adx` or carry-less instructions: the portable carry path,
+      # the comb and the `no_std` build.
+      - run: cargo clippy --locked -p biguint -p prime-field -p clmul -p binary-field --target thumbv7em-none-eabi -- -D warnings
+      # The PCLMULQDQ and PMULL backends of `clmul`, and the plans of `binary-field` on them.
+      - run: cargo clippy --locked -p clmul -p binary-field --all-targets --all-features -- -D warnings
+        env:
+          RUSTFLAGS: -C target-feature=+pclmulqdq,+sse4.1
+      - run: cargo clippy --locked -p clmul -p binary-field --all-features --target aarch64-unknown-linux-gnu -- -D warnings
+        env:
+          RUSTFLAGS: -C target-feature=+aes
 
   docs:
     name: Docs
@@ -63,7 +86,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/rust-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo doc --locked --workspace --no-deps
+      - run: cargo doc --locked --workspace --no-deps --all-features
 
   msrv:
     name: Minimum supported Rust
@@ -77,3 +100,5 @@ jobs:
           echo "RUSTUP_TOOLCHAIN=1.88" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo check --locked -p biguint -p prime-field
+      - run: cargo check --locked -p clmul --all-features
+      - run: cargo check --locked -p binary-field

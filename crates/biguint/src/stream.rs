@@ -3,9 +3,8 @@
 //! An operation is a lazy, infinite stream of little-endian limbs ([`LimbStream`]). A source
 //! yields the limbs of a slice and then `0` forever ([`ZeroExtended`]). The zero fill is the end
 //! marker, so the hot loop handles plain `u64` limbs. Carries fall out of the algebra: [`AddOp`] on
-//! two exhausted operands with a pending carry yields the carry limb, and [`MulIter`] yields its
-//! high limb once its operand is exhausted. `Uint::from_stream` pulls exactly `ceil(N / 64)` limbs
-//! and masks the top one. Every combinator inlines. The compiler unrolls a short pull into
+//! two exhausted operands with a pending carry yields the carry limb. `Uint::from_stream` pulls
+//! exactly `ceil(N / 64)` limbs and masks the top one. Every combinator inlines. The compiler unrolls a short pull into
 //! straight-line code; a long one runs four limbs per iteration ([`for_each_slot`]).
 
 use core::marker::PhantomData;
@@ -241,69 +240,23 @@ impl Op1Op for NotOp {
     }
 }
 
-/// The product of a run of limbs by the limb `mul`, one limb at a time, with its running carry.
-///
-/// The one 64x64->128 multiply of the multiplication path lives here. LLVM lowers the `u128`
-/// product to `mul` or `mulx`.
-pub(crate) struct MulCarry {
-    mul: u64,
-    carry: u64,
-}
-
-impl MulCarry {
-    #[inline(always)]
-    pub(crate) const fn new(mul: u64) -> Self {
-        Self { mul, carry: 0 }
-    }
-
-    /// The next product limb: `limb * mul` plus the carry, which takes the high limb.
-    #[inline(always)]
-    pub(crate) fn step(&mut self, limb: u64) -> u64 {
-        let product = limb as u128 * self.mul as u128;
-        let (out, overflow) = (product as u64).overflowing_add(self.carry);
-        self.carry = (product >> 64) as u64 + u64::from(overflow);
-        out
-    }
-}
-
-/// The schoolbook product `inner * mul`, one limb at a time: each product limb, then the high
-/// carry limb, then `0` forever.
-pub(crate) struct MulIter<I> {
-    inner: I,
-    product: MulCarry,
-}
-
-impl<I> MulIter<I> {
-    #[inline(always)]
-    pub(crate) const fn new(inner: I, mul: u64) -> Self {
-        Self {
-            inner,
-            product: MulCarry::new(mul),
-        }
-    }
-}
-
-impl<I: LimbStream> LimbStream for MulIter<I> {
-    #[inline(always)]
-    fn next_limb(&mut self) -> u64 {
-        self.product.step(self.inner.next_limb())
-    }
-}
-
 /// `limb << shift` with the bits that `below` sheds into it, for `shift < 64`: the high limb of
-/// the two-limb `limb:below` shifted left, which the compiler lowers to one funnel shift (`shld`).
-/// The mask tells it the amount is below 64.
+/// the two-limb `limb:below` shifted left. Every shift stays below 64 bits, which LLVM matches to
+/// one funnel shift (`shld`) wherever the amount comes from. A `u128` shift leaves the bound to the
+/// backend, which loses it across basic blocks and tests for amounts of 64 and more.
 #[inline(always)]
 pub(crate) const fn funnel_left(limb: u64, below: u64, shift: u32) -> u64 {
-    ((((limb as u128) << 64) | below as u128) << (shift & 63) >> 64) as u64
+    let shift = shift & 63;
+    (limb << shift) | ((below >> 1) >> (63 - shift))
 }
 
 /// `limb >> shift` with the bits that `above` sheds into it, for `shift < 64`: the low limb of
-/// the two-limb `above:limb` shifted right, which the compiler lowers to one funnel shift (`shrd`).
-/// The mask tells it the amount is below 64.
+/// the two-limb `above:limb` shifted right, in the form of [`funnel_left`], which LLVM matches to
+/// one funnel shift (`shrd`).
 #[inline(always)]
 pub(crate) const fn funnel_right(limb: u64, above: u64, shift: u32) -> u64 {
-    ((((above as u128) << 64) | limb as u128) >> (shift & 63)) as u64
+    let shift = shift & 63;
+    (limb >> shift) | ((above << 1) << (63 - shift))
 }
 
 /// The limbs of `inner * 2^shift` for `shift < 64`: each limb takes the bits shifted out of the
@@ -363,15 +316,4 @@ impl<I: LimbStream> LimbStream for ShrBits<I> {
         self.current = above;
         out
     }
-}
-
-/// Adds `stream` into the little-endian window `into` over its whole length and returns the
-/// carry out of the window's top limb.
-#[inline(always)]
-pub(crate) fn add_into(mut stream: impl LimbStream, into: &mut [u64]) -> u64 {
-    let mut carry = 0u64;
-    for slot in into {
-        (*slot, carry) = (*slot).add_carry(stream.next_limb(), carry);
-    }
-    carry
 }

@@ -2,20 +2,32 @@
 //! loops.
 //!
 //! A multiply-accumulate step threads one carry limb: `a * b + c + d` is at most `2^128 - 1`, so
-//! the carry stays an ordinary register across iterations. The stream algebra threads two carries
-//! through the flags register, which serves fully unrolled code and costs a flag save and restore
-//! per limb inside a loop.
+//! the carry stays an ordinary register and each step consumes its own flags.
 
 use core::cmp::Ordering;
 
 use crate::limb::{BorrowingSub, CarryingAdd};
 use crate::stream::{LimbStream, ZeroExtended, for_each_slot};
 
-/// `a * b + c + d` as `(low, high)`.
+/// `a * b + c + d` as `(low, high)`, as one `u128` expression: the form that LLVM schedules best in
+/// straight-line code, where it sees every step of an unrolled product at once.
 #[inline(always)]
 pub(crate) const fn mul_add(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
     let wide = a as u128 * b as u128 + c as u128 + d as u128;
     (wide as u64, (wide >> 64) as u64)
+}
+
+/// `a * b + c + d` as `(low, high)`, each addition an add-with-carry into the high limb: the form
+/// that LLVM keeps as two `adc` chains inside a loop, where it otherwise sums `c + d` first and
+/// saves that carry with `setb`.
+#[inline(always)]
+pub(crate) fn mul_add_chained(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
+    let product = a as u128 * b as u128;
+    let (low, carry) = (product as u64).add_carry(d, 0);
+    let (high, _) = ((product >> 64) as u64).add_carry(0, carry);
+    let (low, carry) = low.add_carry(c, 0);
+    let (high, _) = high.add_carry(0, carry);
+    (low, high)
 }
 
 /// Writes `a * m` to the first `a.len()` limbs of `out` and returns the limb above them.
@@ -32,7 +44,7 @@ pub(crate) fn mul_row(out: &mut [u64], a: &[u64], m: u64) -> u64 {
 #[inline(always)]
 pub(crate) fn add_mul_row(out: &mut [u64], a: &[u64], m: u64) -> u64 {
     out.iter_mut().zip(a).fold(0, |carry, (slot, &limb)| {
-        let (low, high) = mul_add(limb, m, *slot, carry);
+        let (low, high) = mul_add_chained(limb, m, *slot, carry);
         *slot = low;
         high
     })
@@ -116,17 +128,23 @@ pub(crate) fn sub_limb(out: &mut [u64], borrow: u64) -> u64 {
     borrow
 }
 
-/// Compares `a` with `b`, the shorter one zero-extended.
+/// Compares `a` with `b`, the shorter one zero-extended, from the most significant limb down to
+/// the first that differs.
 #[inline(always)]
 pub(crate) fn compare(a: &[u64], b: &[u64]) -> Ordering {
-    let len = a.len().max(b.len());
-    from_top(a, len).cmp(from_top(b, len))
+    for index in (0..a.len().max(b.len())).rev() {
+        let (x, y) = (limb_at(a, index), limb_at(b, index));
+        if x != y {
+            return x.cmp(&y);
+        }
+    }
+    Ordering::Equal
 }
 
-/// The limbs of `limbs` zero-extended to `len`, from the most significant.
+/// The limb of `limbs` at `index`, `0` past its end.
 #[inline(always)]
-fn from_top(limbs: &[u64], len: usize) -> impl Iterator<Item = u64> + '_ {
-    core::iter::repeat_n(0, len.saturating_sub(limbs.len())).chain(limbs.iter().rev().copied())
+fn limb_at(limbs: &[u64], index: usize) -> u64 {
+    limbs.get(index).copied().unwrap_or(0)
 }
 
 /// `slice.split_at(mid)` with `mid` clamped to the length.
