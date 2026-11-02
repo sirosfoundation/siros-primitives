@@ -89,3 +89,10 @@ allow_attributes_without_reason = "deny"
 must_use_candidate = "deny"
 return_self_not_must_use = "deny"
 result_unit_err = "deny"
+
+# Every bench builds with fat LTO and one codegen unit; the report tools add `-C codegen-units=1`
+# to RUSTFLAGS so the compared crates build the same way. Cargo ignores `panic` for benches.
+[profile.bench]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

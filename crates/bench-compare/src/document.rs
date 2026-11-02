@@ -310,7 +310,11 @@ fn setup<K>(record: &Record<K>) -> Vec<String> {
         vec!["CPU".to_owned(), cpu],
         vec![
             "Compiler".to_owned(),
-            format!("{}, LLVM {}, `bench` profile", record.rustc, record.llvm),
+            format!("{}, LLVM {}", record.rustc, record.llvm),
+        ],
+        vec![
+            "Profile".to_owned(),
+            format!("`bench`: `{}`", record.profile.join("`, `")),
         ],
         vec!["Features".to_owned(), features(record)],
     ];

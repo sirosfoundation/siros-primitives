@@ -32,9 +32,9 @@ its builds enable and forbid, its builds and a `Layout`: the operations in table
 variable-time one named alone (`add`) and the constant-time one marked (`add, constant time`), and
 the size of each row in bits.
 `bench [--cpu <cpu>] [--machine <description>]` builds the bench of each build under `target`,
-runs it and records the counts, the commit, the compiler, the CPU, the load and the target
-features. A bench without an enabled feature, a unit with a forbidden one, or a build without AVX2
-stops it. The native build takes `-C target-cpu=native -C codegen-units=1`. `report` writes the
+runs it and records the counts, the commit, the compiler, the `[profile.bench]` settings, the
+CPU, the load and the target features. A bench without an enabled feature, a unit with a
+forbidden one, a build without AVX2, or a `[profile.bench]` without `lto = "fat"` stops it. The native build takes `-C target-cpu=native -C codegen-units=1`. `report` writes the
 document and prints every odd cell to the terminal: a crate's figure more than 10% above its
 figure on a row of more bits in the same table.
 

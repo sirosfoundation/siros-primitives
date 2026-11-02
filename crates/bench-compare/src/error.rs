@@ -117,6 +117,12 @@ pub enum Error {
         /// The flags of the build.
         rustflags: String,
     },
+    /// The workspace's `[profile.bench]` lacks `lto = "fat"`.
+    #[error("{}: [profile.bench] has no lto = \"fat\"", manifest.display())]
+    NoFatLto {
+        /// The workspace's `Cargo.toml`.
+        manifest: PathBuf,
+    },
     /// A run ran another number of operations than it drew.
     #[error("{case}: a run of {count} operations ran {runs}")]
     Runs {

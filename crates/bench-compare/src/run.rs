@@ -162,6 +162,7 @@ pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Re
             .current_dir(&paths.root),
     )?;
     let status_lines = git(paths, &["status", "--porcelain", "--"], measured.pathspecs)?;
+    let profile = bench_profile(paths)?;
     let builds = measured
         .builds
         .iter()
@@ -191,6 +192,7 @@ pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Re
             .next()
             .ok_or_else(|| Error::missing("version", "rustc -vV"))?
             .to_owned(),
+        profile,
         llvm: field(&rustc, "LLVM version: ", "rustc -vV")?,
         host: field(&rustc, "host: ", "rustc -vV")?,
         native_cpu: native_cpu(&target_cpus)?,
@@ -366,6 +368,27 @@ fn target_features(paths: &Paths, build: &Build) -> Result<Vec<String>, Error> {
         Err(Error::NoAvx2 {
             rustflags: build.rustflags.to_owned(),
         })
+    }
+}
+
+/// The `key = value` lines of the `[profile.bench]` section of the workspace's `Cargo.toml`. A
+/// profile without `lto = "fat"` is an [`Error::NoFatLto`].
+fn bench_profile(paths: &Paths) -> Result<Vec<String>, Error> {
+    let path = paths.root.join("Cargo.toml");
+    let manifest = fs::read_to_string(&path).map_err(|source| Error::io(&path, source))?;
+    let settings: Vec<String> = manifest
+        .lines()
+        .skip_while(|line| line.trim() != "[profile.bench]")
+        .skip(1)
+        .map(str::trim)
+        .take_while(|line| !line.starts_with('['))
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_owned)
+        .collect();
+    if settings.iter().any(|line| line == "lto = \"fat\"") {
+        Ok(settings)
+    } else {
+        Err(Error::NoFatLto { manifest: path })
     }
 }
 

@@ -172,6 +172,8 @@ pub struct Record<K> {
     pub dirty: bool,
     /// The first line of `rustc -vV`.
     pub rustc: String,
+    /// The settings of the workspace's `[profile.bench]`, as `key = value` lines.
+    pub profile: Vec<String>,
     /// The LLVM version of the compiler.
     pub llvm: String,
     /// The target triple of the host.
