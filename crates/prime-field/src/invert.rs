@@ -14,7 +14,9 @@
 //! and the exponent is public, so it runs in constant time with respect to `x`.
 
 use crate::field::{Fp, Modulus};
-use crate::kernel::{add, equal, fits, is_zero, limb, mask, mul_add, neg_mod, set, sub};
+use core::hint::black_box;
+
+use crate::kernel::{add, equal, fits, is_zero, limb, mul_add, neg_mod, set, sub};
 use crate::params::{ExtendedLimbs, Limbs, Shape};
 use crate::width::Width;
 
@@ -67,6 +69,7 @@ impl<M: Modulus> Fp<M> {
         let mut d = M::Width::ZERO;
         let mut e = Shape::<M>::INVERSE_SEED;
         let mut zeta: i64 = -1;
+        let masks = Masks::new();
         let batches = (45_907 * Shape::<M>::BITS + 26_313)
             .div_ceil(19_929)
             .div_ceil(BATCH);
@@ -75,14 +78,19 @@ impl<M: Modulus> Fp<M> {
                 break;
             }
             let matrix = Matrix::divsteps::<VARTIME>(
+                masks,
                 &mut zeta,
                 limb(f.as_slice(), 0),
                 limb(g.as_slice(), 0),
             );
-            let next_f = combination_shifted::<M>(matrix.u, f.as_slice(), matrix.v, g.as_slice());
-            let next_g = combination_shifted::<M>(matrix.q, f.as_slice(), matrix.r, g.as_slice());
-            let next_d = combination_mod::<M>(matrix.u, d.as_slice(), matrix.v, e.as_slice());
-            let next_e = combination_mod::<M>(matrix.q, d.as_slice(), matrix.r, e.as_slice());
+            let next_f =
+                combination_shifted::<M>(masks, matrix.u, f.as_slice(), matrix.v, g.as_slice());
+            let next_g =
+                combination_shifted::<M>(masks, matrix.q, f.as_slice(), matrix.r, g.as_slice());
+            let next_d =
+                combination_mod::<M>(masks, matrix.u, d.as_slice(), matrix.v, e.as_slice());
+            let next_e =
+                combination_mod::<M>(masks, matrix.q, d.as_slice(), matrix.r, e.as_slice());
             (f, g) = (next_f, next_g);
             (d, e) = (next_d, next_e);
         }
@@ -102,6 +110,42 @@ impl<M: Modulus> Fp<M> {
     }
 }
 
+/// The masks of one inversion, all ones or zero: a sign spread by a shift of 63 that passes through
+/// [`black_box`] once per inversion. The compiler cannot tell that a mask takes only those two
+/// values, so no masked step becomes a branch, at one shift per mask where
+/// [`mask`](crate::kernel::mask) costs a barrier per mask.
+#[derive(Clone, Copy)]
+struct Masks {
+    spread: u32,
+}
+
+impl Masks {
+    #[inline(always)]
+    fn new() -> Self {
+        Self {
+            spread: black_box(63),
+        }
+    }
+
+    /// All ones when `value` is negative.
+    #[inline(always)]
+    fn negative(self, value: i64) -> u64 {
+        value.wrapping_shr(self.spread) as u64
+    }
+
+    /// All ones when bit 0 of `value` is set.
+    #[inline(always)]
+    fn odd(self, value: u64) -> u64 {
+        self.negative(value.wrapping_shl(self.spread) as i64)
+    }
+
+    /// All ones when `condition` holds.
+    #[inline(always)]
+    fn of(self, condition: bool) -> u64 {
+        self.odd(u64::from(condition))
+    }
+}
+
 /// The factors of one batch: the new `f` is `(u f + v g) / 2^62` and the new `g` is
 /// `(q f + r g) / 2^62`, both exact.
 struct Matrix {
@@ -116,7 +160,7 @@ impl Matrix {
     /// adds `f` to `g`, or `-f` when `zeta` is negative, in which case `f` then takes the old
     /// `g`; every step halves `g`, which doubles the factors of `f`, and lowers `zeta`.
     #[inline(always)]
-    fn divsteps<const VARTIME: bool>(zeta: &mut i64, mut f: u64, mut g: u64) -> Self {
+    fn divsteps<const VARTIME: bool>(masks: Masks, zeta: &mut i64, mut f: u64, mut g: u64) -> Self {
         let (mut u, mut v, mut q, mut r) = (1i64, 0i64, 0i64, 1i64);
         let mut remaining = BATCH as u32;
         while remaining > 0 {
@@ -142,8 +186,8 @@ impl Matrix {
                     r += v;
                 }
             } else {
-                let negate = mask(*zeta < 0);
-                let odd = mask(g & 1 != 0);
+                let negate = masks.negative(*zeta);
+                let odd = masks.odd(g);
                 let x = (f ^ negate).wrapping_sub(negate);
                 let y = (u ^ negate as i64).wrapping_sub(negate as i64);
                 let z = (v ^ negate as i64).wrapping_sub(negate as i64);
@@ -166,9 +210,9 @@ impl Matrix {
 }
 
 /// `f a + g b` in two's complement over the length of `out`, for `a` and `b` in two's
-/// complement; returns whether the result is negative. The result fits the length.
+/// complement; returns the mask of its sign. The result fits the length.
 #[inline(always)]
-fn combination(out: &mut [u64], f: i64, a: &[u64], g: i64, b: &[u64]) -> bool {
+fn combination(masks: Masks, out: &mut [u64], f: i64, a: &[u64], g: i64, b: &[u64]) -> u64 {
     let mut carry: i128 = 0;
     for (index, slot) in out.iter_mut().enumerate() {
         let sum = carry
@@ -179,23 +223,29 @@ fn combination(out: &mut [u64], f: i64, a: &[u64], g: i64, b: &[u64]) -> bool {
     }
     // The limbs of `a` and `b` were read as unsigned; their sign terms vanish modulo `2^(64
     // len)`, so the low limbs are right, and the sign is the top bit.
-    out.last().is_some_and(|top| (*top as i64) < 0)
+    masks.negative(out.last().map_or(0, |top| *top as i64))
 }
 
 /// `(f a + g b) / 2^62` in two's complement, the division exact.
 #[inline(always)]
-fn combination_shifted<M: Modulus>(f: i64, a: &[u64], g: i64, b: &[u64]) -> ExtendedLimbs<M> {
+fn combination_shifted<M: Modulus>(
+    masks: Masks,
+    f: i64,
+    a: &[u64],
+    g: i64,
+    b: &[u64],
+) -> ExtendedLimbs<M> {
     let mut out = M::Width::EXTENDED_ZERO;
-    let negative = combination(out.as_mut_slice(), f, a, g, b);
-    shr_in_place(out.as_mut_slice(), BATCH, mask(negative));
+    let negative = combination(masks, out.as_mut_slice(), f, a, g, b);
+    shr_in_place(out.as_mut_slice(), BATCH, negative);
     out
 }
 
 /// `(f u + g v) / 2^62 mod p` for `u, v < p`.
 #[inline(always)]
-fn combination_mod<M: Modulus>(f: i64, u: &[u64], g: i64, v: &[u64]) -> Limbs<M> {
+fn combination_mod<M: Modulus>(masks: Masks, f: i64, u: &[u64], g: i64, v: &[u64]) -> Limbs<M> {
     let mut sum = M::Width::EXTENDED_ZERO;
-    let negative = combination(sum.as_mut_slice(), f, u, g, v);
+    let negative = combination(masks, sum.as_mut_slice(), f, u, g, v);
     negate_masked(sum.as_mut_slice(), negative);
     // `|sum| < 2^63 p`. Adding `z p` with `z = -sum p^-1 mod 2^62` makes the sum divisible by
     // `2^62`; the quotient is below `3 p`.
@@ -213,13 +263,21 @@ fn combination_mod<M: Modulus>(f: i64, u: &[u64], g: i64, v: &[u64]) -> Limbs<M>
         sum.as_slice(),
         Shape::<M>::DOUBLE_P.as_slice(),
     );
-    select_in_place(sum.as_mut_slice(), borrow == 0, reduced.as_slice());
+    select_in_place(
+        sum.as_mut_slice(),
+        masks.of(borrow == 0),
+        reduced.as_slice(),
+    );
     let borrow = sub(
         reduced.as_mut_slice(),
         sum.as_slice(),
         Shape::<M>::P.as_slice(),
     );
-    select_in_place(sum.as_mut_slice(), borrow == 0, reduced.as_slice());
+    select_in_place(
+        sum.as_mut_slice(),
+        masks.of(borrow == 0),
+        reduced.as_slice(),
+    );
     let mut out = M::Width::ZERO;
     let mut negated = M::Width::ZERO;
     out.as_mut_slice()
@@ -235,10 +293,9 @@ fn combination_mod<M: Modulus>(f: i64, u: &[u64], g: i64, v: &[u64]) -> Limbs<M>
     out
 }
 
-/// Two's complement negation when `condition` holds.
+/// Two's complement negation under the mask `flip`.
 #[inline(always)]
-fn negate_masked(value: &mut [u64], condition: bool) {
-    let flip = mask(condition);
+fn negate_masked(value: &mut [u64], flip: u64) {
     let mut carry = flip & 1;
     for slot in value {
         let (sum, carry_out) = (*slot ^ flip).overflowing_add(carry);
@@ -262,10 +319,9 @@ fn shr_in_place(value: &mut [u64], shift: usize, fill: u64) {
     }
 }
 
-/// `value = other` when `condition` holds.
+/// `value = other` under the mask `take`.
 #[inline(always)]
-fn select_in_place(value: &mut [u64], condition: bool, other: &[u64]) {
-    let take = mask(condition);
+fn select_in_place(value: &mut [u64], take: u64, other: &[u64]) {
     for (slot, &candidate) in value.iter_mut().zip(other) {
         *slot = (candidate & take) | (*slot & !take);
     }
