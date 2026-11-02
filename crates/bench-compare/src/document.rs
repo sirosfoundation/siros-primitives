@@ -1,69 +1,98 @@
-//! `crates/biguint/BENCHMARKS.md` and the charts in `crates/biguint/benchmarks/`.
+//! The `BENCHMARKS.md` of a library and the charts in its `benchmarks/` directory.
 
 use std::collections::HashMap;
 use std::fs;
 
-use crate::chart::{self, Chart, Point, instructions};
-use crate::record::{Cell, Count, Outcome, Record};
-use crate::{Error, Paths};
-
-/// The crate under test.
-const SUBJECT: &str = "biguint";
-
-/// The formula of each operation.
-const FORMULAS: [(&str, &str); 5] = [
-    ("add", "a + b"),
-    ("mul", "a × b"),
-    ("div", "a / b"),
-    ("mod", "a mod b"),
-    ("mulmod", "a × b mod m"),
-];
+use crate::chart::{self, CHARTED, Category, Chart, Point, instructions};
+use crate::error::Error;
+use crate::record::{Cell, Count, Key, Outcome, Record};
+use crate::run::Paths;
 
 /// The line under the title of every chart.
 const CHART_SUBTITLE: &str =
     "Instructions per operation, counted by Callgrind. BENCHMARKS.md lists the values.";
 
+/// The words of a comparison: what its rows are and how the document names them.
+pub struct Layout<'a, K> {
+    /// The crate under test.
+    pub subject: &'a str,
+    /// The package of the report tool, for the `Reproduce` section.
+    pub tool: &'a str,
+    /// The formula of each operation, by the operation's name.
+    pub formulas: &'a [(&'a str, &'a str)],
+    /// The heading of the row column of the result tables.
+    pub row_header: &'a str,
+    /// A phrase that names rows, after an operation or a function: `at 64 and 128 bits`.
+    pub rows_phrase: fn(&[K]) -> String,
+    /// The body of the `Method` section for a batch of the given size.
+    pub method: fn(u32) -> Vec<String>,
+    /// The bullet lines under the `Functions` table, before the absences.
+    pub notes: &'a [&'a str],
+    /// The title of the horizontal axis of the charts.
+    pub axis_title: &'a str,
+    /// The name of a row in a chart tooltip: `64 bits`.
+    pub category_name: fn(&K) -> String,
+    /// Whether a line joins the markers of adjacent rows in a chart.
+    pub lines: bool,
+}
+
 /// Writes the document and one chart per operation from `record`.
-pub(crate) fn write(paths: &Paths, record: &Record) -> Result<(), Error> {
-    let table = Table::new(record)?;
-    let charts = paths.library().join("benchmarks");
+pub fn report<K: Key>(
+    paths: &Paths,
+    layout: &Layout<'_, K>,
+    record: &Record<K>,
+) -> Result<(), Error> {
+    let table = Table::new(record, layout)?;
+    let charts = paths.library.join("benchmarks");
     fs::create_dir_all(&charts).map_err(|source| Error::io(&charts, source))?;
+    let categories: Vec<Category> = table
+        .keys
+        .iter()
+        .map(|key| Category {
+            label: key.to_string(),
+            name: (layout.category_name)(key),
+        })
+        .collect();
+    // The palette has one slot per crate up to `CHARTED`; further crates stay in the tables.
+    let charted = &table.crates[..table.crates.len().min(CHARTED)];
     for (op, formula) in &table.ops {
         let svg = chart::svg(&Chart {
             title: format!("{op}: {formula}"),
             subtitle: CHART_SUBTITLE,
-            widths: &table.widths,
-            crates: &table.crates,
-            points: table.points(op),
+            categories: &categories,
+            axis_title: layout.axis_title,
+            crates: charted,
+            points: table.points(op, charted),
+            lines: layout.lines,
         })?;
         let path = charts.join(format!("{op}.svg"));
         fs::write(&path, svg).map_err(|source| Error::io(&path, source))?;
     }
-    let mut lines = header(record, &table);
+    let mut lines = header(record, layout, &table);
     lines.extend(setup(record));
-    lines.extend(method(&table));
-    lines.extend(functions(&table));
-    lines.extend(results(&table));
-    lines.extend(reproduce());
-    let path = paths.library().join("BENCHMARKS.md");
+    lines.extend(method(layout, &table));
+    lines.extend(functions(layout, &table));
+    lines.extend(results(layout, &table));
+    lines.extend(reproduce(layout.tool));
+    let path = paths.library.join("BENCHMARKS.md");
     fs::write(&path, lines.join("\n") + "\n").map_err(|source| Error::io(&path, source))
 }
 
-/// The cells of a run, indexed by operation, width and crate.
-struct Table<'a> {
+/// The cells of a run, indexed by operation, row and crate.
+struct Table<'a, K> {
     /// Each operation with its formula.
-    ops: Vec<(&'a str, &'static str)>,
-    widths: Vec<u32>,
+    ops: Vec<(&'a str, &'a str)>,
+    keys: Vec<K>,
     crates: Vec<&'a str>,
-    cells: HashMap<(&'a str, u32, &'a str), &'a Cell>,
+    cells: HashMap<(&'a str, &'a K, &'a str), &'a Cell<K>>,
     /// The operand sets of every counted batch.
     batch: u32,
 }
 
-impl<'a> Table<'a> {
-    /// Fails unless the record has exactly one cell for every operation, width and crate, its
+impl<'a, K: Key> Table<'a, K> {
+    /// Fails unless the record has exactly one cell for every operation, row and crate, its
     /// batches have one size, and every operation has a formula.
-    fn new(record: &'a Record) -> Result<Self, Error> {
+    fn new(record: &'a Record<K>, layout: &Layout<'a, K>) -> Result<Self, Error> {
         let batches = unique(record.cells.iter().filter_map(|cell| match &cell.outcome {
             Outcome::Counted(count) => Some(count.operations),
             Outcome::Absent(_) => None,
@@ -77,7 +106,8 @@ impl<'a> Table<'a> {
         let ops = unique(record.cells.iter().map(|cell| cell.op.as_str()))
             .into_iter()
             .map(|op| {
-                FORMULAS
+                layout
+                    .formulas
                     .iter()
                     .find(|(name, _)| *name == op)
                     .map(|(_, formula)| (op, *formula))
@@ -86,27 +116,27 @@ impl<'a> Table<'a> {
             .collect::<Result<Vec<_>, _>>()?;
         let table = Self {
             ops,
-            widths: unique(record.cells.iter().map(|cell| cell.bits)),
+            keys: unique(record.cells.iter().map(|cell| cell.key.clone())),
             crates: unique(record.cells.iter().map(|cell| cell.library.as_str())),
             cells: record
                 .cells
                 .iter()
-                .map(|cell| ((cell.op.as_str(), cell.bits, cell.library.as_str()), cell))
+                .map(|cell| ((cell.op.as_str(), &cell.key, cell.library.as_str()), cell))
                 .collect(),
             batch: *batch,
         };
         if table.cells.len() != record.cells.len() {
             return Err(Error::missing(
-                "single cell per operation, width and crate",
+                "single cell per operation, row and crate",
                 "the run record",
             ));
         }
         for (op, _) in &table.ops {
-            for bits in &table.widths {
+            for key in &table.keys {
                 for library in &table.crates {
-                    if !table.cells.contains_key(&(*op, *bits, *library)) {
+                    if !table.cells.contains_key(&(*op, key, *library)) {
                         return Err(Error::missing(
-                            &format!("cell {op}/{bits}/{library}"),
+                            &format!("cell {op}/{key}/{library}"),
                             "the run record",
                         ));
                     }
@@ -116,11 +146,11 @@ impl<'a> Table<'a> {
         Ok(table)
     }
 
-    /// The count of `op` at `bits` in `library`; `None` for an absent cell.
-    fn count(&self, op: &str, bits: u32, library: &str) -> Option<&'a Count> {
+    /// The count of `op` on the row `key` in `library`; `None` for an absent cell.
+    fn count(&self, op: &str, key: &K, library: &str) -> Option<&'a Count> {
         match self
             .cells
-            .get(&(op, bits, library))
+            .get(&(op, key, library))
             .map(|cell| &cell.outcome)
         {
             Some(Outcome::Counted(count)) => Some(count),
@@ -128,15 +158,15 @@ impl<'a> Table<'a> {
         }
     }
 
-    /// The chart points of `op`: one per counted case.
-    fn points(&self, op: &str) -> Vec<Point<'a>> {
+    /// The chart points of `op` for `crates`: one per counted case.
+    fn points(&self, op: &str, crates: &[&'a str]) -> Vec<Point<'a>> {
         let mut points = Vec::new();
-        for library in &self.crates {
-            for &bits in &self.widths {
-                if let Some(count) = self.count(op, bits, library) {
+        for library in crates {
+            for (category, key) in self.keys.iter().enumerate() {
+                if let Some(count) = self.count(op, key, library) {
                     points.push(Point {
                         library,
-                        bits,
+                        category,
                         instructions: count.per_operation(),
                     });
                 }
@@ -158,7 +188,8 @@ fn unique<T: PartialEq>(items: impl Iterator<Item = T>) -> Vec<T> {
 }
 
 /// `values` joined as in a sentence: `a, b and c`.
-fn sentence<T: ToString>(values: &[T]) -> String {
+#[must_use]
+pub fn sentence<T: ToString>(values: &[T]) -> String {
     let words: Vec<String> = values.iter().map(ToString::to_string).collect();
     match words.split_last() {
         Some((last, [])) => last.clone(),
@@ -168,7 +199,8 @@ fn sentence<T: ToString>(values: &[T]) -> String {
 }
 
 /// A Markdown table; `align` holds `l` or `r` per column.
-fn markdown_table(header: &[String], rows: &[Vec<String>], align: &str) -> Vec<String> {
+#[must_use]
+pub fn markdown_table(header: &[String], rows: &[Vec<String>], align: &str) -> Vec<String> {
     let rule: Vec<&str> = align
         .chars()
         .map(|side| if side == 'r' { "---:" } else { "---" })
@@ -181,11 +213,11 @@ fn markdown_table(header: &[String], rows: &[Vec<String>], align: &str) -> Vec<S
     lines
 }
 
-fn header(record: &Record, table: &Table<'_>) -> Vec<String> {
+fn header<K: Key>(record: &Record<K>, layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
     let others: Vec<String> = table
         .crates
         .iter()
-        .filter(|library| **library != SUBJECT)
+        .filter(|library| **library != layout.subject)
         .map(|library| format!("`{library}`"))
         .collect();
     let state = if record.dirty {
@@ -197,12 +229,13 @@ fn header(record: &Record, table: &Table<'_>) -> Vec<String> {
         "# Benchmarks".to_owned(),
         String::new(),
         format!(
-            "`{SUBJECT}` at commit `{}` against {}: {} at {} bits, in instructions per \
-             operation, counted on {}.{state}",
+            "`{}` at commit `{}` against {}: {} {}, in instructions per operation, counted on \
+             {}.{state}",
+            layout.subject,
             short(&record.library_commit),
             sentence(&others),
             sentence(&table.ops.iter().map(|(op, _)| *op).collect::<Vec<_>>()),
-            sentence(&table.widths),
+            (layout.rows_phrase)(&table.keys),
             record.date
         ),
         String::new(),
@@ -214,7 +247,7 @@ fn short(commit: &str) -> &str {
     commit.get(..7).unwrap_or(commit)
 }
 
-fn setup(record: &Record) -> Vec<String> {
+fn setup<K>(record: &Record<K>) -> Vec<String> {
     let cpu = match &record.machine {
         Some(machine) => format!("{machine} (`{}`)", record.native_cpu),
         None => format!("`{}`", record.native_cpu),
@@ -246,74 +279,39 @@ fn setup(record: &Record) -> Vec<String> {
     lines
 }
 
-fn method(table: &Table<'_>) -> Vec<String> {
-    let batch = table.batch;
-    let operands = [
-        ["add, mul", "`a` and `b` uniform below 2^N"],
-        [
-            "div, mod",
-            "a dividend with bit N − 1 set; a divisor below 2^(N/2) with bit N/2 − 1 set, held \
-             in an N-bit integer",
-        ],
-        [
-            "mulmod",
-            "a modulus `m` with bit N − 1 set; `a` and `b` uniform below `m`",
-        ],
-    ];
-    let rows: Vec<Vec<String>> = operands
-        .iter()
-        .map(|row| row.iter().map(|text| (*text).to_owned()).collect())
-        .collect();
-    let mut lines = vec![
-        "## Method".to_owned(),
-        String::new(),
-        format!(
-            "Each case runs one crate's function over {batch} operand sets, the same for every \
-             crate in a row, with operands and results behind `core::hint::black_box`. Callgrind \
-             counts the instructions of the loop over the batch, including the functions it \
-             calls, such as the allocator of `num-bigint`; each count is that total divided by \
-             {batch}. The loop's own loads and stores are part of every count. Every instruction \
-             counts as one, whatever its latency: a hardware divide weighs as much as an \
-             addition. The counts are exact at any machine load. Every result equals \
-             `num-bigint`'s, reduced modulo 2^N for the crates that wrap."
-        ),
-        String::new(),
-    ];
-    lines.extend(markdown_table(
-        &["Operation".to_owned(), "Operands at width N".to_owned()],
-        &rows,
-        "ll",
-    ));
+fn method<K>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
+    let mut lines = vec!["## Method".to_owned(), String::new()];
+    lines.extend((layout.method)(table.batch));
     lines.push(String::new());
     lines
 }
 
-fn functions(table: &Table<'_>) -> Vec<String> {
+fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
     let mut rows = Vec::new();
     for (op, _) in &table.ops {
         let mut row = vec![(*op).to_owned()];
         for library in &table.crates {
-            // Each function with the widths it runs at.
-            let mut groups: Vec<(&str, Vec<u32>)> = Vec::new();
-            for &bits in &table.widths {
-                let Some(count) = table.count(op, bits, library) else {
+            // Each function with the rows it runs on.
+            let mut groups: Vec<(&str, Vec<K>)> = Vec::new();
+            for key in &table.keys {
+                let Some(count) = table.count(op, key, library) else {
                     continue;
                 };
                 match groups
                     .iter_mut()
                     .find(|(function, _)| *function == count.function)
                 {
-                    Some((_, widths)) => widths.push(bits),
-                    None => groups.push((&count.function, vec![bits])),
+                    Some((_, keys)) => keys.push(key.clone()),
+                    None => groups.push((&count.function, vec![key.clone()])),
                 }
             }
             let entries: Vec<String> = groups
                 .iter()
-                .map(|(function, widths)| {
-                    if *widths == table.widths {
+                .map(|(function, keys)| {
+                    if *keys == table.keys {
                         format!("`{function}`")
                     } else {
-                        format!("`{function}` at {} bits", sentence(widths))
+                        format!("`{function}` {}", (layout.rows_phrase)(keys))
                     }
                 })
                 .collect();
@@ -335,34 +333,25 @@ fn functions(table: &Table<'_>) -> Vec<String> {
     ];
     lines.extend(markdown_table(&header, &rows, &"l".repeat(header.len())));
     lines.push(String::new());
-    lines.extend(
-        [
-            "- `native` is `u64` at 64 bits and `u128` at 128 bits.",
-            "- `crypto-bigint` is constant-time; its div, mod and mulmod cases run its \
-             `*_vartime` functions.",
-            "- `num-bigint` allocates each result.",
-            "- `uint` is `construct_uint!`, as in `primitive-types`.",
-        ]
-        .map(str::to_owned),
-    );
-    lines.extend(absences(table));
+    lines.extend(layout.notes.iter().map(|note| (*note).to_owned()));
+    lines.extend(absences(layout, table));
     lines.push(String::new());
     lines
 }
 
-/// Per crate, its absent cells as (operation, width).
-type AbsentCells<'a> = Vec<(&'a str, Vec<(&'a str, u32)>)>;
+/// Per crate, its absent cells as (operation, row).
+type AbsentCells<'a, K> = Vec<(&'a str, Vec<(&'a str, &'a K)>)>;
 
-/// One line per reason for an absent cell: per crate, the operations and widths it covers, with
+/// One line per reason for an absent cell: per crate, the operations and rows it covers, with
 /// the operations left out when they are all of them.
-fn absences(table: &Table<'_>) -> Vec<String> {
-    let mut reasons: Vec<(&str, AbsentCells<'_>)> = Vec::new();
+fn absences<'a, K: Key>(layout: &Layout<'_, K>, table: &'a Table<'a, K>) -> Vec<String> {
+    let mut reasons: Vec<(&str, AbsentCells<'a, K>)> = Vec::new();
     for library in &table.crates {
         for (op, _) in &table.ops {
-            for &bits in &table.widths {
+            for key in &table.keys {
                 let Some(Outcome::Absent(reason)) = table
                     .cells
-                    .get(&(*op, bits, *library))
+                    .get(&(*op, key, *library))
                     .map(|cell| &cell.outcome)
                 else {
                     continue;
@@ -378,8 +367,8 @@ fn absences(table: &Table<'_>) -> Vec<String> {
                     continue;
                 };
                 match crates.iter_mut().find(|(other, _)| other == library) {
-                    Some((_, cells)) => cells.push((op, bits)),
-                    None => crates.push((library, vec![(op, bits)])),
+                    Some((_, cells)) => cells.push((op, key)),
+                    None => crates.push((library, vec![(op, key)])),
                 }
             }
         }
@@ -389,7 +378,7 @@ fn absences(table: &Table<'_>) -> Vec<String> {
         .map(|(reason, crates)| {
             let cases: Vec<String> = crates
                 .iter()
-                .map(|(library, cells)| describe(table, library, cells))
+                .map(|(library, cells)| describe(layout, table, library, cells))
                 .collect();
             let mut reason = (*reason).to_owned();
             if let Some(first) = reason.get_mut(..1) {
@@ -400,37 +389,49 @@ fn absences(table: &Table<'_>) -> Vec<String> {
         .collect()
 }
 
-/// The absent `cells` of `library`: its name, the operations unless all of them, and the widths
+/// The absent `cells` of `library`: its name, the operations unless all of them, and the rows
 /// unless all of them.
-fn describe(table: &Table<'_>, library: &str, cells: &[(&str, u32)]) -> String {
+fn describe<K: Key>(
+    layout: &Layout<'_, K>,
+    table: &Table<'_, K>,
+    library: &str,
+    cells: &[(&str, &K)],
+) -> String {
     let ops = unique(cells.iter().map(|(op, _)| *op));
-    let widths = unique(cells.iter().map(|(_, bits)| *bits));
+    let keys: Vec<K> = unique(cells.iter().map(|(_, key)| (*key).clone()));
     let mut text = format!("`{library}`");
     if ops.len() < table.ops.len() {
         text += &format!(" {}", sentence(&ops));
     }
-    if widths.len() < table.widths.len() {
-        text += &format!(" at {} bits", sentence(&widths));
+    if keys.len() < table.keys.len() {
+        text += &format!(" {}", (layout.rows_phrase)(&keys));
     }
     text
 }
 
-fn results(table: &Table<'_>) -> Vec<String> {
+fn results<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
     let mut lines = vec![
         "## Results".to_owned(),
         String::new(),
         "Each cell: instructions per operation. Bold marks the fewest in each row.".to_owned(),
     ];
+    if let Some(unplotted) = table.crates.get(CHARTED..).filter(|rest| !rest.is_empty()) {
+        let names: Vec<String> = unplotted.iter().map(|name| format!("`{name}`")).collect();
+        lines.push(format!(
+            "The charts show the first {CHARTED} crates; {} appears in the tables only.",
+            sentence(&names)
+        ));
+    }
     for (op, formula) in &table.ops {
         let mut rows = Vec::new();
-        for &bits in &table.widths {
+        for key in &table.keys {
             let counts: Vec<Option<f64>> = table
                 .crates
                 .iter()
-                .map(|library| table.count(op, bits, library).map(Count::per_operation))
+                .map(|library| table.count(op, key, library).map(Count::per_operation))
                 .collect();
             let fewest = counts.iter().flatten().copied().reduce(f64::min);
-            let mut row = vec![bits.to_string()];
+            let mut row = vec![key.to_string()];
             row.extend(counts.iter().map(|count| match count {
                 Some(count) if Some(*count) == fewest => format!("**{}**", instructions(*count)),
                 Some(count) => instructions(*count),
@@ -438,7 +439,7 @@ fn results(table: &Table<'_>) -> Vec<String> {
             }));
             rows.push(row);
         }
-        let mut header = vec!["Bits".to_owned()];
+        let mut header = vec![layout.row_header.to_owned()];
         header.extend(table.crates.iter().map(|library| (*library).to_owned()));
         let title = format!("{op}: {formula}");
         lines.extend([
@@ -457,16 +458,14 @@ fn results(table: &Table<'_>) -> Vec<String> {
     lines
 }
 
-fn reproduce() -> Vec<String> {
-    [
-        "",
-        "## Reproduce",
-        "",
-        "```sh",
-        "cargo run -p biguint-bench-report -- bench    # Callgrind counts of the native build",
-        "cargo run -p biguint-bench-report -- report   # this file and benchmarks/*.svg",
-        "```",
+fn reproduce(tool: &str) -> Vec<String> {
+    vec![
+        String::new(),
+        "## Reproduce".to_owned(),
+        String::new(),
+        "```sh".to_owned(),
+        format!("cargo run -p {tool} -- bench    # Callgrind counts of the native build"),
+        format!("cargo run -p {tool} -- report   # this file and benchmarks/*.svg"),
+        "```".to_owned(),
     ]
-    .map(str::to_owned)
-    .to_vec()
 }

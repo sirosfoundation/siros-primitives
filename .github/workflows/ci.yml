@@ -68,7 +68,7 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       # A 32-bit target without `std`, `adx` or carry-less instructions: the portable carry path,
       # the comb and the `no_std` build.
-      - run: cargo clippy --locked -p biguint -p clmul -p binary-field --target thumbv7em-none-eabi -- -D warnings
+      - run: cargo clippy --locked -p biguint -p prime-field -p clmul -p binary-field --target thumbv7em-none-eabi -- -D warnings
       # The PCLMULQDQ and PMULL backends of `clmul`, and the plans of `binary-field` on them.
       - run: cargo clippy --locked -p clmul -p binary-field --all-targets --all-features -- -D warnings
         env:
@@ -99,6 +99,6 @@ jobs:
           rustup toolchain install 1.88 --profile minimal
           echo "RUSTUP_TOOLCHAIN=1.88" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo check --locked -p biguint
+      - run: cargo check --locked -p biguint -p prime-field
       - run: cargo check --locked -p clmul --all-features
       - run: cargo check --locked -p binary-field
