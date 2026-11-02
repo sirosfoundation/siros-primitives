@@ -111,8 +111,10 @@ const fn window_scratch(len: usize, levels: usize) -> usize {
 /// Leaves `window mod divisor` in the low `divisor.len()` limbs of `window` and zeros above them,
 /// and gives the quotient limbs to `quotient`: blocks of `divisor.len()` quotient limbs from the
 /// top, the first block shorter when the quotient length is not a multiple. The top
-/// `divisor.len()` limbs of `window` are below `divisor`.
-#[inline(always)]
+/// `divisor.len()` limbs of `window` are below `divisor`. An unoptimized build calls it, as it does
+/// the product kernels.
+#[cfg_attr(debug_assertions, inline(never))]
+#[cfg_attr(not(debug_assertions), inline(always))]
 pub(super) fn divide_window<D: Depth>(
     window: &mut [u64],
     divisor: &[u64],
@@ -122,7 +124,7 @@ pub(super) fn divide_window<D: Depth>(
 ) {
     let len = divisor.len();
     if scratch.len() < window_scratch(len, D::LEVELS) {
-        divide_by_limbs(window, divisor, leading, quotient);
+        divide_by_limbs::<false>(window, divisor, leading, quotient);
         return;
     }
     let total = window.len().saturating_sub(len);
@@ -196,7 +198,7 @@ fn divide_block<D: Depth>(
         let (window, _) = split_mut(part, len);
         quotient_fits(settle(window, product, divisor, top, count, quotient));
     } else {
-        divide_by_limbs(part, divisor, leading, quotient);
+        divide_by_limbs::<false>(part, divisor, leading, quotient);
     }
 }
 

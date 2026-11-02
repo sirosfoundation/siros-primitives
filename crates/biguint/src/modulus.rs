@@ -5,9 +5,11 @@
 //! the compiler refuses an operation on residues of two scopes and the operations check nothing.
 //!
 //! An odd modulus keeps residues in Montgomery form, `a * R mod m` for `R = 2^(64 * k)`, and a
-//! product is a Montgomery multiplication. An even modulus keeps residues as their values, and a
-//! product divides by the modulus, whose normalization and reciprocal the context computes once.
+//! product is a Montgomery multiplication. An even modulus keeps residues as their values. A
+//! product divides by the modulus, whose normalization and reciprocal the context computes once;
+//! from 4 to 8 limbs, a modulus that fills its limbs reduces it by Barrett's reduction instead.
 
+mod barrett;
 mod montgomery;
 
 use core::fmt;
@@ -17,7 +19,7 @@ use core::ops::{Add, Mul, Neg, Sub};
 use generic_array::GenericArray;
 
 use crate::bits::Bits;
-use crate::div::{DiscardQuotient, Invariant};
+use crate::div::{DiscardQuotient, Invariant, Top};
 use crate::kernel::split_mut;
 use crate::modular::sum_mod;
 use crate::mul::{basecase, karatsuba};
@@ -25,6 +27,7 @@ use crate::nonzero::{NonZeroUint, significant_len};
 use crate::recursion::{Depth, Halvings};
 use crate::stream::TwosComplement;
 use crate::uint::Uint;
+use barrett::Barrett;
 
 /// A nonzero modulus with its reduction prepared: [`Modulus::scope`] computes with its residues.
 pub struct Modulus<N: Bits> {
@@ -47,8 +50,11 @@ enum Form<N: Bits> {
         /// `R^2 mod m`: the Montgomery product with it brings a value into the form.
         r_squared: Uint<N>,
     },
-    /// An even modulus: residues hold their values.
+    /// An even modulus: residues hold their values, and products divide by the modulus.
     Plain,
+    /// An even modulus that fills its limbs, from 4 to 8 limbs: residues hold their values, and
+    /// products reduce by Barrett's reduction.
+    Barrett(Barrett<N>),
 }
 
 /// The residue refused by [`Ring::residue`]: it is not below the modulus.
@@ -102,7 +108,7 @@ impl<N: Bits> From<NonZeroUint<N>> for Modulus<N> {
                 *slot = 1;
             }
             let (dividend, _) = split_mut(&mut dividend, limb + 1);
-            divisor.remainder::<N::ProductScratch, N>(dividend, &mut DiscardQuotient)
+            divisor.remainder::<N::ProductScratch, N>(dividend, Top::Any, &mut DiscardQuotient)
         };
         let low = value.limbs.first().copied().unwrap_or(0);
         if low & 1 == 1 {
@@ -116,8 +122,13 @@ impl<N: Bits> From<NonZeroUint<N>> for Modulus<N> {
                 divisor,
             }
         } else {
+            let form = if barrett::applies(N::LIMBS) && significant_len(&value.limbs) == N::LIMBS {
+                Form::Barrett(Barrett::new(&value, &divisor))
+            } else {
+                Form::Plain
+            };
             Self {
-                form: Form::Plain,
+                form,
                 one: power(0),
                 value,
                 divisor,
@@ -162,10 +173,11 @@ impl<'id, N: Bits> Ring<'id, N> {
     #[inline(always)]
     #[must_use]
     pub fn reduce<M: Bits>(self, value: Uint<M>) -> Residue<'id, N> {
-        let remainder = self
-            .modulus
-            .divisor
-            .remainder::<M::Window, N>(&value.limbs, &mut DiscardQuotient);
+        let remainder = self.modulus.divisor.remainder::<M::Window, N>(
+            &value.limbs,
+            Top::Any,
+            &mut DiscardQuotient,
+        );
         self.enter(remainder)
     }
 
@@ -188,7 +200,7 @@ impl<'id, N: Bits> Ring<'id, N> {
     fn enter(self, value: Uint<N>) -> Residue<'id, N> {
         let value = match &self.modulus.form {
             Form::Montgomery { r_squared, .. } => self.product(&value, r_squared),
-            Form::Plain => value,
+            Form::Plain | Form::Barrett(_) => value,
         };
         Residue { value, ring: self }
     }
@@ -208,7 +220,7 @@ impl<'id, N: Bits> Ring<'id, N> {
                 montgomery::reduce(&mut out.limbs, &mut t, &self.modulus.value.limbs, *inverse);
                 out
             }
-            Form::Plain => value,
+            Form::Plain | Form::Barrett(_) => value,
         }
     }
 
@@ -257,9 +269,15 @@ impl<'id, N: Bits> Ring<'id, N> {
             }
             Form::Plain => {
                 let (product, _) = split_mut(t, 2 * N::LIMBS);
-                self.modulus
-                    .divisor
-                    .remainder::<N::ProductWindow, N>(product, &mut DiscardQuotient)
+                self.modulus.divisor.remainder::<N::ProductWindow, N>(
+                    product,
+                    Top::Below,
+                    &mut DiscardQuotient,
+                )
+            }
+            Form::Barrett(barrett) => {
+                let (product, _) = split_mut(t, 2 * N::LIMBS);
+                barrett.reduce(product)
             }
         }
     }

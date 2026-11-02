@@ -53,8 +53,9 @@ pub(crate) enum Shape {
     Word,
     /// Two words, folded by shifts per tap with the overflow added first: `n` from 33 to 64.
     Words,
-    /// Two registers of words for `n = 128`: Karatsuba's three products, then two folds by
-    /// carry-less products with `r`.
+    /// One register for `n = 128`: with hardware word products and `d` below 64,
+    /// `a0 b + a1 (x^64 b mod f)` by six word products and one fold; otherwise Karatsuba's three
+    /// products and folds by shifts.
     Lane,
     /// Any other degree: a whole product, then rounds of folds.
     Lanes,
@@ -63,6 +64,34 @@ pub(crate) enum Shape {
 /// Degrees up to this have their square root of `x` computed at compile time; the const evaluator
 /// refuses longer squaring chains.
 const SQRT_CONSTANT_LIMIT: usize = 1024;
+
+/// The lookup tables of the build.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Tier {
+    /// `not-precomputed`: no table; every operation computes.
+    None,
+    /// The default: at most [`BUDGET`] bytes of tables per field.
+    Budget,
+    /// `precomputed`: the fastest tables, of any size.
+    Full,
+}
+
+/// The tables of the build. `not-precomputed` wins over `precomputed`: Cargo unifies the features
+/// of a build, so either feature set by any dependent switches the whole build.
+pub(crate) const TIER: Tier = if cfg!(feature = "not-precomputed") {
+    Tier::None
+} else if cfg!(feature = "precomputed") {
+    Tier::Full
+} else {
+    Tier::Budget
+};
+
+/// The bytes of constants a field may hold without `precomputed`.
+pub(crate) const BUDGET: usize = 16 * 1024;
+
+/// The bytes of the Frobenius tables of a field without `precomputed`: the budget less 1 KiB for
+/// the field's other constants.
+pub(crate) const TABLE_BUDGET: usize = BUDGET - 1024;
 
 impl<P: Polynomial> Plan<P> {
     /// The degree `n`.
@@ -76,15 +105,38 @@ impl<P: Polynomial> Plan<P> {
     /// `r` as one word, when `d` is below 64.
     pub(crate) const R_WORD: u64 = r_word(Self::TAPS);
 
-    /// The elements live in a general register and the default operations index tables.
-    pub(crate) const SMALL: bool = cfg!(feature = "precomputed") && Self::DEGREE <= 16;
-    /// The default product indexes a table of products.
-    pub(crate) const MUL_BY_TABLE: bool = Self::SMALL && Self::DEGREE <= 8;
-    /// The default inverse of a field of one register runs its Itoh–Tsujii chain on tables of the
-    /// Frobenius powers.
-    pub(crate) const INVERT_BY_TABLES: bool =
-        cfg!(feature = "precomputed") && Self::DEGREE > 16 && Self::DEGREE <= 128;
+    /// The elements live in a general register: a byte up to degree 8, a 16-bit word up to 16.
+    pub(crate) const SMALL: bool = Self::DEGREE <= 16;
+    /// The default product indexes the table of every product: `precomputed`, degree up to 8.
+    pub(crate) const MUL_BY_PRODUCTS: bool = matches!(TIER, Tier::Full) && Self::DEGREE <= 8;
+    /// The default product adds logarithms: the default tables, degree up to 8.
+    pub(crate) const MUL_BY_LOGARITHMS: bool = matches!(TIER, Tier::Budget) && Self::DEGREE <= 8;
+    /// The default square, square root and inverse index a table of every element: `precomputed`
+    /// up to degree 16, the default tables up to degree 8.
+    pub(crate) const ELEMENT_TABLES: bool = match TIER {
+        Tier::Full => Self::SMALL,
+        Tier::Budget => Self::DEGREE <= 8,
+        Tier::None => false,
+    };
+    /// The default square and square root of degrees 9 to 16 add the images of the two bytes of
+    /// the element: the default tables.
+    pub(crate) const BYTE_MAPS: bool =
+        matches!(TIER, Tier::Budget) && Self::SMALL && Self::DEGREE > 8;
+    /// The window in bits of the tables of the Frobenius powers of the default inverse of a field
+    /// of 17 to 128 bits: bytes with `precomputed`, nibbles by default, none without tables.
+    pub(crate) const FROBENIUS_WINDOW: usize = if Self::DEGREE <= 16 || Self::DEGREE > 128 {
+        0
+    } else {
+        match TIER {
+            Tier::Full => 8,
+            Tier::Budget => 4,
+            Tier::None => 0,
+        }
+    };
 
+    /// The folds by `r` multiply it carry-lessly: the word products are hardware, and `d` is below
+    /// 64. Otherwise each fold adds one shifted copy per tap.
+    pub(crate) const FOLD_BY_PRODUCTS: bool = clmul::HARDWARE && Self::R_DEGREE < 64;
     /// The overflow of `h r` for `h` below `x^n` folds once without spilling again: `2d <= n`.
     pub(crate) const ONE_SPILL: bool = 2 * Self::R_DEGREE <= Self::DEGREE;
     /// The rounds of folds that bring a product of two elements below `x^n`.

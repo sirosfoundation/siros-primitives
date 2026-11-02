@@ -1,75 +1,569 @@
-//! Tables of the Frobenius powers `a -> a^(2^k)` of the fields of one register, one per doubling of
-//! the Itoh–Tsujii chain, behind `precomputed`: a power applies as one lookup per byte, in place of
-//! `k` squarings. The lookups index the tables by the value, so the default inverse takes them and
-//! `Secret` does not.
+//! Tables of the Frobenius powers `x -> x^(2^k)` that the default inverse of a field of 17 to 128
+//! bits applies along its addition chain. Squaring is GF(2)-linear, so a power applies as the sum of
+//! the images of the windows of `x`: one lookup per window of 3, 4 or 8 bits. With `precomputed`
+//! every power of the chain has a byte table. The default build has the tables of 3 or 4 bits that
+//! cost least within its budget, and composes the other powers from them and squarings.
+//! `not-precomputed` squares. The lookups index the tables by the value, so `Secret` squares.
 
 use core::marker::PhantomData;
 
 use biguint::Uint;
-use clmul::Poly;
+use clmul::{Lane, Poly};
 use const_default::ConstDefault;
 use generic_array::GenericArray;
+use typenum::U128;
 
+use crate::arith::Field;
+use crate::chain::{Chain, Chains, MAX_STEPS};
 use crate::element::Limbs;
-use crate::plan::{Plan, Polynomial};
+use crate::plan::{Plan, Polynomial, TABLE_BUDGET, TIER, Tier};
 
-/// The byte positions of a table: the bytes of a register.
-const POSITIONS: usize = 16;
+/// The tables of a field at most.
+const MAX_TABLES: usize = 8;
 
-/// The steps of a chain of a degree up to 128.
-const STEPS: usize = 7;
+/// The cost of one squaring, in tenths of a cycle of the chain of inverses on Zen 3: 14 cycles.
+const SQUARING_COST: usize = 140;
 
-/// The image of every byte value at every byte position of an element, as two words.
-type Table = [[[u64; 2]; 256]; POSITIONS];
-
-/// The Itoh–Tsujii chain of the field with the polynomial `P`.
-struct Chain<P>(PhantomData<P>);
-
-impl<P: Polynomial> Chain<P> {
-    /// For each step that takes a table, the images of the basis elements `x^j` under the step's
-    /// power, from one pass of squarings of all of them.
-    const IMAGES: &'static [[u128; 128]; STEPS] = &images(
-        Plan::<P>::INVERT_BY_TABLES,
-        Plan::<P>::DEGREE,
-        Plan::<P>::TAPS,
-    );
+/// The cost of one table application to a value of `degree` bits, in tenths of a cycle: about
+/// 2 cycles per lookup of a 3-bit window, 2.5 per nibble and 3 per byte, which the moves of the
+/// windows into general registers, their indices and the sums take.
+const fn apply_cost(window: usize, degree: usize) -> usize {
+    let words = if degree <= 64 { 1 } else { 2 };
+    let lookups = words * 64usize.div_ceil(window);
+    lookups
+        * match window {
+            3 => 21,
+            4 => 25,
+            _ => 30,
+        }
 }
 
-/// The images of `x^j` under `a -> a^(2^k)` for the `k` of each tabulated step of the chain of the
-/// field of degree `degree`, up to 128, with `taps`: all the basis elements square together, and
-/// the images at each step's `k` are kept. Zero when `tabulated` is false.
+/// How the inverse of a field computes the Frobenius power of each step of its chain.
+#[derive(Clone, Copy)]
+pub(crate) struct Powers {
+    /// The window of the tables in bits: 3, 4, 8, or 0 without tables.
+    window: usize,
+    /// The tabulated powers, in decreasing order.
+    tabulated: [usize; MAX_TABLES],
+    /// The number of tabulated powers.
+    tables: usize,
+    /// For each step, the applications of each table.
+    applications: [[usize; MAX_TABLES]; MAX_STEPS],
+    /// For each step, the squarings after the tables.
+    squarings: [usize; MAX_STEPS],
+    /// The cost of the chain's Frobenius powers, in quarter squarings.
+    cost: usize,
+}
+
+/// The table plan of the field with the polynomial `P`.
+pub(crate) struct Frobenius<P>(PhantomData<P>);
+
+impl<P: Polynomial> Frobenius<P> {
+    /// The plan of the field's chain: byte tables of every power with `precomputed`; by default,
+    /// the cheaper of the plans of 3-bit and 4-bit tables within the budget.
+    pub(crate) const POWERS: Powers = {
+        let chain = &Chains::<P>::CHAIN;
+        let degree = Plan::<P>::DEGREE;
+        if degree <= 16 || degree > 128 {
+            powers(chain, 0, degree, 0)
+        } else {
+            match TIER {
+                Tier::Full => powers(chain, 8, degree, usize::MAX),
+                Tier::Budget => {
+                    let nibbles = powers(chain, 4, degree, TABLE_BUDGET);
+                    let triples = powers(chain, 3, degree, TABLE_BUDGET);
+                    if triples.cost < nibbles.cost {
+                        triples
+                    } else {
+                        nibbles
+                    }
+                }
+                Tier::None => powers(chain, 0, degree, 0),
+            }
+        }
+    };
+
+    /// `x^(2^power)` for step `step` of the chain: the step's table applications, then squarings.
+    /// A `step` past the chain squares `power` times.
+    #[inline(always)]
+    pub(crate) fn apply(x: Poly<P::Degree>, step: usize, power: usize) -> Poly<P::Degree> {
+        let mut x = x;
+        let (counts, squarings) = match (
+            Self::POWERS.applications.get(step),
+            Self::POWERS.squarings.get(step),
+        ) {
+            (Some(counts), Some(&squarings)) if Self::POWERS.window > 0 => (*counts, squarings),
+            _ => ([0; MAX_TABLES], power),
+        };
+        macro_rules! tables {
+            ($($table:literal)*) => {$(
+                if let Some(&count) = counts.get($table) {
+                    let mut applied = 0;
+                    while applied < count {
+                        x = Table::<P, $table>::apply(x);
+                        applied += 1;
+                    }
+                }
+            )*};
+        }
+        tables!(0 1 2 3 4 5 6 7);
+        let mut squared = 0;
+        while squared < squarings {
+            x = Field::<P>::lanes_square(x);
+            squared += 1;
+        }
+        x
+    }
+}
+
+/// The plan of `chain` with tables of `window` bits in a field of degree `degree`: the set of its
+/// distinct powers of the least cost within `budget` bytes. A window of 0 plans no table.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its array's length"
 )]
-const fn images(tabulated: bool, degree: usize, taps: &[usize]) -> [[u128; 128]; STEPS] {
-    let mut kept = [[0; 128]; STEPS];
-    if !tabulated || degree > 128 {
-        return kept;
-    }
-    let mut powers = [0u128; 128];
-    let mut bit = 0;
-    while bit < degree {
-        powers[bit] = 1 << bit;
-        bit += 1;
-    }
-    let bits = usize::BITS as usize - (degree - 1).leading_zeros() as usize;
+const fn powers(chain: &Chain, window: usize, degree: usize, budget: usize) -> Powers {
+    let mut plan = Powers {
+        window,
+        tabulated: [0; MAX_TABLES],
+        tables: 0,
+        applications: [[0; MAX_TABLES]; MAX_STEPS],
+        squarings: [0; MAX_STEPS],
+        cost: 0,
+    };
+    let Some(len) = chain.len else {
+        return plan;
+    };
+    // The distinct powers of 2 or more, in decreasing order.
+    let mut distinct = [0; MAX_STEPS];
+    let mut count = 0;
     let mut step = 0;
-    let mut k = 0;
-    while step + 1 < bits && step < STEPS {
-        let target = chain_k(degree, step);
-        while k < target {
-            bit = 0;
-            while bit < degree {
-                powers[bit] = square_mod(powers[bit], degree, taps);
-                bit += 1;
+    while step < len {
+        let power = chain.steps[step].power;
+        let mut seen = power < 2;
+        let mut index = 0;
+        while index < count {
+            if distinct[index] == power {
+                seen = true;
             }
-            k += 1;
+            index += 1;
         }
-        kept[step] = powers;
+        if !seen {
+            let mut position = count;
+            while position > 0 && distinct[position - 1] < power {
+                distinct[position] = distinct[position - 1];
+                position -= 1;
+            }
+            distinct[position] = power;
+            count += 1;
+        }
         step += 1;
     }
-    kept
+    if window == 0 {
+        count = 0;
+    }
+    if count > MAX_TABLES {
+        count = MAX_TABLES;
+    }
+    let size = table_bytes(window, degree);
+    let mut best = 0usize;
+    let mut best_cost = usize::MAX;
+    let mut subset = 0usize;
+    while subset < 1 << count {
+        let mut chosen = [0; MAX_TABLES];
+        let mut tables = 0;
+        let mut index = 0;
+        while index < count {
+            if (subset >> index) & 1 == 1 {
+                chosen[tables] = distinct[index];
+                tables += 1;
+            }
+            index += 1;
+        }
+        if tables * size <= budget {
+            let cost = chain_cost(chain, len, &chosen, tables, window, degree);
+            if cost < best_cost {
+                best_cost = cost;
+                best = subset;
+            }
+        }
+        subset += 1;
+    }
+    let mut index = 0;
+    while index < count {
+        if (best >> index) & 1 == 1 {
+            plan.tabulated[plan.tables] = distinct[index];
+            plan.tables += 1;
+        }
+        index += 1;
+    }
+    step = 0;
+    while step < len {
+        let (counts, squarings) = decompose(chain.steps[step].power, &plan.tabulated, plan.tables);
+        plan.applications[step] = counts;
+        plan.squarings[step] = squarings;
+        step += 1;
+    }
+    plan.cost = best_cost;
+    plan
+}
+
+/// The cost of the Frobenius powers of `chain` with the tables of `chosen`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn chain_cost(
+    chain: &Chain,
+    len: usize,
+    chosen: &[usize; MAX_TABLES],
+    tables: usize,
+    window: usize,
+    degree: usize,
+) -> usize {
+    let mut cost = 0;
+    let mut step = 0;
+    while step < len {
+        let (counts, squarings) = decompose(chain.steps[step].power, chosen, tables);
+        let mut index = 0;
+        while index < tables {
+            cost += counts[index] * apply_cost(window, degree);
+            index += 1;
+        }
+        cost += squarings * SQUARING_COST;
+        step += 1;
+    }
+    cost
+}
+
+/// `power` as applications of the tables of `tabulated`, the largest first, and the squarings
+/// that remain.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn decompose(
+    power: usize,
+    tabulated: &[usize; MAX_TABLES],
+    tables: usize,
+) -> ([usize; MAX_TABLES], usize) {
+    let mut counts = [0; MAX_TABLES];
+    let mut rest = power;
+    let mut index = 0;
+    while index < tables {
+        if let Some(count) = rest.checked_div(tabulated[index]) {
+            counts[index] = count;
+            rest -= count * tabulated[index];
+        }
+        index += 1;
+    }
+    (counts, rest)
+}
+
+/// The bytes of one table of `window` bits for a degree up to 128.
+const fn table_bytes(window: usize, degree: usize) -> usize {
+    if window == 0 {
+        return 0;
+    }
+    let words = if degree <= 64 { 1 } else { 2 };
+    words * 64usize.div_ceil(window) * (1 << window) * 8 * words
+}
+
+/// The table of the tabulated power `T` of the field with the polynomial `P`, in the type of its
+/// window and width; the other five types hold nothing.
+struct Table<P, const T: usize>(PhantomData<P>);
+
+/// Tables of 3-bit windows of fields of one word: 22 windows, the last of one bit.
+type WordTriples = [[u64; 8]; 22];
+/// Nibble tables of fields of one word.
+type WordNibbles = [[u64; 16]; 16];
+/// Byte tables of fields of one word.
+type WordBytes = [[u64; 256]; 8];
+/// Tables of 3-bit windows of fields of two words: 22 windows per word.
+type LaneTriples = [[Lane; 8]; 44];
+/// Nibble tables of fields of two words.
+type LaneNibbles = [[Lane; 16]; 32];
+/// Byte tables of fields of two words.
+type LaneBytes = [[Lane; 256]; 16];
+
+impl<P: Polynomial, const T: usize> Table<P, T> {
+    /// The power, or 0 past the tabulated ones.
+    const POWER: usize = {
+        let plan = Frobenius::<P>::POWERS;
+        if T < plan.tables {
+            match plan.tabulated.split_at(T).1 {
+                [power, ..] => *power,
+                [] => 0,
+            }
+        } else {
+            0
+        }
+    };
+    /// Whether the table holds one word per entry.
+    const WORD: bool = Plan::<P>::DEGREE <= 64;
+    /// The window of the field's tables.
+    const WINDOW: usize = Frobenius::<P>::POWERS.window;
+
+    const WORD_TRIPLES: &'static WordTriples = &word_table::<22, 8>(
+        Self::WORD && Self::WINDOW == 3,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+        Self::POWER,
+    );
+    const WORD_NIBBLES: &'static WordNibbles = &word_table::<16, 16>(
+        Self::WORD && Self::WINDOW == 4,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+        Self::POWER,
+    );
+    const WORD_BYTES: &'static WordBytes = &word_table::<8, 256>(
+        Self::WORD && Self::WINDOW == 8,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+        Self::POWER,
+    );
+    const LANE_TRIPLES: &'static LaneTriples = &lane_table::<44, 8>(
+        !Self::WORD && Self::WINDOW == 3,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+        Self::POWER,
+    );
+    const LANE_NIBBLES: &'static LaneNibbles = &lane_table::<32, 16>(
+        !Self::WORD && Self::WINDOW == 4,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+        Self::POWER,
+    );
+    const LANE_BYTES: &'static LaneBytes = &lane_table::<16, 256>(
+        !Self::WORD && Self::WINDOW == 8,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+        Self::POWER,
+    );
+
+    /// `x^(2^POWER)`: the images of the windows of `x`, summed.
+    #[inline(always)]
+    fn apply(x: Poly<P::Degree>) -> Poly<P::Degree> {
+        let limbs = x.to_uint().into_limbs();
+        let low = limbs.first().copied().unwrap_or(0);
+        let high = limbs.get(1).copied().unwrap_or(0);
+        if Self::WORD {
+            let sum = match Self::WINDOW {
+                3 => word_sum(Self::WORD_TRIPLES, low, 3),
+                4 => word_sum(Self::WORD_NIBBLES, low, 4),
+                _ => word_sum(Self::WORD_BYTES, low, 8),
+            };
+            polynomial::<P>([sum, 0])
+        } else {
+            let sum = match Self::WINDOW {
+                3 => lane_sum(Self::LANE_TRIPLES, low, high, 3),
+                4 => lane_sum(Self::LANE_NIBBLES, low, high, 4),
+                _ => lane_sum(Self::LANE_BYTES, low, high, 8),
+            };
+            Poly::<U128>::from_lane(sum).resize()
+        }
+    }
+}
+
+/// The sum of the rows of `table` that the windows of `word` select.
+#[inline(always)]
+fn word_sum<const POSITIONS: usize, const ENTRIES: usize>(
+    table: &[[u64; ENTRIES]; POSITIONS],
+    word: u64,
+    window: u32,
+) -> u64 {
+    let mut sums = [0u64; 4];
+    add_word_rows(&mut sums, table, word, window);
+    let [first, second, third, fourth] = sums;
+    (first ^ second) ^ (third ^ fourth)
+}
+
+/// Adds the images that the windows of `word` select in `rows` to four sums, a row to each in
+/// turn: four rows at a time, so that the sums stay in registers when the loop stays rolled.
+#[inline(always)]
+fn add_word_rows<const ENTRIES: usize>(
+    sums: &mut [u64; 4],
+    rows: &[[u64; ENTRIES]],
+    word: u64,
+    window: u32,
+) {
+    let mask = (ENTRIES as u64) - 1;
+    let image = |row: &[u64; ENTRIES], position: usize| {
+        let index = ((word >> (window * position as u32)) & mask) as usize;
+        row.get(index).copied().unwrap_or(0)
+    };
+    let [first, second, third, fourth] = sums;
+    let (chunks, remainder) = rows.as_chunks::<4>();
+    let mut position = 0;
+    for [a, b, c, d] in chunks {
+        *first ^= image(a, position);
+        *second ^= image(b, position + 1);
+        *third ^= image(c, position + 2);
+        *fourth ^= image(d, position + 3);
+        position += 4;
+    }
+    for row in remainder {
+        *first ^= image(row, position);
+        position += 1;
+    }
+}
+
+/// The sum of the rows of `table` that the windows of `low + high x^64` select: the first half of
+/// the rows windows `low`, the second half `high`.
+#[inline(always)]
+fn lane_sum<const POSITIONS: usize, const ENTRIES: usize>(
+    table: &[[Lane; ENTRIES]; POSITIONS],
+    low: u64,
+    high: u64,
+    window: u32,
+) -> Lane {
+    let mut sums = [Poly::<U128>::ZERO; 4];
+    let (low_rows, high_rows) = table.split_at(POSITIONS / 2);
+    add_lane_rows(&mut sums, low_rows, low, window);
+    add_lane_rows(&mut sums, high_rows, high, window);
+    let [first, second, third, fourth] = sums;
+    ((first ^ second) ^ (third ^ fourth)).into_lane()
+}
+
+/// Adds the images that the windows of `word` select in `rows` to four sums, as `add_word_rows`.
+#[inline(always)]
+fn add_lane_rows<const ENTRIES: usize>(
+    sums: &mut [Poly<U128>; 4],
+    rows: &[[Lane; ENTRIES]],
+    word: u64,
+    window: u32,
+) {
+    let mask = (ENTRIES as u64) - 1;
+    let image = |row: &[Lane; ENTRIES], position: usize| {
+        let index = ((word >> (window * position as u32)) & mask) as usize;
+        row.get(index)
+            .map_or(Poly::<U128>::ZERO, |&lane| Poly::<U128>::from_lane(lane))
+    };
+    let [first, second, third, fourth] = sums;
+    let (chunks, remainder) = rows.as_chunks::<4>();
+    let mut position = 0;
+    for [a, b, c, d] in chunks {
+        *first ^= image(a, position);
+        *second ^= image(b, position + 1);
+        *third ^= image(c, position + 2);
+        *fourth ^= image(d, position + 3);
+        position += 4;
+    }
+    for row in remainder {
+        *first ^= image(row, position);
+        position += 1;
+    }
+}
+
+/// The polynomial of the field with the polynomial `P` whose low words are `words`.
+#[inline(always)]
+fn polynomial<P: Polynomial>(words: [u64; 2]) -> Poly<P::Degree> {
+    let mut limbs = GenericArray::<u64, Limbs<P>>::DEFAULT;
+    for (slot, word) in limbs.iter_mut().zip(words) {
+        *slot = word;
+    }
+    Poly::from_uint(Uint::from_generic_limbs(limbs))
+}
+
+/// The images of the basis elements `x^j` under `a -> a^(2^power)` in the field of degree
+/// `degree`, up to 128, with `taps`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn images(degree: usize, taps: &[usize], power: usize) -> [u128; 128] {
+    let mut images = [0u128; 128];
+    let mut bit = 0;
+    while bit < degree && bit < 128 {
+        images[bit] = 1 << bit;
+        bit += 1;
+    }
+    let mut squaring = 0;
+    while squaring < power {
+        bit = 0;
+        while bit < degree && bit < 128 {
+            images[bit] = square_mod(images[bit], degree, taps);
+            bit += 1;
+        }
+        squaring += 1;
+    }
+    images
+}
+
+/// The table of a power in fields of one word: for each window position, the sum of the images of
+/// the bits of every window value. Zero unless `used`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn word_table<const POSITIONS: usize, const ENTRIES: usize>(
+    used: bool,
+    degree: usize,
+    taps: &[usize],
+    power: usize,
+) -> [[u64; ENTRIES]; POSITIONS] {
+    let mut table = [[0; ENTRIES]; POSITIONS];
+    if !used || power == 0 {
+        return table;
+    }
+    let images = images(degree, taps, power);
+    let window = ENTRIES.trailing_zeros() as usize;
+    let mut position = 0;
+    while position < POSITIONS {
+        // Each value is a smaller one plus its lowest bit.
+        let mut value: usize = 1;
+        while value < ENTRIES {
+            let low = value & value.wrapping_neg();
+            let bit = window * position + low.trailing_zeros() as usize;
+            let image = if bit < degree { images[bit] as u64 } else { 0 };
+            table[position][value] = table[position][value ^ low] ^ image;
+            value += 1;
+        }
+        position += 1;
+    }
+    table
+}
+
+/// The table of a power in fields of two words, as `word_table`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn lane_table<const POSITIONS: usize, const ENTRIES: usize>(
+    used: bool,
+    degree: usize,
+    taps: &[usize],
+    power: usize,
+) -> [[Lane; ENTRIES]; POSITIONS] {
+    let zero = Poly::<U128>::ZERO.into_lane();
+    let mut table = [[zero; ENTRIES]; POSITIONS];
+    if !used || power == 0 {
+        return table;
+    }
+    let images = images(degree, taps, power);
+    let window = ENTRIES.trailing_zeros() as usize;
+    let mut position = 0;
+    while position < POSITIONS {
+        let mut sums = [0u128; ENTRIES];
+        let mut value: usize = 1;
+        while value < ENTRIES {
+            let low = value & value.wrapping_neg();
+            // Each word has its own windows; a window that would cross a word ends at it.
+            let offset = window * (position % (POSITIONS / 2)) + low.trailing_zeros() as usize;
+            let bit = 64 * (position / (POSITIONS / 2)) + offset;
+            let image = if offset < 64 && bit < degree {
+                images[bit]
+            } else {
+                0
+            };
+            sums[value] = sums[value ^ low] ^ image;
+            table[position][value] =
+                Poly::<U128>::from_uint(Uint::from_u128(sums[value])).into_lane();
+            value += 1;
+        }
+        position += 1;
+    }
+    table
 }
 
 /// `a^2 mod x^degree + r` for `a` below `x^degree`, a degree up to 128: the square spreads the
@@ -124,100 +618,4 @@ const fn shift_left(low: u128, high: u128, shift: usize) -> (u128, u128) {
     } else {
         (low << shift, (high << shift) | (low >> (128 - shift)))
     }
-}
-
-/// The doubling at step `S` of the Itoh–Tsujii chain of the field with the polynomial `P`.
-pub(crate) struct ChainStep<P, const S: usize>(PhantomData<P>);
-
-impl<P: Polynomial, const S: usize> ChainStep<P, S> {
-    /// The step doubles `k` to `2k`: `x^(2^k - 1)` becomes `x^(2^(2k) - 1)` through `x^(2^k)`.
-    pub(crate) const K: usize = chain_k(Plan::<P>::DEGREE, S);
-    /// Whether the step exists and its power takes a table: `k` from 3 on, where one lookup per byte
-    /// costs less than `k` squarings.
-    pub(crate) const TABULATED: bool =
-        Plan::<P>::INVERT_BY_TABLES && S + 1 < Plan::<P>::CHAIN_BITS && Self::K >= 3;
-    /// The table of `a -> a^(2^k)`, empty unless the step is tabulated.
-    const TABLE: &'static Table = &table(Self::TABULATED, Plan::<P>::DEGREE, Chain::<P>::IMAGES, S);
-
-    /// `a^(2^k)`: the images of the bytes of `a`, summed.
-    #[inline(always)]
-    pub(crate) fn apply(a: Poly<P::Degree>) -> Poly<P::Degree> {
-        let limbs = a.to_uint().into_limbs();
-        let mut sums = [Poly::<P::Degree>::ZERO; 4];
-        macro_rules! positions {
-            ($($position:literal)*) => {$(
-                if $position < Plan::<P>::DEGREE.div_ceil(8) {
-                    let limb = limbs.get($position / 8).copied().unwrap_or(0);
-                    let byte = ((limb >> (8 * ($position % 8))) & 0xFF) as usize;
-                    if let Some(row) = Self::TABLE.get($position)
-                        && let Some(&words) = row.get(byte)
-                        && let Some(sum) = sums.get_mut($position % 4)
-                    {
-                        *sum ^= polynomial::<P>(words);
-                    }
-                }
-            )*};
-        }
-        positions!(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15);
-        let [first, second, third, fourth] = sums;
-        (first ^ second) ^ (third ^ fourth)
-    }
-}
-
-/// The `k` at step `step` of the Itoh–Tsujii chain of degree `degree`: it starts at 1, and each
-/// step doubles it and adds the next bit of `n - 1`, from the top.
-const fn chain_k(degree: usize, step: usize) -> usize {
-    let exponent = degree - 1;
-    let bits = usize::BITS as usize - exponent.leading_zeros() as usize;
-    let mut k = 1;
-    let mut index = 0;
-    while index < step && index + 1 < bits {
-        k = 2 * k + ((exponent >> (bits - 2 - index)) & 1);
-        index += 1;
-    }
-    k
-}
-
-/// The table of a power when `tabulated`, from the images of the basis elements `x^j`: their
-/// sums per byte value. Zero otherwise.
-#[expect(
-    clippy::indexing_slicing,
-    reason = "const evaluation, with every index below its array's length"
-)]
-const fn table(
-    tabulated: bool,
-    degree: usize,
-    images: &[[u128; 128]; STEPS],
-    step: usize,
-) -> Table {
-    let mut table = [[[0u64; 2]; 256]; POSITIONS];
-    if !tabulated || step >= STEPS {
-        return table;
-    }
-    let images = &images[step];
-    // Each byte value is a smaller one plus its lowest bit.
-    let mut position = 0;
-    while position < POSITIONS && 8 * position < degree {
-        let mut value: usize = 1;
-        while value < 256 {
-            let low = value & value.wrapping_neg();
-            let bit = 8 * position + low.trailing_zeros() as usize;
-            let image = if bit < degree { images[bit] } else { 0 };
-            let rest = table[position][value ^ low];
-            table[position][value] = [rest[0] ^ image as u64, rest[1] ^ (image >> 64) as u64];
-            value += 1;
-        }
-        position += 1;
-    }
-    table
-}
-
-/// The polynomial of the field with the polynomial `P` whose low words are `words`.
-#[inline(always)]
-fn polynomial<P: Polynomial>(words: [u64; 2]) -> Poly<P::Degree> {
-    let mut limbs = GenericArray::<u64, Limbs<P>>::DEFAULT;
-    for (slot, word) in limbs.iter_mut().zip(words) {
-        *slot = word;
-    }
-    Poly::from_uint(Uint::from_generic_limbs(limbs))
 }

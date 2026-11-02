@@ -16,6 +16,7 @@
 )]
 
 mod arith;
+mod chain;
 mod element;
 mod error;
 mod frobenius;

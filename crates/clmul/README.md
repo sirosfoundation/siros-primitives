@@ -38,26 +38,29 @@ The target features of the build select the backend at compile time:
 
 | Target | Target features | Registers | Word products | Squares |
 |---|---|---|---|---|
+| `x86_64` | | SSE2 | The comb on the words of a register | Bit interleaving, on SSE2 |
+| `x86_64` | `ssse3` | SSE2 | The comb on the words of a register | A byte shuffle of a nibble table |
 | `x86_64` | `pclmulqdq` | SSE2 | PCLMULQDQ | PCLMULQDQ |
 | `x86_64` | `pclmulqdq`, `ssse3` | SSE2 | PCLMULQDQ | A byte shuffle of a nibble table |
 | little-endian `aarch64` | `aes` | Advanced SIMD | PMULL | PMULL |
 | any other | | Pairs of `u64` | The comb | Bit interleaving |
 
-The comb multiplies five interleaved bit lanes of each word by integer multiplication. With
-`sse4.1`, `pextrq` moves the high half of a register out.
+The comb multiplies four interleaved bit lanes of the low 60 bits of one word by those of the
+other, and the top 4 bits by each lane, by integer multiplication: 20 products. With `sse4.1`,
+`pextrq` moves the high half of a register out.
 
 `RUSTFLAGS="-C target-feature=+pclmulqdq,+sse4.1"` enables both `x86_64` features,
 `-C target-feature=+aes` enables PMULL, and `-C target-cpu=native` enables what the build machine
 has. The const functions run the comb on every target.
 
-A default `x86_64` build lacks PCLMULQDQ, so it multiplies with the comb. The backend is fixed when
-the crate compiles: a `#[target_feature]` function or a `multiversion` clone that calls it still
-runs the comb. Runtime selection belongs to the application, which builds once per feature set
-and loads the build that the CPU supports.
+A default `x86_64` build has neither PCLMULQDQ nor SSSE3, so it multiplies with the comb. The
+backend is fixed when the crate compiles: a `#[target_feature]` function or a `multiversion` clone
+that calls it still runs the comb. Runtime selection belongs to the application, which builds once
+per feature set and loads the build that the CPU supports.
 
 `HARDWARE` is `true` in builds with one of the two instructions.
 
-The PCLMULQDQ and PMULL backends hold the crate's only `unsafe`: Rust requires it for each call
+The `x86_64` and PMULL backends hold the crate's only `unsafe`: Rust requires it for each call
 into a `#[target_feature]` function from a function without the attribute, even when the build
 enables the feature.
 

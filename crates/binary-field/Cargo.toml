@@ -12,11 +12,14 @@ authors.workspace = true
 rust-version.workspace = true
 
 [features]
-default = ["precomputed"]
-# The tables of the operations of `Gf2`: every product up to degree 8; every square, square root
-# and inverse up to degree 16; the Frobenius powers of the inverse's chain from degree 17 to 128.
-# Without them `Gf2` computes as `Secret` does.
+# The default build carries at most 16 KiB of lookup tables per field.
+default = []
+# The fastest tables, of any size: every product of the fields up to degree 8, every square,
+# square root and inverse up to degree 16, and byte tables of the Frobenius powers of the
+# inverses from degree 17 to 128.
 precomputed = []
+# No lookup table: every operation computes, as `Secret` does. It wins over `precomputed`.
+not-precomputed = []
 
 [dependencies]
 biguint = { path = "../biguint", version = "0.1.0", default-features = false }

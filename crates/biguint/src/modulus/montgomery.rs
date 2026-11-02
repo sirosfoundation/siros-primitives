@@ -4,7 +4,7 @@
 
 use generic_array::{ArrayLength, GenericArray};
 
-use crate::kernel::{add_mul_row, fits, reduced, split, split_mut, sub_assign, subtract_if_above};
+use crate::kernel::{add_mul_row, reduced, split, split_mut, subtract_when_above};
 use crate::limb::CarryingAdd;
 use crate::unroll::{UNROLLED, unroll};
 
@@ -54,16 +54,9 @@ pub(crate) fn reduce<L: ArrayLength>(
         }
     });
     let (_, high) = split(t, k);
-    for (slot, &limb) in out.iter_mut().zip(high) {
-        *slot = limb;
-    }
-    if above != 0 {
-        // The value is at least `2^(64 * k)`, above `m`; the borrow cancels the carry.
-        fits(sub_assign(out, modulus));
-    } else {
-        // Below `2m`, one subtraction at most brings it below `m`.
-        reduced(subtract_if_above(out, modulus));
-    }
+    // Below `2m`, one subtraction at most brings the value below `m`. A carry out of the top limb
+    // places it at or above `2^(64 * k)`, above `m`; the borrow cancels the carry.
+    reduced(subtract_when_above(out, high, modulus, above));
 }
 
 /// Adds `modulus * q` to `row`, as long, and returns the carry limb above it: the multiply chain

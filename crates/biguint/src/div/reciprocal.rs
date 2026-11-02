@@ -40,11 +40,8 @@ macro_rules! division_steps {
             let quotient = high(estimate).wrapping_add(1);
             let remainder = low.wrapping_sub(quotient.wrapping_mul(divisor));
             // The candidate is one too large when the remainder wraps past the fraction.
-            let (quotient, remainder) = if remainder > fraction {
-                (quotient.wrapping_sub(1), remainder.wrapping_add(divisor))
-            } else {
-                (quotient, remainder)
-            };
+            let (quotient, remainder) =
+                one_less(remainder > fraction, quotient, remainder, divisor);
             // Rarely, it is one too small.
             if remainder >= divisor {
                 one_more(quotient, remainder, divisor)
@@ -53,36 +50,60 @@ macro_rules! division_steps {
             }
         }
 
+        /// `(quotient - 1, remainder + divisor)` when `excess` holds, `(quotient, remainder)`
+        /// otherwise. `excess` holds in about half the steps, so a branch on it mispredicts; the
+        /// unpredictable selects become conditional moves, which LLVM keeps inside a loop.
+        #[inline(always)]
+        fn one_less(
+            excess: bool,
+            quotient: $word,
+            remainder: $word,
+            divisor: $word,
+        ) -> ($word, $word) {
+            (
+                ::core::hint::select_unpredictable(excess, quotient.wrapping_sub(1), quotient),
+                ::core::hint::select_unpredictable(
+                    excess,
+                    remainder.wrapping_add(divisor),
+                    remainder,
+                ),
+            )
+        }
+
         /// `(quotient + 1, remainder - divisor)`.
         #[inline(always)]
         fn one_more(quotient: $word, remainder: $word, divisor: $word) -> ($word, $word) {
             (quotient + 1, remainder - divisor)
         }
 
+        /// [`crate::limb::mask_below`] over the word: all ones when `a < b`, zero otherwise.
+        #[inline(always)]
+        const fn below(a: $word, b: $word) -> $word {
+            high((a as $double).wrapping_sub(b as $double))
+        }
+
         /// `floor((β^3 - 1) / d) - β` for `d = high * β + low` with `high` normalized, from the
-        /// reciprocal of `high` (Algorithm 6).
+        /// reciprocal of `high` (Algorithm 6). The corrections subtract masks of `high`
+        /// ([`below`]): LLVM turns a select of `high` into a branch inside a loop.
         #[inline(always)]
         pub(super) fn reciprocal_3_by_2(high_word: $word, low: $word, reciprocal: $word) -> $word {
-            let mut reciprocal = reciprocal;
-            // Fold `low` into the product `(β + v) * high`, cancelling each carry out.
-            let mut product = high_word.wrapping_mul(reciprocal).wrapping_add(low);
-            if product < low {
-                reciprocal = reciprocal.wrapping_sub(1);
-                if product >= high_word {
-                    reciprocal = reciprocal.wrapping_sub(1);
-                    product = product.wrapping_sub(high_word);
-                }
-                product = product.wrapping_sub(high_word);
-            }
+            // Fold `low` into the product `(β + v) * high`. A carry out takes one from `v` and
+            // `high` from the product, twice when the product reaches `high`.
+            let product = high_word.wrapping_mul(reciprocal).wrapping_add(low);
+            let carry = below(product, low);
+            let twice = carry & !below(product, high_word);
+            let reciprocal = reciprocal.wrapping_add(carry).wrapping_add(twice);
+            let product = product
+                .wrapping_sub(high_word & carry)
+                .wrapping_sub(high_word & twice);
+            // Fold the high word of `v * low` in: a carry out takes one from `v`, twice when the
+            // two-word product reaches the divisor.
             let cross = <$double>::from(reciprocal) * <$double>::from(low);
-            let product = product.wrapping_add(high(cross));
-            if product < high(cross) {
-                reciprocal = reciprocal.wrapping_sub(1);
-                if join(product, cross as $word) >= join(high_word, low) {
-                    reciprocal = reciprocal.wrapping_sub(1);
-                }
-            }
+            let (product, carry) = product.overflowing_add(high(cross));
+            let twice = carry & (join(product, cross as $word) >= join(high_word, low));
             reciprocal
+                .wrapping_sub(<$word>::from(carry))
+                .wrapping_sub(<$word>::from(twice))
         }
 
         /// `(q, r)` with `top * β + low = q * d + r` and `r < d`, for a normalized two-word `d`
@@ -101,18 +122,33 @@ macro_rules! division_steps {
                 .wrapping_sub(<$double>::from(divisor as $word) * <$double>::from(quotient))
                 .wrapping_sub(divisor);
             let quotient = quotient.wrapping_add(1);
-            // The candidate is one too large when the remainder wraps past the fraction.
-            let (quotient, remainder) = if high(remainder) >= fraction {
-                (quotient.wrapping_sub(1), remainder.wrapping_add(divisor))
-            } else {
-                (quotient, remainder)
-            };
+            // The candidate is one too large when the remainder's high word reaches the fraction.
+            let (quotient, remainder) =
+                one_less_wide(high(remainder) >= fraction, quotient, remainder, divisor);
             // Rarely, it is one too small.
             if remainder >= divisor {
                 one_more_wide(quotient, remainder, divisor)
             } else {
                 (quotient, remainder)
             }
+        }
+
+        /// [`one_less`] with a two-word remainder.
+        #[inline(always)]
+        fn one_less_wide(
+            excess: bool,
+            quotient: $word,
+            remainder: $double,
+            divisor: $double,
+        ) -> ($word, $double) {
+            (
+                ::core::hint::select_unpredictable(excess, quotient.wrapping_sub(1), quotient),
+                ::core::hint::select_unpredictable(
+                    excess,
+                    remainder.wrapping_add(divisor),
+                    remainder,
+                ),
+            )
         }
 
         /// `(quotient + 1, remainder - divisor)`.

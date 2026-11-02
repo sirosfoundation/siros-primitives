@@ -1,12 +1,9 @@
 //! The quadratic product under every multiplication: one row per limb of the shorter operand.
 //!
 //! A row of two carry chains adds each product's low half to the high half before it, then adds
-//! the row into the output. A multiply-accumulate row adds each product, the output limb and the
-//! carry limb in one `u128` sum. A full product adds its rows of two chains into one output.
-//! A product cut below its full length adds even and odd rows into two outputs, whose carry chains
-//! run side by side, and adds the two at the end: with multiply-accumulate rows up to
-//! [`ACCUMULATE_LIMBS`] limbs, with rows of two chains beyond. Rows longer than [`UNROLLED`] run
-//! loops of multiply-accumulate steps.
+//! the row into the output, four limbs at a time in registers. A product cut below its full length
+//! drops the products past its end. Rows longer than [`UNROLLED`] run loops of multiply-accumulate
+//! steps.
 //!
 //! [`product`] takes its lengths as types and unrolls rows and limbs in the source, so each length
 //! simplifies once. [`basecase`] takes slices, whose lengths become constants only where it is
@@ -14,12 +11,9 @@
 
 use generic_array::{ArrayLength, GenericArray};
 
-use crate::kernel::{add_assign, add_mul_row, mul_row, split, split_mut};
+use crate::kernel::{add_mul_row, mul_row, split, split_mut};
 use crate::limb::CarryingAdd;
 use crate::unroll::{UNROLLED, unroll};
-
-/// The longest operand of a cut product that runs multiply-accumulate rows.
-const ACCUMULATE_LIMBS: usize = 5;
 
 /// Writes `a * b mod 2^(64 * O)` to `out`, `O` at most `A + B`, with rows and limbs unrolled up to
 /// [`UNROLLED`] limbs.
@@ -95,68 +89,30 @@ pub(crate) fn basecase(out: &mut [u64], a: &[u64], b: &[u64]) {
 #[inline(always)]
 fn rows<const UNROLL: bool>(out: &mut [u64], a: &[u64], b: &[u64]) {
     let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
-    if long.len() > UNROLLED || out.len() >= long.len() + short.len() {
-        if UNROLL {
-            unroll!(index in 0..short.len() => {
-                if let Some(&multiplier) = short.get(index) {
-                    full_row(out, long, index, multiplier);
-                }
-            });
-        } else {
-            for (index, &multiplier) in short.iter().enumerate() {
-                full_row(out, long, index, multiplier);
-            }
-        }
-    } else {
-        split_rows::<UNROLL>(out, long, short);
-    }
-}
-
-/// Row `index` of a product into one output.
-#[inline(always)]
-fn full_row(out: &mut [u64], long: &[u64], index: usize, multiplier: u64) {
-    let (_, window) = split_mut(out, index);
-    add_row(window, long, multiplier, index == 0);
-}
-
-/// A cut product into two outputs: `out` takes the even rows, a buffer the odd ones. Each output
-/// starts at zero, so a row adds onto zeros above the rows before it.
-#[inline(always)]
-fn split_rows<const UNROLL: bool>(out: &mut [u64], long: &[u64], short: &[u64]) {
-    for slot in out.iter_mut() {
-        *slot = 0;
-    }
-    let mut buffer = [0u64; 2 * UNROLLED];
-    let (odd, _) = split_mut(&mut buffer, out.len());
     if UNROLL {
         unroll!(index in 0..short.len() => {
             if let Some(&multiplier) = short.get(index) {
-                split_row(out, odd, long, index, multiplier);
+                row(out, long, index, multiplier);
             }
         });
     } else {
         for (index, &multiplier) in short.iter().enumerate() {
-            split_row(out, odd, long, index, multiplier);
+            row(out, long, index, multiplier);
         }
     }
-    truncate_carry(add_assign(out, odd));
 }
 
-/// Row `index` of a cut product into `even` or `odd` by its parity.
+/// Row `index` of a product.
 #[inline(always)]
-fn split_row(even: &mut [u64], odd: &mut [u64], long: &[u64], index: usize, multiplier: u64) {
-    let output = if index.is_multiple_of(2) { even } else { odd };
-    let (_, window) = split_mut(output, index);
-    if long.len() <= ACCUMULATE_LIMBS {
-        accumulate_row(window, long, multiplier, index < 2);
-    } else {
-        add_row(window, long, multiplier, index < 2);
-    }
+fn row(out: &mut [u64], long: &[u64], index: usize, multiplier: u64) {
+    let (_, window) = split_mut(out, index);
+    add_row(window, long, multiplier, index == 0);
 }
 
-/// Adds `long * multiplier` to `window`, cut at its end, or writes it there when `first`, in rows
-/// of two carry chains. The limb above the products is fresh: the rows before it in this output
-/// reach below it.
+/// Adds `long * multiplier` to `window`, cut at its end, or writes it there when `first`, in two
+/// carry chains: a group of [`ROW_GROUP`] products, each low half plus the high half before it,
+/// then the group added into the window. The group stays in registers. The limb above the
+/// products is fresh: the rows before it in this output reach below it.
 #[inline(always)]
 fn add_row(window: &mut [u64], long: &[u64], multiplier: u64, first: bool) {
     let len = long.len().min(window.len());
@@ -175,10 +131,10 @@ fn add_row(window: &mut [u64], long: &[u64], multiplier: u64, first: bool) {
     // A full row ends in a limb above the window's products; a cut row's last product lands on
     // the window's top limb, which takes its low half.
     let full = window.len() > len;
-    let mut row = [0u64; UNROLLED + 1];
-    let (mut carry, mut high) = (0, 0);
+    let mut group = [0u64; ROW_GROUP];
+    let (mut carry, mut high, mut sum_carry) = (0, 0, 0);
     unroll!(index in 0..len => {
-        if let (Some(&limb), Some(slot)) = (long.get(index), row.get_mut(index)) {
+        if let (Some(&limb), Some(slot)) = (long.get(index), group.get_mut(index % ROW_GROUP)) {
             if full || index + 1 < len {
                 let product = u128::from(limb) * u128::from(multiplier);
                 (*slot, carry) = (product as u64).add_carry(high, carry);
@@ -187,56 +143,28 @@ fn add_row(window: &mut [u64], long: &[u64], multiplier: u64, first: bool) {
                 *slot = limb.wrapping_mul(multiplier).wrapping_add(high).wrapping_add(carry);
             }
         }
-    });
-    if full && let Some(slot) = row.get_mut(len) {
-        // A high half is at most `2^64 - 2`.
-        *slot = high + carry;
-    }
-    if first {
-        unroll!(index in 0..len + usize::from(full) => {
-            if let (Some(slot), Some(&limb)) = (window.get_mut(index), row.get(index)) {
-                *slot = limb;
-            }
-        });
-    } else {
-        let mut carry = 0;
-        unroll!(index in 0..len => {
-            if let (Some(slot), Some(&limb)) = (window.get_mut(index), row.get(index)) {
-                (*slot, carry) = slot.add_carry(limb, carry);
-            }
-        });
-        if full && let (Some(slot), Some(&limb)) = (window.get_mut(len), row.get(len)) {
-            // The sum of the rows so far fits below the limb above this one.
-            *slot = limb + carry;
-        }
-    }
-}
-
-/// [`add_row`] in multiply-accumulate steps: each product with the window's limb and the carry
-/// limb in one `u128` sum, `long` at most [`UNROLLED`] limbs.
-#[inline(always)]
-fn accumulate_row(window: &mut [u64], long: &[u64], multiplier: u64, first: bool) {
-    let len = long.len().min(window.len());
-    let full = window.len() > len;
-    let mut carry = 0;
-    unroll!(index in 0..len => {
-        if let (Some(&limb), Some(slot)) = (long.get(index), window.get_mut(index)) {
-            let addend = if first { 0 } else { *slot };
-            if full || index + 1 < len {
-                let sum = u128::from(limb) * u128::from(multiplier)
-                    + u128::from(addend)
-                    + u128::from(carry);
-                *slot = sum as u64;
-                carry = (sum >> 64) as u64;
-            } else {
-                *slot = limb.wrapping_mul(multiplier).wrapping_add(addend).wrapping_add(carry);
+        // The group ends here: it goes into the window.
+        if index % ROW_GROUP == ROW_GROUP - 1 || index + 1 == len {
+            let start = index - index % ROW_GROUP;
+            let (_, slots) = split_mut(window, start);
+            for (slot, &product) in slots.iter_mut().zip(group.iter().take(index % ROW_GROUP + 1)) {
+                if first {
+                    *slot = product;
+                } else {
+                    (*slot, sum_carry) = slot.add_carry(product, sum_carry);
+                }
             }
         }
     });
     if full && let Some(slot) = window.get_mut(len) {
-        *slot = carry;
+        // A high half is at most `2^64 - 2`, and the sum of the rows so far fits below the limb
+        // above this one.
+        *slot = high + carry + sum_carry;
     }
 }
+
+/// The products of a group of [`add_row`], which stay in registers.
+const ROW_GROUP: usize = 4;
 
 /// Drops the carry out of the output window. The window is the product width the caller chose:
 /// for a wrapping product the carry is the part above it, for a full product it is zero.
