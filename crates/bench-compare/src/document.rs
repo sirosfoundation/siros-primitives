@@ -581,7 +581,7 @@ fn absences<'a, K: Key>(layout: &Layout<'_, K>, table: &'a Table<'a, K>) -> Vec<
 }
 
 /// The absent `cells` of `library`: its name, the operations unless all of them, and the rows
-/// unless all of them.
+/// unless all of them. Operations whose rows differ name their rows each.
 fn describe<K: Key>(
     layout: &Layout<'_, K>,
     table: &Table<'_, K>,
@@ -589,13 +589,39 @@ fn describe<K: Key>(
     cells: &[(&str, &K)],
 ) -> String {
     let ops = unique(cells.iter().map(|(op, _)| *op));
-    let keys: Vec<K> = unique(cells.iter().map(|(_, key)| (*key).clone()));
+    let rows_of = |op: &str| -> Vec<K> {
+        unique(
+            cells
+                .iter()
+                .filter(|(other, _)| *other == op)
+                .map(|(_, key)| (*key).clone()),
+        )
+    };
+    let rows_phrase = |keys: &[K]| {
+        if keys.len() < table.keys.len() {
+            format!(" {}", (layout.rows_phrase)(keys))
+        } else {
+            String::new()
+        }
+    };
+    let per_op: Vec<Vec<K>> = ops.iter().map(|op| rows_of(op)).collect();
     let mut text = format!("`{library}`");
-    if ops.len() < table.ops.len() {
-        text += &format!(" {}", sentence(&ops));
-    }
-    if keys.len() < table.keys.len() {
-        text += &format!(" {}", (layout.rows_phrase)(&keys));
+    match per_op.split_first() {
+        Some((first, rest)) if rest.iter().any(|keys| keys != first) => {
+            let parts: Vec<String> = ops
+                .iter()
+                .zip(&per_op)
+                .map(|(op, keys)| format!("{op}{}", rows_phrase(keys)))
+                .collect();
+            text += &format!(" {}", sentence(&parts));
+        }
+        _ => {
+            if ops.len() < table.ops.len() {
+                text += &format!(" {}", sentence(&ops));
+            }
+            let keys: Vec<K> = unique(cells.iter().map(|(_, key)| (*key).clone()));
+            text += &rows_phrase(&keys);
+        }
     }
     text
 }

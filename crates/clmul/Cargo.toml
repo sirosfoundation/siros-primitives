@@ -12,11 +12,12 @@ authors.workspace = true
 rust-version.workspace = true
 
 [features]
-# The `CarrylessMul` trait and the const products of `biguint::Uint` values.
-biguint = ["dep:biguint"]
+# `Poly`, the `CarrylessMul` trait and the const products of `biguint::Uint` values.
+biguint = ["dep:biguint", "dep:const-default"]
 
 [dependencies]
 biguint = { path = "../biguint", version = "0.1.0", default-features = false, optional = true }
+const-default = { workspace = true, optional = true }
 
 [package.metadata.docs.rs]
 all-features = true

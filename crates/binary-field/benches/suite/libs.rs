@@ -1,14 +1,17 @@
 //! One adapter per crate: the function that the crate runs for each operation over each field.
 //!
-//! Each crate uses its own public function for an operation. A crate without one, or without the
-//! field, gets an absent cell with the reason. Elements enter and leave each crate in its own
-//! representation through a [`Carrier`]; the conversions run before and after the counted batch.
+//! Each crate uses its own public function for an operation, in the row of its timing class: the
+//! constant-time row when no branch and no memory address of the function depends on a value, by
+//! its source, and the variable-time row otherwise. The other row of the operation gets an absent
+//! cell, as does a crate without the function or the field, with the reason. Elements enter and
+//! leave each crate in its own representation through a [`Carrier`]; the conversions run before
+//! and after the counted batch.
 
 use core::ops::{Add, Mul};
 
 use bench_compare::{Cells, Limbs, Row, Visitor};
 use binary_field::generic_array::GenericArray;
-use binary_field::{Gf2, Square};
+use binary_field::{Gf2, Secret, Square};
 use core_algebra::{AlgebraicField, SerializableField, SupportsU128Conversions};
 use hekate_math::{
     BinaryFieldExtras, Block8, Block16, Block32, Block64, Block128, Block256, TowerField,
@@ -18,7 +21,19 @@ use polyval::hazmat::FieldElement;
 
 use super::basis::{Basis, Level, Tower};
 use super::reference::Modulus;
-use super::{AES, Field, GF8, GF16, GF64, GF128, GF233, GF256, GF571, Op, spec};
+use super::{AES, Field, GF8, GF16, GF64, GF128, GF233, GF256, GF571, Kind, Op, Timing, spec};
+
+/// The timing classes, by name at the adapters.
+const CONSTANT: Timing = Timing::Constant;
+const VARIABLE: Timing = Timing::Variable;
+
+/// The reason for the absent cell of a function in the row of the other timing class.
+const fn only(timing: Timing) -> &'static str {
+    match timing {
+        Timing::Constant => "constant time, in the constant-time row",
+        Timing::Variable => "variable time, in the variable-time row",
+    }
+}
 
 /// The cells of one crate in one row.
 type Crate<V> = Cells<Op, Field, V>;
@@ -110,7 +125,7 @@ struct Carried<V, F> {
 impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
     /// The case of `op` on two operands, with its chain form: `function`, as `run`; `read` reads
     /// its result.
-    fn binary<T: Clone>(
+    fn binary_in<T: Clone>(
         self,
         op: Op,
         function: &'static str,
@@ -133,7 +148,7 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
     }
 
     /// The case of `op` on one operand whose result has its type, with its chain form.
-    fn chained_unary<T>(
+    fn chained_unary_in<T>(
         self,
         op: Op,
         function: &'static str,
@@ -156,7 +171,7 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
     }
 
     /// The case of `op` on one operand.
-    fn unary<T, R>(
+    fn unary_in<T, R>(
         self,
         op: Op,
         function: &'static str,
@@ -178,10 +193,79 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
         }
     }
 
-    /// Records that the crate has no case for `op`, for `reason`.
-    fn absent(self, op: Op, reason: &'static str) -> Self {
+    /// The case of `kind` on two operands in the row of `timing`, with its chain form, and the
+    /// absent cell of the other row.
+    fn binary<T: Clone>(
+        self,
+        kind: Kind,
+        timing: Timing,
+        function: &'static str,
+        run: impl Fn(&(T, T)) -> T + Copy,
+        read: fn(&C, &T) -> Option<Limbs>,
+    ) -> Self
+    where
+        C: Carrier<T>,
+    {
+        let cells = self.binary_in(kind.in_row(timing), function, run, read);
         Self {
-            cells: self.cells.absent(op, reason),
+            cells: cells
+                .cells
+                .absent(kind.in_row(timing.other()), only(timing)),
+            carrier: cells.carrier,
+        }
+    }
+
+    /// The case of `kind` on one operand in the row of `timing`, with its chain form, and the
+    /// absent cell of the other row.
+    fn chained_unary<T>(
+        self,
+        kind: Kind,
+        timing: Timing,
+        function: &'static str,
+        run: impl Fn(&T) -> T + Copy,
+        read: fn(&C, &T) -> Option<Limbs>,
+    ) -> Self
+    where
+        C: Carrier<T>,
+    {
+        let cells = self.chained_unary_in(kind.in_row(timing), function, run, read);
+        Self {
+            cells: cells
+                .cells
+                .absent(kind.in_row(timing.other()), only(timing)),
+            carrier: cells.carrier,
+        }
+    }
+
+    /// The case of `kind` on one operand in the row of `timing`, and the absent cell of the other
+    /// row.
+    fn unary<T, R>(
+        self,
+        kind: Kind,
+        timing: Timing,
+        function: &'static str,
+        run: impl Fn(&T) -> R + Copy,
+        read: fn(&C, &R) -> Option<Limbs>,
+    ) -> Self
+    where
+        C: Carrier<T>,
+    {
+        let cells = self.unary_in(kind.in_row(timing), function, run, read);
+        Self {
+            cells: cells
+                .cells
+                .absent(kind.in_row(timing.other()), only(timing)),
+            carrier: cells.carrier,
+        }
+    }
+
+    /// Records that the crate has no case for `kind` in either row, for `reason`.
+    fn absent(self, kind: Kind, reason: &'static str) -> Self {
+        Self {
+            cells: self
+                .cells
+                .absent(kind.in_row(CONSTANT), reason)
+                .absent(kind.in_row(VARIABLE), reason),
             ..self
         }
     }
@@ -253,16 +337,17 @@ macro_rules! raw_word {
     };
 }
 
-/// Add and mul by the operators of a type that holds the row's elements, with their chain forms.
-fn operators<T, V>(cells: Crate<V>) -> Carried<V, impl Fn() -> Same + Copy>
+/// Add, an exclusive or, and mul of the class `mul` by the operators of a type that holds the
+/// row's elements.
+fn operators<T, V>(cells: Crate<V>, mul: Timing) -> Carried<V, impl Fn() -> Same + Copy>
 where
     T: Raw + Copy + Add<Output = T> + Mul<Output = T>,
     V: Visitor<Op, Field>,
 {
     cells
         .carry(same)
-        .binary(Op::Add, "+", |&(a, b): &(T, T)| a + b, element)
-        .binary(Op::Mul, "*", |&(a, b): &(T, T)| a * b, element)
+        .binary(Kind::Add, CONSTANT, "+", |&(a, b): &(T, T)| a + b, element)
+        .binary(Kind::Mul, mul, "*", |&(a, b): &(T, T)| a * b, element)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -294,11 +379,81 @@ fn this_crate<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
+impl<P: binary_field::Polynomial> Raw for Secret<P> {
+    fn from_raw(bits: &[u64]) -> Self {
+        Self::new(Gf2::from_raw(bits))
+    }
+
+    fn raw(&self) -> Limbs {
+        self.reveal().raw()
+    }
+}
+
+/// `Gf2`'s defaults in the variable-time rows, `Secret`'s operations in the constant-time rows.
 fn ours<P: binary_field::Polynomial, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
-    operators::<Gf2<P>, V>(cells)
-        .chained_unary(Op::Square, "square", |&a: &Gf2<P>| a.square(), element)
-        .unary(Op::Invert, "invert", |&a: &Gf2<P>| a.invert(), maybe)
-        .unary(Op::Sqrt, "sqrt", |&a: &Gf2<P>| a.sqrt(), element)
+    type Public<P> = Gf2<P>;
+    cells
+        .carry(same)
+        .binary_in(
+            Kind::Add.in_row(VARIABLE),
+            "+",
+            |&(a, b): &(Public<P>, _)| a + b,
+            element,
+        )
+        .binary_in(
+            Kind::Mul.in_row(VARIABLE),
+            "*",
+            |&(a, b): &(Public<P>, _)| a * b,
+            element,
+        )
+        .chained_unary_in(
+            Kind::Square.in_row(VARIABLE),
+            "square",
+            |&a: &Public<P>| a.square(),
+            element,
+        )
+        .unary_in(
+            Kind::Invert.in_row(VARIABLE),
+            "invert",
+            |&a: &Public<P>| a.invert(),
+            maybe,
+        )
+        .unary_in(
+            Kind::Sqrt.in_row(VARIABLE),
+            "sqrt",
+            |&a: &Public<P>| a.sqrt(),
+            element,
+        )
+        .binary_in(
+            Kind::Add.in_row(CONSTANT),
+            "Secret +",
+            |&(a, b): &(Secret<P>, _)| a + b,
+            element,
+        )
+        .binary_in(
+            Kind::Mul.in_row(CONSTANT),
+            "Secret *",
+            |&(a, b): &(Secret<P>, _)| a * b,
+            element,
+        )
+        .chained_unary_in(
+            Kind::Square.in_row(CONSTANT),
+            "Secret::square",
+            |&a: &Secret<P>| a.square(),
+            element,
+        )
+        .unary_in(
+            Kind::Invert.in_row(CONSTANT),
+            "Secret::invert",
+            |&a: &Secret<P>| a.invert(),
+            maybe,
+        )
+        .unary_in(
+            Kind::Sqrt.in_row(CONSTANT),
+            "Secret::sqrt",
+            |&a: &Secret<P>| a.sqrt(),
+            element,
+        )
         .cells()
 }
 
@@ -327,28 +482,32 @@ raw_word! {
     gf2p64 => |word: u64| Self::new(word), |element| element.get();
 }
 
-/// Offers the operations of the `gf256` type `$t`.
+/// Offers the operations of the `gf256` type `$t`, whose product and reciprocal have the timing
+/// `$timing`.
 macro_rules! gf256_ops {
-    ($cells:expr, $t:ty) => {
-        operators::<$t, V>($cells)
-            .absent(Op::Square, NO_SQUARE)
+    ($cells:expr, $t:ty, $timing:expr) => {
+        operators::<$t, V>($cells, $timing)
+            .absent(Kind::Square, NO_SQUARE)
             .unary(
-                Op::Invert,
+                Kind::Invert,
+                $timing,
                 "checked_recip",
                 |&a: &$t| a.checked_recip(),
                 maybe,
             )
-            .absent(Op::Sqrt, NO_SQRT)
+            .absent(Kind::Sqrt, NO_SQRT)
             .cells()
     };
 }
 
-/// `gf256`: its `gf2p16` and `gf2p64`, and the AES field of its `gf` macro.
+/// `gf256`: its `gf2p16` and `gf2p64`, and the AES field of its `gf` macro. The macro's table mode
+/// at 8 bits branches on zero and indexes its tables by the operands; its Barrett mode above takes
+/// carry-less products, and the reciprocal's exponent is fixed.
 fn gf256<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
-        GF8 => gf256_ops!(cells, Gf256Aes),
-        GF16 => gf256_ops!(cells, gf2p16),
-        GF64 => gf256_ops!(cells, gf2p64),
+        GF8 => gf256_ops!(cells, Gf256Aes, VARIABLE),
+        GF16 => gf256_ops!(cells, gf2p16, CONSTANT),
+        GF64 => gf256_ops!(cells, gf2p64, CONSTANT),
         _ => cells.none("fields of at most 64 bits"),
     }
 }
@@ -368,16 +527,23 @@ raw_word! {
     galois_field_2pm::gf2_lut::GFu16<GF16_BITS> => |word: u16| Self { value: word }, |element| element.value;
 }
 
-/// A field of `galois_field_2pm`, either module.
+/// A field of `galois_field_2pm`, either module: the products branch on the bits of an operand or
+/// index tables by it, and the inverse is the extended Euclidean algorithm.
 fn galois<T, V>(cells: Crate<V>) -> Crate<V>
 where
     T: galois_field_2pm::GaloisField + Raw + Add<Output = T> + Mul<Output = T>,
     V: Visitor<Op, Field>,
 {
-    operators::<T, V>(cells)
-        .absent(Op::Square, NO_SQUARE)
-        .unary(Op::Invert, "inverse", |a: &T| a.inverse(), element)
-        .absent(Op::Sqrt, NO_SQRT)
+    operators::<T, V>(cells, VARIABLE)
+        .absent(Kind::Square, NO_SQUARE)
+        .unary(
+            Kind::Invert,
+            VARIABLE,
+            "inverse",
+            |a: &T| a.inverse(),
+            element,
+        )
+        .absent(Kind::Sqrt, NO_SQRT)
         .cells()
 }
 
@@ -413,16 +579,16 @@ raw_word! {
     G2p16 => |word: u16| Self(word), |element| element.0;
 }
 
-/// A field of `g2p`.
+/// A field of `g2p`, whose product indexes its tables by the operands.
 fn g2p_field<T, V>(cells: Crate<V>) -> Crate<V>
 where
     T: Raw + Copy + Add<Output = T> + Mul<Output = T>,
     V: Visitor<Op, Field>,
 {
-    operators::<T, V>(cells)
-        .absent(Op::Square, NO_SQUARE)
-        .absent(Op::Invert, NO_INVERSE)
-        .absent(Op::Sqrt, NO_SQRT)
+    operators::<T, V>(cells, VARIABLE)
+        .absent(Kind::Square, NO_SQUARE)
+        .absent(Kind::Invert, NO_INVERSE)
+        .absent(Kind::Sqrt, NO_SQRT)
         .cells()
 }
 
@@ -501,18 +667,31 @@ fn reed_solomon_erasure<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     }
 }
 
-/// A field of `reed-solomon-erasure`, with its `add` and `mul`.
+/// A field of `reed-solomon-erasure`, with its `add` and its `mul`, which indexes tables by the
+/// operands.
 fn rs_erasure<T: Raw + Copy, V: Visitor<Op, Field>>(
     cells: Carried<V, impl Fn() -> Basis + Copy>,
     add: impl Fn(T, T) -> T + Copy,
     mul: impl Fn(T, T) -> T + Copy,
 ) -> Crate<V> {
     cells
-        .binary(Op::Add, "add", move |&(a, b): &(T, T)| add(a, b), element)
-        .binary(Op::Mul, "mul", move |&(a, b): &(T, T)| mul(a, b), element)
-        .absent(Op::Square, NO_SQUARE)
-        .absent(Op::Invert, NO_INVERSE)
-        .absent(Op::Sqrt, NO_SQRT)
+        .binary(
+            Kind::Add,
+            CONSTANT,
+            "add",
+            move |&(a, b): &(T, T)| add(a, b),
+            element,
+        )
+        .binary(
+            Kind::Mul,
+            VARIABLE,
+            "mul",
+            move |&(a, b): &(T, T)| mul(a, b),
+            element,
+        )
+        .absent(Kind::Square, NO_SQUARE)
+        .absent(Kind::Invert, NO_INVERSE)
+        .absent(Kind::Sqrt, NO_SQRT)
         .cells()
 }
 
@@ -563,15 +742,28 @@ fn hekate_tower(bits: usize) -> Tower {
     }
 }
 
-/// `hekate-math`: its tower fields, from the AES field at 8 bits.
+/// `hekate-math`: its tower fields, from the AES field at 8 bits. Without its `table-math`
+/// feature every operation masks and shifts, without a table or a branch on a value.
 fn hekate_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     let modulus = spec(cells.key()).1.modulus;
     let tower = move || Basis::new(&modulus, &hekate_tower(modulus.degree));
     match cells.key().field.as_str() {
-        GF8 => operators::<Block8, V>(cells)
-            .chained_unary(Op::Square, "square", |&a: &Block8| a.square(), element)
-            .unary(Op::Invert, "invert", |a: &Block8| a.invert(), element)
-            .absent(Op::Sqrt, NO_SQRT)
+        GF8 => operators::<Block8, V>(cells, CONSTANT)
+            .chained_unary(
+                Kind::Square,
+                CONSTANT,
+                "square",
+                |&a: &Block8| a.square(),
+                element,
+            )
+            .unary(
+                Kind::Invert,
+                CONSTANT,
+                "invert",
+                |a: &Block8| a.invert(),
+                element,
+            )
+            .absent(Kind::Sqrt, NO_SQRT)
             .cells(),
         GF16 => hekate::<Block16, V>(cells.carry(tower)),
         GF64 => hekate::<Block64, V>(cells.carry(tower)),
@@ -585,11 +777,23 @@ fn hekate<T: BinaryFieldExtras + Raw, V: Visitor<Op, Field>>(
     cells: Carried<V, impl Fn() -> Basis + Copy>,
 ) -> Crate<V> {
     cells
-        .binary(Op::Add, "+", |&(a, b): &(T, T)| a + b, element)
-        .binary(Op::Mul, "*", |&(a, b): &(T, T)| a * b, element)
-        .chained_unary(Op::Square, "square", |a: &T| a.square(), element)
-        .unary(Op::Invert, "invert", |a: &T| a.invert(), element)
-        .absent(Op::Sqrt, NO_SQRT)
+        .binary(Kind::Add, CONSTANT, "+", |&(a, b): &(T, T)| a + b, element)
+        .binary(Kind::Mul, CONSTANT, "*", |&(a, b): &(T, T)| a * b, element)
+        .chained_unary(
+            Kind::Square,
+            CONSTANT,
+            "square",
+            |a: &T| a.square(),
+            element,
+        )
+        .unary(
+            Kind::Invert,
+            CONSTANT,
+            "invert",
+            |a: &T| a.invert(),
+            element,
+        )
+        .absent(Kind::Sqrt, NO_SQRT)
         .cells()
 }
 
@@ -621,30 +825,89 @@ fn wiedemann_tower() -> Tower {
     }
 }
 
+/// The timing classes of a Plonky3 field's product, square, inverse and square root.
+#[derive(Clone, Copy)]
+struct P3Timings {
+    mul: Timing,
+    square: Timing,
+    invert: Timing,
+    sqrt: Timing,
+}
+
 /// Plonky3's `p3-binary-field`: `Rijndael8b`, `BinaryField16` in the Wiedemann tower, `Poly64`
 /// and `Ghash128`.
+///
+/// - `Rijndael8b` multiplies bit by bit under masks, and squares and roots by bit-matrix products.
+/// - `BinaryField16` multiplies through the logarithm tables of its byte field, and squares, roots
+///   and inverts through byte tables.
+/// - `Poly64` takes carry-less products, folds by them or by a table in a register, and inverts by
+///   a fixed chain of squarings and products.
+/// - `Ghash128` takes carry-less products, and inverts through tables of Frobenius maps.
 fn plonky3<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     let modulus = spec(cells.key()).1.modulus;
+    let constant = P3Timings {
+        mul: CONSTANT,
+        square: CONSTANT,
+        invert: CONSTANT,
+        sqrt: CONSTANT,
+    };
     match cells.key().field.as_str() {
-        GF8 => p3::<Rijndael8b, _, V>(cells.carry(same)),
-        GF16 => {
-            p3::<BinaryField16, _, V>(cells.carry(move || Basis::new(&modulus, &wiedemann_tower())))
-        }
-        GF64 => p3::<Poly64, _, V>(cells.carry(same)),
-        GF128 => p3::<Ghash128, _, V>(cells.carry(same)),
+        GF8 => p3::<Rijndael8b, _, V>(cells.carry(same), constant),
+        GF16 => p3::<BinaryField16, _, V>(
+            cells.carry(move || Basis::new(&modulus, &wiedemann_tower())),
+            P3Timings {
+                mul: VARIABLE,
+                square: VARIABLE,
+                invert: VARIABLE,
+                sqrt: VARIABLE,
+            },
+        ),
+        GF64 => p3::<Poly64, _, V>(cells.carry(same), constant),
+        GF128 => p3::<Ghash128, _, V>(
+            cells.carry(same),
+            P3Timings {
+                invert: VARIABLE,
+                ..constant
+            },
+        ),
         _ => cells.none("Plonky3 declares no such field"),
     }
 }
 
 fn p3<T: p3_field::Field, C: Carrier<T>, V: Visitor<Op, Field>>(
     cells: Carried<V, impl Fn() -> C + Copy>,
+    timings: P3Timings,
 ) -> Crate<V> {
     cells
-        .binary(Op::Add, "+", |&(a, b): &(T, T)| a + b, element)
-        .binary(Op::Mul, "*", |&(a, b): &(T, T)| a * b, element)
-        .chained_unary(Op::Square, "square", |a: &T| a.square(), element)
-        .unary(Op::Invert, "try_inverse", |a: &T| a.try_inverse(), maybe)
-        .unary(Op::Sqrt, "try_sqrt", |a: &T| a.try_sqrt(), maybe)
+        .binary(Kind::Add, CONSTANT, "+", |&(a, b): &(T, T)| a + b, element)
+        .binary(
+            Kind::Mul,
+            timings.mul,
+            "*",
+            |&(a, b): &(T, T)| a * b,
+            element,
+        )
+        .chained_unary(
+            Kind::Square,
+            timings.square,
+            "square",
+            |a: &T| a.square(),
+            element,
+        )
+        .unary(
+            Kind::Invert,
+            timings.invert,
+            "try_inverse",
+            |a: &T| a.try_inverse(),
+            maybe,
+        )
+        .unary(
+            Kind::Sqrt,
+            timings.sqrt,
+            "try_sqrt",
+            |a: &T| a.try_sqrt(),
+            maybe,
+        )
         .cells()
 }
 
@@ -667,42 +930,67 @@ impl<F: SupportsU128Conversions + SerializableField> Carrier<F::E> for Longfello
     }
 }
 
-/// The operations of a longfellow-zk `Gf2_128Field`.
-fn longfellow<F, V>(field: &F, cells: Crate<V>) -> Crate<V>
+/// The operations of a longfellow-zk `Gf2_128Field`, whose product and inverse have the timings
+/// `mul` and `invert`.
+fn longfellow<F, V>(field: &F, cells: Crate<V>, mul: Timing, invert: Timing) -> Crate<V>
 where
     F: AlgebraicField + SupportsU128Conversions + SerializableField,
     V: Visitor<Op, Field>,
 {
     cells
         .carry(|| Longfellow(field))
-        .binary(Op::Add, "addf", |(a, b)| field.addf(a, b), element)
-        .binary(Op::Mul, "mulf", |(a, b)| field.mulf(a, b), element)
-        .absent(Op::Square, NO_SQUARE)
-        .unary(Op::Invert, "invert", |a| field.invert(a), element)
-        .absent(Op::Sqrt, NO_SQRT)
+        .binary(
+            Kind::Add,
+            CONSTANT,
+            "addf",
+            |(a, b)| field.addf(a, b),
+            element,
+        )
+        .binary(Kind::Mul, mul, "mulf", |(a, b)| field.mulf(a, b), element)
+        .absent(Kind::Square, NO_SQUARE)
+        .unary(Kind::Invert, invert, "invert", |a| field.invert(a), element)
+        .absent(Kind::Sqrt, NO_SQRT)
         .cells()
 }
 
-/// longfellow-zk's prover-side `Gf2_128Field`.
+/// longfellow-zk's prover-side `Gf2_128Field`: carry-less products, and an inverse that branches
+/// on the bits of the value.
 fn runtime_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
-        GF128 => longfellow(&runtime_algebra::gf2_128::Gf2_128Field::new(), cells),
+        GF128 => longfellow(
+            &runtime_algebra::gf2_128::Gf2_128Field::new(),
+            cells,
+            CONSTANT,
+            VARIABLE,
+        ),
         _ => cells.none(GF128_ONLY),
     }
 }
 
-/// longfellow-zk's compile-side `Gf2_128Field`.
+/// longfellow-zk's compile-side `Gf2_128Field`: carry-less products, and the inverse
+/// `a^(2^128 - 2)` along a fixed sequence of them.
 fn compile_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
-        GF128 => longfellow(&compile_algebra::gf2_128::Gf2_128Field::new(), cells),
+        GF128 => longfellow(
+            &compile_algebra::gf2_128::Gf2_128Field::new(),
+            cells,
+            CONSTANT,
+            CONSTANT,
+        ),
         _ => cells.none(GF128_ONLY),
     }
 }
 
-/// longfellow-zk's reference `Gf2_128Field`.
+/// longfellow-zk's reference `Gf2_128Field`: a product that branches on each bit of an operand,
+/// and an inverse along it.
 fn core_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
-        GF128 => longfellow(&core_algebra::gf2_128::Gf2_128Field::new(), cells),
+        GF128 => longfellow(
+            &core_algebra::gf2_128::Gf2_128Field::new(),
+            cells,
+            VARIABLE,
+            VARIABLE,
+        ),
         _ => cells.none(GF128_ONLY),
     }
 }
@@ -747,11 +1035,23 @@ fn polyval<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
         GF128 => cells
             .carry(move || Polyval::new(modulus))
-            .binary(Op::Add, "+", |&(a, b): &(FieldElement, _)| a + b, element)
-            .binary(Op::Mul, "*", |&(a, b): &(FieldElement, _)| a * b, element)
-            .absent(Op::Square, NO_SQUARE)
-            .absent(Op::Invert, NO_INVERSE)
-            .absent(Op::Sqrt, NO_SQRT)
+            .binary(
+                Kind::Add,
+                CONSTANT,
+                "+",
+                |&(a, b): &(FieldElement, _)| a + b,
+                element,
+            )
+            .binary(
+                Kind::Mul,
+                CONSTANT,
+                "*",
+                |&(a, b): &(FieldElement, _)| a * b,
+                element,
+            )
+            .absent(Kind::Square, NO_SQUARE)
+            .absent(Kind::Invert, NO_INVERSE)
+            .absent(Kind::Sqrt, NO_SQRT)
             .cells(),
         _ => cells.none(GF128_ONLY),
     }

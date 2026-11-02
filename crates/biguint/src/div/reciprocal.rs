@@ -53,9 +53,8 @@ macro_rules! division_steps {
             }
         }
 
-        /// `(quotient + 1, remainder - divisor)`, out of the hot path.
-        #[cold]
-        #[inline(never)]
+        /// `(quotient + 1, remainder - divisor)`.
+        #[inline(always)]
         fn one_more(quotient: $word, remainder: $word, divisor: $word) -> ($word, $word) {
             (quotient + 1, remainder - divisor)
         }
@@ -116,9 +115,8 @@ macro_rules! division_steps {
             }
         }
 
-        /// `(quotient + 1, remainder - divisor)`, out of the hot path.
-        #[cold]
-        #[inline(never)]
+        /// `(quotient + 1, remainder - divisor)`.
+        #[inline(always)]
         fn one_more_wide(
             quotient: $word,
             remainder: $double,
@@ -140,20 +138,17 @@ pub(super) use limb::join;
 pub(super) struct NormalizedLimb(u64);
 
 impl NormalizedLimb {
-    /// `limb` when its top bit is set.
+    /// `limb`, whose top bit the normalization has set. Setting it again tells the compiler that
+    /// the divisor is not zero.
     #[inline(always)]
-    pub(super) const fn new(limb: u64) -> Option<Self> {
-        if limb >> 63 == 1 {
-            Some(Self(limb))
-        } else {
-            None
-        }
+    pub(super) const fn top_set(limb: u64) -> Self {
+        Self(limb | 1 << 63)
     }
 }
 
 /// A normalized limb `d` with its reciprocal `floor((2^128 - 1) / d) - 2^64`.
 #[derive(Clone, Copy)]
-pub(super) struct Reciprocal {
+pub(crate) struct Reciprocal {
     divisor: u64,
     reciprocal: u64,
 }
@@ -224,8 +219,7 @@ fn reciprocal_word(divisor: NormalizedLimb) -> u64 {
 #[cfg(any(test, target_arch = "x86_64"))]
 #[inline(always)]
 fn divided_reciprocal(divisor: NormalizedLimb) -> u64 {
-    // The top bit is set, which also tells the compiler that the divisor is not zero.
-    let d = divisor.0 | 1 << 63;
+    let d = divisor.0;
     ((u128::from(!d) << 64 | u128::from(u64::MAX)) / u128::from(d)) as u64
 }
 

@@ -47,7 +47,7 @@ const MEASURED: Measured = Measured {
         "core-algebra",
         "polyval",
     ],
-    // The comparison measures the full tables, which the default features leave out.
+    // The comparison measures the full tables of `precomputed`.
     features: &["precomputed"],
     // It strips every lookup table.
     forbidden: &["not-precomputed"],
@@ -70,11 +70,16 @@ const LAYOUT: Layout<'static, Field> = Layout {
     subject: "binary-field",
     tool: "binary-field-bench-report",
     formulas: &[
-        ("add", "a + b"),
-        ("mul", "a × b"),
-        ("square", "a²"),
-        ("invert", "a⁻¹"),
-        ("sqrt", "√a"),
+        ("add", "a + b, constant time"),
+        ("add_vartime", "a + b, variable time"),
+        ("mul", "a × b, constant time"),
+        ("mul_vartime", "a × b, variable time"),
+        ("square", "a², constant time"),
+        ("square_vartime", "a², variable time"),
+        ("invert", "a⁻¹, constant time"),
+        ("invert_vartime", "a⁻¹, variable time"),
+        ("sqrt", "√a, constant time"),
+        ("sqrt_vartime", "√a, variable time"),
     ],
     row_header: "Field",
     rows_phrase: |fields| format!("over {}", sentence(fields)),

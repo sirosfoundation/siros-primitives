@@ -1,103 +1,184 @@
-//! The little-endian `aarch64` backend: PMULL, which the `aes` feature provides.
+//! The little-endian `aarch64` backend: PMULL, which the `aes` feature provides, on Advanced SIMD
+//! registers.
 //!
 //! The module compiles only when the build enables `aes`, so the CPU that runs it has PMULL and
-//! Advanced SIMD. Rust still requires `unsafe` for a call into a `#[target_feature]` function from
-//! a function without the attribute; the four such calls are the module's only `unsafe`
-//! operations. The intrinsics convert between `p128` and vectors by the little-endian memory
+//! Advanced SIMD. Rust still requires `unsafe` for each call of an intrinsic from a function
+//! without `#[target_feature]`; those calls and the conversions between a register and its two
+//! words are the module's only `unsafe` operations. The conversions follow the little-endian
 //! layout, so big-endian builds use the comb.
 #![expect(
     unsafe_code,
-    reason = "the safe API calls the `#[target_feature]` functions that hold the intrinsics"
+    reason = "the safe API calls the `#[target_feature]` intrinsics of the build's features"
 )]
 
 use core::arch::aarch64::{
-    poly64x2_t, vaddq_p64, vextq_p64, vgetq_lane_p64, vmull_high_p64, vmull_p64,
-    vreinterpretq_p64_p128, vreinterpretq_p128_p64,
+    int64x2_t, uint64x2_t, vandq_u64, vdupq_n_s64, veorq_u64, vextq_u64, vgetq_lane_u64,
+    vmull_high_p64, vmull_p64, vorrq_u64, vreinterpretq_p64_u64, vreinterpretq_u64_p128, vshlq_u64,
 };
 
-use crate::REDUCTION;
+use crate::{REDUCTION, from_limbs, to_limbs};
+
+/// A vector register: two 64-bit words, word 0 in lane 0.
+pub(crate) type Register = uint64x2_t;
+
+/// The register of zeros.
+pub(crate) const ZERO: Register = register([0, 0]);
+
+/// The register of the words `[low, high]`.
+#[inline(always)]
+pub(crate) const fn register(words: [u64; 2]) -> Register {
+    // SAFETY: both types are 16 bytes, every bit pattern is a value of each, and on little-endian
+    // `aarch64` the first word is lane 0.
+    unsafe { core::mem::transmute::<[u64; 2], Register>(words) }
+}
+
+/// The words `[low, high]` of `register`.
+#[inline(always)]
+pub(crate) const fn words(register: Register) -> [u64; 2] {
+    // SAFETY: as in `register`.
+    unsafe { core::mem::transmute::<Register, [u64; 2]>(register) }
+}
+
+/// `a ^ b`.
+#[inline(always)]
+pub(crate) fn xor(a: Register, b: Register) -> Register {
+    // SAFETY: Advanced SIMD, which `aes` implies.
+    unsafe { veorq_u64(a, b) }
+}
+
+/// `a & b`.
+#[inline(always)]
+pub(crate) fn and(a: Register, b: Register) -> Register {
+    // SAFETY: Advanced SIMD.
+    unsafe { vandq_u64(a, b) }
+}
+
+/// `a | b`.
+#[inline(always)]
+pub(crate) fn or(a: Register, b: Register) -> Register {
+    // SAFETY: Advanced SIMD.
+    unsafe { vorrq_u64(a, b) }
+}
+
+/// The shift count `bits` in both lanes: a positive count shifts left, a negative one right.
+#[inline(always)]
+fn counts(bits: i64) -> int64x2_t {
+    // SAFETY: Advanced SIMD, which `aes` implies.
+    unsafe { vdupq_n_s64(bits) }
+}
+
+/// Each word shifted left by `bits`, below 64.
+#[inline(always)]
+pub(crate) fn shl_words(a: Register, bits: u32) -> Register {
+    // SAFETY: Advanced SIMD. A constant count folds into the immediate form.
+    unsafe { vshlq_u64(a, counts(i64::from(bits))) }
+}
+
+/// Each word shifted right by `bits`, below 64.
+#[inline(always)]
+pub(crate) fn shr_words(a: Register, bits: u32) -> Register {
+    // SAFETY: Advanced SIMD; a negative count shifts right, filling with zeros.
+    unsafe { vshlq_u64(a, counts(-i64::from(bits))) }
+}
+
+/// `[0, low]`: word 0 moved up to word 1.
+#[inline(always)]
+pub(crate) fn up(a: Register) -> Register {
+    // SAFETY: Advanced SIMD.
+    unsafe { vextq_u64::<1>(ZERO, a) }
+}
+
+/// `[high, 0]`: word 1 moved down to word 0.
+#[inline(always)]
+pub(crate) fn down(a: Register) -> Register {
+    // SAFETY: Advanced SIMD.
+    unsafe { vextq_u64::<1>(a, ZERO) }
+}
+
+/// Word `I` of `a`.
+#[inline(always)]
+fn word<const I: i32>(a: Register) -> u64 {
+    // SAFETY: Advanced SIMD; `I` is 0 or 1.
+    unsafe { vgetq_lane_u64::<I>(a) }
+}
+
+/// The product of two words in a register.
+#[inline(always)]
+fn product(a: u64, b: u64) -> Register {
+    // SAFETY: the build enables `aes`, the `cfg` of this module, which provides PMULL.
+    let product = unsafe { vmull_p64(a, b) };
+    // SAFETY: Advanced SIMD.
+    unsafe { vreinterpretq_u64_p128(product) }
+}
+
+/// The carry-less product of word `i` of `a` and word `j` of `b`, each 0 or 1.
+#[inline(always)]
+pub(crate) fn clmul(a: Register, i: usize, b: Register, j: usize) -> Register {
+    match (i, j) {
+        (0, 0) => product(word::<0>(a), word::<0>(b)),
+        (0, _) => product(word::<0>(a), word::<1>(b)),
+        (_, 0) => product(word::<1>(a), word::<0>(b)),
+        _ => {
+            // SAFETY: Advanced SIMD.
+            let a = unsafe { vreinterpretq_p64_u64(a) };
+            // SAFETY: Advanced SIMD.
+            let b = unsafe { vreinterpretq_p64_u64(b) };
+            // SAFETY: the build enables `aes`.
+            let product = unsafe { vmull_high_p64(a, b) };
+            // SAFETY: Advanced SIMD.
+            unsafe { vreinterpretq_u64_p128(product) }
+        }
+    }
+}
+
+/// The squares of the two words of `a`, `(a0^2, a1^2)`, by the carry-less product of each word with
+/// itself.
+#[inline(always)]
+pub(crate) fn spread(a: Register) -> (Register, Register) {
+    (clmul(a, 0, a, 0), clmul(a, 1, a, 1))
+}
 
 #[inline(always)]
 pub(crate) fn clmul64(a: u64, b: u64) -> u128 {
-    // SAFETY: the build enables `aes`, the `cfg` of this module.
-    unsafe { vmull_p64(a, b) }
+    from_limbs(words(product(a, b)))
 }
 
 /// The unreduced sum `low + middle * x^64 + high * x^128`.
 pub(crate) struct Accumulator {
-    low: poly64x2_t,
-    middle: poly64x2_t,
-    high: poly64x2_t,
+    low: Register,
+    middle: Register,
+    high: Register,
 }
 
 impl Accumulator {
     #[inline(always)]
     pub(crate) fn from_seed(seed: u128) -> Self {
-        // SAFETY: the build enables `aes`, the `cfg` of this module.
-        unsafe { seeded(seed) }
+        Self {
+            low: register(to_limbs(seed)),
+            middle: ZERO,
+            high: ZERO,
+        }
     }
 
     #[inline(always)]
     pub(crate) fn accumulate(&mut self, lhs: u128, rhs: u128) {
-        // SAFETY: the build enables `aes`, the `cfg` of this module.
-        unsafe { add_product(self, lhs, rhs) }
+        let (x, y) = (register(to_limbs(lhs)), register(to_limbs(rhs)));
+        let cross = xor(clmul(x, 1, y, 0), clmul(x, 0, y, 1));
+        self.low = xor(self.low, clmul(x, 0, y, 0));
+        self.middle = xor(self.middle, cross);
+        self.high = xor(self.high, clmul(x, 1, y, 1));
     }
 
     #[inline(always)]
     pub(crate) fn finalize(self) -> u128 {
-        // SAFETY: the build enables `aes`, the `cfg` of this module.
-        unsafe { reduced(self) }
+        from_limbs(words(reduce(self.low, reduce(self.middle, self.high))))
     }
-}
-
-#[inline]
-#[target_feature(enable = "neon,aes")]
-fn seeded(seed: u128) -> Accumulator {
-    let zero = vreinterpretq_p64_p128(0);
-    Accumulator {
-        low: vreinterpretq_p64_p128(seed),
-        middle: zero,
-        high: zero,
-    }
-}
-
-#[inline]
-#[target_feature(enable = "neon,aes")]
-fn add_product(sum: &mut Accumulator, lhs: u128, rhs: u128) {
-    let (x, y) = (vreinterpretq_p64_p128(lhs), vreinterpretq_p64_p128(rhs));
-    let swapped = vextq_p64::<1>(x, x);
-    let cross = vaddq_p64(low_product(swapped, y), high_product(swapped, y));
-    sum.low = vaddq_p64(sum.low, low_product(x, y));
-    sum.middle = vaddq_p64(sum.middle, cross);
-    sum.high = vaddq_p64(sum.high, high_product(x, y));
-}
-
-#[inline]
-#[target_feature(enable = "neon,aes")]
-fn reduced(sum: Accumulator) -> u128 {
-    vreinterpretq_p128_p64(reduce(sum.low, reduce(sum.middle, sum.high)))
 }
 
 /// `low + high * x^64`, reduced: the high half of `high` folds into its product with
 /// `x^7 + x^2 + x + 1`.
-#[inline]
-#[target_feature(enable = "neon,aes")]
-fn reduce(low: poly64x2_t, high: poly64x2_t) -> poly64x2_t {
-    let shifted = vextq_p64::<1>(vreinterpretq_p64_p128(0), high);
-    let folded = high_product(high, vreinterpretq_p64_p128(u128::from(REDUCTION) << 64));
-    vaddq_p64(vaddq_p64(low, shifted), folded)
-}
-
-/// The product of the low lanes of `x` and `y`.
-#[inline]
-#[target_feature(enable = "neon,aes")]
-fn low_product(x: poly64x2_t, y: poly64x2_t) -> poly64x2_t {
-    vreinterpretq_p64_p128(vmull_p64(vgetq_lane_p64::<0>(x), vgetq_lane_p64::<0>(y)))
-}
-
-/// The product of the high lanes of `x` and `y`.
-#[inline]
-#[target_feature(enable = "neon,aes")]
-fn high_product(x: poly64x2_t, y: poly64x2_t) -> poly64x2_t {
-    vreinterpretq_p64_p128(vmull_high_p64(x, y))
+#[inline(always)]
+fn reduce(low: Register, high: Register) -> Register {
+    let folded = clmul(high, 1, register([REDUCTION, 0]), 0);
+    xor(xor(low, up(high)), folded)
 }

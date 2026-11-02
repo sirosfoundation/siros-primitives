@@ -78,7 +78,7 @@ pub enum Class {
     Gpr,
     /// The vector registers.
     Xmm,
-    /// Memory, for a value of more than [`REGISTERS`](crate::barrier::REGISTERS) bytes.
+    /// Memory, for a value of more than 64 bytes.
     Memory,
 }
 

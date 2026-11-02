@@ -227,9 +227,9 @@ mod uint {
 
     use biguint::generic_array::GenericArray;
     use biguint::generic_array::sequence::GenericSequence;
-    use biguint::typenum::{Sum, U1, U63, U64, U65, U100, U128, U129, U192};
+    use biguint::typenum::{Sum, U1, U8, U16, U63, U64, U65, U100, U128, U129, U192, U233, U571};
     use biguint::{Bits, Uint};
-    use clmul::{CarrylessMul, const_carryless_mul, const_widening_carryless_mul};
+    use clmul::{CarrylessMul, Poly, Width, const_carryless_mul, const_widening_carryless_mul};
 
     use super::{Rng, reference};
 
@@ -287,5 +287,89 @@ mod uint {
         check::<U100, U129>();
         check::<U128, U128>();
         check::<U192, U64>();
+    }
+
+    /// `Poly` against `Uint` and the bit-by-bit product: conversions, bitwise operators, shifts,
+    /// resizing, products and squares, at widths of one word, of partial and whole registers and of
+    /// several registers.
+    fn check_poly<N, M>()
+    where
+        N: Width + Add<M> + Add<N>,
+        M: Width,
+        Sum<N, M>: Width,
+        Sum<N, N>: Width,
+    {
+        let mut rng = Rng(((N::BITS as u64) << 40) | ((M::BITS as u64) << 20) | 7);
+        let rhs_values = samples::<M>(&mut rng);
+        let lhs_values = samples::<N>(&mut rng);
+        let shifts = [0, 1, 7, 63, 64, 65, 127, 128, 129, N::BITS - 1, N::BITS];
+        for a in &lhs_values {
+            let p = Poly::from_uint(*a);
+            assert_eq!(p.to_uint(), *a);
+            assert_eq!(Poly::<N>::from_le_bytes(&a.to_le_bytes()), Ok(p));
+            assert_eq!(Poly::<N>::from_be_bytes(&p.to_be_bytes()), Ok(p));
+            assert_eq!(p.is_zero(), a.is_zero());
+            for &bits in &shifts {
+                assert_eq!((p << bits).to_uint(), *a << bits, "{a:?} << {bits}");
+                assert_eq!((p >> bits).to_uint(), *a >> bits, "{a:?} >> {bits}");
+            }
+            for bits in [1, 7, 32, 63] {
+                let words = |shift: fn(u64, u32) -> u64| -> Uint<N> {
+                    Uint::from_generic_limbs(GenericArray::generate(|index| {
+                        shift(a.as_limbs()[index], bits)
+                    }))
+                };
+                assert_eq!(
+                    p.shl_within_words(bits).to_uint(),
+                    words(|word, bits| word << bits)
+                );
+                assert_eq!(
+                    p.shr_within_words(bits).to_uint(),
+                    words(|word, bits| word >> bits)
+                );
+            }
+            assert_eq!(p.resize::<M>().to_uint(), a.resize::<M>());
+            assert_eq!(
+                p.widening_square().to_uint(),
+                expected::<Sum<N, N>>(a.as_limbs(), a.as_limbs())
+            );
+            for b in &lhs_values {
+                let q = Poly::from_uint(*b);
+                assert_eq!((p ^ q).to_uint(), *a ^ *b);
+                assert_eq!((p & q).to_uint(), *a & *b);
+                assert_eq!((p | q).to_uint(), *a | *b);
+            }
+            for b in &rhs_values {
+                let q = Poly::from_uint(*b);
+                assert_eq!(
+                    p.widening_mul(q).to_uint(),
+                    expected::<Sum<N, M>>(a.as_limbs(), b.as_limbs()),
+                    "{a:?} * {b:?}"
+                );
+                for i in 0..N::LIMBS {
+                    for j in 0..M::LIMBS {
+                        let (x, y) = (a.as_limbs()[i], b.as_limbs()[j]);
+                        assert_eq!(
+                            p.clmul_words(i, q, j).to_uint(),
+                            expected::<U128>(&[x], &[y]),
+                            "word {i} of {a:?} * word {j} of {b:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn polys_match_uint_and_the_bit_by_bit_product() {
+        check_poly::<U1, U1>();
+        check_poly::<U8, U16>();
+        check_poly::<U63, U65>();
+        check_poly::<U64, U64>();
+        check_poly::<U100, U129>();
+        check_poly::<U128, U128>();
+        check_poly::<U192, U64>();
+        check_poly::<U233, U233>();
+        check_poly::<U571, U571>();
     }
 }
