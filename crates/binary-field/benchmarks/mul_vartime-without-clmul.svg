@@ -42,29 +42,29 @@
 <text class="tick" x="867.4" y="454" text-anchor="middle">GF(2⁵⁷¹)</text>
 <text class="tick" x="504.0" y="470" text-anchor="middle">field</text>
 <g class="c0">
-<path class="marker" transform="translate(140.6,437.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁸): 3.6 cycles per operation</title></path>
-<path class="marker" transform="translate(261.7,435.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹⁶): 45.3 cycles per operation</title></path>
-<path class="marker" transform="translate(382.9,433.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁶⁴): 68.2 cycles per operation</title></path>
-<path class="marker" transform="translate(504.0,423.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 240 cycles per operation</title></path>
-<path class="marker" transform="translate(625.1,388.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 830 cycles per operation</title></path>
-<path class="marker" transform="translate(746.3,384.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 890 cycles per operation</title></path>
-<path class="marker" transform="translate(867.4,138.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 4,992 cycles per operation</title></path>
+<path class="marker" transform="translate(140.6,437.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁸): 5.3 cycles per operation</title></path>
+<path class="marker" transform="translate(261.7,435.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹⁶): 45.0 cycles per operation</title></path>
+<path class="marker" transform="translate(382.9,434.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁶⁴): 66.0 cycles per operation</title></path>
+<path class="marker" transform="translate(504.0,423.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 235 cycles per operation</title></path>
+<path class="marker" transform="translate(625.1,388.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 819 cycles per operation</title></path>
+<path class="marker" transform="translate(746.3,384.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 886 cycles per operation</title></path>
+<path class="marker" transform="translate(867.4,139.1)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 4,982 cycles per operation</title></path>
 </g>
 <g class="c1">
-<path class="marker" transform="translate(140.6,437.8)" d="M-4,-4H4V4H-4Z"><title>gf256, GF(2⁸): 3.9 cycles per operation</title></path>
+<path class="marker" transform="translate(140.6,437.8)" d="M-4,-4H4V4H-4Z"><title>gf256, GF(2⁸): 3.7 cycles per operation</title></path>
 </g>
 <g class="c2">
-<path class="marker" transform="translate(140.6,432.8)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2⁸): 86.0 cycles per operation</title></path>
-<path class="marker" transform="translate(261.7,428.9)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2¹⁶): 152 cycles per operation</title></path>
-<path class="marker" transform="translate(382.9,404.8)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2⁶⁴): 553 cycles per operation</title></path>
+<path class="marker" transform="translate(140.6,433.1)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2⁸): 81.9 cycles per operation</title></path>
+<path class="marker" transform="translate(261.7,429.4)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2¹⁶): 143 cycles per operation</title></path>
+<path class="marker" transform="translate(382.9,405.5)" d="M0,-5.5L5.5,0L0,5.5L-5.5,0Z"><title>galois_field_2pm, GF(2⁶⁴): 542 cycles per operation</title></path>
 </g>
 <g class="c3">
-<path class="marker" transform="translate(140.6,437.8)" d="M0,-5.5L5,4H-5Z"><title>g2p, GF(2⁸): 3.1 cycles per operation</title></path>
-<path class="marker" transform="translate(261.7,437.2)" d="M0,-5.5L5,4H-5Z"><title>g2p, GF(2¹⁶): 13.5 cycles per operation</title></path>
+<path class="marker" transform="translate(140.6,437.7)" d="M0,-5.5L5,4H-5Z"><title>g2p, GF(2⁸): 5.3 cycles per operation</title></path>
+<path class="marker" transform="translate(261.7,437.5)" d="M0,-5.5L5,4H-5Z"><title>g2p, GF(2¹⁶): 8.4 cycles per operation</title></path>
 </g>
 <g class="c4">
-<path class="marker" transform="translate(140.6,437.7)" d="M0,5.5L5,-4H-5Z"><title>reed-solomon-erasure, GF(2⁸): 5.7 cycles per operation</title></path>
-<path class="marker" transform="translate(261.7,437.3)" d="M0,5.5L5,-4H-5Z"><title>reed-solomon-erasure, GF(2¹⁶): 10.9 cycles per operation</title></path>
+<path class="marker" transform="translate(140.6,437.8)" d="M0,5.5L5,-4H-5Z"><title>reed-solomon-erasure, GF(2⁸): 2.9 cycles per operation</title></path>
+<path class="marker" transform="translate(261.7,437.5)" d="M0,5.5L5,-4H-5Z"><title>reed-solomon-erasure, GF(2¹⁶): 8.8 cycles per operation</title></path>
 </g>
 <g class="c5">
 </g>

@@ -22,16 +22,14 @@
 <g class="c7"><path class="marker" transform="translate(34,108)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"/></g>
 <text class="legend" x="50" y="112">runtime-algebra</text>
 <text class="tick" x="72" y="442.5" text-anchor="end">0</text>
-<path class="grid" d="M80,378.5H928"/>
-<text class="tick" x="72" y="382.5" text-anchor="end">2</text>
-<path class="grid" d="M80,318.5H928"/>
-<text class="tick" x="72" y="322.5" text-anchor="end">4</text>
-<path class="grid" d="M80,258.5H928"/>
-<text class="tick" x="72" y="262.5" text-anchor="end">6</text>
-<path class="grid" d="M80,198.5H928"/>
-<text class="tick" x="72" y="202.5" text-anchor="end">8</text>
+<path class="grid" d="M80,363.5H928"/>
+<text class="tick" x="72" y="367.5" text-anchor="end">2</text>
+<path class="grid" d="M80,288.5H928"/>
+<text class="tick" x="72" y="292.5" text-anchor="end">4</text>
+<path class="grid" d="M80,213.5H928"/>
+<text class="tick" x="72" y="217.5" text-anchor="end">6</text>
 <path class="grid" d="M80,138.5H928"/>
-<text class="tick" x="72" y="142.5" text-anchor="end">10</text>
+<text class="tick" x="72" y="142.5" text-anchor="end">8</text>
 <path class="axis" d="M80,438.5H928"/>
 <text class="tick" x="140.6" y="454" text-anchor="middle">GF(2⁸)</text>
 <text class="tick" x="261.7" y="454" text-anchor="middle">GF(2¹⁶)</text>
@@ -42,13 +40,13 @@
 <text class="tick" x="867.4" y="454" text-anchor="middle">GF(2⁵⁷¹)</text>
 <text class="tick" x="504.0" y="470" text-anchor="middle">field</text>
 <g class="c0">
-<path class="marker" transform="translate(140.6,285.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁸): 5.1 cycles per operation</title></path>
-<path class="marker" transform="translate(261.7,282.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹⁶): 5.2 cycles per operation</title></path>
-<path class="marker" transform="translate(382.9,354.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁶⁴): 2.8 cycles per operation</title></path>
-<path class="marker" transform="translate(504.0,368.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 2.3 cycles per operation</title></path>
-<path class="marker" transform="translate(625.1,333.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 3.5 cycles per operation</title></path>
-<path class="marker" transform="translate(746.3,331.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 3.5 cycles per operation</title></path>
-<path class="marker" transform="translate(867.4,174.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 8.8 cycles per operation</title></path>
+<path class="marker" transform="translate(140.6,248.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁸): 5.0 cycles per operation</title></path>
+<path class="marker" transform="translate(261.7,248.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹⁶): 5.0 cycles per operation</title></path>
+<path class="marker" transform="translate(382.9,354.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁶⁴): 2.2 cycles per operation</title></path>
+<path class="marker" transform="translate(504.0,353.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 2.3 cycles per operation</title></path>
+<path class="marker" transform="translate(625.1,311.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 3.4 cycles per operation</title></path>
+<path class="marker" transform="translate(746.3,303.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 3.6 cycles per operation</title></path>
+<path class="marker" transform="translate(867.4,154.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 7.6 cycles per operation</title></path>
 </g>
 <g class="c1">
 </g>

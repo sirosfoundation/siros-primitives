@@ -38,13 +38,13 @@
 <text class="tick" x="867.4" y="454" text-anchor="middle">GF(2⁵⁷¹)</text>
 <text class="tick" x="504.0" y="470" text-anchor="middle">field</text>
 <g class="c0">
-<path class="marker" transform="translate(140.6,437.9)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁸): 2.3 cycles per operation</title></path>
-<path class="marker" transform="translate(261.7,437.8)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹⁶): 3.8 cycles per operation</title></path>
-<path class="marker" transform="translate(382.9,433.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁶⁴): 89.4 cycles per operation</title></path>
-<path class="marker" transform="translate(504.0,428.1)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 197 cycles per operation</title></path>
-<path class="marker" transform="translate(625.1,432.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 111 cycles per operation</title></path>
-<path class="marker" transform="translate(746.3,429.1)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 178 cycles per operation</title></path>
-<path class="marker" transform="translate(867.4,159.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 5,575 cycles per operation</title></path>
+<path class="marker" transform="translate(140.6,437.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁸): 5.0 cycles per operation</title></path>
+<path class="marker" transform="translate(261.7,437.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹⁶): 5.3 cycles per operation</title></path>
+<path class="marker" transform="translate(382.9,433.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁶⁴): 85.8 cycles per operation</title></path>
+<path class="marker" transform="translate(504.0,429.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 180 cycles per operation</title></path>
+<path class="marker" transform="translate(625.1,432.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 108 cycles per operation</title></path>
+<path class="marker" transform="translate(746.3,431.0)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 141 cycles per operation</title></path>
+<path class="marker" transform="translate(867.4,184.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 5,072 cycles per operation</title></path>
 </g>
 <g class="c1">
 </g>
@@ -57,7 +57,7 @@
 <g class="c5">
 </g>
 <g class="c6">
-<path class="marker" transform="translate(261.7,437.8)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2¹⁶): 3.3 cycles per operation</title></path>
+<path class="marker" transform="translate(261.7,437.8)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2¹⁶): 3.2 cycles per operation</title></path>
 </g>
 <g class="c7">
 </g>

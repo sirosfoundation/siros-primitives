@@ -38,17 +38,17 @@
 <text class="tick" x="867.4" y="454" text-anchor="middle">GF(2⁵⁷¹)</text>
 <text class="tick" x="504.0" y="470" text-anchor="middle">field</text>
 <g class="c0">
-<path class="marker" transform="translate(140.6,437.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁸): 8.1 cycles per operation</title></path>
-<path class="marker" transform="translate(261.7,437.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹⁶): 8.0 cycles per operation</title></path>
-<path class="marker" transform="translate(382.9,437.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁶⁴): 8.9 cycles per operation</title></path>
-<path class="marker" transform="translate(504.0,437.4)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 11.3 cycles per operation</title></path>
-<path class="marker" transform="translate(625.1,435.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 54.2 cycles per operation</title></path>
-<path class="marker" transform="translate(746.3,436.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 34.1 cycles per operation</title></path>
-<path class="marker" transform="translate(867.4,424.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 275 cycles per operation</title></path>
+<path class="marker" transform="translate(140.6,437.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁸): 8.0 cycles per operation</title></path>
+<path class="marker" transform="translate(261.7,437.6)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹⁶): 8.2 cycles per operation</title></path>
+<path class="marker" transform="translate(382.9,437.7)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁶⁴): 6.1 cycles per operation</title></path>
+<path class="marker" transform="translate(504.0,437.5)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2¹²⁸): 11.0 cycles per operation</title></path>
+<path class="marker" transform="translate(625.1,435.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²³³): 53.6 cycles per operation</title></path>
+<path class="marker" transform="translate(746.3,436.3)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2²⁵⁶): 34.0 cycles per operation</title></path>
+<path class="marker" transform="translate(867.4,424.2)" d="M0,-4.5A4.5,4.5 0 1 1 0,4.5A4.5,4.5 0 1 1 0,-4.5Z"><title>binary-field, GF(2⁵⁷¹): 275 cycles per operation</title></path>
 </g>
 <g class="c1">
 <path class="marker" transform="translate(261.7,437.6)" d="M-4,-4H4V4H-4Z"><title>gf256, GF(2¹⁶): 8.1 cycles per operation</title></path>
-<path class="marker" transform="translate(382.9,437.7)" d="M-4,-4H4V4H-4Z"><title>gf256, GF(2⁶⁴): 6.3 cycles per operation</title></path>
+<path class="marker" transform="translate(382.9,437.7)" d="M-4,-4H4V4H-4Z"><title>gf256, GF(2⁶⁴): 6.0 cycles per operation</title></path>
 </g>
 <g class="c2">
 </g>
@@ -57,18 +57,18 @@
 <g class="c4">
 </g>
 <g class="c5">
-<path class="marker" transform="translate(140.6,437.3)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2⁸): 14.1 cycles per operation</title></path>
-<path class="marker" transform="translate(261.7,435.0)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹⁶): 60.1 cycles per operation</title></path>
-<path class="marker" transform="translate(382.9,408.2)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2⁶⁴): 596 cycles per operation</title></path>
-<path class="marker" transform="translate(504.0,344.2)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹²⁸): 1,876 cycles per operation</title></path>
-<path class="marker" transform="translate(746.3,150.0)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2²⁵⁶): 5,759 cycles per operation</title></path>
+<path class="marker" transform="translate(140.6,437.3)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2⁸): 14.0 cycles per operation</title></path>
+<path class="marker" transform="translate(261.7,435.3)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹⁶): 53.1 cycles per operation</title></path>
+<path class="marker" transform="translate(382.9,410.6)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2⁶⁴): 548 cycles per operation</title></path>
+<path class="marker" transform="translate(504.0,348.7)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2¹²⁸): 1,785 cycles per operation</title></path>
+<path class="marker" transform="translate(746.3,151.1)" d="M-1.8,-5.5H1.8V-1.8H5.5V1.8H1.8V5.5H-1.8V1.8H-5.5V-1.8H-1.8Z"><title>hekate-math, GF(2²⁵⁶): 5,737 cycles per operation</title></path>
 </g>
 <g class="c6">
-<path class="marker" transform="translate(140.6,437.1)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2⁸): 18.0 cycles per operation</title></path>
-<path class="marker" transform="translate(382.9,437.6)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2⁶⁴): 7.2 cycles per operation</title></path>
-<path class="marker" transform="translate(504.0,437.4)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2¹²⁸): 12.5 cycles per operation</title></path>
+<path class="marker" transform="translate(140.6,437.2)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2⁸): 16.9 cycles per operation</title></path>
+<path class="marker" transform="translate(382.9,437.7)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2⁶⁴): 6.0 cycles per operation</title></path>
+<path class="marker" transform="translate(504.0,437.4)" d="M0,-6L1.6,-2.1L5.7,-1.9L2.6,0.8L3.5,4.9L0,2.6L-3.5,4.9L-2.6,0.8L-5.7,-1.9L-1.6,-2.1Z"><title>plonky3, GF(2¹²⁸): 12.0 cycles per operation</title></path>
 </g>
 <g class="c7">
-<path class="marker" transform="translate(504.0,437.4)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, GF(2¹²⁸): 12.7 cycles per operation</title></path>
+<path class="marker" transform="translate(504.0,437.4)" d="M-4.6,-2.5L-2.5,-4.6L0,-2.1L2.5,-4.6L4.6,-2.5L2.1,0L4.6,2.5L2.5,4.6L0,2.1L-2.5,4.6L-4.6,2.5L-2.1,0Z"><title>runtime-algebra, GF(2¹²⁸): 12.0 cycles per operation</title></path>
 </g>
 </svg>

@@ -1,6 +1,6 @@
 # Benchmarks
 
-`binary-field` at commit `b158fca` against `gf256`, `galois_field_2pm`, `g2p`, `reed-solomon-erasure`, `hekate-math`, `plonky3`, `runtime-algebra`, `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut`: add, add_vartime, mul, mul_vartime, square, square_vartime, invert, invert_vartime, sqrt and sqrt_vartime over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹), in cycles and instructions per operation, measured on 2026-11-02.
+`binary-field` at commit `54b9917` against `gf256`, `galois_field_2pm`, `g2p`, `reed-solomon-erasure`, `hekate-math`, `plonky3`, `runtime-algebra`, `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut`: add, add_vartime, mul, mul_vartime, square, square_vartime, invert, invert_vartime, sqrt and sqrt_vartime over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸), GF(2²³³), GF(2²⁵⁶) and GF(2⁵⁷¹), in cycles and instructions per operation, measured on 2026-11-02.
 
 The CPU is an AMD Ryzen 9 5950X 16-Core Processor, measured on its CPU 15.
 Its counters give each figure per operation as the median, over 31 repetitions, of a run of 2n operations on fresh operands less a run of n, over n.
@@ -17,8 +17,8 @@ Its counters give each figure per operation as the median, over 31 repetitions, 
 | RUSTFLAGS, without carry-less multiplication | `-C target-cpu=native -C target-feature=-pclmulqdq,-vpclmulqdq -C codegen-units=1 --cfg polyval_backend="soft"` |
 | Extensions, without carry-less multiplication | adx, aes, avx, avx2, bmi1, bmi2, f16c, fma, lzcnt, movbe, popcnt, sha, sse, sse2, sse3, sse4.1, sse4.2, sse4a, ssse3, vaes |
 | Counters | one Linux perf_event group: user-mode cycles, instructions and branch misses |
-| Load, with carry-less multiplication | 1-minute load average 21.28 before the sweep and 21.52 after; CPU 31, the SMT sibling of CPU 15, busy 56% of the sweep |
-| Load, without carry-less multiplication | 1-minute load average 16.61 before the sweep and 17.01 after; CPU 31, the SMT sibling of CPU 15, busy 50% of the sweep |
+| Load, with carry-less multiplication | 1-minute load average 23.44 before the sweep and 16.61 after; CPU 31, the SMT sibling of CPU 15, busy 39% of the sweep |
+| Load, without carry-less multiplication | 1-minute load average 12.23 before the sweep and 17.17 after; CPU 31, the SMT sibling of CPU 15, busy 10% of the sweep |
 | Crates | gf256 0.3.1, galois_field_2pm 0.1.0, g2p 1.2.2, reed-solomon-erasure 6.0.0, hekate-math 0.12.1, p3-binary-field 0.9.0-rc.2, runtime-algebra 0.1.0, compile-algebra 0.1.0, core-algebra 0.1.0, polyval 0.7.3 |
 
 ## Method
@@ -104,26 +104,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 5.1 | 5.3 | 5.1 | 5.3 | **3.6** | 5.1 | 5.3 | – | – | – | – | – |
-|  | latency cycles | 3.6 | 3.3 | 3.0 | 3.1 | 5.9 | 3.3 | **3.0** | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | 5.0 | 5.0 | 5.1 | 5.0 | **2.2** | 5.1 | 5.0 | – | – | – | – | – |
+|  | latency cycles | 3.1 | 3.1 | 3.1 | **3.0** | 3.5 | 3.0 | 3.0 | – | – | – | – | – |
 |  | instructions | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 5.1 | 2.9 | **2.4** | 4.1 | 8.4 | 4.1 | 2.8 | – | – | – | – | 4.2 |
-|  | latency cycles | 4.1 | 4.5 | 3.6 | 3.3 | 6.1 | 6.0 | 6.5 | – | – | – | – | **3.2** |
+| GF(2¹⁶) | throughput cycles | 5.1 | 2.2 | 2.2 | **2.1** | 2.6 | 2.5 | 2.9 | – | – | – | – | 2.7 |
+|  | latency cycles | 3.0 | 3.0 | **3.0** | 3.0 | 3.3 | 3.7 | 3.3 | – | – | – | – | 3.1 |
 |  | instructions | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | **8.0** |
-| GF(2⁶⁴) | throughput cycles | 4.0 | 2.9 | **2.2** | – | – | 12.2 | 3.5 | – | – | – | – | – |
-|  | latency cycles | 4.1 | 1.9 | **1.4** | – | – | 10.2 | 2.2 | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | 2.2 | 2.2 | 2.2 | – | – | 6.3 | **2.2** | – | – | – | – | – |
+|  | latency cycles | 2.1 | **1.3** | 1.3 | – | – | 7.4 | 1.3 | – | – | – | – | – |
 |  | instructions | **8.0** | **8.0** | **8.0** | – | – | **8.0** | **8.0** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 3.6 | – | – | – | – | 24.2 | 3.3 | **2.8** | 3.9 | 3.6 | 18.6 | – |
-|  | latency cycles | 4.0 | – | – | – | – | 19.6 | 2.5 | **1.5** | 2.3 | 2.3 | 18.9 | – |
+| GF(2¹²⁸) | throughput cycles | 2.2 | – | – | – | – | 8.9 | 2.3 | 2.2 | **2.2** | 2.3 | 13.5 | – |
+|  | latency cycles | 2.1 | – | – | – | – | 9.0 | 2.1 | **1.5** | 2.0 | 2.0 | 9.9 | – |
 |  | instructions | **8.0** | – | – | – | – | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – |
-| GF(2²³³) | throughput cycles | **5.2** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.6** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **4.3** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **2.3** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **11.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **3.8** | – | – | – | – | 26.3 | – | – | – | – | – | – |
-|  | latency cycles | **2.3** | – | – | – | – | 34.2 | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **3.5** | – | – | – | – | 16.6 | – | – | – | – | – | – |
+|  | latency cycles | **2.6** | – | – | – | – | 19.2 | – | – | – | – | – | – |
 |  | instructions | **11.0** | – | – | – | – | **11.0** | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **12.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **20.8** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **9.5** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **19.9** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **20.0** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### add_vartime: a + b, variable time, with carry-less multiplication
@@ -132,26 +132,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **5.1** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **3.3** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **5.0** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **3.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **5.2** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **3.4** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | **5.0** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **3.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **2.8** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | **2.2** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **2.1** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
 | GF(2¹²⁸) | throughput cycles | **2.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.2** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **2.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **3.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.3** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **3.4** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **2.4** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **11.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **3.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.9** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **3.6** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **2.4** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **11.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **8.8** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **20.2** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **7.6** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **19.9** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **20.0** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul: a × b, constant time, with carry-less multiplication
@@ -160,26 +160,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **8.1** | – | – | – | – | 14.1 | 18.0 | – | – | – | – | – |
-|  | latency cycles | **21.1** | – | – | – | – | 25.9 | 33.1 | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **8.0** | – | – | – | – | 14.0 | 16.9 | – | – | – | – | – |
+|  | latency cycles | **21.0** | – | – | – | – | 26.0 | 33.2 | – | – | – | – | – |
 |  | instructions | **31.0** | – | – | – | – | 67.0 | 59.0 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **8.0** | 8.1 | – | – | – | 60.1 | – | – | – | – | – | – |
-|  | latency cycles | **21.1** | 29.2 | – | – | – | 54.7 | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | 8.2 | **8.1** | – | – | – | 53.1 | – | – | – | – | – | – |
+|  | latency cycles | **21.0** | 29.1 | – | – | – | 54.4 | – | – | – | – | – | – |
 |  | instructions | 31.0 | **18.0** | – | – | – | 236 | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 8.9 | **6.3** | – | – | – | 596 | 7.2 | – | – | – | – | – |
-|  | latency cycles | **14.8** | 20.1 | – | – | – | 590 | 19.1 | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | 6.1 | **6.0** | – | – | – | 548 | 6.0 | – | – | – | – | – |
+|  | latency cycles | **14.8** | 20.1 | – | – | – | 554 | 19.1 | – | – | – | – | – |
 |  | instructions | 23.0 | **13.0** | – | – | – | 2,489 | **13.0** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **11.3** | – | – | – | – | 1,876 | 12.5 | 12.7 | 30.2 | – | 119 | – |
-|  | latency cycles | 17.2 | – | – | – | – | 1,835 | **16.1** | 18.7 | 30.4 | – | 145 | – |
+| GF(2¹²⁸) | throughput cycles | **11.0** | – | – | – | – | 1,785 | 12.0 | 12.0 | 30.0 | – | 118 | – |
+|  | latency cycles | 17.1 | – | – | – | – | 1,822 | **16.1** | 18.7 | 30.3 | – | 134 | – |
 |  | instructions | 25.0 | – | – | – | – | 7,962 | **21.0** | **21.0** | 78.0 | – | 526 | – |
-| GF(2²³³) | throughput cycles | **54.2** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **53.6** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **55.1** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **136** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **34.1** | – | – | – | – | 5,759 | – | – | – | – | – | – |
-|  | latency cycles | **35.7** | – | – | – | – | 5,953 | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **34.0** | – | – | – | – | 5,737 | – | – | – | – | – | – |
+|  | latency cycles | **35.3** | – | – | – | – | 6,014 | – | – | – | – | – | – |
 |  | instructions | **70.0** | – | – | – | – | 25,585 | – | – | – | – | – | – |
 | GF(2⁵⁷¹) | throughput cycles | **275** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **298** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **283** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **910** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul_vartime: a × b, variable time, with carry-less multiplication
@@ -188,26 +188,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 5.2 | **4.0** | 83.4 | 6.0 | 4.7 | – | – | – | – | – | – | – |
-|  | latency cycles | **12.4** | 13.5 | 89.6 | 16.0 | 14.7 | – | – | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | 5.3 | 3.8 | 84.6 | 5.5 | **2.7** | – | – | – | – | – | – | – |
+|  | latency cycles | **11.7** | 13.5 | 92.8 | 13.4 | 13.5 | – | – | – | – | – | – | – |
 |  | instructions | **11.0** | 20.0 | 323 | **11.0** | **11.0** | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **8.0** | – | 166 | 26.0 | 11.9 | – | 15.4 | – | – | – | – | 34.1 |
-|  | latency cycles | **21.4** | – | 156 | 84.3 | 27.4 | – | 31.0 | – | – | – | – | 86.2 |
+| GF(2¹⁶) | throughput cycles | **8.0** | – | 144 | 11.3 | 9.1 | – | 14.8 | – | – | – | – | 13.5 |
+|  | latency cycles | **21.0** | – | 151 | 46.1 | 27.8 | – | 30.5 | – | – | – | – | 65.2 |
 |  | instructions | 31.0 | – | 627 | **22.0** | 31.0 | – | 69.0 | – | – | – | – | 31.0 |
-| GF(2⁶⁴) | throughput cycles | **8.2** | – | 568 | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **14.8** | – | 591 | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | **6.2** | – | 546 | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **14.8** | – | 568 | – | – | – | – | – | – | – | – | – |
 |  | instructions | **23.0** | – | 1,354 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **14.7** | – | – | – | – | – | – | – | – | 686 | – | – |
-|  | latency cycles | **17.3** | – | – | – | – | – | – | – | – | 653 | – | – |
+| GF(2¹²⁸) | throughput cycles | **11.0** | – | – | – | – | – | – | – | – | 590 | – | – |
+|  | latency cycles | **17.1** | – | – | – | – | – | – | – | – | 561 | – | – |
 |  | instructions | **25.0** | – | – | – | – | – | – | – | – | 2,064 | – | – |
-| GF(2²³³) | throughput cycles | **54.7** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **56.9** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **53.5** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **55.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **136** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **36.9** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **36.4** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **34.0** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **35.5** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **70.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **313** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **296** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **274** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **283** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **910** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square: a², constant time, with carry-less multiplication
@@ -216,26 +216,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **6.5** | – | – | – | – | 9.0 | 11.1 | – | – | – | – | – |
-|  | latency cycles | **17.1** | – | – | – | – | 21.1 | 25.2 | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **4.7** | – | – | – | – | 8.4 | 8.6 | – | – | – | – | – |
+|  | latency cycles | **17.0** | – | – | – | – | 21.1 | 25.1 | – | – | – | – | – |
 |  | instructions | **21.0** | – | – | – | – | 34.0 | 34.0 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **7.1** | – | – | – | – | 23.1 | – | – | – | – | – | – |
-|  | latency cycles | **21.0** | – | – | – | – | 35.5 | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | **7.0** | – | – | – | – | 22.4 | – | – | – | – | – | – |
+|  | latency cycles | **21.0** | – | – | – | – | 35.2 | – | – | – | – | – | – |
 |  | instructions | **29.0** | – | – | – | – | 90.0 | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 7.7 | – | – | – | – | 142 | **6.2** | – | – | – | – | – |
-|  | latency cycles | **15.6** | – | – | – | – | 155 | 16.4 | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | 6.1 | – | – | – | – | 133 | **5.1** | – | – | – | – | – |
+|  | latency cycles | **15.5** | – | – | – | – | 146 | 16.5 | – | – | – | – | – |
 |  | instructions | 23.0 | – | – | – | – | 584 | **22.0** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **7.0** | – | – | – | – | 361 | 8.8 | – | – | – | – | – |
-|  | latency cycles | **14.5** | – | – | – | – | 301 | 16.6 | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | **6.7** | – | – | – | – | 306 | 8.0 | – | – | – | – | – |
+|  | latency cycles | **14.5** | – | – | – | – | 297 | 16.6 | – | – | – | – | – |
 |  | instructions | 28.0 | – | – | – | – | 1,271 | **16.0** | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **34.9** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **34.8** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **44.5** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **102** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **13.2** | – | – | – | – | 1,043 | – | – | – | – | – | – |
-|  | latency cycles | **19.7** | – | – | – | – | 1,149 | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **13.1** | – | – | – | – | 1,082 | – | – | – | – | – | – |
+|  | latency cycles | **19.7** | – | – | – | – | 1,127 | – | – | – | – | – | – |
 |  | instructions | **37.0** | – | – | – | – | 4,090 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **43.0** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **56.1** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **41.3** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **56.2** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **118** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square_vartime: a², variable time, with carry-less multiplication
@@ -244,26 +244,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **5.2** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **5.1** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **7.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 6.1 | – | – | – | – | – | **3.2** | – | – | – | – | – |
-|  | latency cycles | **7.2** | – | – | – | – | – | 10.1 | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | 5.4 | – | – | – | – | – | **2.6** | – | – | – | – | – |
+|  | latency cycles | **7.1** | – | – | – | – | – | 10.1 | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | 11.0 | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **7.4** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | **6.2** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **15.5** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **23.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **7.1** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | **6.8** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **14.5** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **28.0** | – | – | – | – | – | – | – | – | – | – | – |
 | GF(2²³³) | throughput cycles | **34.8** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **44.6** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **102** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **13.1** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **19.7** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **13.2** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **19.8** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **37.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **41.4** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **56.1** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **41.3** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **56.3** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **118** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert: a⁻¹, constant time, with carry-less multiplication
@@ -272,19 +272,19 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **90.8** | – | – | – | – | 268 | 322 | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **88.5** | – | – | – | – | 260 | 317 | – | – | – | – | – |
 |  | instructions | **182** | – | – | – | – | 804 | 518 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **209** | 424 | – | – | – | 359 | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | **204** | 421 | – | – | – | 339 | – | – | – | – | – | – |
 |  | instructions | **361** | 415 | – | – | – | 1,072 | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 1,099 | 1,230 | – | – | – | 1,304 | **1,074** | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | 1,099 | 1,228 | – | – | – | 1,257 | **1,066** | – | – | – | – | – |
 |  | instructions | 1,211 | **1,024** | – | – | – | 4,828 | 1,081 | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **2,040** | – | – | – | – | 3,650 | – | – | 5,229 | – | – | – |
+| GF(2¹²⁸) | throughput cycles | **2,039** | – | – | – | – | 3,420 | – | – | 5,211 | – | – | – |
 |  | instructions | **3,003** | – | – | – | – | 13,595 | – | – | 13,665 | – | – | – |
-| GF(2²³³) | throughput cycles | **11,062** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **11,071** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **23,596** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **5,500** | – | – | – | – | 10,226 | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **5,496** | – | – | – | – | 9,766 | – | – | – | – | – | – |
 |  | instructions | **8,549** | – | – | – | – | 41,587 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **30,930** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **28,828** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **73,741** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert_vartime: a⁻¹, variable time, with carry-less multiplication
@@ -293,19 +293,19 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 5.2 | **4.3** | 387 | – | – | – | – | – | – | – | – | – |
-|  | instructions | **13.0** | 15.0 | 1,359 | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **5.1** | – | 1,297 | – | – | – | 28.7 | – | – | – | – | 30.8 |
-|  | instructions | **12.0** | – | 3,500 | – | – | – | 95.0 | – | – | – | – | 25.0 |
-| GF(2⁶⁴) | throughput cycles | **372** | – | 11,360 | – | – | – | – | – | – | – | – | – |
-|  | instructions | **442** | – | 28,204 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **647** | – | – | – | – | – | 653 | 6,426 | – | 162,768 | – | – |
-|  | instructions | 727 | – | – | – | – | – | **493** | 6,377 | – | 533,598 | – | – |
-| GF(2²³³) | throughput cycles | **11,222** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | 5.0 | **3.5** | 385 | – | – | – | – | – | – | – | – | – |
+|  | instructions | **13.0** | 15.0 | 1,362 | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | **3.7** | – | 1,284 | – | – | – | 20.7 | – | – | – | – | 14.4 |
+|  | instructions | **12.0** | – | 3,481 | – | – | – | 95.0 | – | – | – | – | 25.0 |
+| GF(2⁶⁴) | throughput cycles | **363** | – | 10,299 | – | – | – | – | – | – | – | – | – |
+|  | instructions | **442** | – | 28,398 | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | 623 | – | – | – | – | – | **557** | 6,035 | – | 144,796 | – | – |
+|  | instructions | 727 | – | – | – | – | – | **493** | 6,373 | – | 533,598 | – | – |
+| GF(2²³³) | throughput cycles | **11,081** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **23,592** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **5,299** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **5,296** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8,550** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **28,774** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **28,802** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **73,758** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt: √a, constant time, with carry-less multiplication
@@ -314,19 +314,19 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **4.8** | – | – | – | – | – | 9.7 | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **4.7** | – | – | – | – | – | 9.0 | – | – | – | – | – |
 |  | instructions | **21.0** | – | – | – | – | – | 35.0 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **14.9** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | **13.8** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **53.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 20.4 | – | – | – | – | – | **18.0** | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | 19.3 | – | – | – | – | – | **16.0** | – | – | – | – | – |
 |  | instructions | **57.0** | – | – | – | – | – | 58.0 | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **18.3** | – | – | – | – | – | 20.8 | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | **16.1** | – | – | – | – | – | 19.9 | – | – | – | – | – |
 |  | instructions | **44.0** | – | – | – | – | – | 81.0 | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **77.5** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **79.1** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **209** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **58.8** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **48.3** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **125** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **344** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **318** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **1,085** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt_vartime: √a, variable time, with carry-less multiplication
@@ -335,19 +335,19 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **5.4** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **5.1** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 6.6 | – | – | – | – | – | **5.4** | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | 5.1 | – | – | – | – | – | **3.2** | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | 12.0 | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **22.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | **19.8** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **57.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **18.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | **16.5** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **44.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **77.5** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **77.4** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **209** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **50.3** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **48.7** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **125** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **330** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **343** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **1,085** | – | – | – | – | – | – | – | – | – | – | – |
 
 ## Results without carry-less multiplication
@@ -361,26 +361,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 2.5 | 2.5 | **2.2** | 3.0 | 5.1 | 2.3 | 2.6 | – | – | – | – | – |
-|  | latency cycles | 3.7 | 3.1 | 3.1 | **3.1** | 4.0 | 3.4 | 3.1 | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | 5.0 | 5.0 | 5.0 | 5.0 | **2.1** | 5.0 | 5.0 | – | – | – | – | – |
+|  | latency cycles | 3.0 | 3.0 | 3.0 | **3.0** | 3.0 | 3.0 | 3.0 | – | – | – | – | – |
 |  | instructions | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **2.3** | 5.1 | 5.2 | 5.2 | 5.6 | 5.4 | 5.2 | – | – | – | – | 5.3 |
-|  | latency cycles | 3.1 | **3.1** | 3.2 | 3.3 | 3.4 | 3.3 | 3.6 | – | – | – | – | 3.1 |
+| GF(2¹⁶) | throughput cycles | 5.0 | **2.1** | 2.1 | 2.1 | 2.3 | 2.4 | 2.3 | – | – | – | – | 2.1 |
+|  | latency cycles | 3.0 | **3.0** | 3.0 | 3.0 | 3.1 | 3.2 | 3.0 | – | – | – | – | 3.0 |
 |  | instructions | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – | – | – | – | **8.0** |
-| GF(2⁶⁴) | throughput cycles | 2.5 | **2.2** | 2.4 | – | – | 8.4 | 2.6 | – | – | – | – | – |
-|  | latency cycles | **1.9** | 2.1 | 2.0 | – | – | 5.6 | 3.0 | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | **2.2** | 2.2 | 2.2 | – | – | 2.9 | 2.2 | – | – | – | – | – |
+|  | latency cycles | 1.3 | **1.3** | **1.3** | – | – | 2.2 | 1.3 | – | – | – | – | – |
 |  | instructions | **8.0** | **8.0** | **8.0** | – | – | **8.0** | **8.0** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 2.6 | – | – | – | – | 14.2 | 2.9 | 2.5 | 2.6 | **2.4** | 15.3 | – |
-|  | latency cycles | **1.4** | – | – | – | – | 12.4 | 4.2 | 2.1 | 2.0 | 2.1 | 15.2 | – |
+| GF(2¹²⁸) | throughput cycles | **2.2** | – | – | – | – | 3.9 | 2.6 | 2.2 | 2.2 | 2.2 | 5.1 | – |
+|  | latency cycles | **1.3** | – | – | – | – | 3.5 | 2.0 | 2.1 | 2.1 | 2.1 | 3.2 | – |
 |  | instructions | **8.0** | – | – | – | – | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | **8.0** | – |
-| GF(2²³³) | throughput cycles | **4.7** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.5** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **2.8** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **2.4** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **3.8** | – | – | – | – | 25.7 | – | – | – | – | – | – |
-|  | latency cycles | **3.3** | – | – | – | – | 24.3 | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **2.7** | – | – | – | – | 8.3 | – | – | – | – | – | – |
+|  | latency cycles | **2.6** | – | – | – | – | 8.5 | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | 11.0 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **8.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **22.5** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **6.4** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **23.9** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **14.0** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### add_vartime: a + b, variable time, without carry-less multiplication
@@ -389,26 +389,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **2.2** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **3.1** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **5.0** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **3.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **2.6** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **3.1** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | **5.0** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **3.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **2.3** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | **2.2** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **1.3** | – | – | – | – | – | – | – | – | – | – | – |
+|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | **2.2** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **1.4** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **2.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **1.6** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **2.7** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **2.6** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **3.2** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.3** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **2.7** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **2.4** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **3.3** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **2.9** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **6.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **22.3** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **6.2** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **23.9** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **14.0** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul: a × b, constant time, without carry-less multiplication
@@ -417,26 +417,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 28.5 | – | – | – | – | **14.3** | 17.1 | – | – | – | – | – |
-|  | latency cycles | 39.8 | – | – | – | – | **26.1** | 32.9 | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | 28.0 | – | – | – | – | **14.2** | 16.8 | – | – | – | – | – |
+|  | latency cycles | 40.2 | – | – | – | – | **25.0** | 33.4 | – | – | – | – | – |
 |  | instructions | 109 | – | – | – | – | 67.0 | **59.0** | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 45.1 | **30.7** | – | – | – | 54.3 | – | – | – | – | – | – |
-|  | latency cycles | **52.1** | 58.3 | – | – | – | 57.9 | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | 45.0 | **30.6** | – | – | – | 54.1 | – | – | – | – | – | – |
+|  | latency cycles | **52.0** | 58.4 | – | – | – | 53.7 | – | – | – | – | – | – |
 |  | instructions | 138 | **133** | – | – | – | 236 | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 77.8 | 108 | – | – | – | 677 | **51.4** | – | – | – | – | – |
-|  | latency cycles | **80.7** | 122 | – | – | – | 583 | 84.9 | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | 66.0 | 104 | – | – | – | 550 | **47.3** | – | – | – | – | – |
+|  | latency cycles | **78.4** | 121 | – | – | – | 548 | 84.7 | – | – | – | – | – |
 |  | instructions | 247 | 259 | – | – | – | 2,489 | **153** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 258 | – | – | – | – | 2,104 | 190 | 181 | 608 | – | **148** | – |
-|  | latency cycles | 243 | – | – | – | – | 1,828 | 196 | 183 | 594 | – | **138** | – |
+| GF(2¹²⁸) | throughput cycles | 235 | – | – | – | – | 1,763 | 162 | 174 | 578 | – | **122** | – |
+|  | latency cycles | 232 | – | – | – | – | 1,764 | 187 | 182 | 577 | – | **133** | – |
 |  | instructions | 831 | – | – | – | – | 7,962 | **499** | 542 | 2,064 | – | 526 | – |
-| GF(2²³³) | throughput cycles | **971** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **1,008** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **819** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **854** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **2,696** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **941** | – | – | – | – | 6,450 | – | – | – | – | – | – |
-|  | latency cycles | **1,097** | – | – | – | – | 6,246 | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **887** | – | – | – | – | 5,734 | – | – | – | – | – | – |
+|  | latency cycles | **950** | – | – | – | – | 5,738 | – | – | – | – | – | – |
 |  | instructions | **2,990** | – | – | – | – | 25,585 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **5,254** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **5,369** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **4,972** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **4,924** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **17,241** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### mul_vartime: a × b, variable time, without carry-less multiplication
@@ -445,26 +445,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | 3.6 | 3.9 | 86.0 | **3.1** | 5.7 | – | – | – | – | – | – | – |
-|  | latency cycles | **12.3** | 13.5 | 90.9 | 13.0 | 13.9 | – | – | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | 5.3 | 3.7 | 81.9 | 5.3 | **2.9** | – | – | – | – | – | – | – |
+|  | latency cycles | **10.5** | 13.4 | 83.9 | 12.5 | 12.7 | – | – | – | – | – | – | – |
 |  | instructions | **11.0** | 20.0 | 323 | **11.0** | **11.0** | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 45.3 | – | 152 | 13.5 | **10.9** | – | 14.6 | – | – | – | – | 18.5 |
-|  | latency cycles | 52.2 | – | 154 | 54.5 | **26.6** | – | 30.3 | – | – | – | – | 74.1 |
+| GF(2¹⁶) | throughput cycles | 45.0 | – | 143 | **8.4** | 8.8 | – | 14.6 | – | – | – | – | 11.4 |
+|  | latency cycles | 52.0 | – | 148 | 38.1 | **25.9** | – | 30.1 | – | – | – | – | 56.0 |
 |  | instructions | 138 | – | 627 | **22.0** | 31.0 | – | 69.0 | – | – | – | – | 31.0 |
-| GF(2⁶⁴) | throughput cycles | **68.2** | – | 553 | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **80.1** | – | 565 | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | **66.0** | – | 542 | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **78.6** | – | 561 | – | – | – | – | – | – | – | – | – |
 |  | instructions | **247** | – | 1,354 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **240** | – | – | – | – | – | – | – | – | 562 | – | – |
-|  | latency cycles | **233** | – | – | – | – | – | – | – | – | 553 | – | – |
+| GF(2¹²⁸) | throughput cycles | **235** | – | – | – | – | – | – | – | – | 547 | – | – |
+|  | latency cycles | **232** | – | – | – | – | – | – | – | – | 546 | – | – |
 |  | instructions | **831** | – | – | – | – | – | – | – | – | 2,064 | – | – |
-| GF(2²³³) | throughput cycles | **830** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **861** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **819** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **852** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **2,696** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **890** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **984** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **886** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **940** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **2,990** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **4,992** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **5,125** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **4,982** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **4,926** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **17,241** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square: a², constant time, without carry-less multiplication
@@ -473,26 +473,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **4.7** | – | – | – | – | 8.5 | 8.8 | – | – | – | – | – |
-|  | latency cycles | **17.0** | – | – | – | – | 21.3 | 25.1 | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **4.6** | – | – | – | – | 8.1 | 8.6 | – | – | – | – | – |
+|  | latency cycles | **17.0** | – | – | – | – | 21.0 | 25.0 | – | – | – | – | – |
 |  | instructions | **21.0** | – | – | – | – | 34.0 | 34.0 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 26.1 | – | – | – | – | **22.4** | – | – | – | – | – | – |
-|  | latency cycles | **31.1** | – | – | – | – | 35.2 | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | 25.8 | – | – | – | – | **22.0** | – | – | – | – | – | – |
+|  | latency cycles | **31.0** | – | – | – | – | 35.0 | – | – | – | – | – | – |
 |  | instructions | **78.0** | – | – | – | – | 90.0 | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 52.7 | – | – | – | – | 131 | **27.1** | – | – | – | – | – |
-|  | latency cycles | **24.0** | – | – | – | – | 143 | 45.0 | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | 49.3 | – | – | – | – | 129 | **27.0** | – | – | – | – | – |
+|  | latency cycles | **23.0** | – | – | – | – | 143 | 45.0 | – | – | – | – | – |
 |  | instructions | 214 | – | – | – | – | 584 | **92.0** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **24.1** | – | – | – | – | 304 | 39.2 | – | – | – | – | – |
-|  | latency cycles | **31.0** | – | – | – | – | 301 | 44.0 | – | – | – | – | – |
-|  | instructions | **113** | – | – | – | – | 1,271 | 127 | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | **30.7** | – | – | – | – | 304 | 39.0 | – | – | – | – | – |
+|  | latency cycles | 60.7 | – | – | – | – | 293 | **44.0** | – | – | – | – | – |
+|  | instructions | 146 | – | – | – | – | 1,271 | **127** | – | – | – | – | – |
 | GF(2²³³) | throughput cycles | **48.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **56.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **184** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **93.8** | – | – | – | – | 1,036 | – | – | – | – | – | – |
-|  | latency cycles | **103** | – | – | – | – | 1,105 | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **93.4** | – | – | – | – | 1,015 | – | – | – | – | – | – |
+|  | latency cycles | **102** | – | – | – | – | 1,104 | – | – | – | – | – | – |
 |  | instructions | **327** | – | – | – | – | 4,090 | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **212** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **261** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **220** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **235** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **937** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### square_vartime: a², variable time, without carry-less multiplication
@@ -501,26 +501,26 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **2.1** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **5.3** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **7.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **3.3** | – | – | – | – | – | 5.3 | – | – | – | – | – |
-|  | latency cycles | **7.2** | – | – | – | – | – | 10.1 | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | 5.3 | – | – | – | – | – | **2.6** | – | – | – | – | – |
+|  | latency cycles | **7.0** | – | – | – | – | – | 10.0 | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | 11.0 | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **49.5** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **24.0** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | **49.3** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **23.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **214** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **24.1** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **31.1** | – | – | – | – | – | – | – | – | – | – | – |
-|  | instructions | **113** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | **30.7** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **63.6** | – | – | – | – | – | – | – | – | – | – | – |
+|  | instructions | **146** | – | – | – | – | – | – | – | – | – | – | – |
 | GF(2²³³) | throughput cycles | **48.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **56.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **184** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **93.8** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **93.5** | – | – | – | – | – | – | – | – | – | – | – |
 |  | latency cycles | **102** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **327** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **211** | – | – | – | – | – | – | – | – | – | – | – |
-|  | latency cycles | **266** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **220** | – | – | – | – | – | – | – | – | – | – | – |
+|  | latency cycles | **235** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **937** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert: a⁻¹, constant time, without carry-less multiplication
@@ -529,19 +529,19 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **240** | – | – | – | – | 255 | 313 | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **239** | – | – | – | – | 255 | 311 | – | – | – | – | – |
 |  | instructions | 604 | – | – | – | – | 804 | **518** | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 483 | 1,151 | – | – | – | **339** | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | 481 | 1,116 | – | – | – | **337** | – | – | – | – | – | – |
 |  | instructions | 1,294 | 3,917 | – | – | – | **1,072** | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 2,232 | 14,024 | – | – | – | **1,253** | 3,267 | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | 2,202 | 14,020 | – | – | – | **1,249** | 3,247 | – | – | – | – | – |
 |  | instructions | 6,675 | 32,533 | – | – | – | **4,828** | 6,830 | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 7,178 | – | – | – | – | **3,296** | – | – | 145,018 | – | – | – |
-|  | instructions | 21,388 | – | – | – | – | **13,595** | – | – | 525,085 | – | – | – |
-| GF(2²³³) | throughput cycles | **20,983** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | 12,320 | – | – | – | – | **3,262** | – | – | 144,137 | – | – | – |
+|  | instructions | 28,386 | – | – | – | – | **13,595** | – | – | 525,085 | – | – | – |
+| GF(2²³³) | throughput cycles | **21,352** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **73,276** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | 40,766 | – | – | – | – | **10,071** | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | 40,729 | – | – | – | – | **9,625** | – | – | – | – | – | – |
 |  | instructions | 123,663 | – | – | – | – | **41,587** | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **191,692** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **188,274** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **765,628** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### invert_vartime: a⁻¹, variable time, without carry-less multiplication
@@ -550,19 +550,19 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **3.7** | 5.7 | 395 | – | – | – | – | – | – | – | – | – |
-|  | instructions | **13.0** | 15.0 | 1,357 | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **3.5** | – | 1,245 | – | – | – | 22.0 | – | – | – | – | 14.8 |
-|  | instructions | **12.0** | – | 3,485 | – | – | – | 95.0 | – | – | – | – | 25.0 |
-| GF(2⁶⁴) | throughput cycles | **1,226** | – | 10,067 | – | – | – | – | – | – | – | – | – |
-|  | instructions | **3,571** | – | 28,262 | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 3,541 | – | – | – | – | – | **1,134** | 11,797 | – | 154,749 | – | – |
-|  | instructions | 11,081 | – | – | – | – | – | **3,897** | 31,444 | – | 533,598 | – | – |
-| GF(2²³³) | throughput cycles | **21,038** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | 5.3 | **3.0** | 380 | – | – | – | – | – | – | – | – | – |
+|  | instructions | **13.0** | 15.0 | 1,361 | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | **3.4** | – | 1,197 | – | – | – | 20.3 | – | – | – | – | 9.8 |
+|  | instructions | **12.0** | – | 3,474 | – | – | – | 95.0 | – | – | – | – | 25.0 |
+| GF(2⁶⁴) | throughput cycles | **1,136** | – | 9,740 | – | – | – | – | – | – | – | – | – |
+|  | instructions | **3,571** | – | 27,942 | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | 3,608 | – | – | – | – | – | **976** | 11,574 | – | 147,346 | – | – |
+|  | instructions | 11,364 | – | – | – | – | – | **3,897** | 31,431 | – | 533,598 | – | – |
+| GF(2²³³) | throughput cycles | **21,314** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **73,264** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **40,757** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **40,768** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **123,661** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **189,358** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **189,244** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **765,630** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt: √a, constant time, without carry-less multiplication
@@ -571,19 +571,19 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **4.9** | – | – | – | – | – | 9.9 | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **4.6** | – | – | – | – | – | 8.6 | – | – | – | – | – |
 |  | instructions | **21.0** | – | – | – | – | – | 35.0 | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | **13.7** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | **13.6** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **53.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | 88.5 | – | – | – | – | – | **40.6** | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | 83.6 | – | – | – | – | – | **40.4** | – | – | – | – | – |
 |  | instructions | 250 | – | – | – | – | – | **161** | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | 203 | – | – | – | – | – | **126** | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | 180 | – | – | – | – | – | **124** | – | – | – | – | – |
 |  | instructions | 603 | – | – | – | – | – | **444** | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **117** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **108** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **523** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **143** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **140** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **663** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **5,218** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **5,073** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **17,072** | – | – | – | – | – | – | – | – | – | – | – |
 
 ### sqrt_vartime: √a, variable time, without carry-less multiplication
@@ -592,19 +592,19 @@ The charts show the first 8 crates; `compile-algebra`, `core-algebra`, `polyval`
 
 | Field | Per operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GF(2⁸) | throughput cycles | **2.3** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁸) | throughput cycles | **5.0** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹⁶) | throughput cycles | 3.8 | – | – | – | – | – | **3.3** | – | – | – | – | – |
+| GF(2¹⁶) | throughput cycles | 5.3 | – | – | – | – | – | **3.2** | – | – | – | – | – |
 |  | instructions | **8.0** | – | – | – | – | – | 12.0 | – | – | – | – | – |
-| GF(2⁶⁴) | throughput cycles | **89.4** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁶⁴) | throughput cycles | **85.8** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **250** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2¹²⁸) | throughput cycles | **197** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2¹²⁸) | throughput cycles | **180** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **603** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²³³) | throughput cycles | **111** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²³³) | throughput cycles | **108** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **523** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2²⁵⁶) | throughput cycles | **178** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2²⁵⁶) | throughput cycles | **141** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **663** | – | – | – | – | – | – | – | – | – | – | – |
-| GF(2⁵⁷¹) | throughput cycles | **5,575** | – | – | – | – | – | – | – | – | – | – | – |
+| GF(2⁵⁷¹) | throughput cycles | **5,072** | – | – | – | – | – | – | – | – | – | – | – |
 |  | instructions | **17,072** | – | – | – | – | – | – | – | – | – | – | – |
 
 ## Reproduce
