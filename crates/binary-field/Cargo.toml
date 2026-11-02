@@ -21,8 +21,24 @@ thiserror.workspace = true
 typenum.workspace = true
 
 [dev-dependencies]
+bench-compare = { path = "../bench-compare" }
+compile-algebra.workspace = true
+core-algebra.workspace = true
+g2p.workspace = true
+galois_field_2pm.workspace = true
+gf256.workspace = true
 ghash.workspace = true
+hekate-math.workspace = true
+p3-binary-field.workspace = true
+p3-field.workspace = true
 polyval.workspace = true
+reed-solomon-erasure.workspace = true
+runtime-algebra.workspace = true
+serde.workspace = true
+
+[[bench]]
+name = "compare"
+harness = false
 
 [package.metadata.docs.rs]
 all-features = true
