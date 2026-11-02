@@ -90,7 +90,7 @@ The width selects the algorithm at compile time, and every operand length folds 
 
 | Operation | Width | Algorithm |
 |---|---|---|
-| Product | below 16 limbs | Schoolbook rows of two carry chains, unrolled up to 16 limbs per operand; a product modulo `2^N` adds its even and odd rows into two outputs |
+| Product | below 16 limbs | Schoolbook rows of two carry chains, unrolled up to 16 limbs per operand |
 | Product | 16 limbs (1024 bits) and more | Karatsuba with GMP's `toom22` interpolation, up to three halvings |
 | Product modulo `2^N` | 17 limbs and more | Full product of the low parts and truncated cross products, split again, after GMP's `dc_mullo` |
 | Division | dividend and divisor within 128 bits | `u128` division, which compiles to the hardware divide |

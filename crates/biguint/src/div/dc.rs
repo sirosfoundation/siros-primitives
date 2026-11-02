@@ -122,7 +122,7 @@ pub(super) fn divide_window<D: Depth>(
 ) {
     let len = divisor.len();
     if scratch.len() < window_scratch(len, D::LEVELS) {
-        divide_by_limbs(window, divisor, leading, quotient);
+        divide_by_limbs::<false>(window, divisor, leading, quotient);
         return;
     }
     let total = window.len().saturating_sub(len);
@@ -196,7 +196,7 @@ fn divide_block<D: Depth>(
         let (window, _) = split_mut(part, len);
         quotient_fits(settle(window, product, divisor, top, count, quotient));
     } else {
-        divide_by_limbs(part, divisor, leading, quotient);
+        divide_by_limbs::<false>(part, divisor, leading, quotient);
     }
 }
 

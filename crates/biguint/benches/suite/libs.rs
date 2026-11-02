@@ -140,7 +140,7 @@ fn three<T: FromLimbs, M: FromLimbs>(set: &[Limbs]) -> (T, T, M) {
 /// the timing class of each.
 macro_rules! by_value {
     ($cells:expr, $t:ty, $($op:ident: $timing:expr => $method:ident),+ $(,)?) => {
-        $cells$(.timed(Op::$op, $timing, stringify!($method), pair::<$t>, |&(a, b)| a.$method(b)))+
+        $cells$(.timed(Op::$op, $timing, stringify!($method), pair::<$t>, #[inline(always)] |&(a, b)| a.$method(b)))+
     };
 }
 
@@ -151,36 +151,53 @@ where
     Sum<N, N>: Bits,
 {
     cells
-        .case(Op::Add, "+", pair::<Uint<N>>, |&(a, b)| a + b)
-        .case(Op::Mul, "*", pair::<Uint<N>>, |&(a, b)| a * b)
+        .case(
+            Op::Add,
+            "+",
+            pair::<Uint<N>>,
+            #[inline(always)]
+            |&(a, b)| a + b,
+        )
+        .case(
+            Op::Mul,
+            "*",
+            pair::<Uint<N>>,
+            #[inline(always)]
+            |&(a, b)| a * b,
+        )
         .case(
             Op::Div,
             "div_rem",
             two::<Uint<N>, NonZeroUint<N>>,
+            #[inline(always)]
             |&(a, divisor)| a.div_rem(divisor).0,
         )
         .case(
             Op::Mod,
             "div_rem",
             two::<Uint<N>, NonZeroUint<N>>,
+            #[inline(always)]
             |&(a, divisor)| a.div_rem(divisor).1,
         )
         .case(
             Op::MulMod,
             "mul_mod",
             three::<Uint<N>, Uint<N>>,
+            #[inline(always)]
             |&(a, b, modulus)| a.mul_mod(b, modulus),
         )
         .case(
             Op::AddMod,
             "add_mod",
             three::<Uint<N>, NonZeroUint<N>>,
+            #[inline(always)]
             |&(a, b, modulus)| a.add_mod(b, modulus),
         )
         .case(
             Op::SubMod,
             "sub_mod",
             three::<Uint<N>, NonZeroUint<N>>,
+            #[inline(always)]
             |&(a, b, modulus)| a.sub_mod(b, modulus),
         )
 }
@@ -195,14 +212,14 @@ macro_rules! primitive {
                 Timing::Variable,
                 "/ NonZero",
                 two::<$t, NonZero<$t>>,
-                |&(a, divisor)| a / divisor,
+                #[inline(always)] |&(a, divisor)| a / divisor,
             )
             .timed(
                 Op::Mod,
                 Timing::Variable,
                 "% NonZero",
                 two::<$t, NonZero<$t>>,
-                |&(a, divisor)| a % divisor,
+                #[inline(always)] |&(a, divisor)| a % divisor,
             )
             .absent(Op::MulMod, NO_MUL_MOD)
             .absent(Op::AddMod, NO_ADD_MOD)
@@ -256,6 +273,7 @@ fn ruint<const B: usize, const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>)
         Timing::Variable,
         "mul_mod",
         three::<ruint::Uint<B, L>, ruint::Uint<B, L>>,
+        #[inline(always)]
         |&(a, b, modulus)| a.mul_mod(b, modulus),
     )
     .timed(
@@ -263,6 +281,7 @@ fn ruint<const B: usize, const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>)
         Timing::Variable,
         "add_mod",
         three::<ruint::Uint<B, L>, ruint::Uint<B, L>>,
+        #[inline(always)]
         |&(a, b, modulus)| a.add_mod(b, modulus),
     )
     .timed(
@@ -270,6 +289,7 @@ fn ruint<const B: usize, const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>)
         Timing::Variable,
         "a.add_mod(m - b.reduce_mod(m), m)",
         three::<ruint::Uint<B, L>, ruint::Uint<B, L>>,
+        #[inline(always)]
         |&(a, b, modulus)| a.add_mod(modulus - b.reduce_mod(modulus), modulus),
     )
 }
@@ -284,6 +304,7 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
             Timing::Fixed,
             "wrapping_add",
             pair::<Uint<L>>,
+            #[inline(always)]
             |(a, b)| a.wrapping_add(b),
         )
         .timed(
@@ -291,6 +312,7 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
             Timing::Fixed,
             "wrapping_mul",
             pair::<Uint<L>>,
+            #[inline(always)]
             |(a, b)| a.wrapping_mul(b),
         )
         .timed(
@@ -298,6 +320,7 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
             Timing::Variable,
             "wrapping_div_vartime",
             two::<Uint<L>, NonZero<Uint<L>>>,
+            #[inline(always)]
             |(a, divisor)| a.wrapping_div_vartime(divisor),
         )
         .timed(
@@ -305,6 +328,7 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
             Timing::Variable,
             "rem_vartime",
             two::<Uint<L>, NonZero<Uint<L>>>,
+            #[inline(always)]
             |(a, divisor)| a.rem_vartime(divisor),
         )
         .timed(
@@ -312,6 +336,7 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
             Timing::Variable,
             "mul_mod_vartime",
             three::<Uint<L>, NonZero<Uint<L>>>,
+            #[inline(always)]
             |(a, b, modulus)| a.mul_mod_vartime(b, modulus),
         )
         .timed(
@@ -319,6 +344,7 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
             Timing::Fixed,
             "add_mod",
             three::<Uint<L>, NonZero<Uint<L>>>,
+            #[inline(always)]
             |(a, b, modulus)| a.add_mod(b, modulus),
         )
         .timed(
@@ -326,6 +352,7 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
             Timing::Fixed,
             "sub_mod",
             three::<Uint<L>, NonZero<Uint<L>>>,
+            #[inline(always)]
             |(a, b, modulus)| a.sub_mod(b, modulus),
         )
 }
@@ -355,6 +382,7 @@ fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
             Timing::Variable,
             "&a + &b",
             pair::<BigUint>,
+            #[inline(always)]
             |(a, b)| a + b,
         )
         .timed(
@@ -362,6 +390,7 @@ fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
             Timing::Variable,
             "&a * &b",
             pair::<BigUint>,
+            #[inline(always)]
             |(a, b)| a * b,
         )
         .timed(
@@ -369,6 +398,7 @@ fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
             Timing::Variable,
             "&a / &b",
             pair::<BigUint>,
+            #[inline(always)]
             |(a, b)| a / b,
         )
         .timed(
@@ -376,6 +406,7 @@ fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
             Timing::Variable,
             "&a % &b",
             pair::<BigUint>,
+            #[inline(always)]
             |(a, b)| a % b,
         )
         .absent(Op::MulMod, NO_MUL_MOD)
@@ -384,6 +415,7 @@ fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
             Timing::Variable,
             "(&a + &b) % &m",
             three::<BigUint, BigUint>,
+            #[inline(always)]
             |(a, b, modulus)| (a + b) % modulus,
         )
         .timed(
@@ -391,6 +423,7 @@ fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
             Timing::Variable,
             "(&a + &m - &b) % &m",
             three::<BigUint, BigUint>,
+            #[inline(always)]
             |(a, b, modulus)| (a + modulus - b) % modulus,
         )
 }
@@ -446,6 +479,7 @@ mod parity {
                     },
                     "overflowing_add",
                     pair::<$t>,
+                    #[inline(always)]
                     |&(a, b)| a.overflowing_add(b).0,
                 )
                 .timed(
@@ -457,10 +491,25 @@ mod parity {
                     },
                     "overflowing_mul",
                     pair::<$t>,
+                    #[inline(always)]
                     |&(a, b)| a.overflowing_mul(b).0,
                 )
-                .timed(Op::Div, Timing::Variable, "/", pair::<$t>, |&(a, b)| a / b)
-                .timed(Op::Mod, Timing::Variable, "%", pair::<$t>, |&(a, b)| a % b)
+                .timed(
+                    Op::Div,
+                    Timing::Variable,
+                    "/",
+                    pair::<$t>,
+                    #[inline(always)]
+                    |&(a, b)| a / b,
+                )
+                .timed(
+                    Op::Mod,
+                    Timing::Variable,
+                    "%",
+                    pair::<$t>,
+                    #[inline(always)]
+                    |&(a, b)| a % b,
+                )
         };
     }
 

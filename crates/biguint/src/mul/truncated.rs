@@ -34,18 +34,27 @@ const fn high_part(len: usize) -> usize {
 }
 
 /// The scratch limbs of a truncated product of two `len`-limb operands with `levels` splits left:
-/// the full product of the low parts with its own scratch, or a cross product with the scratch of
-/// its own split, whichever is longer.
+/// at each split, the full product of the low parts with its own scratch, or the cross products,
+/// whose split nests above the high parts of the splits before it; the longest of these. A loop
+/// over the chain of high parts, which the compiler evaluates for constant lengths.
 #[inline(always)]
 pub(crate) const fn scratch_len(len: usize, levels: usize) -> usize {
-    if levels == 0 || quadratic(len) {
-        return 0;
+    let (mut len, mut levels) = (len, levels);
+    // The high parts of the splits so far, which a cross product holds below its own scratch.
+    let mut below = 0;
+    let mut longest = 0;
+    while levels > 0 && !quadratic(len) {
+        let high = high_part(len);
+        let low = len - high;
+        let full = below + 2 * low + product_scratch(low, levels);
+        if full > longest {
+            longest = full;
+        }
+        below += high;
+        len = high;
+        levels -= 1;
     }
-    let high = high_part(len);
-    let low = len - high;
-    let full = 2 * low + product_scratch(low, levels);
-    let cross = high + scratch_len(high, levels - 1);
-    if full > cross { full } else { cross }
+    if below > longest { below } else { longest }
 }
 
 /// Writes `a * b mod 2^(64 * n)` to `out`, all three `n` limbs long: with `a = a0 + a1 β^m` and

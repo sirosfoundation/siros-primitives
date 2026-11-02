@@ -22,7 +22,7 @@ use crate::bits::Bits;
 use crate::bits::sealed::Sealed;
 use crate::kernel::{
     add_assign, fits, shl_bits_into, shr_bits_into, split, split_mut, sub_mul_row,
-    subtract_if_above,
+    sub_mul_row_chains, subtract_if_above,
 };
 use crate::mul::WideningMul;
 use crate::nonzero::{NonZeroUint, significant_len};
@@ -297,19 +297,20 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
                 &mut scratch,
             );
         } else {
-            divide_by_limbs(&mut window, normalized.as_slice(), leading, quotient);
+            divide_by_limbs::<true>(&mut window, normalized.as_slice(), leading, quotient);
         }
     } else {
         let (significant, _) = split(normalized, len);
-        divide_by_limbs(&mut window, significant, leading, quotient);
+        divide_by_limbs::<false>(&mut window, significant, leading, quotient);
     }
-    let mut remainder = GenericArray::<u64, M::Limbs>::default();
+    // Below the divisor, the remainder has no bits above `M`.
+    let mut remainder = Uint::<M>::ZERO;
     if shift == 0 {
-        shr_bits_into(&mut remainder, &window, 0);
+        shr_bits_into(&mut remainder.limbs, &window, 0);
     } else {
-        shr_bits_into(&mut remainder, &window, shift);
+        shr_bits_into(&mut remainder.limbs, &window, shift);
     }
-    Uint::from_generic_limbs(remainder)
+    remainder
 }
 
 /// The dividend shifted left by `shift` in a window of `W` limbs: the bits shifted out of its top
@@ -401,15 +402,17 @@ pub(crate) fn schoolbook(
         let (_, top) = split_mut(numerator, numerator.len().saturating_sub(divisor.len()));
         subtract_if_above(top, divisor)
     };
-    divide_by_limbs(numerator, divisor, leading, quotient);
+    divide_by_limbs::<false>(numerator, divisor, leading, quotient);
     u64::from(above)
 }
 
 /// Leaves `window mod divisor` in the low `divisor.len()` limbs of `window` and zeros above them.
 /// The window shrinks from the top by one limb per quotient limb. The top `divisor.len()` limbs of
-/// `window` are below `divisor`.
+/// `window` are below `divisor`. `CONSTANT` tells that the compiler knows the divisor's length,
+/// which unrolls the subtraction of each scaled divisor into two carry chains
+/// ([`sub_mul_row_chains`]).
 #[inline(always)]
-fn divide_by_limbs(
+pub(crate) fn divide_by_limbs<const CONSTANT: bool>(
     window: &mut [u64],
     divisor: &[u64],
     leading: Reciprocal3By2,
@@ -434,7 +437,7 @@ fn divide_by_limbs(
         let Some((_, part)) = prefix.split_at_mut_checked(index) else {
             return;
         };
-        quotient.put(index, quotient_limb(part, divisor, leading));
+        quotient.put(index, quotient_limb::<CONSTANT>(part, divisor, leading));
         prefix = match prefix.split_last_mut() {
             Some((_, rest)) => rest,
             None => return,
@@ -446,7 +449,11 @@ fn divide_by_limbs(
 /// limb: the 3-by-2 step on the leading limbs, the scaled divisor subtracted from the others, and
 /// an add-back when the step overestimated by one.
 #[inline(always)]
-fn quotient_limb(part: &mut [u64], divisor: &[u64], leading: Reciprocal3By2) -> u64 {
+fn quotient_limb<const CONSTANT: bool>(
+    part: &mut [u64],
+    divisor: &[u64],
+    leading: Reciprocal3By2,
+) -> u64 {
     let Some((top, body)) = part.split_last_mut() else {
         return 0;
     };
@@ -457,7 +464,7 @@ fn quotient_limb(part: &mut [u64], divisor: &[u64], leading: Reciprocal3By2) -> 
     let next = *next;
 
     if leading_part == leading.divisor() {
-        return full_quotient_limb(top, body, divisor);
+        return full_quotient_limb::<CONSTANT>(top, body, divisor);
     }
 
     let (digit, remainder) = leading.div_rem(leading_part, next);
@@ -466,8 +473,9 @@ fn quotient_limb(part: &mut [u64], divisor: &[u64], leading: Reciprocal3By2) -> 
     else {
         return digit;
     };
-    let (remainder, borrowed) =
-        remainder.overflowing_sub(u128::from(sub_mul_row(low, divisor_low, digit)));
+    let (remainder, borrowed) = remainder.overflowing_sub(u128::from(
+        scaled_subtraction::<CONSTANT>(low, divisor_low, digit),
+    ));
     *remainder_low = remainder as u64;
     *remainder_high = (remainder >> 64) as u64;
     *top = 0;
@@ -483,9 +491,24 @@ fn quotient_limb(part: &mut [u64], divisor: &[u64], leading: Reciprocal3By2) -> 
 /// The quotient limb when the leading limbs of `top` and `body` equal the divisor's: exactly
 /// `2^64 - 1`, whose subtraction empties the top limb.
 #[inline(always)]
-fn full_quotient_limb(top: &mut u64, body: &mut [u64], divisor: &[u64]) -> u64 {
-    *top = top.wrapping_sub(sub_mul_row(body, divisor, u64::MAX));
+fn full_quotient_limb<const CONSTANT: bool>(
+    top: &mut u64,
+    body: &mut [u64],
+    divisor: &[u64],
+) -> u64 {
+    *top = top.wrapping_sub(scaled_subtraction::<CONSTANT>(body, divisor, u64::MAX));
     u64::MAX
+}
+
+/// Subtracts `divisor * digit` from `out` and returns the limb owed above it: in two carry chains
+/// when the compiler knows the divisor's length, in one otherwise.
+#[inline(always)]
+fn scaled_subtraction<const CONSTANT: bool>(out: &mut [u64], divisor: &[u64], digit: u64) -> u64 {
+    if CONSTANT {
+        sub_mul_row_chains(out, divisor, digit)
+    } else {
+        sub_mul_row(out, divisor, digit)
+    }
 }
 
 /// Adds the divisor back after a step that overestimated by one; its carry cancels the borrow.

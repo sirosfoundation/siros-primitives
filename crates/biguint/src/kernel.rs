@@ -54,7 +54,8 @@ pub(crate) fn add_mul_row(out: &mut [u64], a: &[u64], m: u64) -> u64 {
 }
 
 /// Subtracts `a * m` from the first `a.len()` limbs of `out` and returns the limb that the
-/// subtraction owes above them.
+/// subtraction owes above them, one limb per loop step. A length that the compiler knows takes
+/// [`sub_mul_row_chains`].
 #[inline(always)]
 pub(crate) fn sub_mul_row(out: &mut [u64], a: &[u64], m: u64) -> u64 {
     out.iter_mut().zip(a).fold(0, |borrow, (slot, &limb)| {
@@ -64,6 +65,36 @@ pub(crate) fn sub_mul_row(out: &mut [u64], a: &[u64], m: u64) -> u64 {
         // `high` reaches `2^64 - 1` only with `low = 0`, which owes nothing.
         high + u64::from(owed)
     })
+}
+
+/// The limbs of a group of [`sub_mul_row_chains`], whose products stay in registers.
+const CHAIN_GROUP: usize = 4;
+
+/// [`sub_mul_row`] in two carry chains of one limb of latency each: the row of products, each
+/// low half plus the high half before it, and the subtraction of that row from `out`, in groups of
+/// [`CHAIN_GROUP`] limbs. A length that the compiler knows unrolls the groups; one that it does not
+/// know runs them limb by limb, slower than [`sub_mul_row`], which also takes rows shorter than a
+/// group.
+#[inline(always)]
+pub(crate) fn sub_mul_row_chains(out: &mut [u64], a: &[u64], m: u64) -> u64 {
+    if a.len() < CHAIN_GROUP {
+        return sub_mul_row(out, a, m);
+    }
+    let (mut high, mut carry, mut borrow) = (0, 0, 0);
+    for (slots, limbs) in out.chunks_mut(CHAIN_GROUP).zip(a.chunks(CHAIN_GROUP)) {
+        let mut row = [0u64; CHAIN_GROUP];
+        for (product_slot, &limb) in row.iter_mut().zip(limbs) {
+            let product = u128::from(limb) * u128::from(m);
+            (*product_slot, carry) = (product as u64).add_carry(high, carry);
+            high = (product >> 64) as u64;
+        }
+        for (slot, &product) in slots.iter_mut().zip(row.iter().take(limbs.len())) {
+            (*slot, borrow) = slot.sub_borrow(product, borrow);
+        }
+    }
+    // `a * m` is the row plus `high + carry` above it, so the subtraction owes `high + carry`
+    // and its borrow: at most `m`, the most that `a * m` reaches above `a`'s limbs.
+    high + carry + borrow
 }
 
 /// Adds the equally long `a` to `out` and returns the carry out of the top limb.
