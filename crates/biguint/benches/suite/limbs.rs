@@ -72,12 +72,6 @@ fn array<const L: usize>(limbs: &[u64]) -> [u64; L] {
         .unwrap_or_else(|_| panic!("{} limbs for a {L}-limb integer", limbs.len()))
 }
 
-impl<T: ToLimbs> ToLimbs for Option<T> {
-    fn to_limbs(&self) -> Option<Limbs> {
-        self.as_ref().and_then(ToLimbs::to_limbs)
-    }
-}
-
 impl<N: Bits> FromLimbs for Uint<N> {
     fn from_limbs(limbs: &[u64]) -> Self {
         let limbs = GenericArray::try_from_slice(limbs)

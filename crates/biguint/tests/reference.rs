@@ -244,7 +244,7 @@ fn mul_mod_matches_reference() {
                 for &b in &operands {
                     let expected = (!modulus.is_zero())
                         .then(|| reference::<N, B, L>(a).mul_mod(reference(b), rm));
-                    let product = a.mul_mod(b, modulus).map(reference::<N, B, L>);
+                    let product = a.checked_mul_mod(b, modulus).map(reference::<N, B, L>);
                     assert_eq!(product, expected, "{B}: {a:?} * {b:?} mod {modulus:?}");
                 }
             }
@@ -271,7 +271,7 @@ fn mul_mod_matches_reference() {
                 for &b in &rhs_values {
                     let expected =
                         (!modulus.is_zero()).then(|| wide(a).mul_mod(wide(b), wide(modulus)));
-                    let product = a.mul_mod(b, modulus).map(wide);
+                    let product = a.checked_mul_mod(b, modulus).map(wide);
                     assert_eq!(product, expected, "{a:?} * {b:?} mod {modulus:?}");
                 }
             }

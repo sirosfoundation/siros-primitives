@@ -38,7 +38,7 @@ impl<N: Bits> Uint<N> {
     #[must_use]
     pub fn div_rem<M: Bits>(self, divisor: NonZeroUint<M>) -> (Self, Uint<M>) {
         let mut quotient = GenericArray::<u64, N::Limbs>::default();
-        let remainder = divide::<N::Window, M>(&self.limbs, divisor, &mut quotient);
+        let remainder = divide::<N::Window, M>(&self.limbs, divisor, Top::Any, &mut quotient);
         (Uint::from_generic_limbs(quotient), remainder)
     }
 
@@ -50,11 +50,10 @@ impl<N: Bits> Uint<N> {
         NonZeroUint::new(divisor).map(|divisor| self.div_rem(divisor))
     }
 
-    /// `(self * rhs) mod modulus`, or `None` when `modulus` is zero. The operands may be of any
-    /// size relative to the modulus.
+    /// `(self * rhs) mod modulus`. The operands may be of any width and any value.
     #[inline(always)]
     #[must_use]
-    pub fn mul_mod<RhsN, ModN>(self, rhs: Uint<RhsN>, modulus: Uint<ModN>) -> Option<Uint<ModN>>
+    pub fn mul_mod<RhsN, ModN>(self, rhs: Uint<RhsN>, modulus: NonZeroUint<ModN>) -> Uint<ModN>
     where
         N: Add<RhsN>,
         RhsN: Bits,
@@ -68,18 +67,31 @@ impl<N: Bits> Uint<N> {
         type Window<N, RhsN> = <Sum<N, RhsN> as Sealed>::Window;
         let room = <Sum<N, RhsN> as Bits>::LIMBS >= ModN::LIMBS + RhsN::LIMBS
             && !Shape::<Window<N, RhsN>, ModN::Limbs>::DIVIDE_AND_CONQUER;
-        let top = if room && compare(&self.limbs, &modulus.limbs).is_lt() {
+        let top = if room && compare(&self.limbs, &modulus.get().limbs).is_lt() {
             Top::Below
         } else {
             Top::Any
         };
         let product = self.widening_mul(rhs);
-        divide_checked::<_, <Sum<N, RhsN> as Sealed>::Window, ModN>(
-            &product.limbs,
-            &modulus.limbs,
-            top,
-            &mut DiscardQuotient,
-        )
+        divide::<Window<N, RhsN>, ModN>(&product.limbs, modulus, top, &mut DiscardQuotient)
+    }
+
+    /// `(self * rhs) mod modulus`, or `None` when `modulus` is zero. The operands may be of any
+    /// width and any value.
+    #[inline(always)]
+    #[must_use]
+    pub fn checked_mul_mod<RhsN, ModN>(
+        self,
+        rhs: Uint<RhsN>,
+        modulus: Uint<ModN>,
+    ) -> Option<Uint<ModN>>
+    where
+        N: Add<RhsN>,
+        RhsN: Bits,
+        ModN: Bits,
+        Sum<N, RhsN>: Bits,
+    {
+        NonZeroUint::new(modulus).map(|modulus| self.mul_mod(rhs, modulus))
     }
 }
 
@@ -110,7 +122,7 @@ impl<N: Bits, M: Bits> Rem<NonZeroUint<M>> for Uint<N> {
 
     #[inline(always)]
     fn rem(self, divisor: NonZeroUint<M>) -> Self::Output {
-        divide::<N::Window, M>(&self.limbs, divisor, &mut DiscardQuotient)
+        divide::<N::Window, M>(&self.limbs, divisor, Top::Any, &mut DiscardQuotient)
     }
 }
 
@@ -123,6 +135,7 @@ impl<N: Bits, M: Bits> Rem<NonZeroUint<M>> for Uint<N> {
 pub(crate) fn divide<W: ArrayLength, M: Bits>(
     dividend: &[u64],
     divisor: NonZeroUint<M>,
+    top: Top,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) -> Uint<M> {
     if Native::<W, M::Limbs>::FITS
@@ -131,28 +144,7 @@ pub(crate) fn divide<W: ArrayLength, M: Bits>(
         return native(dividend, divisor, quotient);
     }
     let limbs = divisor.limbs();
-    long::<_, W, M>(
-        dividend,
-        &limbs,
-        significant_len(&limbs),
-        Top::Any,
-        quotient,
-    )
-}
-
-/// [`divide`] by a divisor that may be zero: `None` for zero.
-#[inline(always)]
-fn divide_checked<L: ArrayLength, W: ArrayLength, M: Bits>(
-    dividend: &[u64],
-    divisor: &GenericArray<u64, L>,
-    top: Top,
-    quotient: &mut (impl QuotientSink + ?Sized),
-) -> Option<Uint<M>> {
-    if Native::<W, L>::FITS {
-        return Some(native(dividend, NonZero::new(wide(divisor))?, quotient));
-    }
-    let len = divisor.iter().rposition(|limb| *limb != 0)? + 1;
-    Some(long::<_, W, M>(dividend, divisor, len, top, quotient))
+    long::<_, W, M>(dividend, &limbs, significant_len(&limbs), top, quotient)
 }
 
 /// Whether a dividend in a `W`-limb window and an `L`-limb divisor both fit in `u128`.
