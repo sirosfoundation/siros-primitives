@@ -23,6 +23,7 @@ mod kernel;
 mod params;
 mod secret;
 mod sqrt;
+pub mod standard;
 mod unrolled;
 mod width;
 

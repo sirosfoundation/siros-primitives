@@ -12,23 +12,9 @@ limbs as immediates, for moduli from 31 to thousands of bits.
 ## Example
 
 ```rust
-use prime_field::biguint::{U256, Uint};
-use prime_field::{Fp, Modulus, Secret};
-
-#[derive(Clone, Copy)]
-struct Secp256k1Base;
-
-impl Modulus for Secp256k1Base {
-    type Width = prime_field::biguint::typenum::U256;
-    const MODULUS: U256 = U256::from_limbs([
-        0xffff_fffe_ffff_fc2f,
-        0xffff_ffff_ffff_ffff,
-        0xffff_ffff_ffff_ffff,
-        0xffff_ffff_ffff_ffff,
-    ]);
-}
-
-type Fq = Fp<Secp256k1Base>;
+use prime_field::biguint::Uint;
+use prime_field::standard::secp256k1::Base as Fq;
+use prime_field::Secret;
 
 // The fastest path; the time may depend on the values.
 let x = Fq::from_u64(7);
@@ -54,7 +40,39 @@ assert_eq!((x - x).to_uint(), Uint::ZERO);
 # Ok::<(), &str>(())
 ```
 
+## Standard fields
+
+`prime_field::standard` declares the moduli `Mersenne31`, `BabyBear`, `Goldilocks`,
+`Bn254Scalar`, `Secp256k1Base`, `P256Base`, `P256Scalar`, `Tom256Base`, `Bls12381Base` and
+`P521Base`. `Tom256Scalar` is `P256Base`: the group order of Tom-256 is the P-256 base prime.
+Its submodules name the elements by curve: `tom256::{Base, Scalar}`, `p256::{Base, Scalar}`,
+`secp256k1::Base`, `bn254::Scalar`, `bls12_381::Base` and `p521::Base`. The one-limb fields
+are `Fp<Mersenne31>`, `Fp<BabyBear>` and `Fp<Goldilocks>`.
+
 ## Declaring a field
+
+```rust
+use prime_field::biguint::typenum::U255;
+use prime_field::biguint::Uint;
+use prime_field::{Fp, Modulus};
+
+/// `2^255 - 19`, the base field of Curve25519.
+#[derive(Clone, Copy)]
+struct Curve25519Base;
+
+impl Modulus for Curve25519Base {
+    type Width = U255;
+    const MODULUS: Uint<U255> = Uint::from_limbs([
+        0xffff_ffff_ffff_ffed,
+        0xffff_ffff_ffff_ffff,
+        0xffff_ffff_ffff_ffff,
+        0x7fff_ffff_ffff_ffff,
+    ]);
+}
+
+let two = Fp::<Curve25519Base>::from_u64(2);
+assert_eq!(two.invert().map(|half| half.double()), Some(Fp::ONE));
+```
 
 `Width` is the `typenum` bit width of the container; the modulus fits it. `MODULUS` is the
 little-endian limbs of an odd prime. `Fp<M>` holds `ceil(Width / 64)` limbs and offers `add`,
@@ -124,7 +142,8 @@ kept. secp256k1's `(p + 1) / 4` takes libsecp256k1's 253 squarings and 13 multip
 compares `prime-field` with ark-ff, crypto-bigint, k256/p256, halo2curves, Plonky3, winter-math
 and longfellow-zk's `runtime-algebra` and `compile-algebra` on add, sub, mul, square, invert and
 sqrt over Mersenne-31, BabyBear, Goldilocks, the BN254 scalar field, the secp256k1, P-256,
-BLS12-381 and P-521 base fields and the P-256 scalar field. Each operation has a variable-time row,
+Tom-256, BLS12-381 and P-521 base fields and the P-256 scalar field. Each operation has a
+variable-time row,
 `Fp` against the functions whose time may depend on the values, and a constant-time row, `Secret`
 against the functions whose time depends on no value. The counts are instructions per operation
 that Callgrind counts. The unpublished

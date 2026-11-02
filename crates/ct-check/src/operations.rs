@@ -7,7 +7,10 @@ use std::process::ExitCode;
 use bench_compare::run_batch;
 use binary_field::{Aes, B233, B571, Gcm, Gf2, Poly16, Poly64, Poly256, Polynomial, Pow, Square};
 use prime_field::biguint::Uint;
-use prime_field::biguint::typenum::{U31, U64, U254, U256, U381, U521};
+use prime_field::standard::{
+    BabyBear, Bls12381Base, Bn254Scalar, Goldilocks, Mersenne31, P256Base, P256Scalar, P521Base,
+    Secp256k1Base, Tom256Base,
+};
 use prime_field::{Fp, Modulus, Secret};
 
 use crate::request::{Unhandled, classify};
@@ -37,75 +40,11 @@ pub(crate) fn main() -> ExitCode {
 const A: u64 = 0x243f_6a88_85a3_08d3;
 const B: u64 = 0x1319_8a2e_0370_7344;
 
-/// Declares one `Modulus` marker per field.
-macro_rules! moduli {
-    ($($name:ident: $width:ty = [$($limb:expr),+ $(,)?];)*) => {
-        $(
-            #[derive(Clone, Copy)]
-            struct $name;
-
-            impl Modulus for $name {
-                type Width = $width;
-                const MODULUS: Uint<$width> = Uint::from_limbs([$($limb),+]);
-            }
-        )*
-    };
-}
-
-moduli! {
-    Mersenne31: U31 = [0x7fff_ffff];
-    BabyBear: U31 = [0x7800_0001];
-    Goldilocks: U64 = [0xffff_ffff_0000_0001];
-    Bn254Scalar: U254 = [
-        0x43e1_f593_f000_0001,
-        0x2833_e848_79b9_7091,
-        0xb850_45b6_8181_585d,
-        0x3064_4e72_e131_a029,
-    ];
-    Secp256k1Base: U256 = [
-        0xffff_fffe_ffff_fc2f,
-        0xffff_ffff_ffff_ffff,
-        0xffff_ffff_ffff_ffff,
-        0xffff_ffff_ffff_ffff,
-    ];
-    P256Base: U256 = [
-        0xffff_ffff_ffff_ffff,
-        0x0000_0000_ffff_ffff,
-        0x0000_0000_0000_0000,
-        0xffff_ffff_0000_0001,
-    ];
-    P256Scalar: U256 = [
-        0xf3b9_cac2_fc63_2551,
-        0xbce6_faad_a717_9e84,
-        0xffff_ffff_ffff_ffff,
-        0xffff_ffff_0000_0000,
-    ];
-    Bls12381Base: U381 = [
-        0xb9fe_ffff_ffff_aaab,
-        0x1eab_fffe_b153_ffff,
-        0x6730_d2a0_f6b0_f624,
-        0x6477_4b84_f385_12bf,
-        0x4b1b_a7b6_434b_acd7,
-        0x1a01_11ea_397f_e69a,
-    ];
-    P521Base: U521 = [
-        u64::MAX,
-        u64::MAX,
-        u64::MAX,
-        u64::MAX,
-        u64::MAX,
-        u64::MAX,
-        u64::MAX,
-        u64::MAX,
-        0x1ff,
-    ];
-}
-
 /// The checks of one field: the number of operations that ran.
 type Field = fn() -> Result<usize, Unhandled>;
 
 /// The fields of the `compare` bench of `prime-field`.
-const PRIME_FIELDS: [Field; 9] = [
+const PRIME_FIELDS: [Field; 10] = [
     prime::<Mersenne31>,
     prime::<BabyBear>,
     prime::<Goldilocks>,
@@ -113,6 +52,7 @@ const PRIME_FIELDS: [Field; 9] = [
     prime::<Secp256k1Base>,
     prime::<P256Base>,
     prime::<P256Scalar>,
+    prime::<Tom256Base>,
     prime::<Bls12381Base>,
     prime::<P521Base>,
 ];
