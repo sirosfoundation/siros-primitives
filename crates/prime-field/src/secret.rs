@@ -128,10 +128,13 @@ impl<M: Modulus> Neg for Secret<M> {
     }
 }
 
-impl<M: Modulus> From<Fp<M>> for Secret<M> {
-    /// `value`, as a secret.
+impl<M: Modulus, T> From<T> for Secret<M>
+where
+    Fp<M>: From<T>,
+{
+    /// The element of `value`, as a secret.
     #[inline(always)]
-    fn from(value: Fp<M>) -> Self {
-        Self::new(value)
+    fn from(value: T) -> Self {
+        Self::new(Fp::from(value))
     }
 }
