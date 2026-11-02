@@ -144,3 +144,11 @@ impl<P: Polynomial> Neg for Secret<P> {
         self
     }
 }
+
+impl<P: Polynomial> From<Gf2<P>> for Secret<P> {
+    /// The secret of `element`.
+    #[inline(always)]
+    fn from(element: Gf2<P>) -> Self {
+        Self::new(element)
+    }
+}

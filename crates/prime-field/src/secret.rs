@@ -127,3 +127,11 @@ impl<M: Modulus> Neg for Secret<M> {
         Self(self.0.neg_with())
     }
 }
+
+impl<M: Modulus> From<Fp<M>> for Secret<M> {
+    /// `value`, as a secret.
+    #[inline(always)]
+    fn from(value: Fp<M>) -> Self {
+        Self::new(value)
+    }
+}
