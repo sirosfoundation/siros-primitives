@@ -15,6 +15,7 @@
     )
 )]
 
+mod chain;
 mod field;
 mod invert;
 mod kernel;

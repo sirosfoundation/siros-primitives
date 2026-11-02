@@ -11,6 +11,7 @@ use biguint::Bits;
 use generic_array::GenericArray;
 
 use crate::Modulus;
+use crate::chain::Program;
 use crate::kernel::{
     add, add_mod, below, bit, bit_len, cios, copy, fits, fold, inv64, is_zero, jacobi, limb,
     mul_wide, redc, reduce_once, set, shr, square_wide, sub, trailing_zeros, truncate,
@@ -29,6 +30,10 @@ const MAX_FOLDS: usize = 3;
 
 /// The constants that share the exponentiation of the two-adic root.
 const ROOT_STAGES: usize = 8;
+
+/// The powers `c^(2^j)` of the two-adic root held in a table; Tonelli–Shanks squares the last
+/// entry for a higher power.
+pub(crate) const ROOT_POWERS: usize = 64;
 
 /// The constants and raw arithmetic of the field of `M`.
 pub(crate) struct Shape<M>(PhantomData<M>);
@@ -114,6 +119,8 @@ impl<M: Modulus> Shape<M> {
         }
         out
     };
+    /// The addition chain of `x^SQRT_EXPONENT`.
+    pub(crate) const SQRT_CHAIN: Program<M> = Program::for_exponent(Self::SQRT_EXPONENT.as_slice());
     /// The representation of the least quadratic non-residue, by the Jacobi symbol. Zero when
     /// `p = 3 mod 4`, which needs none.
     const NON_RESIDUE: Limbs<M> = if Self::THREE_MOD_FOUR {
@@ -138,6 +145,25 @@ impl<M: Modulus> Shape<M> {
     const ROOT_3: Limbs<M> = Self::root_stage(Self::ROOT_2, 3);
     const ROOT_2: Limbs<M> = Self::root_stage(Self::ROOT_1, 2);
     const ROOT_1: Limbs<M> = Self::root_stage(Self::ONE, 1);
+    /// `c^(2^j)` for the two-adic root `c` at index `j < min(TWO_ADICITY, ROOT_POWERS)`; zero
+    /// beyond.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "the index is checked against the length"
+    )]
+    pub(crate) const TWO_ADIC_ROOT_POWERS: [Limbs<M>; ROOT_POWERS] = {
+        let mut out = [const { M::Width::ZERO }; ROOT_POWERS];
+        if !Self::THREE_MOD_FOUR {
+            let mut power = Self::TWO_ADIC_ROOT;
+            let mut index = 0;
+            while index < ROOT_POWERS && index < Self::TWO_ADICITY {
+                out[index] = power;
+                power = Self::square_raw(power.as_slice());
+                index += 1;
+            }
+        }
+        out
+    };
 
     /// Raises `previous`, the root exponentiation over the exponent bits above the stage's
     /// slice, through the slice of bits of `stage`.
