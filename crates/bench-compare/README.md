@@ -3,6 +3,29 @@
 Compares a crate's operations with other crates in user-mode CPU cycles per operation and writes
 the crate's `BENCHMARKS.md`. Needs Linux with `kernel.perf_event_paranoid` at 2 or below.
 
+
+Measures the operations of several crates side by side with the CPU's cycle counter, and writes
+the comparison tables of a `BENCHMARKS.md`. Runs on Linux with access to user-mode `perf_event`
+counters.
+
+## Features
+
+- `Suite`: what a crate's `compare` bench measures: its operations, its rows, the operand sets with
+  their accepted results, and one adapter per compared crate.
+- `Row::lib` offers one crate's cells:
+  - `Cells::api` measures throughput, and `Cells::chain` throughput and the latency of
+    `x = op(x, y)`;
+  - `api_with` and `chain_with` add a setup shared by the inputs and the result reader;
+  - `absent` gives the reason a crate has no function;
+  - `deviating` marks a function that does less than the row defines.
+- `bench_compare::main`: the bench binary. It checks every case against the accepted results, then
+  counts cycles on a pinned CPU.
+- `bench_compare::execute`: the report tool. `bench [--cpu <cpu>] [--machine <description>]`
+  builds, runs and records `benchmarks/record.json`; `report` writes `BENCHMARKS.md`.
+- `run_batch` and `run_chain`: the measured loops, for other tools such as `ct-check`.
+
+## Usage
+
 A crate's `compare` bench declares a `Suite`:
 
 ```rust,no_run
