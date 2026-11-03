@@ -75,7 +75,7 @@ impl<M: Modulus> Fp<M> {
     }
 
     /// `value mod p`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn from_u64(value: u64) -> Self {
         let reduced = if Shape::<M>::LIMBS == 1 {
@@ -93,7 +93,7 @@ impl<M: Modulus> Fp<M> {
     /// # Errors
     ///
     /// [`NotCanonical`] when `value >= p`.
-    #[inline(always)]
+    #[inline]
     pub const fn from_uint(value: Uint<M::Width>) -> Result<Self, NotCanonical> {
         if Shape::<M>::is_canonical(value.as_limbs()) {
             Ok(Self::from_limbs(Shape::<M>::encode(value.as_limbs())))
@@ -103,7 +103,7 @@ impl<M: Modulus> Fp<M> {
     }
 
     /// The canonical integer in `[0, p)`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn to_uint(self) -> Uint<M::Width> {
         Uint::from_generic_limbs(Shape::<M>::decode(self.limbs()))
@@ -114,7 +114,7 @@ impl<M: Modulus> Fp<M> {
     /// # Errors
     ///
     /// [`NotCanonical`] when the bytes hold a value at or above `p`.
-    #[inline(always)]
+    #[inline]
     pub fn from_le_bytes(
         bytes: &GenericArray<u8, <M::Width as Bits>::Bytes>,
     ) -> Result<Self, NotCanonical> {
@@ -126,7 +126,7 @@ impl<M: Modulus> Fp<M> {
     /// # Errors
     ///
     /// [`NotCanonical`] when the bytes hold a value at or above `p`.
-    #[inline(always)]
+    #[inline]
     pub fn from_be_bytes(
         bytes: &GenericArray<u8, <M::Width as Bits>::Bytes>,
     ) -> Result<Self, NotCanonical> {
@@ -134,14 +134,14 @@ impl<M: Modulus> Fp<M> {
     }
 
     /// The little-endian encoding of the canonical integer.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn to_le_bytes(self) -> GenericArray<u8, <M::Width as Bits>::Bytes> {
         self.integer().to_le_bytes()
     }
 
     /// The big-endian encoding of the canonical integer.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn to_be_bytes(self) -> GenericArray<u8, <M::Width as Bits>::Bytes> {
         self.integer().to_be_bytes()
@@ -166,14 +166,14 @@ impl<M: Modulus> Fp<M> {
     }
 
     /// Whether the element is `0`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn is_zero(&self) -> bool {
         equal(self.limbs(), Shape::<M>::ZERO.as_slice())
     }
 
     /// `self + rhs`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     #[expect(
         clippy::should_implement_trait,
@@ -184,7 +184,7 @@ impl<M: Modulus> Fp<M> {
     }
 
     /// `self - rhs`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     #[expect(
         clippy::should_implement_trait,
@@ -195,7 +195,7 @@ impl<M: Modulus> Fp<M> {
     }
 
     /// `-self`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     #[expect(
         clippy::should_implement_trait,
@@ -206,14 +206,14 @@ impl<M: Modulus> Fp<M> {
     }
 
     /// `self + self`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn double(self) -> Self {
         self.add_with(self)
     }
 
     /// `self * rhs`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     #[expect(
         clippy::should_implement_trait,
@@ -224,7 +224,7 @@ impl<M: Modulus> Fp<M> {
     }
 
     /// `self * self`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn square(self) -> Self {
         self.square_with::<false>()
@@ -232,49 +232,49 @@ impl<M: Modulus> Fp<M> {
 
     /// `self^exponent`, by sliding windows of odd powers over the bits of the exponent, from
     /// the top set bit.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn pow<E: Bits>(self, exponent: Uint<E>) -> Self {
         self.pow_with::<false, E>(exponent)
     }
 
     /// `self + rhs` in a constant context.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn const_add(self, rhs: Self) -> Self {
         Self::from_limbs(Shape::<M>::add_raw(self.limbs(), rhs.limbs()))
     }
 
     /// `self - rhs` in a constant context.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn const_sub(self, rhs: Self) -> Self {
         Self::from_limbs(Shape::<M>::sub_raw(self.limbs(), rhs.limbs()))
     }
 
     /// `-self` in a constant context.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn const_neg(self) -> Self {
         Self::from_limbs(Shape::<M>::neg_raw(self.limbs()))
     }
 
     /// `self + self` in a constant context.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn const_double(self) -> Self {
         self.const_add(self)
     }
 
     /// `self * rhs` in a constant context.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn const_mul(self, rhs: Self) -> Self {
         Self::from_limbs(Shape::<M>::mul_raw(self.limbs(), rhs.limbs()))
     }
 
     /// `self * self` in a constant context.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn const_square(self) -> Self {
         Self::from_limbs(Shape::<M>::square_raw(self.limbs()))
@@ -392,7 +392,7 @@ fn table_entry<M: Modulus>(table: &[Fp<M>; 1 << (POW_WINDOW - 1)], index: usize)
 
 impl<M: Modulus> Default for Fp<M> {
     /// `0`.
-    #[inline(always)]
+    #[inline]
     fn default() -> Self {
         Self::ZERO
     }
@@ -401,14 +401,14 @@ impl<M: Modulus> Default for Fp<M> {
 impl<M: Modulus> PartialEq for Fp<M> {
     /// One pass that folds the differences of the limbs, which the compiler vectorizes for
     /// elements in memory; the comparison of the derived equality calls `bcmp` above 64 bytes.
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.equals(other)
     }
 }
 
 impl<M: Modulus> Hash for Fp<M> {
-    #[inline(always)]
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.limbs.hash(state);
     }
@@ -423,7 +423,7 @@ impl<M: Modulus> fmt::Debug for Fp<M> {
 impl<M: Modulus> Add for Fp<M> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn add(self, rhs: Self) -> Self {
         self.add_with(rhs)
     }
@@ -432,7 +432,7 @@ impl<M: Modulus> Add for Fp<M> {
 impl<M: Modulus> Sub for Fp<M> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn sub(self, rhs: Self) -> Self {
         self.sub_with(rhs)
     }
@@ -441,7 +441,7 @@ impl<M: Modulus> Sub for Fp<M> {
 impl<M: Modulus> Mul for Fp<M> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn mul(self, rhs: Self) -> Self {
         self.mul_with::<false>(rhs)
     }
@@ -450,49 +450,49 @@ impl<M: Modulus> Mul for Fp<M> {
 impl<M: Modulus> Neg for Fp<M> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn neg(self) -> Self {
         self.neg_with()
     }
 }
 
 impl<M: Modulus> AddAssign for Fp<M> {
-    #[inline(always)]
+    #[inline]
     fn add_assign(&mut self, rhs: Self) {
         *self = self.add_with(rhs);
     }
 }
 
 impl<M: Modulus> SubAssign for Fp<M> {
-    #[inline(always)]
+    #[inline]
     fn sub_assign(&mut self, rhs: Self) {
         *self = self.sub_with(rhs);
     }
 }
 
 impl<M: Modulus> MulAssign for Fp<M> {
-    #[inline(always)]
+    #[inline]
     fn mul_assign(&mut self, rhs: Self) {
         *self = self.mul_with::<false>(rhs);
     }
 }
 
 impl<M: Modulus> Sum for Fp<M> {
-    #[inline(always)]
+    #[inline]
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.fold(Self::ZERO, |sum, item| sum.add_with(item))
     }
 }
 
 impl<M: Modulus> Product for Fp<M> {
-    #[inline(always)]
+    #[inline]
     fn product<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.fold(Self::ONE, |product, item| product.mul_with::<false>(item))
     }
 }
 
 impl<M: Modulus> From<u64> for Fp<M> {
-    #[inline(always)]
+    #[inline]
     fn from(value: u64) -> Self {
         Self::from_u64(value)
     }
@@ -501,14 +501,14 @@ impl<M: Modulus> From<u64> for Fp<M> {
 impl<M: Modulus> TryFrom<Uint<M::Width>> for Fp<M> {
     type Error = NotCanonical;
 
-    #[inline(always)]
+    #[inline]
     fn try_from(value: Uint<M::Width>) -> Result<Self, NotCanonical> {
         Self::from_integer(value)
     }
 }
 
 impl<M: Modulus> From<Fp<M>> for Uint<M::Width> {
-    #[inline(always)]
+    #[inline]
     fn from(element: Fp<M>) -> Self {
         element.integer()
     }

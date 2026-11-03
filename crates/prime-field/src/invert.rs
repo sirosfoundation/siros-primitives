@@ -43,7 +43,7 @@ const LOW: u64 = (1 << BATCH) - 1;
 
 impl<M: Modulus> Fp<M> {
     /// `self^-1`, or `None` for `0`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn invert(self) -> Option<Self> {
         if Shape::<M>::LIMBS == 1 {

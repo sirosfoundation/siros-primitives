@@ -8,7 +8,7 @@ use crate::params::{ROOT_POWERS, Shape};
 impl<M: Modulus> Fp<M> {
     /// A square root of `self`, or `None` when `self` is a quadratic non-residue. Of the two
     /// roots of a residue, which one is returned is unspecified.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn sqrt(self) -> Option<Self> {
         if Shape::<M>::THREE_MOD_FOUR {
