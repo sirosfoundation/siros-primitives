@@ -8,7 +8,8 @@ cargo run -p binary-field-bench-report -- bench [--cpu <cpu>] [--machine <descri
 cargo run -p binary-field-bench-report -- report
 ```
 
-`bench` builds the `compare` bench with the feature `precomputed` twice: with the flags of
+`bench` builds the benches of the crate, one per kind of operation, with the feature `precomputed`
+twice: with the flags of
 [`bench-compare`](../../bench-compare), and with
 `-C target-feature=-pclmulqdq,-vpclmulqdq --cfg polyval_backend="soft"` added. It runs each build
 on one CPU (CPU 15 by default), checks every case against a bit-serial reference, and records the

@@ -23,6 +23,6 @@ pub use record::{
 };
 pub use run::{Build, Measured, NATIVE, Options, Paths, bench, cargo, execute, output};
 pub use suite::{
-    BATCH, Call, CaseId, Cells, Chain, Function, Inputs, Limbs, Rng, Row, Sample, Suite, Visitor,
-    run_batch, run_chain, trim, visit,
+    BATCH, Call, CaseId, Cells, Chain, Function, Inputs, Limbs, Rng, Row, Sample, Selected, Suite,
+    Visitor, run_batch, run_chain, trim, visit,
 };

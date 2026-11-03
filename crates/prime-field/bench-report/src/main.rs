@@ -21,7 +21,7 @@ impl fmt::Display for Field {
 
 const MEASURED: Measured = Measured {
     package: "prime-field",
-    bench: "compare",
+    benches: &["add", "sub", "mul", "square", "invert", "sqrt"],
     sources: "crates/prime-field/src",
     pathspecs: &[
         "Cargo.toml",

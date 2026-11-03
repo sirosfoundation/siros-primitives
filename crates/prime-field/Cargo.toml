@@ -44,8 +44,29 @@ serde.workspace = true
 subtle.workspace = true
 winter-math.workspace = true
 
+# One bench per kind of operation: each builds in its own LTO job, in parallel.
 [[bench]]
-name = "compare"
+name = "add"
+harness = false
+
+[[bench]]
+name = "sub"
+harness = false
+
+[[bench]]
+name = "mul"
+harness = false
+
+[[bench]]
+name = "square"
+harness = false
+
+[[bench]]
+name = "invert"
+harness = false
+
+[[bench]]
+name = "sqrt"
 harness = false
 
 [lints]

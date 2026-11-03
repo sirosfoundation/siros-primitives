@@ -8,7 +8,8 @@ cargo run -p biguint-bench-report -- bench [--cpu <cpu>] [--machine <description
 cargo run -p biguint-bench-report -- report
 ```
 
-`bench` runs the `compare` bench on one CPU (CPU 15 by default) with the flags of
+`bench` runs the benches of the crate, one per computation, on one CPU (CPU 15 by default) with
+the flags of
 [`bench-compare`](../../bench-compare) and records the counts in `benchmarks/record.json` of the
 crate. `report` writes the document from the record and prints every cell more than 10% above
 the same crate's cell at a greater width in the same table. `bench` needs Linux with

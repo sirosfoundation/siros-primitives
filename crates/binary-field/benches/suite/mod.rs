@@ -6,8 +6,9 @@ mod libs;
 mod reference;
 
 use core::fmt;
+use core::marker::PhantomData;
 
-use bench_compare::{BATCH, Limbs, Rng, Row, Sample, Suite, Visitor, trim};
+use bench_compare::{BATCH, Limbs, Rng, Row, Sample, Selected, Suite, Visitor, trim};
 use serde::{Deserialize, Serialize};
 
 use reference::Modulus;
@@ -116,7 +117,12 @@ impl Suite for BinaryField {
     type Op = Op;
     type Key = Field;
 
-    const OPS: &'static [Op] = &Op::ALL;
+    fn ops() -> Vec<Op> {
+        Op::ALL
+            .into_iter()
+            .filter(|op| op.kind == crate::KIND)
+            .collect()
+    }
 
     fn keys() -> Vec<Field> {
         FIELDS
@@ -266,6 +272,59 @@ impl Op {
 }
 
 /// The kind, and `_vartime` for the variable-time row.
+/// A kind of operation as a type. Its cases compile in the bench of its kind alone.
+pub trait KindOf: Copy {
+    /// The kind.
+    const KIND: Kind;
+    /// Whether this bench measures the kind.
+    const MEASURED: bool = Self::KIND as u8 == crate::KIND as u8;
+
+    /// The case of this kind in the row of `timing`.
+    fn in_row(self, timing: Timing) -> InRow<Self> {
+        InRow {
+            timing,
+            kind: PhantomData,
+        }
+    }
+}
+
+/// The kinds of operation, one type each.
+pub mod kind {
+    use super::{Kind, KindOf};
+
+    /// Declares each kind `$name` of `Kind::$name`.
+    macro_rules! kinds {
+        ($($name:ident),*) => {
+            $(
+                #[doc = concat!("The kind `Kind::", stringify!($name), "`.")]
+                #[derive(Clone, Copy)]
+                pub struct $name;
+
+                impl KindOf for $name {
+                    const KIND: Kind = Kind::$name;
+                }
+            )*
+        };
+    }
+
+    kinds!(Add, Mul, Square, Invert, Sqrt);
+}
+
+/// The operation of a case: the kind `K` in the row of `timing`.
+#[derive(Clone, Copy)]
+pub struct InRow<K> {
+    timing: Timing,
+    kind: PhantomData<K>,
+}
+
+impl<K: KindOf> Selected<Op> for InRow<K> {
+    const MEASURED: bool = K::MEASURED;
+
+    fn op(&self) -> Op {
+        K::KIND.in_row(self.timing)
+    }
+}
+
 impl fmt::Display for Op {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self.kind {

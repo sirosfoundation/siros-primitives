@@ -2,7 +2,7 @@
 
 use core::num::NonZero;
 
-use bench_compare::{Cells, Chain, Limbs, Visitor};
+use bench_compare::{Cells, Chain, Limbs, Selected, Visitor};
 use biguint::generic_array::GenericArray;
 use biguint::{Bits, ConstantTime, NonZeroUint, Uint};
 use num_bigint::BigUint;
@@ -26,7 +26,7 @@ pub trait Offer<O, K, V> {
     /// one operand set; `run` is the operation on one input.
     fn case<I, R: ToLimbs>(
         self,
-        op: O,
+        op: impl Selected<O>,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
@@ -35,7 +35,7 @@ pub trait Offer<O, K, V> {
     /// Offers the case with its chain form, `x = op(x, y)`.
     fn chained<I: Chain<R>, R: ToLimbs>(
         self,
-        op: O,
+        op: impl Selected<O>,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
@@ -47,7 +47,7 @@ impl<O: Copy + Eq + core::fmt::Display, K: bench_compare::Key, V: Visitor<O, K>>
 {
     fn case<I, R: ToLimbs>(
         self,
-        op: O,
+        op: impl Selected<O>,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
@@ -57,7 +57,7 @@ impl<O: Copy + Eq + core::fmt::Display, K: bench_compare::Key, V: Visitor<O, K>>
 
     fn chained<I: Chain<R>, R: ToLimbs>(
         self,
-        op: O,
+        op: impl Selected<O>,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,

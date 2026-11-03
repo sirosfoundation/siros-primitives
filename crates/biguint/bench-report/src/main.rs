@@ -21,7 +21,9 @@ impl fmt::Display for Width {
 /// The files that the measured executable is built from, as git pathspecs.
 const MEASURED: Measured = Measured {
     package: "biguint",
-    bench: "compare",
+    benches: &[
+        "add", "mul", "div", "modulo", "mulmod", "add_mod", "sub_mod",
+    ],
     sources: "crates/biguint/src",
     pathspecs: &[
         "Cargo.toml",

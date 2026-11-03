@@ -1,5 +1,5 @@
-//! `bench`: builds a `compare` bench for the native CPU, runs it, and records what the CPU's
-//! counters counted.
+//! `bench`: builds the benches of a comparison for the native CPU, runs them, and records what the
+//! CPU's counters counted.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 
+use crate::count::{CPU, Window};
 use crate::error::Error;
 use crate::record::{Cell, Key, Line, Measurement, Record, Sweep, Version};
 
@@ -75,8 +76,9 @@ impl Paths {
 pub struct Measured {
     /// The package that holds the bench.
     pub package: &'static str,
-    /// The bench target.
-    pub bench: &'static str,
+    /// The bench targets, which measure disjoint operations, in measurement order. Each compiles
+    /// one part of the comparison, so the targets build in parallel.
+    pub benches: &'static [&'static str],
     /// The sources of the measured library, whose last commit the record names.
     pub sources: &'static str,
     /// The files that the measured executable is built from, as git pathspecs.
@@ -216,8 +218,9 @@ pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Re
 }
 
 /// Every cell of the comparison in `build` with its counts, and the sweep: the lines that the
-/// bench prints, measuring on `cpu`. The bench is built first, and the features of its build
-/// must pass [`check_features`].
+/// benches print, measuring on `cpu`, the bench's default CPU when absent. The benches are built
+/// first, in parallel, and the features of the build must pass [`check_features`]. They then run
+/// one after the other, in the order of [`Measured::benches`]; the sweep spans them all.
 fn cells<K: Key>(
     paths: &Paths,
     measured: &Measured,
@@ -225,18 +228,14 @@ fn cells<K: Key>(
     cpu: Option<&str>,
 ) -> Result<(Vec<Cell<K>>, Sweep), Error> {
     let features = measured.features.join(",");
-    let mut args = vec![
-        "bench",
-        "--locked",
-        "-p",
-        measured.package,
-        "--bench",
-        measured.bench,
-    ];
+    let mut args = vec!["bench", "--locked", "-p", measured.package];
     if !features.is_empty() {
         args.extend(["--features", &features]);
     }
     let mut build_args = args.clone();
+    for bench in measured.benches {
+        build_args.extend(["--bench", bench]);
+    }
     build_args.extend(["--no-run", "--message-format=json"]);
     let messages = cargo(
         &paths.root,
@@ -245,25 +244,53 @@ fn cells<K: Key>(
         &build_args,
     )?;
     check_features(measured, &messages)?;
-    if let Some(cpu) = cpu {
-        args.extend(["--", "--cpu", cpu]);
-    }
-    let text = cargo(&paths.root, &paths.results(build), build.rustflags, &args)?;
+    let cpu_number = match cpu {
+        Some(cpu) => cpu
+            .parse::<usize>()
+            .map_err(|source| Error::number("CPU", cpu, source))?,
+        None => CPU,
+    };
+    let window = Window::open(cpu_number)?;
     let mut cells = Vec::new();
-    let mut sweeps = Vec::new();
-    for line in text.lines().filter(|line| !line.trim().is_empty()) {
-        match serde_json::from_str(line).map_err(Error::Cells)? {
-            Line::Cell(cell) => cells.push(cell),
-            Line::Sweep(sweep) => sweeps.push(sweep),
+    for bench in measured.benches {
+        let mut run_args = args.clone();
+        run_args.extend(["--bench", bench]);
+        if let Some(cpu) = cpu {
+            run_args.extend(["--", "--cpu", cpu]);
+        }
+        let text = cargo(
+            &paths.root,
+            &paths.results(build),
+            build.rustflags,
+            &run_args,
+        )?;
+        let mut sweeps = Vec::new();
+        for line in text.lines().filter(|line| !line.trim().is_empty()) {
+            match serde_json::from_str(line).map_err(Error::Cells)? {
+                Line::Cell(cell) => cells.push(cell),
+                Line::Sweep(sweep) => sweeps.push(sweep),
+            }
+        }
+        match <[Sweep; 1]>::try_from(sweeps) {
+            Ok([sweep]) if sweep.cpu == cpu_number => {}
+            Ok([sweep]) => {
+                return Err(Error::missing(
+                    &format!(
+                        "sweep on CPU {cpu_number}, where it ran on CPU {}",
+                        sweep.cpu
+                    ),
+                    &format!("the lines of the bench {bench}"),
+                ));
+            }
+            Err(sweeps) => {
+                return Err(Error::missing(
+                    &format!("single sweep among its {}", sweeps.len()),
+                    &format!("the lines of the bench {bench}"),
+                ));
+            }
         }
     }
-    match <[Sweep; 1]>::try_from(sweeps) {
-        Ok([sweep]) => Ok((cells, sweep)),
-        Err(sweeps) => Err(Error::missing(
-            &format!("single sweep among its {}", sweeps.len()),
-            "the lines of the bench",
-        )),
-    }
+    Ok((cells, window.close()?))
 }
 
 /// One JSON message of a cargo build: the fields that [`check_features`] reads.
@@ -283,10 +310,10 @@ struct Target {
     kind: Vec<String>,
 }
 
-/// Checks the units of a build from its JSON `messages`: the bench of `measured` has every feature
-/// in [`Measured::features`], and no unit has a feature in [`Measured::forbidden`].
+/// Checks the units of a build from its JSON `messages`: every bench of `measured` has every
+/// feature in [`Measured::features`], and no unit has a feature in [`Measured::forbidden`].
 fn check_features(measured: &Measured, messages: &str) -> Result<(), Error> {
-    let mut bench = None;
+    let mut benches = Vec::new();
     for line in messages.lines().filter(|line| !line.trim().is_empty()) {
         let message: Message = serde_json::from_str(line).map_err(Error::Messages)?;
         if message.reason != "compiler-artifact" {
@@ -305,29 +332,32 @@ fn check_features(measured: &Measured, messages: &str) -> Result<(), Error> {
                 feature: feature.clone(),
             });
         }
-        if message.target.as_ref().is_some_and(|target| {
-            target.name == measured.bench && target.kind.iter().any(|kind| kind == "bench")
-        }) {
-            bench = Some(message.features);
+        if let Some(target) = message
+            .target
+            .filter(|target| target.kind.iter().any(|kind| kind == "bench"))
+        {
+            benches.push((target.name, message.features));
         }
     }
-    let bench = bench.ok_or_else(|| {
-        Error::missing(
-            &format!("bench {}", measured.bench),
-            "the messages of the build",
-        )
-    })?;
-    match measured
-        .features
-        .iter()
-        .find(|feature| !bench.iter().any(|built| built == *feature))
-    {
-        Some(feature) => Err(Error::Unbuilt {
-            package: measured.package.to_owned(),
-            feature: (*feature).to_owned(),
-        }),
-        None => Ok(()),
+    for bench in measured.benches {
+        let (_, built) = benches
+            .iter()
+            .find(|(name, _)| name == bench)
+            .ok_or_else(|| {
+                Error::missing(&format!("bench {bench}"), "the messages of the build")
+            })?;
+        if let Some(feature) = measured
+            .features
+            .iter()
+            .find(|feature| !built.iter().any(|built| built == *feature))
+        {
+            return Err(Error::Unbuilt {
+                package: measured.package.to_owned(),
+                feature: (*feature).to_owned(),
+            });
+        }
     }
+    Ok(())
 }
 
 /// The standard output of `cargo` with `args` in the workspace at `root`, which must succeed. The
