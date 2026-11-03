@@ -31,7 +31,12 @@ pub(crate) trait Inversion {
 /// `a^(2^n - 2)`: `b(c) = a^(2^c - 1)` along the field's chain, each step
 /// `b(x + y) = b(x)^(2^y) b(y)` one Frobenius power and one product, then the square of `b(n - 1)`.
 /// The sequence depends on the degree alone; `0` maps to `0`.
-#[inline(always)]
+///
+/// `#[inline]`, the one kernel without `#[inline(always)]`: LLVM optimizes the inversion as a
+/// function of its own before it decides to inline it. The always-inliner copied it unoptimized
+/// into each caller, where promoting its chain's values to registers took SROA 14 minutes per
+/// field in one release test function.
+#[inline]
 pub(crate) fn inverse<P: Polynomial, O: Inversion>(a: O::Value) -> O::Value {
     let Some(len) = Chains::<P>::CHAIN.len else {
         return binary::<P, O>(a);
