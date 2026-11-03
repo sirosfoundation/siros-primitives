@@ -107,9 +107,9 @@ pub(crate) fn square<A: ArrayLength>(out: &mut [u64], a: &GenericArray<u64, A>) 
 /// Writes `a * b mod 2^(64 * out.len())` to `out`. `out` is at most `a.len() + b.len()` limbs
 /// long.
 ///
-/// A call: inlined, every row keeps its own stack slots in the caller's frame, and a 4096-bit
-/// product inlines dozens of kernels, which cost minutes of compile time per caller.
-#[inline]
+/// Inlined, the lengths of its slices fold to constants: as a call, a 2048-bit product took twice
+/// the cycles.
+#[inline(always)]
 pub(crate) fn basecase(out: &mut [u64], a: &[u64], b: &[u64]) {
     let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
     for (index, &multiplier) in short.iter().enumerate() {

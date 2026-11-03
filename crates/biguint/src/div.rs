@@ -474,7 +474,7 @@ fn divide_by_two_limbs(
 /// writes the low `numerator.len() - divisor.len()` quotient limbs to `quotient`, leaves the
 /// remainder in the low `divisor.len()` limbs of `numerator` and zeros above them, and returns
 /// the top quotient limb, `0` or `1`.
-#[inline]
+#[inline(always)]
 pub(crate) fn schoolbook(
     numerator: &mut [u64],
     divisor: &[u64],
@@ -494,7 +494,7 @@ pub(crate) fn schoolbook(
 /// `window` are below `divisor`. `CONSTANT` tells that the compiler knows the divisor's length,
 /// which unrolls the subtraction of each scaled divisor into two carry chains
 /// ([`sub_mul_row_chains`]).
-#[inline]
+#[inline(always)]
 pub(crate) fn divide_by_limbs<const CONSTANT: bool>(
     window: &mut [u64],
     divisor: &[u64],

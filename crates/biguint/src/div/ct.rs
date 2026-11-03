@@ -53,7 +53,7 @@ impl<L: ArrayLength> MaskedDivisor<L> {
 
     /// `dividend mod divisor` in `M` bits; the quotient limbs go to `quotient`. `W` holds the
     /// dividend's limbs and one more.
-    #[inline]
+    #[inline(always)]
     pub(crate) fn remainder<W: ArrayLength, M: Bits>(
         &self,
         dividend: &[u64],

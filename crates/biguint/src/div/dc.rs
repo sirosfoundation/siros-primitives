@@ -16,7 +16,7 @@ pub(crate) const THRESHOLD: usize = 24;
 /// [`Depth::divide`] by halves: the upper quotient half from the upper half of the numerator and
 /// the divisor's upper half, corrected by the product with the divisor's lower half, then the
 /// lower quotient half the same way.
-#[inline(always)]
+#[inline]
 pub(crate) fn divide_halves<D: Depth>(
     numerator: &mut [u64],
     divisor: &[u64],
