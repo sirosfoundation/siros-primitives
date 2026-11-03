@@ -74,10 +74,9 @@ where
         }
     }
 
-    /// The product of the residues `a` and `b`, in time that depends on no value. An unoptimized
-    /// build calls it, as it does the product kernels.
-    #[cfg_attr(debug_assertions, inline(never))]
-    #[cfg_attr(not(debug_assertions), inline(always))]
+    /// The product of the residues `a` and `b`, in time that depends on no value. A call at the
+    /// widths where its copy is large.
+    #[inline]
     fn product_masked(self, a: &Uint<N>, b: &Uint<N>) -> Uint<N> {
         let mut t = GenericArray::<u64, N::ProductWindow>::default();
         if N::LIMBS < karatsuba::THRESHOLD {
@@ -90,10 +89,9 @@ where
         self.reduce_product_masked(&mut t)
     }
 
-    /// The square of the residue `a`, in time that depends on no value. An unoptimized build calls
-    /// it, as it does the product kernels.
-    #[cfg_attr(debug_assertions, inline(never))]
-    #[cfg_attr(not(debug_assertions), inline(always))]
+    /// The square of the residue `a`, in time that depends on no value. A call at
+    /// the widths where its copy is large.
+    #[inline]
     fn square_masked(self, a: &Uint<N>) -> Uint<N> {
         let mut t = GenericArray::<u64, N::ProductWindow>::default();
         {

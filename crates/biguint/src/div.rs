@@ -279,8 +279,7 @@ impl<L: ArrayLength> Invariant<L> {
     }
 
     /// `dividend mod divisor` in `M` bits. The quotient limbs go to `quotient`. `W` holds the
-    /// dividend's limbs and one more. An unoptimized build calls it, as it does the product
-    /// kernels.
+    /// dividend's limbs and one more. An unoptimized build calls it.
     #[cfg_attr(debug_assertions, inline(never))]
     #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn remainder<W: ArrayLength, M: Bits>(

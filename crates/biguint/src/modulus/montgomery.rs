@@ -27,9 +27,8 @@ pub(crate) const fn negated_inverse(low: u64) -> u64 {
 /// Writes `t * R^-1 mod m` to `out`, `k = m.len()` limbs, for `t < m * R` in the low `2k` limbs of
 /// `t`, which the reduction overwrites. `inverse` is `-m^-1 mod 2^64`.
 ///
-/// An unoptimized build calls the kernel.
-#[cfg_attr(debug_assertions, inline(never))]
-#[cfg_attr(not(debug_assertions), inline(always))]
+/// A call at the widths where its copy is large.
+#[inline]
 pub(crate) fn reduce<L: ArrayLength>(
     out: &mut [u64],
     t: &mut [u64],
@@ -45,8 +44,7 @@ pub(crate) fn reduce<L: ArrayLength>(
 
 /// [`reduce`] with its final subtraction under masks at every length: no branch and no memory
 /// address depends on `t`.
-#[cfg_attr(debug_assertions, inline(never))]
-#[cfg_attr(not(debug_assertions), inline(always))]
+#[inline]
 pub(crate) fn reduce_masked<L: ArrayLength>(
     out: &mut [u64],
     t: &mut [u64],

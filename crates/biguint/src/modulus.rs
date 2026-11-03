@@ -213,10 +213,8 @@ impl<'id, N: Bits> Ring<'id, N> {
         Residue { value, ring: self }
     }
 
-    /// The value of the residue `value`. An unoptimized build calls it, as it does the product
-    /// kernels.
-    #[cfg_attr(debug_assertions, inline(never))]
-    #[cfg_attr(not(debug_assertions), inline(always))]
+    /// The value of the residue `value`. A call at the widths where its copy is large.
+    #[inline]
     fn leave(self, value: Uint<N>) -> Uint<N> {
         match &self.modulus.form {
             Form::Montgomery { inverse, .. } => {
@@ -232,10 +230,9 @@ impl<'id, N: Bits> Ring<'id, N> {
         }
     }
 
-    /// The product of the residues `a` and `b`. An unoptimized build calls it, as it does the
-    /// product kernels.
-    #[cfg_attr(debug_assertions, inline(never))]
-    #[cfg_attr(not(debug_assertions), inline(always))]
+    /// The product of the residues `a` and `b`. A call at the widths where its copy is
+    /// large.
+    #[inline]
     fn product(self, a: &Uint<N>, b: &Uint<N>) -> Uint<N> {
         let mut t = GenericArray::<u64, N::ProductWindow>::default();
         if N::LIMBS < karatsuba::THRESHOLD {
@@ -248,10 +245,8 @@ impl<'id, N: Bits> Ring<'id, N> {
         self.reduce_product(&mut t)
     }
 
-    /// The square of the residue `a`. An unoptimized build calls it, as it does the product
-    /// kernels.
-    #[cfg_attr(debug_assertions, inline(never))]
-    #[cfg_attr(not(debug_assertions), inline(always))]
+    /// The square of the residue `a`. A call at the widths where its copy is large.
+    #[inline]
     fn square(self, a: &Uint<N>) -> Uint<N> {
         let mut t = GenericArray::<u64, N::ProductWindow>::default();
         {
