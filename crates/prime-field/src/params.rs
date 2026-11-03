@@ -519,16 +519,27 @@ const fn fold_limbs(bits: usize, deficit: Option<u64>, folds: usize) -> usize {
 /// `2^bits`; each fold multiplies that part by about `deficit / 2^bits`. More than [`MAX_FOLDS`]
 /// folds report `MAX_FOLDS + 1`.
 const fn folds(bits: usize, deficit: u64) -> usize {
-    let deficit = deficit as u128;
-    // `2^bits`; `None` when it exceeds `u128`, which every bound below then satisfies.
-    let power = if bits < 128 {
+    folds_from(bits, deficit, power_of_two(bits))
+}
+
+/// `2^bits`; `None` when it exceeds `u128`.
+pub(crate) const fn power_of_two(bits: usize) -> Option<u128> {
+    if bits < 128 {
         Some(1u128 << bits)
     } else {
         None
-    };
+    }
+}
+
+/// The folds that bring a value whose part above `2^bits` lies below `high` under twice the
+/// modulus `2^bits - deficit`, as [`folds`] counts them; `None` is `2^bits` beyond `u128`.
+pub(crate) const fn folds_from(bits: usize, deficit: u64, high: Option<u128>) -> usize {
+    let deficit = deficit as u128;
+    // `2^bits`; `None` when it exceeds `u128`, which every bound below then satisfies.
+    let power = power_of_two(bits);
     // An exclusive bound on the part above `2^bits` before the next fold; `None` is `2^bits`
     // beyond `u128`.
-    let mut high = power;
+    let mut high = high;
     let mut count = 0;
     while count < MAX_FOLDS {
         count += 1;

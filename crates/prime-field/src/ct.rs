@@ -42,6 +42,36 @@ impl<M: Modulus> CtMul for Fp<M> {
     }
 }
 
+/// `self + k mod p` for an integer `k` of any width and value.
+impl<M: Modulus, K: Bits> CtAdd<Uint<K>> for Fp<M> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn ct_add(self, rhs: Uint<K>) -> Self {
+        self.add_with(Self::integer_with::<true>(rhs.as_limbs()))
+    }
+}
+
+/// `self - k mod p` for an integer `k` of any width and value.
+impl<M: Modulus, K: Bits> CtSub<Uint<K>> for Fp<M> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn ct_sub(self, rhs: Uint<K>) -> Self {
+        self.sub_with(Self::integer_with::<true>(rhs.as_limbs()))
+    }
+}
+
+/// `self k mod p` for an integer `k` of any width and value.
+impl<M: Modulus, K: Bits> CtMul<Uint<K>> for Fp<M> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn ct_mul(self, rhs: Uint<K>) -> Self {
+        self.scale_with::<true>(rhs.as_limbs())
+    }
+}
+
 /// `-self`.
 impl<M: Modulus> CtNeg for Fp<M> {
     #[inline(always)]

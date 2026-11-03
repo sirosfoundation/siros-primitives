@@ -22,6 +22,7 @@ mod field;
 mod invert;
 mod kernel;
 mod params;
+mod scale;
 mod sqrt;
 pub mod standard;
 mod unrolled;

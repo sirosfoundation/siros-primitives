@@ -38,10 +38,10 @@ moduli! {
     ];
 }
 
-/// Runs the sweep on each modulus marker.
+/// Runs the sweep of `$check` on each modulus marker.
 macro_rules! each_modulus {
-    ($sweep:expr, $($name:ident),* $(,)?) => {
-        $($sweep(stringify!($name), &big(<$name>::MODULUS.as_limbs()), &|rng: &mut Rng| check::<$name>(rng));)*
+    ($sweep:expr, $check:ident, $($name:ident),* $(,)?) => {
+        $($sweep(stringify!($name), &big(<$name>::MODULUS.as_limbs()), &|rng: &mut Rng| $check::<$name>(rng));)*
     };
 }
 
@@ -293,6 +293,7 @@ fn every_operation_matches_num_bigint() {
     };
     each_modulus!(
         sweep,
+        check,
         Seven,
         Mersenne31,
         BabyBear,
@@ -396,4 +397,113 @@ fn hex(text: &str) -> [u8; 32] {
         *slot = u8::from_str_radix(std::str::from_utf8(pair).expect("ascii"), 16).expect("hex");
     }
     bytes
+}
+
+/// The width of the oracle's integers: twice the widest field and more.
+type Oracle = biguint::typenum::U2048;
+
+/// `x k`, `x + k` and `x - k` for one `k` of the width `K`, through `Fp`, the assigning form,
+/// `ConstantTime` with `k` wrapped, and `ConstantTime` with `k` public: one row per operation.
+fn integer_results<M: Modulus, K: Bits>(x: Fp<M>, k: Uint<K>) -> [[Fp<M>; 4]; 3] {
+    let s = ConstantTime::new(x);
+    let t = ConstantTime::new(k);
+    let (mut product, mut sum, mut difference) = (x, x, x);
+    product *= k;
+    sum += k;
+    difference -= k;
+    [
+        [x * k, product, (s * t).reveal(), (s * k).reveal()],
+        [x + k, sum, (s + t).reveal(), (s + k).reveal()],
+        [x - k, difference, (s - t).reveal(), (s - k).reveal()],
+    ]
+}
+
+/// A uniform value of `bits` bits.
+fn random_bits(rng: &mut Rng, bits: usize) -> BigUint {
+    let digits: Vec<u64> = (0..bits.div_ceil(64)).map(|_| rng.next_u64()).collect();
+    BigUint::from_slice(&to_u32s(&digits)) >> (64 * digits.len() - bits)
+}
+
+/// The integer operands of the field of `M` against `biguint`'s `mul_mod`, `add_mod` and
+/// `sub_mod` on the canonical integers, for `k` in every width that holds it: 64 and 128 bits,
+/// the field's width and the oracle's. `From<u64>` against `k mod p`.
+fn check_integers<M: Modulus>(rng: &mut Rng) {
+    let p = big(M::MODULUS.as_limbs());
+    let width = <M::Width as Bits>::BITS;
+    let modulus = NonZero::new(uint::<Oracle>(&p)).expect("a nonzero modulus");
+    let mut ks = vec![
+        BigUint::ZERO,
+        BigUint::from(1u8),
+        BigUint::from(2u8),
+        &p - 1u8,
+        p.clone(),
+        &p + 1u8,
+        BigUint::from(u64::MAX),
+    ];
+    for bits in [64, 128, width, 2 * width] {
+        ks.extend((0..4).map(|_| random_bits(rng, bits)));
+    }
+    let xs = [BigUint::ZERO, BigUint::from(1u8), &p - 1u8, rng.below(&p)];
+    for a in &xs {
+        let x = element::<M>(a);
+        let integer = uint::<Oracle>(a);
+        for k in &ks {
+            let wide = uint::<Oracle>(k);
+            let reduced = wide % modulus;
+            let expected = [
+                integer.mul_mod(wide, modulus),
+                integer.add_mod(reduced, modulus),
+                integer.sub_mod(reduced, modulus),
+            ]
+            .map(|result| big(result.as_limbs()));
+            let mut rows = vec![integer_results(x, wide)];
+            if k.bits() <= 64 {
+                let word = uint::<biguint::typenum::U64>(k);
+                rows.push(integer_results(x, word));
+                assert_eq!(
+                    value(Fp::<M>::from(word.as_limbs()[0])),
+                    big(reduced.as_limbs()),
+                    "From<u64> of {k}"
+                );
+            }
+            if k.bits() <= 128 {
+                rows.push(integer_results(x, uint::<biguint::typenum::U128>(k)));
+            }
+            if k.bits() <= width as u64 {
+                rows.push(integer_results(x, uint::<M::Width>(k)));
+            }
+            for row in &rows {
+                for ((name, results), expected) in ["mul", "add", "sub"].iter().zip(row).zip(&expected)
+                {
+                    agree::<M>(name, a, k, expected, results);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn integer_operands_match_biguint() {
+    let sweep = |name: &str, p: &BigUint, sweep: &dyn Fn(&mut Rng)| {
+        let mut rng = Rng(p.bits() + 1);
+        eprintln!("{name}");
+        sweep(&mut rng);
+    };
+    each_modulus!(
+        sweep,
+        check_integers,
+        Seven,
+        Mersenne31,
+        BabyBear,
+        Goldilocks,
+        Mersenne127,
+        Bn254Scalar,
+        Secp256k1Base,
+        Secp256k1Scalar,
+        P256Base,
+        P256Scalar,
+        Tom256Base,
+        Bls12381Base,
+        P521Base,
+    );
 }
