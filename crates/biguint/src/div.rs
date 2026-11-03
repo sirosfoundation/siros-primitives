@@ -476,7 +476,8 @@ fn divide_by_two_limbs(
 /// writes the low `numerator.len() - divisor.len()` quotient limbs to `quotient`, leaves the
 /// remainder in the low `divisor.len()` limbs of `numerator` and zeros above them, and returns
 /// the top quotient limb, `0` or `1`.
-#[inline(always)]
+#[cfg_attr(debug_assertions, inline(never))]
+#[cfg_attr(not(debug_assertions), inline(always))]
 pub(crate) fn schoolbook(
     numerator: &mut [u64],
     divisor: &[u64],

@@ -24,7 +24,8 @@ pub(crate) const THRESHOLD: usize = 16;
 ///
 /// `MASKED` takes the signs of the differences and the carries under masks: no branch and no
 /// memory address depends on the operands.
-#[inline(always)]
+#[cfg_attr(debug_assertions, inline(never))]
+#[cfg_attr(not(debug_assertions), inline(always))]
 pub(crate) fn karatsuba<D: Depth, const MASKED: bool>(
     out: &mut [u64],
     a: &[u64],

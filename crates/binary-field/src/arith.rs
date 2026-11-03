@@ -139,7 +139,8 @@ impl<P: Polynomial> Field<P> {
     // The polynomial of an element.
 
     /// The product of two polynomials of the field.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn lanes_mul(a: Lanes<P>, b: Lanes<P>) -> Lanes<P> {
         match Plan::<P>::SHAPE {
             Shape::Word => {
@@ -159,7 +160,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// The square of a polynomial of the field.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn lanes_square(a: Lanes<P>) -> Lanes<P> {
         Self::square_in(a, Squaring::Alone)
     }
@@ -539,7 +541,8 @@ impl<P: Polynomial> Field<P> {
     // The operations on elements: the defaults, and those of `ConstantTime`.
 
     /// `a b`, the default.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn mul(a: Element<P>, b: Element<P>) -> Element<P> {
         if Plan::<P>::MUL_BY_PRODUCTS {
             Element::<P>::from_word(Tables::<P>::mul(a.word(), b.word()))
@@ -551,7 +554,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// `a b` in constant time.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn ct_mul(a: Element<P>, b: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {
             Element::<P>::from_word(Self::word_mul(a.word(), b.word()))
@@ -561,7 +565,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// `a^2`, the default.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn square(a: Element<P>) -> Element<P> {
         if Plan::<P>::ELEMENT_TABLES {
             Element::<P>::from_word(Tables::<P>::square(a.word()))
@@ -573,7 +578,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// `a^2` in constant time.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn ct_square(a: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {
             Element::<P>::from_word(Self::word_square(a.word()))
@@ -583,7 +589,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// The square root, the default.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn sqrt(a: Element<P>) -> Element<P> {
         if Plan::<P>::ELEMENT_TABLES {
             Element::<P>::from_word(Tables::<P>::sqrt(a.word()))
@@ -595,7 +602,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// The square root in constant time.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn ct_sqrt(a: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {
             Element::<P>::from_word(Self::word_sqrt(a.word()))
@@ -606,7 +614,8 @@ impl<P: Polynomial> Field<P> {
 
     /// The inverse of a nonzero `a`, and `0` for `0`, the default: the table of inverses, or the
     /// field's chain with the tables of its Frobenius powers.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn invert(a: Element<P>) -> Element<P> {
         if Plan::<P>::ELEMENT_TABLES {
             Element::<P>::from_word(Tables::<P>::invert(a.word()))
@@ -619,7 +628,8 @@ impl<P: Polynomial> Field<P> {
 
     /// The inverse of a nonzero `a`, and `0` for `0`, in constant time: `a^(2^n - 2)` along the
     /// field's chain, with squarings or the constant-time maps of the Frobenius powers.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn ct_invert(a: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {
             Element::<P>::from_word(inverse::<P, Words<P>>(a.word()))
