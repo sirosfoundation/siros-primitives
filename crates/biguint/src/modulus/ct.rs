@@ -238,7 +238,7 @@ impl<'id, N: Bits, E: Bits> CtPow<ConstantTime<Uint<E>>> for Residue<'id, N>
 where
     Uint<N>: Copy,
 {
-    #[inline(always)]
+    #[inline]
     fn ct_pow(self, exponent: ConstantTime<Uint<E>>) -> Self {
         let exponent = exponent.reveal();
         let ring = self.ring;

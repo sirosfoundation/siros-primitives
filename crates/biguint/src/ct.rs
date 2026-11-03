@@ -120,7 +120,7 @@ impl<N: Bits> CtSquare for Uint<N> {
 /// `self^exponent mod 2^N` for a wrapped exponent: square-and-multiply over all `E` bits, each
 /// product taken under the mask of its bit.
 impl<N: Bits, E: Bits> CtPow<ConstantTime<Uint<E>>> for Uint<N> {
-    #[inline(always)]
+    #[inline]
     fn ct_pow(self, exponent: ConstantTime<Uint<E>>) -> Self {
         let exponent = exponent.reveal();
         (0..E::BITS).rev().fold(Self::ONE, |power, index| {

@@ -60,7 +60,7 @@ where
     T: Copy + Mul<Output = T> + One + Square<Output = T>,
     E: Exponent,
 {
-    #[inline(always)]
+    #[inline]
     fn pow(self, exponent: E) -> Self {
         (0..E::WIDTH).rev().fold(T::ONE, |acc, index| {
             let square = acc.square();

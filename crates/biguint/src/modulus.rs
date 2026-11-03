@@ -343,7 +343,7 @@ where
     /// `self^exponent`, by sliding windows of odd powers over the exponent bits from the most
     /// significant.
     #[must_use]
-    #[inline(always)]
+    #[inline]
     pub fn pow<E: Bits>(self, exponent: Uint<E>) -> Self {
         let bits = exponent.bit_len();
         let window = pow_window(bits);
