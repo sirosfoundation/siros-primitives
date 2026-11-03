@@ -16,7 +16,7 @@ use generic_array::{ArrayLength, GenericArray};
 use typenum::Sum;
 
 use crate::bits::Bits;
-use crate::recursion::{Depth, Halvings, by_width};
+use crate::recursion::{Depth, Halvings};
 use crate::uint::Uint;
 use karatsuba::{THRESHOLD, blocks};
 
@@ -38,13 +38,7 @@ impl<N: Bits, RhsN: Bits> Mul<Uint<RhsN>> for Uint<N> {
 
     #[inline(always)]
     fn mul(self, rhs: Uint<RhsN>) -> Self::Output {
-        by_width(
-            N::LIMBS.min(RhsN::LIMBS),
-            #[inline(always)]
-            move || {
-                Uint::from_generic_limbs(truncated_product::<N, _, false>(&self.limbs, &rhs.limbs))
-            },
-        )
+        Uint::from_generic_limbs(truncated_product::<N, _, false>(&self.limbs, &rhs.limbs))
     }
 }
 
@@ -59,16 +53,10 @@ where
 
     #[inline(always)]
     fn widening_mul(self, rhs: Uint<RhsN>) -> Self::Output {
-        by_width(
-            N::LIMBS.min(RhsN::LIMBS),
-            #[inline(always)]
-            move || {
-                Uint::from_generic_limbs(full_product::<Sum<N, RhsN>, _, _, false>(
-                    &self.limbs,
-                    &rhs.limbs,
-                ))
-            },
-        )
+        Uint::from_generic_limbs(full_product::<Sum<N, RhsN>, _, _, false>(
+            &self.limbs,
+            &rhs.limbs,
+        ))
     }
 }
 
