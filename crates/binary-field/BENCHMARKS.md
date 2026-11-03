@@ -29,18 +29,44 @@
 
 ## Functions
 
+| Operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | plonky3 | runtime-algebra | core-algebra | galois_field_2pm lut |
+|---|---|---|---|---|---|---|---|---|---|
+| add | `+` | – | – | – | – | – | – | – | – |
+| mul | `*` | `*` | `*` | `*` | `mul` | `*` | – | `mulf` | `*` |
+| square | `square` | `a * a` | `a * a` | `a * a` | `a * a` | `square` | – | `a * a` | `a * a` |
+| invert | `invert` | `checked_recip` | `inverse` | `a^(2^n − 2) by *` | `a^(2^n − 2) by *` | `try_inverse` | `invert` | `invert` | `inverse` |
+| sqrt | `sqrt` | `a^(2^(n−1)) by *` | `a^(2^(n−1)) by *` | `a^(2^(n−1)) by *` | `a^(2^(n−1)) by *` | `try_sqrt` | – | `a^(2^(n−1)) by *` | `a^(2^(n−1)) by *` |
+
+- `gf256`: over GF(2⁸).
+- `galois_field_2pm`: over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴).
+- `g2p`: over GF(2⁸) and GF(2¹⁶).
+- `reed-solomon-erasure`: over GF(2⁸) and GF(2¹⁶).
+- `plonky3`: mul, square and sqrt over GF(2¹⁶); invert over GF(2¹⁶) and GF(2¹²⁸).
+- `runtime-algebra`: over GF(2¹²⁸).
+- `core-algebra`: over GF(2¹²⁸).
+- `galois_field_2pm lut`: over GF(2¹⁶).
+
+## Functions, constant time
+
 | Operation | binary-field | gf256 | galois_field_2pm | g2p | reed-solomon-erasure | hekate-math | plonky3 | runtime-algebra | compile-algebra | core-algebra | polyval | galois_field_2pm lut |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| add | `+` | – | – | – | – | – | – | – | – | – | – | – |
-| mul | `*` | `*` over GF(2⁸) | `*` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `*` over GF(2⁸) and GF(2¹⁶) | `mul` over GF(2⁸) and GF(2¹⁶) | – | `*` over GF(2¹⁶) | – | – | `mulf` over GF(2¹²⁸) | – | `*` over GF(2¹⁶) |
-| square | `square` | `a * a` over GF(2⁸) | `a * a` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `a * a` over GF(2⁸) and GF(2¹⁶) | `a * a` over GF(2⁸) and GF(2¹⁶) | – | `square` over GF(2¹⁶) | – | – | `a * a` over GF(2¹²⁸) | – | `a * a` over GF(2¹⁶) |
-| invert | `invert` | `checked_recip` over GF(2⁸) | `inverse` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `a^(2^n − 2) by *` over GF(2⁸) and GF(2¹⁶) | `a^(2^n − 2) by *` over GF(2⁸) and GF(2¹⁶) | – | `try_inverse` over GF(2¹⁶) and GF(2¹²⁸) | `invert` over GF(2¹²⁸) | – | `invert` over GF(2¹²⁸) | – | `inverse` over GF(2¹⁶) |
-| sqrt | `sqrt` | `a^(2^(n−1)) by *` over GF(2⁸) | `a^(2^(n−1)) by *` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `a^(2^(n−1)) by *` over GF(2⁸) and GF(2¹⁶) | `a^(2^(n−1)) by *` over GF(2⁸) and GF(2¹⁶) | – | `try_sqrt` over GF(2¹⁶) | – | – | `a^(2^(n−1)) by *` over GF(2¹²⁸) | – | `a^(2^(n−1)) by *` over GF(2¹⁶) |
-| add, constant time | `ConstantTime +` | `+` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `+` over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴) | `+` over GF(2⁸) and GF(2¹⁶) | `add` over GF(2⁸) and GF(2¹⁶) | `+` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `+` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `addf` over GF(2¹²⁸) | `+` over GF(2¹²⁸) | `+` over GF(2¹⁶) |
-| mul, constant time | `ConstantTime *` | `*` over GF(2¹⁶) and GF(2⁶⁴) | – | – | – | `*` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `*` over GF(2⁸), GF(2⁶⁴) and GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | `mulf` over GF(2¹²⁸) | – | `*` over GF(2¹²⁸) | – |
-| square, constant time | `ConstantTime::square` | `a * a` over GF(2¹⁶) and GF(2⁶⁴) | – | – | – | `square` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `square` over GF(2⁸), GF(2⁶⁴) and GF(2¹²⁸) | `a * a` over GF(2¹²⁸) | `a * a` over GF(2¹²⁸) | – | `a * a` over GF(2¹²⁸) | – |
-| invert, constant time | `ConstantTime::invert` | `checked_recip` over GF(2¹⁶) and GF(2⁶⁴) | – | – | – | `invert` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `try_inverse` over GF(2⁸) and GF(2⁶⁴) | – | `invert` over GF(2¹²⁸) | – | `a^(2^n − 2) by *` over GF(2¹²⁸) | – |
-| sqrt, constant time | `ConstantTime::sqrt` | `a^(2^(n−1)) by *` over GF(2¹⁶) and GF(2⁶⁴) | – | – | – | `a^(2^(n−1)) by *` over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶) | `try_sqrt` over GF(2⁸), GF(2⁶⁴) and GF(2¹²⁸) | `a^(2^(n−1)) by *` over GF(2¹²⁸) | `a^(2^(n−1)) by *` over GF(2¹²⁸) | – | `a^(2^(n−1)) by *` over GF(2¹²⁸) | – |
+| add | `ConstantTime +` | `+` | `+` | `+` | `add` | `+` | `+` | `addf` | `addf` | `addf` | `+` | `+` |
+| mul | `ConstantTime *` | `*` | – | – | – | `*` | `*` | `mulf` | `mulf` | – | `*` | – |
+| square | `ConstantTime::square` | `a * a` | – | – | – | `square` | `square` | `a * a` | `a * a` | – | `a * a` | – |
+| invert | `ConstantTime::invert` | `checked_recip` | – | – | – | `invert` | `try_inverse` | – | `invert` | – | `a^(2^n − 2) by *` | – |
+| sqrt | `ConstantTime::sqrt` | `a^(2^(n−1)) by *` | – | – | – | `a^(2^(n−1)) by *` | `try_sqrt` | `a^(2^(n−1)) by *` | `a^(2^(n−1)) by *` | – | `a^(2^(n−1)) by *` | – |
+
+- `gf256`: add over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴); mul, square, invert and sqrt over GF(2¹⁶) and GF(2⁶⁴).
+- `galois_field_2pm`: over GF(2⁸), GF(2¹⁶) and GF(2⁶⁴).
+- `g2p`: over GF(2⁸) and GF(2¹⁶).
+- `reed-solomon-erasure`: over GF(2⁸) and GF(2¹⁶).
+- `hekate-math`: over GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GF(2¹²⁸) and GF(2²⁵⁶).
+- `plonky3`: add over GF(2⁸), GF(2¹⁶), GF(2⁶⁴) and GF(2¹²⁸); mul, square and sqrt over GF(2⁸), GF(2⁶⁴) and GF(2¹²⁸); invert over GF(2⁸) and GF(2⁶⁴).
+- `runtime-algebra`: over GF(2¹²⁸).
+- `compile-algebra`: over GF(2¹²⁸).
+- `core-algebra`: over GF(2¹²⁸).
+- `polyval`: over GF(2¹²⁸).
+- `galois_field_2pm lut`: over GF(2¹⁶).
 
 ## Results with carry-less multiplication
 

@@ -19,18 +19,45 @@ const ODD: f64 = 1.1;
 pub struct Operation<'a> {
     /// The operation in the record, such as `add_vartime`.
     pub op: &'a str,
-    /// The operation in the title of its table and in the `Functions` table: `add` for the
-    /// default, variable time, and `add, constant time`.
+    /// The operation in a row of its `Functions` table, such as `add`.
     pub name: &'a str,
     /// What it computes, such as `a + b`.
     pub formula: &'a str,
+    /// Whether its functions run in time that depends on no value.
+    pub constant_time: bool,
 }
 
 impl<'a> Operation<'a> {
-    /// The operation `op` of the record, named `name`, computing `formula`.
+    /// The default, variable-time operation `op` of the record, named `name`, computing
+    /// `formula`.
     #[must_use]
     pub const fn new(op: &'a str, name: &'a str, formula: &'a str) -> Self {
-        Self { op, name, formula }
+        Self {
+            op,
+            name,
+            formula,
+            constant_time: false,
+        }
+    }
+
+    /// The constant-time operation `op`, named `name` and marked in its table's title.
+    #[must_use]
+    pub const fn constant_time(op: &'a str, name: &'a str, formula: &'a str) -> Self {
+        Self {
+            op,
+            name,
+            formula,
+            constant_time: true,
+        }
+    }
+
+    /// The operation as its table's title names it: `add`, or `add, constant time`.
+    fn title(&self) -> String {
+        if self.constant_time {
+            format!("{}, constant time", self.name)
+        } else {
+            self.name.to_owned()
+        }
     }
 }
 
@@ -104,7 +131,7 @@ pub fn report<K: Key>(
 
 /// The title of the table of `operation` in `build`.
 fn title<K>(operation: &Operation<'_>, build: &Measurement<K>) -> String {
-    let Operation { name, formula, .. } = operation;
+    let (name, formula) = (operation.title(), operation.formula);
     if build.name.is_empty() {
         format!("{name}: {formula}")
     } else {
@@ -443,50 +470,106 @@ fn value(figure: f64) -> String {
     }
 }
 
+/// The `Functions` sections: one table for the variable-time operations, then one for the
+/// constant-time operations, each with the crates that run a function of its class. A cell names
+/// the crate's functions; a line under the table names the rows of a crate that runs on some
+/// rows only.
 fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
-    let crates = table.measured(&table.ops);
-    let mut rows = Vec::new();
-    for Operation { op, name, .. } in &table.ops {
-        let mut row = vec![(*name).to_owned()];
-        for library in &crates {
-            // Each function with the rows it runs on.
-            let mut groups: Vec<(&str, Vec<K>)> = Vec::new();
-            for key in &table.keys {
-                let Some(count) = table.count(op, key, library) else {
-                    continue;
-                };
-                match groups
-                    .iter_mut()
-                    .find(|(function, _)| *function == count.function)
-                {
-                    Some((_, keys)) => keys.push(key.clone()),
-                    None => groups.push((&count.function, vec![key.clone()])),
-                }
-            }
-            let entries: Vec<String> = groups
-                .iter()
-                .map(|(function, keys)| {
-                    if *keys == table.keys {
-                        format!("`{function}`")
-                    } else {
-                        format!("`{function}` {}", (layout.rows_phrase)(keys))
-                    }
-                })
-                .collect();
-            row.push(if entries.is_empty() {
-                "–".to_owned()
-            } else {
-                entries.join("; ")
-            });
+    let mut lines = Vec::new();
+    for (constant_time, heading) in [
+        (false, "## Functions"),
+        (true, "## Functions, constant time"),
+    ] {
+        let ops: Vec<Operation<'_>> = table
+            .ops
+            .iter()
+            .filter(|operation| operation.constant_time == constant_time)
+            .copied()
+            .collect();
+        let crates = table.measured(&ops);
+        if crates.is_empty() {
+            continue;
         }
-        rows.push(row);
+        let rows: Vec<Vec<String>> = ops
+            .iter()
+            .map(|operation| {
+                let mut row = vec![operation.name.to_owned()];
+                row.extend(crates.iter().map(|library| {
+                    let names = unique(
+                        table
+                            .keys
+                            .iter()
+                            .filter_map(|key| table.count(operation.op, key, library))
+                            .map(|count| format!("`{}`", count.function)),
+                    );
+                    if names.is_empty() {
+                        "–".to_owned()
+                    } else {
+                        names.join(", ")
+                    }
+                }));
+                row
+            })
+            .collect();
+        let mut header = vec!["Operation".to_owned()];
+        header.extend(crates.iter().map(|library| (*library).to_owned()));
+        lines.extend([heading.to_owned(), String::new()]);
+        lines.extend(markdown_table(&header, &rows, &"l".repeat(header.len())));
+        let coverage: Vec<String> = crates
+            .iter()
+            .filter_map(|library| coverage(layout, table, &ops, library))
+            .collect();
+        if !coverage.is_empty() {
+            lines.push(String::new());
+            lines.extend(coverage);
+        }
+        lines.push(String::new());
     }
-    let mut header = vec!["Operation".to_owned()];
-    header.extend(crates.iter().map(|library| (*library).to_owned()));
-    let mut lines = vec!["## Functions".to_owned(), String::new()];
-    lines.extend(markdown_table(&header, &rows, &"l".repeat(header.len())));
-    lines.push(String::new());
     lines
+}
+
+/// The line under a `Functions` table for `library` when it runs `ops` on some rows only: its
+/// rows, per operation where they differ.
+fn coverage<K: Key>(
+    layout: &Layout<'_, K>,
+    table: &Table<'_, K>,
+    ops: &[Operation<'_>],
+    library: &str,
+) -> Option<String> {
+    let rows: Vec<(&str, Vec<K>)> = ops
+        .iter()
+        .map(|operation| {
+            let keys = table
+                .keys
+                .iter()
+                .filter(|key| table.count(operation.op, key, library).is_some())
+                .cloned()
+                .collect();
+            (operation.name, keys)
+        })
+        .filter(|(_, keys): &(&str, Vec<K>)| !keys.is_empty())
+        .collect();
+    if rows.iter().all(|(_, keys)| *keys == table.keys) {
+        return None;
+    }
+    // The operations of each set of rows, in table order; the operations on every row go unnamed.
+    let mut groups: Vec<(Vec<&str>, &Vec<K>)> = Vec::new();
+    for (name, keys) in &rows {
+        match groups.iter_mut().find(|(_, other)| *other == keys) {
+            Some((names, _)) => names.push(name),
+            None => groups.push((vec![name], keys)),
+        }
+    }
+    let text = match groups.as_slice() {
+        [(_, keys)] => (layout.rows_phrase)(keys),
+        _ => groups
+            .iter()
+            .filter(|(_, keys)| **keys != table.keys)
+            .map(|(names, keys)| format!("{} {}", sentence(names), (layout.rows_phrase)(keys)))
+            .collect::<Vec<_>>()
+            .join("; "),
+    };
+    Some(format!("- `{library}`: {text}."))
 }
 
 /// The legend above every results table.

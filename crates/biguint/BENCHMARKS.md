@@ -30,20 +30,36 @@
 
 | Operation | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
 |---|---|---|---|---|---|---|---|
-| add | `+` | `wrapping_add` at 64 and 128 bits | `wrapping_add` | `wrapping_add` | `wrapping_add` | `overflowing_add` at 64 bits | – |
-| mul | `*` | `wrapping_mul` at 64 and 128 bits | `wrapping_mul` at 64, 128, 256, 384, 512, 2048 and 4096 bits | `wrapping_mul` at 64, 128, 256, 384, 512 and 1024 bits | `wrapping_mul` at 64, 128, 256, 384, 512 and 1024 bits | `overflowing_mul` at 64, 128, 256, 384 and 1024 bits | `&a * &b` at 2048 and 4096 bits |
-| div | `div_rem` | `/ NonZero` at 64 and 128 bits | `wrapping_div` | `wrapping_div_vartime` | `wrapping_div` | `/` | `&a / &b` |
-| mod | `div_rem` | `% NonZero` at 64 and 128 bits | `wrapping_rem` | `rem_vartime` | `wrapping_rem` | `%` | `&a % &b` |
-| mulmod | `mul_mod` | `u128 product % m` at 64 bits | `mul_mod` | `mul_mod_vartime` | – | – | `(&a * &b) % &m` |
-| add_mod | `add_mod` | `overflowing_add, then - m` at 64 and 128 bits | `add_mod` | – | `overflowing_add, then - m` | `overflowing_add, then - m` | `(&a + &b) % &m` |
-| sub_mod | `sub_mod` | `-, else wrapping_sub then + m` at 64 and 128 bits | `a.add_mod(m - b.reduce_mod(m), m)` | – | `-, else overflowing_sub then + m` | `-, else overflowing_sub then + m` | `(&a + &m - &b) % &m` |
-| add, constant time | `ConstantTime +` | `wrapping_add` at 64 and 128 bits | `wrapping_add` | `wrapping_add` | `wrapping_add` | `overflowing_add` at 64 bits | – |
-| mul, constant time | `ConstantTime *` | `wrapping_mul` at 64 and 128 bits | `wrapping_mul` at 64, 128, 256, 384 and 512 bits | `wrapping_mul` | `wrapping_mul` | `overflowing_mul` at 64, 128, 256, 384, 1024, 2048 and 4096 bits | – |
-| div, constant time | `ConstantTime::div_rem` | – | – | `div_rem` | – | – | – |
-| mod, constant time | `ConstantTime::div_rem` | – | – | `rem` | – | – | – |
-| mulmod, constant time | `ConstantTime::mul_mod` | – | – | `mul_mod` | – | – | – |
-| add_mod, constant time | `ConstantTime::add_mod` | – | – | `add_mod` | – | – | – |
-| sub_mod, constant time | `ConstantTime::sub_mod` | – | – | `sub_mod` | – | – | – |
+| add | `+` | `wrapping_add` | `wrapping_add` | `wrapping_add` | `wrapping_add` | `overflowing_add` | – |
+| mul | `*` | `wrapping_mul` | `wrapping_mul` | `wrapping_mul` | `wrapping_mul` | `overflowing_mul` | `&a * &b` |
+| div | `div_rem` | `/ NonZero` | `wrapping_div` | `wrapping_div_vartime` | `wrapping_div` | `/` | `&a / &b` |
+| mod | `div_rem` | `% NonZero` | `wrapping_rem` | `rem_vartime` | `wrapping_rem` | `%` | `&a % &b` |
+| mulmod | `mul_mod` | `u128 product % m` | `mul_mod` | `mul_mod_vartime` | – | – | `(&a * &b) % &m` |
+| add_mod | `add_mod` | `overflowing_add, then - m` | `add_mod` | – | `overflowing_add, then - m` | `overflowing_add, then - m` | `(&a + &b) % &m` |
+| sub_mod | `sub_mod` | `-, else wrapping_sub then + m` | `a.add_mod(m - b.reduce_mod(m), m)` | – | `-, else overflowing_sub then + m` | `-, else overflowing_sub then + m` | `(&a + &m - &b) % &m` |
+
+- `native`: add, mul, div, mod, add_mod and sub_mod at 64 and 128 bits; mulmod at 64 bits.
+- `ruint`: mul at 64, 128, 256, 384, 512, 2048 and 4096 bits.
+- `crypto-bigint`: mul at 64, 128, 256, 384, 512 and 1024 bits.
+- `bnum`: mul at 64, 128, 256, 384, 512 and 1024 bits.
+- `uint`: add at 64 bits; mul at 64, 128, 256, 384 and 1024 bits.
+- `num-bigint`: mul at 2048 and 4096 bits.
+
+## Functions, constant time
+
+| Operation | biguint | native | ruint | crypto-bigint | bnum | uint |
+|---|---|---|---|---|---|---|
+| add | `ConstantTime +` | `wrapping_add` | `wrapping_add` | `wrapping_add` | `wrapping_add` | `overflowing_add` |
+| mul | `ConstantTime *` | `wrapping_mul` | `wrapping_mul` | `wrapping_mul` | `wrapping_mul` | `overflowing_mul` |
+| div | `ConstantTime::div_rem` | – | – | `div_rem` | – | – |
+| mod | `ConstantTime::div_rem` | – | – | `rem` | – | – |
+| mulmod | `ConstantTime::mul_mod` | – | – | `mul_mod` | – | – |
+| add_mod | `ConstantTime::add_mod` | – | – | `add_mod` | – | – |
+| sub_mod | `ConstantTime::sub_mod` | – | – | `sub_mod` | – | – |
+
+- `native`: at 64 and 128 bits.
+- `ruint`: mul at 64, 128, 256, 384 and 512 bits.
+- `uint`: add at 64 bits; mul at 64, 128, 256, 384, 1024, 2048 and 4096 bits.
 
 ## Results
 

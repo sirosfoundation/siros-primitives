@@ -27,20 +27,37 @@
 
 ## Functions
 
-| Operation | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---|---|---|---|---|---|---|---|---|
-| add | `+` | `+` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar and BLS12-381 base | – | – | – | `+` over Mersenne-31, BabyBear and Goldilocks | – | – | `addf` over P-256 base and P-256 scalar |
-| sub | `-` | `-` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar and BLS12-381 base | – | – | – | `-` over BabyBear and Goldilocks | – | – | `subf` over P-256 base and P-256 scalar |
-| mul | `*` | `*` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar and BLS12-381 base | – | – | – | `*` over Mersenne-31, BabyBear and Goldilocks | – | – | `mulf` over P-256 base and P-256 scalar |
-| square | `square` | `square` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar and BLS12-381 base | – | – | – | `square` over Mersenne-31, BabyBear and Goldilocks | – | – | `mulf(a, a)` over P-256 base and P-256 scalar |
-| invert | `invert` | `inverse` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar and BLS12-381 base | `invert_vartime` | `invert_vartime` over P-256 scalar | `invert` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar, Tom-256 base and BLS12-381 base | `try_inverse` over Mersenne-31, BabyBear and Goldilocks | – | `invert` | `invert` over P-256 base and P-256 scalar |
-| sqrt | `sqrt` | `sqrt` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar and BLS12-381 base | – | – | – | `try_sqrt` over Mersenne-31, BabyBear and Goldilocks | – | – | `mulf to (p + 1) / 4` over P-256 base |
-| add, constant time | `ConstantTime +` | – | `+` | `+` over secp256k1 base, P-256 base and P-256 scalar | `+` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar, Tom-256 base and BLS12-381 base | – | `+` over Goldilocks | `addf` | – |
-| sub, constant time | `ConstantTime -` | – | `-` | `-` over secp256k1 base, P-256 base and P-256 scalar | `-` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar, Tom-256 base and BLS12-381 base | `-` over Mersenne-31 | `-` over Goldilocks | `subf` | – |
-| mul, constant time | `ConstantTime *` | – | `*` | `*` over secp256k1 base, P-256 base and P-256 scalar | `*` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar, Tom-256 base and BLS12-381 base | – | `*` over Goldilocks | `mulf` | – |
-| square, constant time | `ConstantTime::square` | – | `square` | `square` over secp256k1 base, P-256 base and P-256 scalar | `square` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar, Tom-256 base and BLS12-381 base | – | `square` over Goldilocks | `mulf(a, a)` | – |
-| invert, constant time | `ConstantTime::invert` | – | `invert` | `invert` over secp256k1 base, P-256 base and P-256 scalar | `pow(p − 2)` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar, Tom-256 base and BLS12-381 base | – | `inv` over Goldilocks | `mulf to p − 2` | – |
-| sqrt, constant time | `ConstantTime::sqrt` | – | `sqrt` | `sqrt` over secp256k1 base, P-256 base and P-256 scalar | `sqrt` over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar, Tom-256 base and BLS12-381 base | – | – | `mulf to (p + 1) / 4` over Mersenne-31, secp256k1 base, P-256 base, Tom-256 base, BLS12-381 base and P-521 base | – |
+| Operation | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | runtime-algebra | compile-algebra |
+|---|---|---|---|---|---|---|---|---|
+| add | `+` | `+` | – | – | – | `+` | – | `addf` |
+| sub | `-` | `-` | – | – | – | `-` | – | `subf` |
+| mul | `*` | `*` | – | – | – | `*` | – | `mulf` |
+| square | `square` | `square` | – | – | – | `square` | – | `mulf(a, a)` |
+| invert | `invert` | `inverse` | `invert_vartime` | `invert_vartime` | `invert` | `try_inverse` | `invert` | `invert` |
+| sqrt | `sqrt` | `sqrt` | – | – | – | `try_sqrt` | – | `mulf to (p + 1) / 4` |
+
+- `ark-ff`: over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar and BLS12-381 base.
+- `k256/p256`: over P-256 scalar.
+- `halo2curves`: over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar, Tom-256 base and BLS12-381 base.
+- `plonky3`: add, mul, square, invert and sqrt over Mersenne-31, BabyBear and Goldilocks; sub over BabyBear and Goldilocks.
+- `compile-algebra`: add, sub, mul, square and invert over P-256 base and P-256 scalar; sqrt over P-256 base.
+
+## Functions, constant time
+
+| Operation | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
+|---|---|---|---|---|---|---|---|
+| add | `ConstantTime +` | `+` | `+` | `+` | – | `+` | `addf` |
+| sub | `ConstantTime -` | `-` | `-` | `-` | `-` | `-` | `subf` |
+| mul | `ConstantTime *` | `*` | `*` | `*` | – | `*` | `mulf` |
+| square | `ConstantTime::square` | `square` | `square` | `square` | – | `square` | `mulf(a, a)` |
+| invert | `ConstantTime::invert` | `invert` | `invert` | `pow(p − 2)` | – | `inv` | `mulf to p − 2` |
+| sqrt | `ConstantTime::sqrt` | `sqrt` | `sqrt` | `sqrt` | – | – | `mulf to (p + 1) / 4` |
+
+- `k256/p256`: over secp256k1 base, P-256 base and P-256 scalar.
+- `halo2curves`: over BN254 scalar, secp256k1 base, P-256 base, P-256 scalar, Tom-256 base and BLS12-381 base.
+- `plonky3`: over Mersenne-31.
+- `winter-math`: over Goldilocks.
+- `runtime-algebra`: sqrt over Mersenne-31, secp256k1 base, P-256 base, Tom-256 base, BLS12-381 base and P-521 base.
 
 ## Results
 
