@@ -4,29 +4,32 @@
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
 ![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
-Fixed-width unsigned integers of any bit width, in pure Rust.
+Fixed-width unsigned integers of any bit width, in pure Rust: `no_std`, no `unsafe`, no
+allocation, no panics.
 
 ## Features
 
-- `Uint<N>` for any `typenum` width `N`: `U521` is 521 bits, in `ceil(N / 64)` little-endian `u64`
-  limbs.
-- Every operation folds to its compile-time width: unrolled carry chains for small widths,
-  Karatsuba and divide-and-conquer division for large ones.
-- Wrapping, carrying and widening arithmetic, shifts, rotations, comparisons, byte encodings and
-  exact conversions between widths.
-- Division by a `NonZeroUint` of any width: no failure path, no panic.
-- Modular arithmetic on operands of any value, and a prepared `Modulus` with branded residues,
-  Montgomery for odd moduli.
-- Constant time on request: `ConstantTime<Uint>` and `ConstantTimeResidue`. CI checks every such
-  operation under Valgrind with [`ct-check`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/ct-check).
-- `num-traits`: every integer trait that does not need `Div<Self>` or `Rem<Self>`, which could
-  panic.
-- `no_std`, no `unsafe`, no allocation, no panics. A 4096-bit `*`, `div_rem` or `mul_mod` uses at
-  most 7.9 KiB of stack.
+- `Uint<N>`: exactly `N` bits for any `typenum` width `N`, in `ceil(N / 64)` limbs. `U8` to `U512`
+  name the common widths.
+- Arithmetic: the operators, `carrying_add`, `borrowing_sub`, `mul_add`, `wrapping_pow`, and the
+  checked, wrapping, saturating and overflowing forms. `widening_mul` returns the whole product.
+- Division: `div_rem`, `/` and `%` by a `NonZeroUint` of any width, with no failure path.
+  `checked_div_rem`, `checked_div` and `checked_rem` take a divisor that may be zero.
+- Modular arithmetic: `add_mod`, `sub_mod`, `neg_mod` and `mul_mod` on operands of any value.
+- Prepared moduli: `Modulus::scope` gives a `Ring` whose `Residue`s add, subtract, multiply,
+  square and raise to powers. Residues of two scopes fail to compile together.
+- Bits: shifts by any integer or `Uint` amount, rotations, `& | ^ !`, `bit_at`, `bit_len`,
+  `count_ones`, `leading_zeros`, `trailing_zeros` and `swap_bytes`.
+- Conversions: `resize` and `try_resize` between widths, limbs, little- and big-endian bytes,
+  `u64`, `u128`, floats, and `From` and `TryFrom` for the primitive integers.
+- `NonZero<T>`: a value checked nonzero once, for divisors and moduli.
+- Constant time: `ConstantTime<Uint>` and `ConstantTimeResidue` run every operation with no
+  branch and no memory address that depends on the wrapped values.
+- `num-traits`: every integer trait that needs no `Div<Self>` or `Rem<Self>`.
 - [Benchmarks](https://github.com/sirosfoundation/siros-primitives/blob/main/crates/biguint/BENCHMARKS.md)
   against other big-integer crates.
 
-## Arithmetic
+## Usage
 
 ```rust
 use biguint::typenum::U521;
@@ -34,14 +37,15 @@ use biguint::{U256, U512, Uint, WideningMul};
 
 let top = U256::ONE << 255;
 assert_eq!(top.widening_mul(top), U512::ONE << 510);
+assert_eq!(top.checked_add(top), None);
 
-let max521: Uint<U521> = !Uint::ZERO;
-assert_eq!(max521.bit_len(), 521);
+let max: Uint<U521> = !Uint::ZERO;
+assert_eq!(max.bit_len(), 521);
 ```
 
 ## Division and modular arithmetic
 
-The divisor's width sets the remainder's width. Modular operations accept operands of any value.
+The remainder takes the divisor's width.
 
 ```rust
 use biguint::{NonZeroUint, U128, U256};
@@ -58,8 +62,6 @@ assert_eq!(U256::from_u64(50).mul_mod(U256::from_u64(4), m), U256::from_u64(6));
 
 ## Prepared moduli
 
-A `Modulus` prepares a modulus once. Residues of different scopes fail to compile together.
-
 ```rust
 use biguint::{Modulus, U256};
 
@@ -75,9 +77,7 @@ assert_eq!(value, U256::from_u64((6 * 90 + 6 * 6 * 6) % 97));
 
 ## Constant time
 
-Operations default to the fastest path. `ConstantTime` runs them with no branch and no memory
-address that depends on the wrapped values. Widths, moduli, divisors, shift amounts and public
-operands may steer the time.
+Widths, moduli, divisors, shift amounts and public operands may steer the time.
 
 ```rust
 use biguint::{ConstantTime, Modulus, NonZeroUint, U256};
@@ -85,6 +85,7 @@ use biguint::{ConstantTime, Modulus, NonZeroUint, U256};
 let key = ConstantTime::new(U256::from_u64(7));
 let m = NonZeroUint::new(U256::from_u64(97)).ok_or("zero")?;
 assert_eq!(key.mul_mod(ConstantTime::new(U256::from_u64(20)), m).reveal(), U256::from_u64(43));
+assert_eq!((key * U256::from_u64(3) + key).reveal(), U256::from_u64(28));
 
 let power = Modulus::from(m).scope(|ring| {
     let base = ring.reduce_constant_time(key);
@@ -97,7 +98,7 @@ assert_eq!(power, U256::from_u64(343 % 97));
 ## Cargo features
 
 - `not-precomputed`: drops the 512-byte table that seeds the division reciprocal on targets other
-  than x86-64. One dependent enabling it decides the whole build.
+  than x86-64.
 
 ## License
 
