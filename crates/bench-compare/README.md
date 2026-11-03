@@ -121,7 +121,7 @@ fn main() -> std::process::ExitCode {
   matches the accepted results. The bench pins itself to CPU 15.
 - A sweep stops on multiplexed counters, on long runs that count no more cycles than short runs,
   on a chain step under 0.75 cycles, and on a `[profile.bench]` without `lto = "fat"`.
-- Bold ties the row's fewest. `*` deviates from the row's definition and is never bold. `°` is a
-  constant-time function in a variable-time cell.
+- Bold ties the row's fewest. `*` deviates from the row's definition and is never bold. A crate
+  without a variable-time function shows its constant-time one in the variable-time table.
 - `report` prints every odd cell to the terminal: a figure more than 10% above the crate's figure
   on a row of more bits.

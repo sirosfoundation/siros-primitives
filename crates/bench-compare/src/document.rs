@@ -222,10 +222,7 @@ impl<'a, K: Key> Table<'a, K> {
     /// in a variable-time table without one, the count of the constant-time twin of the same name.
     fn figure(&self, operation: &Operation<'_>, key: &K, library: &str) -> Option<Figure<'a>> {
         if let Some(count) = self.count(operation.op, key, library) {
-            return Some(Figure {
-                count,
-                constant_time: false,
-            });
+            return Some(Figure { count });
         }
         if operation.constant_time {
             return None;
@@ -234,10 +231,7 @@ impl<'a, K: Key> Table<'a, K> {
             .iter()
             .find(|twin| twin.constant_time && twin.name == operation.name)
             .and_then(|twin| self.count(twin.op, key, library))
-            .map(|count| Figure {
-                count,
-                constant_time: true,
-            })
+            .map(|count| Figure { count })
     }
 
     /// The count of `op` on the row `key` in `library`; `None` for an absent cell.
@@ -257,19 +251,12 @@ impl<'a, K: Key> Table<'a, K> {
 #[derive(Clone, Copy)]
 struct Figure<'a> {
     count: &'a Count,
-    /// Whether the count is of a constant-time function filling a variable-time table's cell.
-    constant_time: bool,
 }
 
 impl Figure<'_> {
-    /// The mark after a function or a figure of a filled cell.
-    fn mark(self) -> &'static str {
-        if self.constant_time { "°" } else { "" }
-    }
-
     /// The function as a `Functions` cell names it.
     fn function(self) -> String {
-        format!("`{}`{}", self.count.function, self.mark())
+        format!("`{}`", self.count.function)
     }
 }
 
@@ -532,7 +519,6 @@ fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String
         if crates.is_empty() {
             continue;
         }
-        let mut filled = false;
         let rows: Vec<Vec<String>> = ops
             .iter()
             .map(|operation| {
@@ -543,7 +529,6 @@ fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String
                         .iter()
                         .filter_map(|key| table.figure(operation, key, library))
                         .collect();
-                    filled |= figures.iter().any(|figure| figure.constant_time);
                     let names = unique(figures.iter().map(|figure| figure.function()));
                     if names.is_empty() {
                         "–".to_owned()
@@ -558,9 +543,6 @@ fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String
         header.extend(crates.iter().map(|library| (*library).to_owned()));
         lines.extend([heading.to_owned(), String::new()]);
         lines.extend(markdown_table(&header, &rows, &"l".repeat(header.len())));
-        if filled {
-            lines.extend([String::new(), FILLED.to_owned()]);
-        }
         let coverage: Vec<String> = crates
             .iter()
             .filter_map(|library| coverage(layout, table, &ops, library))
@@ -623,9 +605,6 @@ const LEGEND: &str = "Each cell: throughput cycles / latency cycles per operatio
                       Bold: the fewest of the row, every tie bold. –: no such function or no \
                       chain form.";
 
-/// The line under a variable-time table, or its `Functions` table, with a filled cell.
-const FILLED: &str = "° The crate's constant-time function, where it has no variable-time one.";
-
 /// The two parts of a cell are joined by a slash between no-break spaces, so a cell never wraps.
 const SEPARATOR: &str = "\u{a0}/\u{a0}";
 
@@ -654,7 +633,6 @@ fn results<K: Key>(
         let mut rows = Vec::new();
         // Each starred cell: its crate, its deviation and its row.
         let mut starred: Vec<(&str, &str, &K)> = Vec::new();
-        let mut filled = false;
         for key in &table.keys {
             let figures: Vec<Option<Figure<'_>>> = crates
                 .iter()
@@ -679,8 +657,6 @@ fn results<K: Key>(
                     row.push("–".to_owned());
                     continue;
                 };
-                filled |= figure.constant_time;
-                let mark = figure.mark();
                 let cell: Vec<String> = parts(figure.count)
                     .iter()
                     .enumerate()
@@ -694,12 +670,12 @@ fn results<K: Key>(
                             if !starred.contains(&(library, deviation.as_str(), key)) {
                                 starred.push((library, deviation, key));
                             }
-                            format!("{}{mark}\\*", value(*number))
+                            format!("{}\\*", value(*number))
                         }
                         (Some(number), None) if Some(shown(*number)) == fewest[part] => {
-                            format!("**{}{mark}**", value(*number))
+                            format!("**{}**", value(*number))
                         }
-                        (Some(number), _) => format!("{}{mark}", value(*number)),
+                        (Some(number), _) => value(*number),
                     })
                     .collect();
                 row.push(cell.join(SEPARATOR));
@@ -731,9 +707,6 @@ fn results<K: Key>(
             &rows,
             &("l".to_owned() + &"r".repeat(crates.len())),
         ));
-        if filled {
-            lines.extend([String::new(), FILLED.to_owned()]);
-        }
         lines.extend(deviations(layout, &starred));
     }
     lines.push(String::new());
