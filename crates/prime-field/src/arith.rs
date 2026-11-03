@@ -12,16 +12,14 @@
 //! borrow, whichever costs fewer instructions for the limbs of `p` ([`Shape::REDUCE_MASKED`],
 //! [`Shape::SUB_MASKED`]).
 
-use biguint::{Bits, Indices};
+use biguint::Bits;
+use typenum::Unsigned;
 
 use crate::field::Modulus;
 use crate::kernel::{equal, fits, is_zero, limb, low_limb, set, shifted_limb};
 use crate::limb::{adc, mac, sbb, select};
 use crate::params::{ExtendedLimbs, Limbs, Shape, WideLimbs};
 use crate::width::Width;
-
-/// The most limbs whose loops run one copy per limb; wider fields loop.
-const COPIED_LIMBS: usize = 16;
 
 impl<M: Modulus> Shape<M> {
     /// `a + b`.
@@ -144,8 +142,7 @@ impl<M: Modulus> Shape<M> {
     /// reduction rows: `-p^-1 = 1 mod 2^64` makes each row's multiplier a limb of the product.
     pub(crate) const SEPARATED: bool = Self::INV == 1;
 
-    /// Runs `body` on each limb index of an element: one copy per index in builds without debug
-    /// assertions ([`Indices`]) for fields of up to [`COPIED_LIMBS`] limbs, a loop beyond.
+    /// Runs `body` on each limb index of an element, as [`Self::each`] runs indices.
     #[inline(always)]
     fn each_limb(body: impl FnMut(usize)) {
         Self::each::<<M::Width as Bits>::Limbs>(body);
@@ -163,11 +160,10 @@ impl<M: Modulus> Shape<M> {
         Self::each::<<M::Width as Width>::Extended>(body);
     }
 
-    /// Runs `body` on each pair `(i, j)` of limb indices, row `i` by row `i`, as one run of copies
-    /// over the `L^2` pairs. Each copy then knows both indices; a loop nested in a loop body
-    /// inlines into that body while `i` is still unknown, where a branch on `j > i` and loads
-    /// through the captures let LLVM reassociate `a b + c + d` into `(c + d) + a b`, a second
-    /// carry chain kept in a register.
+    /// Runs `body` on each pair `(i, j)` of limb indices, row `i` by row `i`, as one run over the
+    /// `L^2` pairs, so that each call knows both indices. A loop nested in a loop body inlines
+    /// into that body while `i` is unknown, where LLVM reassociates `a b + c + d` into
+    /// `(c + d) + a b`: a second carry chain, held in a register.
     #[inline(always)]
     fn each_pair(mut body: impl FnMut(usize, usize)) {
         Self::each::<<M::Width as Width>::Pairs>(
@@ -176,15 +172,71 @@ impl<M: Modulus> Shape<M> {
         );
     }
 
-    /// The indices below `N` as [`Self::each_limb`] runs them.
+    /// Runs `body` on each index below `N`, in order. For fields of up to 16 limbs, builds without
+    /// debug assertions call it at a literal index for each index below 16, where rustc inlines it
+    /// at a constant, and loop past 16; wider fields and builds with debug assertions loop. The
+    /// calls stay in this crate: `biguint::Indices`, and its typed recursion copied here, measured
+    /// up to 30% more cycles.
     #[inline(always)]
-    fn each<N: Indices>(mut body: impl FnMut(usize)) {
-        if Self::LIMBS > COPIED_LIMBS {
-            for index in 0..N::USIZE {
+    fn each<N: Unsigned>(mut body: impl FnMut(usize)) {
+        let len = N::USIZE;
+        #[cfg(not(debug_assertions))]
+        if Self::LIMBS <= 16 {
+            if len > 0 {
+                body(0);
+            }
+            if len > 1 {
+                body(1);
+            }
+            if len > 2 {
+                body(2);
+            }
+            if len > 3 {
+                body(3);
+            }
+            if len > 4 {
+                body(4);
+            }
+            if len > 5 {
+                body(5);
+            }
+            if len > 6 {
+                body(6);
+            }
+            if len > 7 {
+                body(7);
+            }
+            if len > 8 {
+                body(8);
+            }
+            if len > 9 {
+                body(9);
+            }
+            if len > 10 {
+                body(10);
+            }
+            if len > 11 {
+                body(11);
+            }
+            if len > 12 {
+                body(12);
+            }
+            if len > 13 {
+                body(13);
+            }
+            if len > 14 {
+                body(14);
+            }
+            if len > 15 {
+                body(15);
+            }
+            for index in 16..len {
                 body(index);
             }
-        } else {
-            N::each(body);
+            return;
+        }
+        for index in 0..len {
+            body(index);
         }
     }
 
@@ -502,34 +554,38 @@ impl<M: Modulus> Shape<M> {
     #[inline(always)]
     fn product(a: &[u64], b: &[u64]) -> WideLimbs<M> {
         let mut wide = M::Width::WIDE_ZERO;
-        Self::each_limb(
-            #[inline(always)]
-            |i| {
-                let multiplier = limb(b, i);
-                if Self::TWO_CHAINS {
+        // Limb `i + L` is zero before row `i`, and the row's sum fits through it.
+        if Self::TWO_CHAINS {
+            Self::each_limb(
+                #[inline(always)]
+                |i| {
+                    let multiplier = limb(b, i);
                     let product = u128::from(limb(a, 0)) * u128::from(multiplier);
                     let (low, first) = adc(0, limb(wide.as_slice(), i), product as u64);
                     set(wide.as_mut_slice(), i, low);
-                    // Limb `i + L` is zero before the row, and the row's sum fits through it.
                     let (top, carries) =
                         Self::add_row(wide.as_mut_slice(), i, multiplier, a, first, 0);
                     set(wide.as_mut_slice(), i + Self::LIMBS, top);
                     fits(carries);
-                } else {
-                    let mut carry = 0;
-                    Self::each_limb(
-                        #[inline(always)]
-                        |j| {
-                            let (low, high) =
-                                mac(limb(a, j), multiplier, limb(wide.as_slice(), i + j), carry);
-                            set(wide.as_mut_slice(), i + j, low);
-                            carry = high;
-                        },
-                    );
-                    set(wide.as_mut_slice(), i + Self::LIMBS, carry);
-                }
-            },
-        );
+                },
+            );
+        } else {
+            let mut carry = 0;
+            Self::each_pair(
+                #[inline(always)]
+                |i, j| {
+                    let multiplier = limb(b, i);
+                    let (low, high) =
+                        mac(limb(a, j), multiplier, limb(wide.as_slice(), i + j), carry);
+                    set(wide.as_mut_slice(), i + j, low);
+                    carry = high;
+                    if j + 1 == Self::LIMBS {
+                        set(wide.as_mut_slice(), i + Self::LIMBS, carry);
+                        carry = 0;
+                    }
+                },
+            );
+        }
         wide
     }
 
