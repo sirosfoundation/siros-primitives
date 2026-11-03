@@ -3,10 +3,10 @@
 //! degree and the taps, so the operations monomorphize to straight-line code per polynomial.
 
 use core::marker::PhantomData;
-use core::ops::Add;
+use core::ops::{Add, Div};
 
 use clmul::Width;
-use typenum::{Sum, U64, Unsigned};
+use typenum::{Quot, Sum, U1, U2, U64, Unsigned};
 
 use crate::representation::Representation;
 
@@ -33,7 +33,7 @@ use crate::representation::Representation;
 /// ```
 pub trait Polynomial {
     /// The degree `n`.
-    type Degree: Representation + Add<Self::Degree, Output: Width> + Add<U64, Output: Width>;
+    type Degree: Representation + Halve + Add<Self::Degree, Output: Width> + Add<U64, Output: Width>;
 
     /// The exponents of the terms of `r(x) = f(x) - x^n`: distinct, each below `n`, and including
     /// `0`. Any use of the field asserts these conditions at compile time.
@@ -42,6 +42,25 @@ pub trait Polynomial {
 
 /// The width of a carry-less product of two elements, `2n` bits.
 pub(crate) type Wide<P> = Sum<<P as Polynomial>::Degree, <P as Polynomial>::Degree>;
+
+/// A degree `n` with the width `ceil(n / 2)` of the odd half of a square root, and the width of its
+/// product with an element. Every `typenum` unsigned integer that is a [`Width`] implements it.
+pub trait Halve: Width {
+    /// `ceil(n / 2)`.
+    type Half: Width + Add<Self, Output: Width>;
+}
+
+impl<N> Halve for N
+where
+    N: Width + Add<U1>,
+    Sum<N, U1>: Div<U2>,
+    Quot<Sum<N, U1>, U2>: Width + Add<N, Output: Width>,
+{
+    type Half = Quot<Sum<N, U1>, U2>;
+}
+
+/// The odd half of a square root of the field with the polynomial `P`, `ceil(n / 2)` bits.
+pub(crate) type Half<P> = <<P as Polynomial>::Degree as Halve>::Half;
 
 /// The plan of the field with the polynomial `P`.
 pub(crate) struct Plan<P>(PhantomData<P>);
