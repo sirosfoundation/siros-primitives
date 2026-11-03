@@ -4,11 +4,24 @@
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
 ![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
-`ConstantTime<T>`: operations on the wrapped value whose branches and memory addresses never
-depend on it. `no_std`, no dependencies, no `unsafe`, no allocation.
+A zero-cost wrapper for constant-time arithmetic, shared by the SIROS primitives.
 
-`biguint`, `prime-field` and `binary-field` implement it for their types and re-export it.
-Implement the `Ct*` trait of each operation to wrap your own type:
+## Features
+
+- `ConstantTime<T>` holds a `T` in the same memory; `new` and `reveal` cost nothing.
+- Its operations run with no branch and no memory address that depends on the wrapped values.
+- Operators combine two wrapped values, or a wrapped value and a `Public` one on either side.
+- Modular operations, division by a public divisor, `square`, `pow`, `invert` and `sqrt` are
+  inherent methods: nothing to import.
+- `biguint`, `prime-field` and `binary-field` implement it for their types and re-export it.
+- No comparison and no formatting: nothing reveals a value by accident.
+- `no_std`, no dependencies, no `unsafe`, no allocation.
+
+## Usage
+
+Use it through `biguint`, `prime-field` or `binary-field`. To wrap your own type, implement
+the `Ct*` trait of each operation, in time that depends on no wrapped value. Widths,
+moduli, divisors, shift amounts and public operands may steer the time.
 
 ```rust
 use constant_time::{ConstantTime, CtAdd, CtSquare, Public};
@@ -16,7 +29,6 @@ use constant_time::{ConstantTime, CtAdd, CtSquare, Public};
 #[derive(Clone, Copy)]
 struct Word(u64);
 
-// A public value may meet a wrapped one in an operator.
 impl Public for Word {}
 
 impl CtAdd for Word {
@@ -37,8 +49,18 @@ let sum = (key + Word(2)).square() + key;
 assert_eq!(sum.reveal().0, 88);
 ```
 
-Public values may steer the time: widths, moduli, divisors, shift amounts and public operands.
-`invert` and an `Option` square root disclose whether the result exists.
+| `ConstantTime` | Trait on `T` |
+|---|---|
+| `+ - * & \| ^` and their assigning forms | `CtAdd`, `CtSub`, `CtMul`, `CtBitAnd`, `CtBitOr`, `CtBitXor` |
+| unary `-`, `!` | `CtNeg`, `CtNot` |
+| `<<`, `>>` by a public amount | `CtShl`, `CtShr` |
+| `/`, `%`, `div_rem` by a public divisor | `CtDivRem` |
+| `square`, `pow`, `invert`, `sqrt` | `CtSquare`, `CtPow`, `CtInvert`, `CtSqrt` |
+| `double` | `CtAdd` |
+| `add_mod`, `sub_mod`, `neg_mod`, `mul_mod` | `CtAddMod`, `CtSubMod`, `CtNegMod`, `CtMulMod` |
+| `get` | `CtGet` |
+
+`invert`, and a `sqrt` whose root is an `Option`, disclose whether the result exists.
 
 ## License
 
