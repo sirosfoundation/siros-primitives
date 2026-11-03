@@ -1,10 +1,10 @@
-use core::ops::Add;
+use core::ops::{Add, Mul};
 
 use biguint::{Bits, Indices};
 
 use const_default::ConstDefault;
 use generic_array::{ArrayLength, GenericArray};
-use typenum::{Sum, U1};
+use typenum::{Prod, Sum, U1};
 
 /// A container width for field elements: a [`Bits`] width with the array lengths of the work
 /// areas of its arithmetic. Every `typenum` width implements it.
@@ -17,6 +17,8 @@ where
     type Wide: ArrayLength + Indices;
     /// `L + 1` limbs: a sum of two elements, or a partly folded product.
     type Extended: ArrayLength + Indices;
+    /// `L^2`: the pairs of limb indices.
+    type Pairs: Indices;
 
     /// `L` zero limbs.
     const ZERO: GenericArray<u64, Self::Limbs>;
@@ -29,7 +31,8 @@ where
 impl<N> Width for N
 where
     N: Bits,
-    N::Limbs: Add<N::Limbs> + Add<U1>,
+    N::Limbs: Add<N::Limbs> + Add<U1> + Mul<N::Limbs>,
+    Prod<N::Limbs, N::Limbs>: Indices,
     Sum<N::Limbs, N::Limbs>: ArrayLength + Indices,
     Sum<N::Limbs, U1>: ArrayLength + Indices,
     <N::Limbs as ArrayLength>::ArrayType<u64>: ConstDefault,
@@ -38,6 +41,7 @@ where
 {
     type Wide = Sum<N::Limbs, N::Limbs>;
     type Extended = Sum<N::Limbs, U1>;
+    type Pairs = Prod<N::Limbs, N::Limbs>;
 
     const ZERO: GenericArray<u64, Self::Limbs> = GenericArray::DEFAULT;
     const WIDE_ZERO: GenericArray<u64, Self::Wide> = GenericArray::DEFAULT;

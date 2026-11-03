@@ -163,6 +163,19 @@ impl<M: Modulus> Shape<M> {
         Self::each::<<M::Width as Width>::Extended>(body);
     }
 
+    /// Runs `body` on each pair `(i, j)` of limb indices, row `i` by row `i`, as one run of copies
+    /// over the `L^2` pairs. Each copy then knows both indices; a loop nested in a loop body
+    /// inlines into that body while `i` is still unknown, where a branch on `j > i` and loads
+    /// through the captures let LLVM reassociate `a b + c + d` into `(c + d) + a b`, a second
+    /// carry chain kept in a register.
+    #[inline(always)]
+    fn each_pair(mut body: impl FnMut(usize, usize)) {
+        Self::each::<<M::Width as Width>::Pairs>(
+            #[inline(always)]
+            |pair| body(pair / Self::LIMBS, pair % Self::LIMBS),
+        );
+    }
+
     /// The indices below `N` as [`Self::each_limb`] runs them.
     #[inline(always)]
     fn each<N: Indices>(mut body: impl FnMut(usize)) {
@@ -570,13 +583,13 @@ impl<M: Modulus> Shape<M> {
     #[inline(always)]
     fn square_product(a: &[u64]) -> WideLimbs<M> {
         let mut wide = M::Width::WIDE_ZERO;
-        Self::each_limb(
-            #[inline(always)]
-            |i| {
-                if i + 1 < Self::LIMBS {
-                    let multiplier = limb(a, i);
-                    // Limb `i + L` is zero before the row, and the row's sum fits through it.
-                    if Self::TWO_CHAINS {
+        // Limb `i + L` is zero before row `i`, and the row's sum fits through it.
+        if Self::TWO_CHAINS {
+            Self::each_limb(
+                #[inline(always)]
+                |i| {
+                    if i + 1 < Self::LIMBS {
+                        let multiplier = limb(a, i);
                         let mut highs = M::Width::ZERO;
                         let mut carry = 0;
                         Self::each_limb(
@@ -609,28 +622,27 @@ impl<M: Modulus> Shape<M> {
                             },
                         );
                         fits(u64::from(carry));
-                    } else {
-                        let mut carry = 0;
-                        Self::each_limb(
-                            #[inline(always)]
-                            |j| {
-                                if j > i {
-                                    let (low, high) = mac(
-                                        limb(a, j),
-                                        multiplier,
-                                        limb(wide.as_slice(), i + j),
-                                        carry,
-                                    );
-                                    set(wide.as_mut_slice(), i + j, low);
-                                    carry = high;
-                                }
-                            },
-                        );
-                        set(wide.as_mut_slice(), i + Self::LIMBS, carry);
                     }
-                }
-            },
-        );
+                },
+            );
+        } else {
+            let mut carry = 0;
+            Self::each_pair(
+                #[inline(always)]
+                |i, j| {
+                    if j > i {
+                        let (low, high) =
+                            mac(limb(a, j), limb(a, i), limb(wide.as_slice(), i + j), carry);
+                        set(wide.as_mut_slice(), i + j, low);
+                        carry = high;
+                        if j + 1 == Self::LIMBS {
+                            set(wide.as_mut_slice(), i + Self::LIMBS, carry);
+                            carry = 0;
+                        }
+                    }
+                },
+            );
+        }
         // The cross products sum below `2^(128 L - 1)`: doubling loses no bit.
         let mut carry = 0;
         Self::each_wide(
@@ -672,30 +684,31 @@ impl<M: Modulus> Shape<M> {
             return Self::montgomery_reduce_two_chains::<CT>(wide);
         }
         let mut above = 0;
-        Self::each_limb(
+        let mut m = 0;
+        let mut carry = 0;
+        Self::each_pair(
             #[inline(always)]
-            |i| {
-                let m = limb(wide.as_slice(), i).wrapping_mul(Self::INV);
-                let (_, mut carry) = mac(m, Self::P0, limb(wide.as_slice(), i), 0);
-                Self::each_limb(
-                    #[inline(always)]
-                    |j| {
-                        if j >= 1 {
-                            let (low, high) = mac(
-                                m,
-                                limb(Self::P.as_slice(), j),
-                                limb(wide.as_slice(), i + j),
-                                carry,
-                            );
-                            set(wide.as_mut_slice(), i + j, low);
-                            carry = high;
-                        }
-                    },
-                );
-                // The carry out of the row's top limb lands where the next row adds its own.
-                let (sum, carry_out) = adc(above, limb(wide.as_slice(), i + Self::LIMBS), carry);
-                set(wide.as_mut_slice(), i + Self::LIMBS, sum);
-                above = carry_out;
+            |i, j| {
+                if j == 0 {
+                    m = limb(wide.as_slice(), i).wrapping_mul(Self::INV);
+                    carry = mac(m, Self::P0, limb(wide.as_slice(), i), 0).1;
+                } else {
+                    let (low, high) = mac(
+                        m,
+                        limb(Self::P.as_slice(), j),
+                        limb(wide.as_slice(), i + j),
+                        carry,
+                    );
+                    set(wide.as_mut_slice(), i + j, low);
+                    carry = high;
+                }
+                if j + 1 == Self::LIMBS {
+                    // The carry out of the row's top limb lands where the next row adds its own.
+                    let (sum, carry_out) =
+                        adc(above, limb(wide.as_slice(), i + Self::LIMBS), carry);
+                    set(wide.as_mut_slice(), i + Self::LIMBS, sum);
+                    above = carry_out;
+                }
             },
         );
         let mut out = M::Width::ZERO;
