@@ -44,6 +44,14 @@ impl<M: Modulus> Shape<M> {
     /// residues.
     #[inline(always)]
     pub(crate) fn integer<const CT: bool>(k: &[u64]) -> Limbs<M> {
+        if !Self::MONTGOMERY && 64 * k.len() < Self::BITS {
+            // `k < 2^(64 len) < p` is its own plain residue.
+            let mut out = M::Width::ZERO;
+            unroll!(j in 0, Self::LIMBS => {
+                set(out.as_mut_slice(), j, limb(k, j));
+            });
+            return out;
+        }
         Self::scale::<CT>(&Self::ONE, k)
     }
 
