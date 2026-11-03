@@ -212,10 +212,32 @@ impl<'a, K: Key> Table<'a, K> {
                 ops.iter().any(|operation| {
                     self.keys
                         .iter()
-                        .any(|key| self.count(operation.op, key, library).is_some())
+                        .any(|key| self.figure(operation, key, library).is_some())
                 })
             })
             .collect()
+    }
+
+    /// The figure a table of `operation` shows on the row `key` for `library`: its own count, or,
+    /// in a variable-time table without one, the count of the constant-time twin of the same name.
+    fn figure(&self, operation: &Operation<'_>, key: &K, library: &str) -> Option<Figure<'a>> {
+        if let Some(count) = self.count(operation.op, key, library) {
+            return Some(Figure {
+                count,
+                constant_time: false,
+            });
+        }
+        if operation.constant_time {
+            return None;
+        }
+        self.ops
+            .iter()
+            .find(|twin| twin.constant_time && twin.name == operation.name)
+            .and_then(|twin| self.count(twin.op, key, library))
+            .map(|count| Figure {
+                count,
+                constant_time: true,
+            })
     }
 
     /// The count of `op` on the row `key` in `library`; `None` for an absent cell.
@@ -231,6 +253,26 @@ impl<'a, K: Key> Table<'a, K> {
     }
 }
 
+/// A count as a table shows it.
+#[derive(Clone, Copy)]
+struct Figure<'a> {
+    count: &'a Count,
+    /// Whether the count is of a constant-time function filling a variable-time table's cell.
+    constant_time: bool,
+}
+
+impl Figure<'_> {
+    /// The mark after a function or a figure of a filled cell.
+    fn mark(self) -> &'static str {
+        if self.constant_time { "°" } else { "" }
+    }
+
+    /// The function as a `Functions` cell names it.
+    fn function(self) -> String {
+        format!("`{}`{}", self.count.function, self.mark())
+    }
+}
+
 /// The odd cells of `table` in `build`, one line each: a crate's figure, as the table shows it,
 /// above [`ODD`] times its figure on a row of more bits.
 fn odd_cells<K: Key>(
@@ -240,13 +282,13 @@ fn odd_cells<K: Key>(
 ) -> Vec<String> {
     let mut lines = Vec::new();
     for operation in &table.ops {
-        let (op, title) = (operation.op, title(operation, build));
+        let title = title(operation, build);
         for library in &table.crates {
             for (part, name) in ["throughput", "latency"].into_iter().enumerate() {
                 let figure = |key: &K| {
                     table
-                        .count(op, key, library)
-                        .and_then(|count| parts(count)[part])
+                        .figure(operation, key, library)
+                        .and_then(|figure| parts(figure.count)[part])
                         .map(shown)
                 };
                 for small in &table.keys {
@@ -490,18 +532,19 @@ fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String
         if crates.is_empty() {
             continue;
         }
+        let mut filled = false;
         let rows: Vec<Vec<String>> = ops
             .iter()
             .map(|operation| {
                 let mut row = vec![operation.name.to_owned()];
                 row.extend(crates.iter().map(|library| {
-                    let names = unique(
-                        table
-                            .keys
-                            .iter()
-                            .filter_map(|key| table.count(operation.op, key, library))
-                            .map(|count| format!("`{}`", count.function)),
-                    );
+                    let figures: Vec<Figure<'_>> = table
+                        .keys
+                        .iter()
+                        .filter_map(|key| table.figure(operation, key, library))
+                        .collect();
+                    filled |= figures.iter().any(|figure| figure.constant_time);
+                    let names = unique(figures.iter().map(|figure| figure.function()));
                     if names.is_empty() {
                         "–".to_owned()
                     } else {
@@ -515,6 +558,9 @@ fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String
         header.extend(crates.iter().map(|library| (*library).to_owned()));
         lines.extend([heading.to_owned(), String::new()]);
         lines.extend(markdown_table(&header, &rows, &"l".repeat(header.len())));
+        if filled {
+            lines.extend([String::new(), FILLED.to_owned()]);
+        }
         let coverage: Vec<String> = crates
             .iter()
             .filter_map(|library| coverage(layout, table, &ops, library))
@@ -542,7 +588,7 @@ fn coverage<K: Key>(
             let keys = table
                 .keys
                 .iter()
-                .filter(|key| table.count(operation.op, key, library).is_some())
+                .filter(|key| table.figure(operation, key, library).is_some())
                 .cloned()
                 .collect();
             (operation.name, keys)
@@ -577,6 +623,9 @@ const LEGEND: &str = "Each cell: throughput cycles / latency cycles per operatio
                       Bold: the fewest of the row, every tie bold. –: no such function or no \
                       chain form.";
 
+/// The line under a variable-time table, or its `Functions` table, with a filled cell.
+const FILLED: &str = "° The crate's constant-time function, where it has no variable-time one.";
+
 /// The two parts of a cell are joined by a slash between no-break spaces, so a cell never wraps.
 const SEPARATOR: &str = "\u{a0}/\u{a0}";
 
@@ -601,52 +650,56 @@ fn results<K: Key>(
     };
     let mut lines = vec![heading];
     for operation in &table.ops {
-        let op = operation.op;
         let crates = table.measured(core::slice::from_ref(operation));
         let mut rows = Vec::new();
         // Each starred cell: its crate, its deviation and its row.
         let mut starred: Vec<(&str, &str, &K)> = Vec::new();
+        let mut filled = false;
         for key in &table.keys {
-            let counts: Vec<Option<&Count>> = crates
+            let figures: Vec<Option<Figure<'_>>> = crates
                 .iter()
-                .map(|library| table.count(op, key, library))
+                .map(|library| table.figure(operation, key, library))
                 .collect();
-            let ours = table.count(op, key, layout.subject).map(parts);
+            let ours = table
+                .figure(operation, key, layout.subject)
+                .map(|figure| parts(figure.count));
             // The fewest of each part as the table shows it, so that every tie is bold.
             let fewest: [Option<f64>; 2] = std::array::from_fn(|part| {
-                counts
+                figures
                     .iter()
                     .flatten()
-                    .filter(|count| count.deviation.is_none())
-                    .filter_map(|count| parts(count)[part])
+                    .filter(|figure| figure.count.deviation.is_none())
+                    .filter_map(|figure| parts(figure.count)[part])
                     .map(shown)
                     .reduce(f64::min)
             });
             let mut row = vec![key.to_string()];
-            for (library, count) in crates.iter().zip(&counts) {
-                let Some(count) = count else {
+            for (library, figure) in crates.iter().zip(&figures) {
+                let Some(figure) = figure else {
                     row.push("–".to_owned());
                     continue;
                 };
-                let cell: Vec<String> = parts(count)
+                filled |= figure.constant_time;
+                let mark = figure.mark();
+                let cell: Vec<String> = parts(figure.count)
                     .iter()
                     .enumerate()
-                    .map(|(part, figure)| match (figure, &count.deviation) {
+                    .map(|(part, number)| match (number, &figure.count.deviation) {
                         (None, _) => "–".to_owned(),
-                        (Some(figure), Some(deviation))
+                        (Some(number), Some(deviation))
                             if ours.is_some_and(|ours| {
-                                ours[part].is_some_and(|ours| *figure < ours)
+                                ours[part].is_some_and(|ours| *number < ours)
                             }) =>
                         {
                             if !starred.contains(&(library, deviation.as_str(), key)) {
                                 starred.push((library, deviation, key));
                             }
-                            format!("{}\\*", value(*figure))
+                            format!("{}{mark}\\*", value(*number))
                         }
-                        (Some(figure), None) if Some(shown(*figure)) == fewest[part] => {
-                            format!("**{}**", value(*figure))
+                        (Some(number), None) if Some(shown(*number)) == fewest[part] => {
+                            format!("**{}{mark}**", value(*number))
                         }
-                        (Some(figure), _) => value(*figure),
+                        (Some(number), _) => format!("{}{mark}", value(*number)),
                     })
                     .collect();
                 row.push(cell.join(SEPARATOR));
@@ -678,6 +731,9 @@ fn results<K: Key>(
             &rows,
             &("l".to_owned() + &"r".repeat(crates.len())),
         ));
+        if filled {
+            lines.extend([String::new(), FILLED.to_owned()]);
+        }
         lines.extend(deviations(layout, &starred));
     }
     lines.push(String::new());

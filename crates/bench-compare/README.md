@@ -1,47 +1,108 @@
 # bench-compare
 
-The measuring library behind the `BENCHMARKS.md` of `biguint`, `prime-field` and `binary-field`:
-it compares one crate's operations with other crates in user-mode cycles per operation, counted
-by the CPU's performance counters. It needs Linux with `kernel.perf_event_paranoid` at 2 or below.
+Compares a crate's operations with other crates in user-mode CPU cycles per operation and writes
+the crate's `BENCHMARKS.md`. Needs Linux with `kernel.perf_event_paranoid` at 2 or below.
 
-## Usage
+A crate's `compare` bench declares a `Suite`:
 
-A library's `compare` bench declares a `Suite`: its operations, its rows (widths or fields), a
-generator of operand sets per row, a fixed checking batch with the accepted results, and one
-adapter per crate that offers the crate's function for each operation or the reason it has none.
-`bench_compare::main` runs the bench:
+```rust,no_run
+use bench_compare::{BATCH, Limbs, Rng, Row, Sample, Suite, Visitor, trim};
 
-- it checks every case against the accepted results;
-- it pins itself to one CPU (`--cpu`, CPU 15 by default);
-- it prints every cell as one JSON line, then a line with the CPU, the 1-minute load average
-  before and after the sweep, and the busy share of the CPU's SMT siblings.
+struct Add;
 
-A case whose result has the type of its first operand and whose other operands are `Copy` can
-offer a chain form, which measures latency as the chain `x = op(x, y)`. An empty inline-assembly
-block holds `x` between two steps: in general-purpose registers up to 64 bytes, one word of 8, 4,
-2 or 1 bytes per register; in `xmm` registers up to 128 bytes; in `ymm` registers from 17 to 256
-bytes on AVX2 builds; in one place on the stack above 64 bytes, one store and one load per word.
-The latency is the fastest of these chains.
-`Cells::deviating` declares how the next case's function deviates from the row's definition, such
-as a skipped final reduction; the document marks a deviating figure below the measured crate's
-with `*` and never makes it bold. Bold marks every figure that ties the fewest of its row, as
-printed.
+impl Suite for Add {
+    type Op = &'static str;
+    type Key = u32;
+    const OPS: &'static [&'static str] = &["add"];
 
-A library's report tool calls `bench_compare::execute` with the files it measures, the features
-its builds enable and forbid, its builds and a `Layout`: the operations in table order, with the
-variable-time one named alone (`add`) and the constant-time one marked (`add, constant time`), and
-the size of each row in bits.
-`bench [--cpu <cpu>] [--machine <description>]` builds the bench of each build under `target`,
-runs it and records the counts, the commit, the compiler, the `[profile.bench]` settings, the
-CPU, the load and the target features. A bench without an enabled feature, a unit with a
-forbidden one, a build without AVX2, or a `[profile.bench]` without `lto = "fat"` stops it. The native build takes `-C target-cpu=native -C codegen-units=1 -C llvm-args=-align-loops=64`: every loop starts on a 64-byte line. `report` writes the
-document and prints every odd cell to the terminal: a crate's figure more than 10% above its
-figure on a row of more bits in the same table.
+    fn keys() -> Vec<u32> {
+        vec![64]
+    }
+
+    fn samples(op: &'static str, bits: &u32) -> Vec<Sample> {
+        let mut rng = Rng(1);
+        (0..BATCH)
+            .map(|_| {
+                let operands = Self::operands(op, bits, &mut rng);
+                let sum = operands[0][0].wrapping_add(operands[1][0]);
+                Sample { operands, accepted: vec![trim(&[sum]).to_vec()] }
+            })
+            .collect()
+    }
+
+    fn operands(_: &'static str, _: &u32, rng: &mut Rng) -> Vec<Limbs> {
+        vec![rng.uniform(1), rng.uniform(1)]
+    }
+
+    fn offer<V: Visitor<&'static str, u32>>(
+        row: Row<&'static str, u32, V>,
+    ) -> Row<&'static str, u32, V> {
+        row.lib("core", |cells| {
+            cells.chain(
+                "add",
+                "wrapping_add",
+                |set| (set[0][0], set[1][0]),
+                |&(a, b): &(u64, u64)| a.wrapping_add(b),
+                |sum| Some(vec![*sum]),
+            )
+        })
+    }
+}
+
+fn main() -> std::process::ExitCode {
+    bench_compare::main::<Add>("compare")
+}
+```
+
+Its report tool runs `cargo run -p <tool> -- bench`, which builds, runs and records the bench in
+`benchmarks/record.json`, and `cargo run -p <tool> -- report`, which writes `BENCHMARKS.md`:
+
+```rust,no_run
+use bench_compare::{Layout, Measured, NATIVE, Operation, Paths, sentence};
+
+const MEASURED: Measured = Measured {
+    package: "biguint",
+    bench: "compare",
+    sources: "crates/biguint/src",
+    pathspecs: &["Cargo.toml", "Cargo.lock", "crates/biguint", "crates/bench-compare"],
+    versions: &["ruint"],
+    features: &[],
+    forbidden: &["not-precomputed"],
+    builds: &[NATIVE],
+};
+
+const LAYOUT: Layout<'static, u32> = Layout {
+    subject: "biguint",
+    tool: "biguint-bench-report",
+    operations: &[
+        Operation::new("add", "add", "a + b"),
+        Operation::constant_time("add_ct", "add", "a + b"),
+    ],
+    row_header: "Bits",
+    rows_phrase: |widths| format!("at {} bits", sentence(widths)),
+    bits: |bits| *bits,
+    method: &["Operands at width N: uniform below 2^N."],
+};
+
+fn main() -> std::process::ExitCode {
+    bench_compare::execute(
+        "biguint-bench-report",
+        &Paths::new(env!("CARGO_MANIFEST_DIR")),
+        &MEASURED,
+        &LAYOUT,
+    )
+}
+```
 
 ## Protocol
 
-Each figure is the median over 31 repetitions of a run of 2n operations less a run of n,
-divided by n. The protocol follows nanoBench (Abel and Reineke, ISPASS 2020) and ankerl::nanobench.
-A sweep stops when the kernel shared the counters with other groups, when a case's long runs count
-no more cycles than its short runs, and when a chain step counts under 0.75 cycles. The cycles of
-a sweep under load compare within that sweep only.
+- A figure is the median over 31 repetitions of (cycles of 2n operations − cycles of n) / n,
+  after nanoBench (Abel and Reineke, ISPASS 2020).
+- Latency runs the chain `x = op(x, y)` with `x` held in registers between steps. Every case first
+  matches the accepted results. The bench pins itself to CPU 15.
+- A sweep stops on multiplexed counters, on long runs that count no more cycles than short runs,
+  on a chain step under 0.75 cycles, and on a `[profile.bench]` without `lto = "fat"`.
+- Bold ties the row's fewest. `*` deviates from the row's definition and is never bold. `°` is a
+  constant-time function in a variable-time cell.
+- `report` prints every odd cell to the terminal: a figure more than 10% above the crate's figure
+  on a row of more bits.
