@@ -61,7 +61,8 @@ pub(crate) const fn scratch_len(len: usize, levels: usize) -> usize {
 /// `b = b0 + b1 β^m`, the low `n` limbs of the full product `a0 * b0` at depth `F`, plus `a1 * b0`
 /// and `a0 * b1` modulo `β^(n - m)` at depth `C`, added at limb `m`. `scratch` holds
 /// [`scratch_len`] limbs for the levels of `F`. `MASKED` as for [`Depth::product_with`].
-#[inline(always)]
+#[cfg_attr(debug_assertions, inline(never))]
+#[cfg_attr(not(debug_assertions), inline(always))]
 pub(crate) fn split_product<F: Depth, C: Depth, const MASKED: bool>(
     out: &mut [u64],
     a: &[u64],

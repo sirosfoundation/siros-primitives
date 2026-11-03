@@ -23,8 +23,10 @@ mod cmp;
 mod convert;
 mod ct;
 mod div;
+mod each;
 mod field;
 mod fmt;
+mod indices;
 mod kernel;
 mod limb;
 mod modular;
@@ -40,7 +42,6 @@ mod scan;
 mod shift;
 mod stream;
 mod uint;
-mod unroll;
 
 /// The constant-time wrapper and the traits that `Uint` and `Residue` implement.
 pub use constant_time;
@@ -53,6 +54,8 @@ pub use typenum;
 pub use bits::{Bits, Bits8, Bits16, Bits32, Bits64, Bits128, Bits256, Bits384, Bits512};
 pub use convert::OutOfRange;
 pub use field::Field;
+#[doc(hidden)]
+pub use indices::Indices;
 pub use modulus::{ConstantTimeResidue, Modulus, NotReduced, Residue, Ring};
 pub use mul::WideningMul;
 pub use nonzero::{IsZero, NonZero, NonZeroUint};

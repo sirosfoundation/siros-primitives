@@ -99,3 +99,5 @@ codegen-units = 1
 
 [profile.test]
 opt-level = 1
+# Line tables keep file and line in backtraces; full debug info triples the IR that LLVM optimizes.
+debug = "line-tables-only"

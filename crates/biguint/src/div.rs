@@ -27,7 +27,7 @@ use crate::kernel::{
 };
 use crate::mul::WideningMul;
 use crate::nonzero::{NonZeroUint, significant_len};
-use crate::recursion::Halvings;
+use crate::recursion::{Halvings, by_width};
 use crate::stream::{LimbSource, ShlBits, ZeroExtended, funnel_left, funnel_right};
 use crate::uint::Uint;
 use reciprocal::{NormalizedLimb, Reciprocal, Reciprocal3By2, join};
@@ -38,9 +38,16 @@ impl<N: Bits> Uint<N> {
     #[inline(always)]
     #[must_use]
     pub fn div_rem<M: Bits>(self, divisor: NonZeroUint<M>) -> (Self, Uint<M>) {
-        let mut quotient = GenericArray::<u64, N::Limbs>::default();
-        let remainder = divide::<N::Window, M>(&self.limbs, divisor, Top::Any, &mut quotient);
-        (Uint::from_generic_limbs(quotient), remainder)
+        by_width(
+            M::LIMBS,
+            #[inline(always)]
+            move || {
+                let mut quotient = GenericArray::<u64, N::Limbs>::default();
+                let remainder =
+                    divide::<N::Window, M>(&self.limbs, divisor, Top::Any, &mut quotient);
+                (Uint::from_generic_limbs(quotient), remainder)
+            },
+        )
     }
 
     /// `(self / divisor, self % divisor)`, or `None` when `divisor` is zero. The divisor may be of
@@ -87,8 +94,14 @@ impl<N: Bits> Uint<N> {
         } else {
             Top::Any
         };
-        let product = self.widening_mul(rhs);
-        divide::<Window<N, RhsN>, ModN>(&product.limbs, modulus, top, &mut DiscardQuotient)
+        by_width(
+            N::LIMBS.max(ModN::LIMBS),
+            #[inline(always)]
+            move || {
+                let product = self.widening_mul(rhs);
+                divide::<Window<N, RhsN>, ModN>(&product.limbs, modulus, top, &mut DiscardQuotient)
+            },
+        )
     }
 
     /// `(self * rhs) mod modulus`, or `None` when `modulus` is zero. The operands may be of any
@@ -137,7 +150,11 @@ impl<N: Bits, M: Bits> Rem<NonZeroUint<M>> for Uint<N> {
 
     #[inline(always)]
     fn rem(self, divisor: NonZeroUint<M>) -> Self::Output {
-        divide::<N::Window, M>(&self.limbs, divisor, Top::Any, &mut DiscardQuotient)
+        by_width(
+            M::LIMBS,
+            #[inline(always)]
+            move || divide::<N::Window, M>(&self.limbs, divisor, Top::Any, &mut DiscardQuotient),
+        )
     }
 }
 
@@ -476,7 +493,8 @@ fn divide_by_two_limbs(
 /// writes the low `numerator.len() - divisor.len()` quotient limbs to `quotient`, leaves the
 /// remainder in the low `divisor.len()` limbs of `numerator` and zeros above them, and returns
 /// the top quotient limb, `0` or `1`.
-#[inline(always)]
+#[cfg_attr(debug_assertions, inline(never))]
+#[cfg_attr(not(debug_assertions), inline(always))]
 pub(crate) fn schoolbook(
     numerator: &mut [u64],
     divisor: &[u64],

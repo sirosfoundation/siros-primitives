@@ -23,34 +23,6 @@ pub(crate) type Element<P> = <<P as Polynomial>::Degree as Representation>::Elem
 /// The polynomial of an element of the field with the polynomial `P`.
 pub(crate) type Lanes<P> = Poly<<P as Polynomial>::Degree>;
 
-/// Runs `$body` with `$index` bound to each of `0..$len`. Optimized builds get one copy per index
-/// below 8, so that constant lengths fold to straight-line code, and a loop beyond; debug builds
-/// get the loop alone, which keeps the frames of the inlined operations small.
-macro_rules! each {
-    ($index:ident < $len:expr => $body:block) => {{
-        let len: usize = $len;
-        #[cfg(not(debug_assertions))]
-        each!(@ $index, len, 8, $body; 0 1 2 3 4 5 6 7);
-        #[cfg(debug_assertions)]
-        each!(@ $index, len, 0, $body;);
-    }};
-    (@ $index:ident, $len:ident, $from:literal, $body:block; $($k:literal)*) => {
-        $(
-            if $k < $len {
-                let $index: usize = $k;
-                $body
-            }
-        )*
-        let mut $index: usize = $from;
-        while $index < $len {
-            $body
-            $index += 1;
-        }
-    };
-}
-
-pub(crate) use each;
-
 /// A polynomial of at most 64 coefficients in one register: a general register's `u64`, or a
 /// vector register's `Poly<U64>`.
 pub(crate) trait Word:
@@ -115,22 +87,22 @@ impl<P: Polynomial> Field<P> {
         let degree = Plan::<P>::DEGREE;
         let taps = Plan::<P>::TAPS;
         let mut overflow = W::ZERO;
-        each!(index < taps.len() => {
+        for index in 0..taps.len() {
             if let Some(&tap) = taps.get(index)
                 && tap > 0
             {
                 overflow = overflow ^ (high >> (degree - tap));
             }
-        });
+        }
         let high = high ^ overflow;
         let mut sum = low ^ high;
-        each!(index < taps.len() => {
+        for index in 0..taps.len() {
             if let Some(&tap) = taps.get(index)
                 && tap > 0
             {
                 sum = sum ^ (high << tap);
             }
-        });
+        }
         if degree >= 64 {
             sum
         } else {
@@ -150,16 +122,16 @@ impl<P: Polynomial> Field<P> {
         }
         let taps = Plan::<P>::TAPS;
         let (mut sum, mut rest) = (product & mask, product >> degree);
-        each!(_round < Plan::<P>::ROUNDS => {
+        for _round in 0..Plan::<P>::ROUNDS {
             let mut folded = W::ZERO;
-            each!(index < taps.len() => {
+            for index in 0..taps.len() {
                 if let Some(&tap) = taps.get(index) {
                     folded = folded ^ (rest << tap);
                 }
-            });
+            }
             sum = sum ^ (folded & mask);
             rest = folded >> degree;
-        });
+        }
         sum
     }
 
@@ -167,7 +139,8 @@ impl<P: Polynomial> Field<P> {
     // The polynomial of an element.
 
     /// The product of two polynomials of the field.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn lanes_mul(a: Lanes<P>, b: Lanes<P>) -> Lanes<P> {
         match Plan::<P>::SHAPE {
             Shape::Word => {
@@ -187,7 +160,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// The square of a polynomial of the field.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn lanes_square(a: Lanes<P>) -> Lanes<P> {
         Self::square_in(a, Squaring::Alone)
     }
@@ -277,13 +251,13 @@ impl<P: Polynomial> Field<P> {
         } else {
             let high = (product >> degree).resize::<U64>();
             let mut sum = high;
-            each!(index < Plan::<P>::TAPS.len() => {
+            for index in 0..Plan::<P>::TAPS.len() {
                 if let Some(&tap) = Plan::<P>::TAPS.get(index)
                     && tap > 0
                 {
                     sum ^= high << tap;
                 }
-            });
+            }
             sum.resize()
         };
         (product ^ folded ^ spill).resize()
@@ -296,13 +270,13 @@ impl<P: Polynomial> Field<P> {
         let degree = Plan::<P>::DEGREE;
         let taps = Plan::<P>::TAPS;
         let mut overflow = Poly::<N>::ZERO;
-        each!(index < taps.len() => {
+        for index in 0..taps.len() {
             if let Some(&tap) = taps.get(index)
                 && tap > 0
             {
                 overflow ^= high.shr_within_words((degree - tap) as u32);
             }
-        });
+        }
         overflow
     }
 
@@ -330,13 +304,13 @@ impl<P: Polynomial> Field<P> {
         let taps = Plan::<P>::TAPS;
         let high = (product >> degree).resize::<U64>();
         let mut sum = (product.resize::<U64>() & Poly::of(low_mask(degree))) ^ high;
-        each!(index < taps.len() => {
+        for index in 0..taps.len() {
             if let Some(&tap) = taps.get(index)
                 && tap > 0
             {
                 sum ^= high << tap;
             }
-        });
+        }
         sum.resize()
     }
 
@@ -365,13 +339,13 @@ impl<P: Polynomial> Field<P> {
         let taps = Plan::<P>::TAPS;
         let spills = |value: Poly<U128>| {
             let mut spill = Poly::<U128>::ZERO;
-            each!(index < taps.len() => {
+            for index in 0..taps.len() {
                 if let Some(&tap) = taps.get(index)
                     && tap > 0
                 {
                     spill ^= value.shr_within_words((64 - tap) as u32);
                 }
-            });
+            }
             spill
         };
         let spill = spills(high);
@@ -382,13 +356,13 @@ impl<P: Polynomial> Field<P> {
             spills(high)
         };
         let mut sum = low ^ high ^ (carries << 64);
-        each!(index < taps.len() => {
+        for index in 0..taps.len() {
             if let Some(&tap) = taps.get(index)
                 && tap > 0
             {
                 sum ^= high.shl_within_words(tap as u32);
             }
-        });
+        }
         sum
     }
 
@@ -411,17 +385,17 @@ impl<P: Polynomial> Field<P> {
         } else {
             // Rounds of shifted copies, one per tap.
             let mut rest = product >> degree;
-            each!(_round < Plan::<P>::ROUNDS => {
+            for _round in 0..Plan::<P>::ROUNDS {
                 let mut folded = Poly::<Wide<P>>::ZERO;
                 let taps = Plan::<P>::TAPS;
-                each!(index < taps.len() => {
+                for index in 0..taps.len() {
                     if let Some(&tap) = taps.get(index) {
                         folded ^= rest << tap;
                     }
-                });
+                }
                 low ^= folded.resize();
                 rest = folded >> degree;
-            });
+            }
             low
         }
     }
@@ -434,22 +408,22 @@ impl<P: Polynomial> Field<P> {
         let degree = Plan::<P>::DEGREE;
         let taps = Plan::<P>::TAPS;
         let mut overflow = Lanes::<P>::ZERO;
-        each!(index < taps.len() => {
+        for index in 0..taps.len() {
             if let Some(&tap) = taps.get(index)
                 && tap > 0
             {
                 overflow ^= high >> (degree - tap);
             }
-        });
+        }
         let high = high ^ overflow;
         let mut sum = high;
-        each!(index < taps.len() => {
+        for index in 0..taps.len() {
             if let Some(&tap) = taps.get(index)
                 && tap > 0
             {
                 sum ^= high << tap;
             }
-        });
+        }
         sum
     }
 
@@ -494,9 +468,9 @@ impl<P: Polynomial> Field<P> {
             }
         } else {
             let mut power = a;
-            each!(_step < Plan::<P>::DEGREE - 1 => {
+            for _step in 0..Plan::<P>::DEGREE - 1 {
                 power = Self::run_square(power);
-            });
+            }
             power
         }
     }
@@ -567,7 +541,8 @@ impl<P: Polynomial> Field<P> {
     // The operations on elements: the defaults, and those of `ConstantTime`.
 
     /// `a b`, the default.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn mul(a: Element<P>, b: Element<P>) -> Element<P> {
         if Plan::<P>::MUL_BY_PRODUCTS {
             Element::<P>::from_word(Tables::<P>::mul(a.word(), b.word()))
@@ -579,7 +554,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// `a b` in constant time.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn ct_mul(a: Element<P>, b: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {
             Element::<P>::from_word(Self::word_mul(a.word(), b.word()))
@@ -589,7 +565,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// `a^2`, the default.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn square(a: Element<P>) -> Element<P> {
         if Plan::<P>::ELEMENT_TABLES {
             Element::<P>::from_word(Tables::<P>::square(a.word()))
@@ -601,7 +578,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// `a^2` in constant time.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn ct_square(a: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {
             Element::<P>::from_word(Self::word_square(a.word()))
@@ -611,7 +589,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// The square root, the default.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn sqrt(a: Element<P>) -> Element<P> {
         if Plan::<P>::ELEMENT_TABLES {
             Element::<P>::from_word(Tables::<P>::sqrt(a.word()))
@@ -623,7 +602,8 @@ impl<P: Polynomial> Field<P> {
     }
 
     /// The square root in constant time.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn ct_sqrt(a: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {
             Element::<P>::from_word(Self::word_sqrt(a.word()))
@@ -634,7 +614,8 @@ impl<P: Polynomial> Field<P> {
 
     /// The inverse of a nonzero `a`, the default: the table of inverses, or the field's chain with
     /// the tables of its Frobenius powers.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn invert(a: Element<P>) -> Element<P> {
         if Plan::<P>::ELEMENT_TABLES {
             Element::<P>::from_word(Tables::<P>::invert(a.word()))
@@ -647,7 +628,8 @@ impl<P: Polynomial> Field<P> {
 
     /// The inverse of a nonzero `a` in constant time: `a^(2^n - 2)` along the field's chain, with
     /// squarings or the constant-time maps of the Frobenius powers.
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn ct_invert(a: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {
             Element::<P>::from_word(inverse::<P, Words<P>>(a.word()))
@@ -743,14 +725,14 @@ impl<N: clmul::Width> Masks<N> {
 fn gather<N: clmul::Width>(a: Poly<N>) -> Poly<N> {
     let mut x = gather_within(a);
     let half = N::BITS.div_ceil(2);
-    each!(level < 5 => {
+    for level in 0..5 {
         let chunk = 32 << level;
         if chunk < half
             && let Some(&mask) = Masks::<N>::BLOCKS.get(level)
         {
             x = (x | (x >> chunk)) & mask;
         }
-    });
+    }
     x
 }
 
@@ -760,11 +742,11 @@ fn gather<N: clmul::Width>(a: Poly<N>) -> Poly<N> {
 fn gather_within<N: clmul::Width>(a: Poly<N>) -> Poly<N> {
     let within = Masks::<N>::WITHIN;
     let mut x = a & within[0];
-    each!(level < 5 => {
+    for level in 0..5 {
         if let Some(&mask) = within.get(level + 1) {
             x = (x | x.shr_within_words(1u32 << level)) & mask;
         }
-    });
+    }
     x
 }
 

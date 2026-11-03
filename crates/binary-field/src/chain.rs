@@ -7,10 +7,15 @@
 
 use core::marker::PhantomData;
 
+use typenum::{U24, Unsigned};
+
 use crate::plan::{Plan, Polynomial};
 
-/// The steps an inverse unrolls; longer chains take the binary chain in a loop.
-pub(crate) const MAX_STEPS: usize = 24;
+/// The most steps of a chain that an inverse runs; longer chains take the binary chain in a loop.
+pub(crate) type MaxSteps = U24;
+
+/// [`MaxSteps`] as a number.
+pub(crate) const MAX_STEPS: usize = MaxSteps::USIZE;
 
 /// The largest `n - 1` the dynamic program covers.
 const MAX_EXPONENT: usize = 4096;
@@ -44,6 +49,17 @@ pub(crate) struct Chains<P>(PhantomData<P>);
 impl<P: Polynomial> Chains<P> {
     /// An addition chain for `n - 1`.
     pub(crate) const CHAIN: Chain = chain(Plan::<P>::DEGREE - 1);
+
+    /// The copies that an inverse runs of its steps: the first of 4, 8, 12, 16 and
+    /// [`MAX_STEPS`] that holds the chain. A constant that selects one length type, so the
+    /// copies past the chain stay few.
+    pub(crate) const COPIES: usize = match Self::CHAIN.len {
+        Some(len) if len <= 4 => 4,
+        Some(len) if len <= 8 => 8,
+        Some(len) if len <= 12 => 12,
+        Some(len) if len <= 16 => 16,
+        _ => MAX_STEPS,
+    };
 }
 
 /// How the dynamic program reaches each `m`: `0` for `(m - 1) + 1`, `p` for `p (m / p)`.
