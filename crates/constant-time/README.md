@@ -4,36 +4,24 @@
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
 ![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
-`ConstantTime<T>`: a wrapper whose operations run in constant time over the wrapped values. No
-branch and no memory address depends on them. `no_std`, without dependencies, `unsafe` or
-allocation. Rust 1.93 or newer.
+A zero-cost wrapper for constant-time arithmetic, shared by the SIROS primitives.
 
-`ConstantTime<T>` holds a `T` in the same memory; `ConstantTime::new` and `ConstantTime::reveal`
-cost nothing. Its operators and methods exist for each `T` that implements the matching trait of
-this crate:
+## Features
 
-| `ConstantTime` | trait on `T` |
-|---|---|
-| `+ - * & \| ^` and their assigning forms | `CtAdd`, `CtSub`, `CtMul`, `CtBitAnd`, `CtBitOr`, `CtBitXor` |
-| unary `-`, `!` | `CtNeg`, `CtNot` |
-| `<<`, `>>` by a public amount | `CtShl`, `CtShr` |
-| `/`, `%`, `div_rem` by a public divisor | `CtDivRem` |
-| `square`, `pow`, `invert`, `sqrt` | `CtSquare`, `CtPow`, `CtInvert`, `CtSqrt` |
-| `double` | `CtAdd` |
-| `add_mod`, `sub_mod`, `neg_mod`, `mul_mod` by a public modulus | `CtAddMod`, `CtSubMod`, `CtNegMod`, `CtMulMod` |
-| `get` | `CtGet` |
+- `ConstantTime<T>` holds a `T` in the same memory; `new` and `reveal` cost nothing.
+- Its operations run with no branch and no memory address that depends on the wrapped values.
+- Operators combine two wrapped values, or a wrapped value and a `Public` one on either side.
+- Modular operations, division by a public divisor, `square`, `pow`, `invert` and `sqrt` are
+  inherent methods: nothing to import.
+- `biguint`, `prime-field` and `binary-field` implement it for their types and re-export it.
+- No comparison and no formatting: nothing reveals a value by accident.
+- `no_std`, no dependencies, no `unsafe`, no allocation.
 
-An operator combines two `ConstantTime` values, or a `ConstantTime` and a value whose type
-implements `Public`. An operator with a `Public` value on the left is implemented by the crate of
-that value's type. `From` wraps every `Public` value that converts into `T`.
+## Usage
 
-A `Ct*` implementation runs in time that depends on no value of `self` and of its other wrapped
-operands. Widths, moduli, divisors, shift amounts, public operands and the exponents of a `CtPow`
-over a public type may steer it. `CtInvert`, and a `CtSqrt` whose root is an `Option`, disclose
-whether the result exists. `ConstantTime` implements no comparison and no formatting.
-
-`biguint` implements the traits for `Uint` and `Residue`, `prime-field` for `Fp` and
-`binary-field` for `Gf2`. Each re-exports `ConstantTime`.
+Use it through `biguint`, `prime-field` or `binary-field`. To wrap your own type, implement
+the `Ct*` trait of each operation, in time that depends on no wrapped value. Widths,
+moduli, divisors, shift amounts and public operands may steer the time.
 
 ```rust
 use constant_time::{ConstantTime, CtAdd, CtSquare, Public};
@@ -45,7 +33,6 @@ impl Public for Word {}
 
 impl CtAdd for Word {
     type Output = Self;
-
     fn ct_add(self, rhs: Self) -> Self {
         Self(self.0.wrapping_add(rhs.0))
     }
@@ -61,3 +48,21 @@ let key = ConstantTime::new(Word(7));
 let sum = (key + Word(2)).square() + key;
 assert_eq!(sum.reveal().0, 88);
 ```
+
+| `ConstantTime` | Trait on `T` |
+|---|---|
+| `+ - * & \| ^` and their assigning forms | `CtAdd`, `CtSub`, `CtMul`, `CtBitAnd`, `CtBitOr`, `CtBitXor` |
+| unary `-`, `!` | `CtNeg`, `CtNot` |
+| `<<`, `>>` by a public amount | `CtShl`, `CtShr` |
+| `/`, `%`, `div_rem` by a public divisor | `CtDivRem` |
+| `square`, `pow`, `invert`, `sqrt` | `CtSquare`, `CtPow`, `CtInvert`, `CtSqrt` |
+| `double` | `CtAdd` |
+| `add_mod`, `sub_mod`, `neg_mod`, `mul_mod` | `CtAddMod`, `CtSubMod`, `CtNegMod`, `CtMulMod` |
+| `get` | `CtGet` |
+
+`invert`, and a `sqrt` whose root is an `Option`, disclose whether the result exists.
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+or [MIT license](https://opensource.org/licenses/MIT) at your option.
