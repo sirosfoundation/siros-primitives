@@ -120,7 +120,7 @@ impl Suite for BinaryField {
     fn ops() -> Vec<Op> {
         Op::ALL
             .into_iter()
-            .filter(|op| op.kind == crate::KIND)
+            .filter(|op| crate::KINDS.contains(&op.kind))
             .collect()
     }
 
@@ -272,12 +272,24 @@ impl Op {
 }
 
 /// The kind, and `_vartime` for the variable-time row.
-/// A kind of operation as a type. Its cases compile in the bench of its kind alone.
+/// Whether this bench measures `kind`: it is in the bench's `KINDS`.
+const fn measures(kind: Kind) -> bool {
+    let mut index = 0;
+    while index < crate::KINDS.len() {
+        if crate::KINDS[index] as u8 == kind as u8 {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+/// A kind of operation as a type. Its cases compile in the benches that measure its kind.
 pub trait KindOf: Copy {
     /// The kind.
     const KIND: Kind;
     /// Whether this bench measures the kind.
-    const MEASURED: bool = Self::KIND as u8 == crate::KIND as u8;
+    const MEASURED: bool = measures(Self::KIND);
 
     /// The case of this kind in the row of `timing`.
     fn in_row(self, timing: Timing) -> InRow<Self> {

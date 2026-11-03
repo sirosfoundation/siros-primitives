@@ -6,8 +6,8 @@ mod suite;
 
 use std::process::ExitCode;
 
-/// The kind of operation that this bench measures.
-const KIND: suite::Kind = suite::Kind::Add;
+/// The kinds of operation that this bench measures.
+const KINDS: &[suite::Kind] = &[suite::Kind::Add];
 
 fn main() -> ExitCode {
     bench_compare::main::<suite::BinaryField>("add")

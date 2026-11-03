@@ -5,8 +5,8 @@ mod suite;
 
 use std::process::ExitCode;
 
-/// The computation that this bench measures.
-const BASE: suite::Op = suite::Op::SubMod;
+/// The computations that this bench measures.
+const BASES: &[suite::Op] = &[suite::Op::SubMod];
 
 /// The widths that this bench measures.
 const WIDTHS: &[u32] = &suite::WIDTHS;

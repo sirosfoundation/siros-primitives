@@ -36,7 +36,7 @@ impl Suite for Biguint {
     fn ops() -> Vec<Op> {
         Op::ALL
             .into_iter()
-            .filter(|op| op.base() == crate::BASE)
+            .filter(|op| crate::BASES.contains(&op.base()))
             .collect()
     }
 
@@ -198,13 +198,26 @@ impl Op {
     }
 }
 
+/// Whether this bench measures the computation of the plain operation `op`: it is in the bench's
+/// `BASES`.
+const fn measures(op: Op) -> bool {
+    let mut index = 0;
+    while index < crate::BASES.len() {
+        if crate::BASES[index] as u8 == op as u8 {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
 /// A computation as a type: the operation of the plain table, whose constant-time operation fills
-/// the constant-time table. Its cases compile in the bench of its computation alone.
+/// the constant-time table. Its cases compile in the benches that measure it.
 pub trait Base: Copy {
     /// The operation of the plain table.
     const OP: Op;
     /// Whether this bench measures the computation.
-    const MEASURED: bool = Self::OP as u8 == crate::BASE as u8;
+    const MEASURED: bool = measures(Self::OP);
 }
 
 /// The computations, one type each.
