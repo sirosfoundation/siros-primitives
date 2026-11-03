@@ -20,6 +20,9 @@ use crate::limb::{adc, mac, sbb, select};
 use crate::params::{ExtendedLimbs, Limbs, Shape, WideLimbs};
 use crate::width::Width;
 
+/// The most limbs whose loops run one copy per limb; wider fields loop.
+const COPIED_LIMBS: usize = 16;
+
 impl<M: Modulus> Shape<M> {
     /// `a + b`.
     #[inline(always)]
@@ -141,23 +144,33 @@ impl<M: Modulus> Shape<M> {
     /// reduction rows: `-p^-1 = 1 mod 2^64` makes each row's multiplier a limb of the product.
     pub(crate) const SEPARATED: bool = Self::INV == 1;
 
-    /// Runs `body` on each limb index of an element, one copy per index in builds without debug
-    /// assertions ([`Indices`]).
+    /// Runs `body` on each limb index of an element: one copy per index in builds without debug
+    /// assertions ([`Indices`]) for fields of up to [`COPIED_LIMBS`] limbs, a loop beyond.
     #[inline(always)]
     fn each_limb(body: impl FnMut(usize)) {
-        <<M::Width as Bits>::Limbs as Indices>::each(body);
+        Self::each::<<M::Width as Bits>::Limbs>(body);
     }
 
     /// [`Self::each_limb`] over the `2 L` limbs of a full product.
     #[inline(always)]
     fn each_wide(body: impl FnMut(usize)) {
-        <<M::Width as Width>::Wide as Indices>::each(body);
+        Self::each::<<M::Width as Width>::Wide>(body);
     }
 
     /// [`Self::each_limb`] over the `L + 1` limbs of a partly folded product.
     #[inline(always)]
     fn each_extended(body: impl FnMut(usize)) {
-        <<M::Width as Width>::Extended as Indices>::each(body);
+        Self::each::<<M::Width as Width>::Extended>(body);
+    }
+
+    /// The indices below `N` as [`Self::each_limb`] runs them.
+    #[inline(always)]
+    fn each<N: Indices>(body: impl FnMut(usize)) {
+        if Self::LIMBS > COPIED_LIMBS {
+            (0..N::USIZE).for_each(body);
+        } else {
+            N::each(body);
+        }
     }
 
     // One limb.

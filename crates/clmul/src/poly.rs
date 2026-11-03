@@ -168,6 +168,20 @@ pub struct Poly<N: Width> {
     lanes: GenericArray<Lane<U128>, N::Lanes>,
 }
 
+/// The most registers whose loops run one copy per register; wider polynomials loop.
+const COPIED_LANES: usize = 8;
+
+/// Runs `body` on each register index of a `Poly<N>`: one copy per register up to
+/// [`COPIED_LANES`] in builds without debug assertions ([`Indices`]), a loop beyond.
+#[inline(always)]
+fn each_lane<N: Width>(body: impl FnMut(usize)) {
+    if N::LANES > COPIED_LANES {
+        (0..N::LANES).for_each(body);
+    } else {
+        N::Lanes::each(body);
+    }
+}
+
 /// The bits of word `word` that lie below `bits`.
 #[inline(always)]
 const fn word_mask(bits: usize, word: usize) -> u64 {
@@ -386,7 +400,7 @@ impl<N: Width> Poly<N> {
     #[must_use]
     pub fn resize<M: Width>(self) -> Poly<M> {
         let mut out = Poly::<M>::ZERO;
-        M::Lanes::each(
+        each_lane::<M>(
             #[inline(always)]
             |index| {
                 out.set(index, self.lane(index));
@@ -404,7 +418,7 @@ impl<N: Width> Poly<N> {
     #[inline(always)]
     #[must_use]
     pub fn shl_within_words(mut self, bits: u32) -> Self {
-        N::Lanes::each(
+        each_lane::<N>(
             #[inline(always)]
             |index| {
                 self.set(index, backend::shl_words(self.lane(index), bits));
@@ -425,7 +439,7 @@ impl<N: Width> Poly<N> {
     #[must_use]
     pub fn map_low_nibbles(mut self, map: NibbleMap) -> Self {
         let low = backend::register([0x0F0F_0F0F_0F0F_0F0F; 2]);
-        N::Lanes::each(
+        each_lane::<N>(
             #[inline(always)]
             |index| {
                 self.set(index, map.apply(backend::and(self.lane(index), low)));
@@ -444,7 +458,7 @@ impl<N: Width> Poly<N> {
     #[must_use]
     pub fn map_high_nibbles(mut self, map: NibbleMap) -> Self {
         let low = backend::register([0x0F0F_0F0F_0F0F_0F0F; 2]);
-        N::Lanes::each(
+        each_lane::<N>(
             #[inline(always)]
             |index| {
                 let nibbles = backend::and(backend::shr_words(self.lane(index), 4), low);
@@ -463,7 +477,7 @@ impl<N: Width> Poly<N> {
     #[inline(always)]
     #[must_use]
     pub fn shr_within_words(mut self, bits: u32) -> Self {
-        N::Lanes::each(
+        each_lane::<N>(
             #[inline(always)]
             |index| {
                 self.set(index, backend::shr_words(self.lane(index), bits));
@@ -508,10 +522,10 @@ impl<N: Width> Poly<N> {
         let mut odd = Poly::<Sum<N, M>>::ZERO;
         let (a_words, b_words) = (N::LIMBS, M::LIMBS);
         // One pass over the register pairs `(i, j)`.
-        N::Lanes::each(
+        each_lane::<N>(
             #[inline(always)]
             |i| {
-                M::Lanes::each(
+                each_lane::<M>(
                     #[inline(always)]
                     |j| {
                         let (a, b) = (self.lane(i), rhs.lane(j));
@@ -537,7 +551,7 @@ impl<N: Width> Poly<N> {
                 );
             },
         );
-        <Sum<N, M> as Width>::Lanes::each(
+        each_lane::<Sum<N, M>>(
             #[inline(always)]
             |k| {
                 let value = backend::xor(backend::up(odd.lane(k)), even.lane(k));
@@ -562,7 +576,7 @@ impl<N: Width> Poly<N> {
         Sum<N, N>: Width,
     {
         let mut out = Poly::<Sum<N, N>>::ZERO;
-        N::Lanes::each(
+        each_lane::<N>(
             #[inline(always)]
             |index| {
                 let (first, second) = backend::spread(self.lane(index));
@@ -587,7 +601,7 @@ impl<N: Width> Poly<N> {
             return if N::BITS < 64 { out.truncated() } else { out };
         }
         // Whole registers, then one word, then the bits below a word.
-        N::Lanes::each(
+        each_lane::<N>(
             #[inline(always)]
             |k| {
                 let source = |index: usize| -> Register {
@@ -637,7 +651,7 @@ impl<N: Width> Poly<N> {
             out.set(0, backend::shr_words(self.lane(0), shift));
             return out;
         }
-        N::Lanes::each(
+        each_lane::<N>(
             #[inline(always)]
             |k| {
                 let source = |index: usize| -> Register { self.lane(index + lanes) };
@@ -727,7 +741,7 @@ macro_rules! bitwise {
 
             #[inline(always)]
             fn $method(mut self, rhs: Self) -> Self {
-                N::Lanes::each(
+                each_lane::<N>(
                     #[inline(always)]
                     |index| {
                         self.set(index, $op(self.lane(index), rhs.lane(index)));
