@@ -5,13 +5,13 @@ extern crate std;
 
 use std::vec::Vec;
 
-use typenum::{U0, U1, U2, U5, U6, U16, U17, Unsigned};
+use typenum::{U0, U1, U2, U3, U5, U6, U16, U17, Unsigned};
 
-use super::sealed::Copies;
+use super::sealed::{Copies, Origin, Past};
 
 fn copies<N: Copies + Unsigned>() -> Vec<usize> {
     let mut seen = Vec::new();
-    N::copies(3, &mut |index| seen.push(index));
+    N::copies::<Past<Origin, U3>, _>(&mut |index| seen.push(index));
     seen
 }
 
