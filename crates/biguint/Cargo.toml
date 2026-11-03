@@ -34,7 +34,7 @@ ruint = { workspace = true, features = ["num-traits"] }
 serde.workspace = true
 uint.workspace = true
 
-# One bench per computation: each builds in its own LTO job, in parallel.
+# One bench per group of computations: each builds in its own LTO job, in parallel.
 [[bench]]
 name = "add"
 harness = false
@@ -44,11 +44,7 @@ name = "mul"
 harness = false
 
 [[bench]]
-name = "div"
-harness = false
-
-[[bench]]
-name = "modulo"
+name = "division"
 harness = false
 
 [[bench]]
