@@ -175,8 +175,8 @@ impl<M: Modulus> Shape<M> {
     /// Runs `body` on each index below `N`, in order. For fields of up to 16 limbs, builds without
     /// debug assertions call it at a literal index for each index below 16, where rustc inlines it
     /// at a constant, and loop past 16; wider fields and builds with debug assertions loop. The
-    /// calls stay in this crate: `biguint::Indices`, and its typed recursion copied here, measured
-    /// up to 30% more cycles.
+    /// calls stay in this crate: a typed recursion in `biguint`, or a copy of it here, measured up
+    /// to 30% more cycles.
     #[inline(always)]
     fn each<N: Unsigned>(mut body: impl FnMut(usize)) {
         let len = N::USIZE;
