@@ -13,8 +13,8 @@ panics.
   field of 31 to thousands of bits.
 - `standard`: Mersenne-31, BabyBear, Goldilocks, BN254, secp256k1, P-256, Tom-256, BLS12-381 and
   P-521, with element aliases by curve such as `standard::p256::{Base, Scalar}`.
-- Arithmetic: `+ - *` and their assigning forms, unary `-`, `double`, `square`, `invert`, `pow`
-  by a `Uint` exponent, `sqrt`, and `Sum` and `Product` over iterators.
+- Arithmetic: `+ - *` and their assigning forms, unary `-`, `double`, `square`, `invert` on a
+  `NonZero` element, `pow` by a `Uint` exponent, `sqrt`, and `Sum` and `Product` over iterators.
 - `const_add`, `const_sub`, `const_neg`, `const_double`, `const_mul` and `const_square` compute in
   const contexts.
 - Conversions: `from_u64`, `from_uint` and `to_uint`, and little- and big-endian bytes. A value at
@@ -28,9 +28,10 @@ panics.
 
 ```rust
 use prime_field::standard::secp256k1::Base as Fq;
+use prime_field::NonZero;
 
 let x = Fq::from_u64(7);
-let y = x.invert().ok_or("zero")?;
+let y = NonZero::new(x).ok_or("zero")?.invert().get();
 assert_eq!(x * y, Fq::ONE);
 assert_eq!(Fq::from_u64(4).sqrt().map(|r| r.square()), Some(Fq::from_u64(4)));
 assert_eq!([x, y].into_iter().product::<Fq>(), Fq::ONE);
@@ -46,7 +47,7 @@ assert_eq!(FORTY_NINE, Fq::from_u64(49));
 
 ```rust
 use prime_field::biguint::{typenum::U255, Uint};
-use prime_field::{Fp, Modulus};
+use prime_field::{Fp, Modulus, NonZero};
 
 /// 2^255 - 19.
 #[derive(Clone, Copy)]
@@ -62,14 +63,15 @@ impl Modulus for Curve25519Base {
     ]);
 }
 
-let two = Fp::<Curve25519Base>::from_u64(2);
-assert_eq!(two.invert().map(|half| half.double()), Some(Fp::ONE));
+let two = NonZero::new(Fp::<Curve25519Base>::from_u64(2)).ok_or("zero")?;
+assert_eq!(two.invert().get().double(), Fp::ONE);
+# Ok::<(), &str>(())
 ```
 
 ## Constant time
 
-`invert` and `sqrt` disclose whether the result exists. The time of `pow` depends on its public
-exponent.
+`nonzero` discloses whether the value is zero, and `sqrt` whether a root exists. The time of
+`pow` depends on its public exponent.
 
 ```rust
 use prime_field::standard::secp256k1::Base as Fq;
@@ -77,6 +79,10 @@ use prime_field::ConstantTime;
 
 let k = ConstantTime::new(Fq::from_u64(7));
 assert_eq!((k * Fq::from_u64(2) + k.square()).reveal(), Fq::from_u64(63));
+
+let inverse = k.nonzero().ok_or("zero")?.invert();
+assert_eq!(inverse.reveal().get() * Fq::from_u64(7), Fq::ONE);
+# Ok::<(), &str>(())
 ```
 
 ## License

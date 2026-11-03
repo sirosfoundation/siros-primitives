@@ -39,7 +39,7 @@ pub use generic_array;
 /// The type-level integers that name degrees.
 pub use typenum;
 
-pub use biguint::ConstantTime;
+pub use biguint::{ConstantTime, NonZero};
 pub use biguint::{Exponent, One, Pow, Square, Uint};
 pub use element::{Bytes, Gf2, Limbs};
 pub use error::OutOfField;

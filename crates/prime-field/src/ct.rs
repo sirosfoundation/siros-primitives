@@ -3,9 +3,9 @@
 
 use core::ops::{Add, Mul, Sub};
 
-use biguint::{Bits, Uint};
+use biguint::{Bits, NonZero, Uint};
 use constant_time::{
-    ConstantTime, CtAdd, CtInvert, CtMul, CtNeg, CtPow, CtSqrt, CtSquare, CtSub, Public,
+    ConstantTime, CtAdd, CtMul, CtNeg, CtNonZero, CtPow, CtSqrt, CtSquare, CtSub, Public,
 };
 
 use crate::field::{Fp, Modulus};
@@ -66,11 +66,13 @@ impl<M: Modulus, E: Bits> CtPow<Uint<E>> for Fp<M> {
     }
 }
 
-/// `self^-1`, or `None` for `0`.
-impl<M: Modulus> CtInvert for Fp<M> {
+/// The element, or `None` for `0`.
+impl<M: Modulus> CtNonZero for Fp<M> {
+    type NonZero = NonZero<Self>;
+
     #[inline(always)]
-    fn ct_invert(self) -> Option<Self> {
-        self.invert_ct()
+    fn ct_nonzero(self) -> Option<NonZero<Self>> {
+        NonZero::ct_new(self)
     }
 }
 

@@ -19,5 +19,5 @@ It runs every operation under Valgrind's memcheck with the wrapped operands mark
 - "Use of uninitialised value of size 8": a memory address computed from a wrapped value.
 
 A new `ConstantTime` operation gets a line in `src/operations.rs`. A fact an operation must
-disclose, such as whether an inverse exists, goes through its crate's `declassify`, which
-`memcheck.supp` exempts.
+disclose, such as whether an inverse exists, goes through `constant_time::declassify`,
+which `memcheck.supp` exempts.

@@ -4,7 +4,7 @@
 //! bit, `p = 1 mod 4` and `p = 3 mod 4`, one and nine limbs.
 
 use biguint::typenum::{U7, U127, U256};
-use biguint::{Bits, Uint};
+use biguint::{Bits, NonZero, Uint};
 use num_bigint::BigUint;
 use prime_field::standard::{
     BabyBear, Bls12381Base, Bn254Scalar, Goldilocks, Mersenne31, P256Base, P256Scalar, P521Base,
@@ -232,14 +232,14 @@ fn check<M: Modulus>(rng: &mut Rng) {
             &power,
             &[x.pow(exponent), s.pow(exponent).reveal()],
         );
-        let inverse = if *a == BigUint::ZERO {
-            None
-        } else {
-            Some(a.modpow(&(&p - 2u8), &p))
-        };
-        assert_eq!(x.invert().map(value), inverse, "invert of {a}");
+        let inverse = (*a != BigUint::ZERO).then(|| a.modpow(&(&p - 2u8), &p));
         assert_eq!(
-            s.invert().map(|inverse| value(inverse.reveal())),
+            NonZero::new(x).map(|x| value(x.invert().get())),
+            inverse,
+            "invert of {a}"
+        );
+        assert_eq!(
+            s.nonzero().map(|s| value(s.invert().reveal().get())),
             inverse,
             "secret invert of {a}"
         );

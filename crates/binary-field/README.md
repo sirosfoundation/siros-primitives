@@ -13,8 +13,8 @@ Binary fields GF(2^n) of any degree, declared by their polynomial, in pure Rust:
   its taps are checked at compile time.
 - Standard fields: `Gf2p8` (AES), `Gf2p16`, `Gf2p64`, `Gf2p128` (GCM), `Gf2p233` (B-233),
   `Gf2p256` and `Gf2p571` (B-571).
-- Arithmetic: `+ - *` and their assigning forms, `square`, `invert`, `pow` by an exponent of any
-  width, `sqrt`, `trace`, `times_x` and `over_x`.
+- Arithmetic: `+ - *` and their assigning forms, `square`, `invert` on a `NonZero` element, `pow`
+  by an exponent of any width, `sqrt`, `trace`, `times_x` and `over_x`.
 - Conversions: `u64`, `u128`, limbs, `biguint::Uint`, `clmul::Poly`, and little- and big-endian
   bytes. `Gf2p128` also converts GCM and POLYVAL blocks. A bit at or above the degree is refused
   with `OutOfField`.
@@ -29,11 +29,11 @@ Binary fields GF(2^n) of any degree, declared by their polynomial, in pure Rust:
 ## Usage
 
 ```rust
-use binary_field::{Gf2p8, Gf2p128};
+use binary_field::{Gf2p8, Gf2p128, NonZero};
 
 // FIPS 197: {53}^-1 = {CA} in the field of AES.
 let a = Gf2p8::from_u64(0x53)?;
-assert_eq!(a.invert(), Some(Gf2p8::from_u64(0xCA)?));
+assert_eq!(NonZero::new(a).map(|a| a.invert().get()), Some(Gf2p8::from_u64(0xCA)?));
 
 // GHASH: the product of two GCM blocks.
 let h = Gf2p128::from_gcm_block(*b"\x66\xe9\x4b\xd4\xef\x8a\x2c\x3b\x88\x4c\xfa\x59\xca\x34\x2b\x2e");
@@ -68,7 +68,7 @@ assert_eq!(x.pow(163u32), Gf2::<B163>::from_u64(0b1100_1001)?);
 
 ## Constant time
 
-`invert` discloses whether the input is zero.
+`nonzero` discloses whether the value is zero.
 
 ```rust
 use binary_field::{ConstantTime, Gf2p128};

@@ -1,6 +1,7 @@
 //! Oracles independent of the crate: a bit-serial multiply-and-reduce over limb vectors, the field
 //! axioms, and published test vectors.
 
+use binary_field::biguint::NonZero;
 use binary_field::generic_array::GenericArray;
 use binary_field::typenum::{U8, U16, U17, U41, U64, U127, U128, U163};
 use binary_field::{
@@ -112,11 +113,9 @@ fn check_field<P: Polynomial>(rounds: usize) {
             (a + b).sqrt(),
             "sqrt is additive at degree {degree}"
         );
-        if a.is_zero() {
-            assert_eq!(a.invert(), None);
-        } else {
+        if let Some(nonzero) = NonZero::new(a) {
             assert_eq!(
-                a * a.invert().unwrap(),
+                a * nonzero.invert().get(),
                 Gf2::<P>::ONE,
                 "inverse at degree {degree}"
             );
@@ -149,8 +148,10 @@ fn check_field<P: Polynomial>(rounds: usize) {
         degree % 2 == 1,
         "trace of 1 at degree {degree}"
     );
-    assert_eq!(Gf2::<P>::ZERO.invert(), None);
-    assert_eq!(Gf2::<P>::ONE.invert(), Some(Gf2::<P>::ONE));
+    assert_eq!(NonZero::new(Gf2::<P>::ZERO), None);
+    assert!(ConstantTime::new(Gf2::<P>::ZERO).nonzero().is_none());
+    let one = NonZero::new(Gf2::<P>::ONE);
+    assert_eq!(one.map(NonZero::invert), one);
 }
 
 /// The operations of `ConstantTime`, which run other algorithms than the defaults of `Gf2` for the
@@ -182,8 +183,8 @@ fn check_secret<P: Polynomial>(a: Gf2<P>, b: Gf2<P>) {
         "secret sqrt at degree {degree}"
     );
     assert_eq!(
-        x.invert().map(ConstantTime::reveal),
-        a.invert(),
+        x.nonzero().map(|x| x.invert().reveal()),
+        NonZero::new(a).map(NonZero::invert),
         "secret inverse at degree {degree}"
     );
 }
@@ -240,7 +241,10 @@ fn x_to_the_degree_is_r() {
 #[test]
 fn aes_inverses_match_the_table() {
     // FIPS 197, section 4.2 and the S-box: {53}^-1 = {CA}; {02}^-1 = {8D}.
-    let inverse = |value: u64| Gf2p8::from_u64(value).unwrap().invert().unwrap();
+    let inverse = |value: u64| {
+        let element = NonZero::new(Gf2p8::from_u64(value).unwrap()).unwrap();
+        element.invert().get()
+    };
     assert_eq!(inverse(0x53), Gf2p8::from_u64(0xCA).unwrap());
     assert_eq!(inverse(0x02), Gf2p8::from_u64(0x8D).unwrap());
     assert_eq!(inverse(0x01), Gf2p8::ONE);

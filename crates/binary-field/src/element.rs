@@ -210,17 +210,6 @@ impl<P: Polynomial> Gf2<P> {
         Self::from_limbs_masked(limbs, &Self::X_INVERSE, constant)
     }
 
-    /// The multiplicative inverse, or `None` for `0`.
-    #[inline(always)]
-    #[must_use]
-    pub fn invert(self) -> Option<Self> {
-        if self.is_zero() {
-            None
-        } else {
-            Some(Self::of(Field::<P>::invert(self.value)))
-        }
-    }
-
     /// The square root. Every element of a field of characteristic 2 has exactly one.
     #[inline(always)]
     #[must_use]
@@ -335,6 +324,31 @@ impl<P: Polynomial> From<Gf2<P>> for Uint<P::Degree> {
     #[inline(always)]
     fn from(element: Gf2<P>) -> Self {
         element.into_uint()
+    }
+}
+
+impl<P: Polynomial> biguint::Field for Gf2<P> {
+    #[inline(always)]
+    fn invert_nonzero(self) -> Self {
+        Self::of(Field::<P>::invert(self.value))
+    }
+
+    #[inline(always)]
+    fn ct_invert_nonzero(self) -> Self {
+        Self::of(Field::<P>::ct_invert(self.value))
+    }
+}
+
+/// `is_zero` runs in time independent of the value.
+impl<P: Polynomial> num_traits::Zero for Gf2<P> {
+    #[inline(always)]
+    fn zero() -> Self {
+        Self::ZERO
+    }
+
+    #[inline(always)]
+    fn is_zero(&self) -> bool {
+        Storage::is_zero(self.value)
     }
 }
 

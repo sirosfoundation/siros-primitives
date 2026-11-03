@@ -67,15 +67,24 @@ impl<T> ConstantTime<T> {
         Self(self.0.ct_pow(exponent))
     }
 
-    /// The multiplicative inverse, or `None` when it does not exist. Only the `Option` depends on
-    /// the value.
+    /// The multiplicative inverse.
     #[inline(always)]
     #[must_use]
-    pub fn invert(self) -> Option<Self>
+    pub fn invert(self) -> Self
     where
         T: CtInvert,
     {
-        self.0.ct_invert().map(Self)
+        Self(self.0.ct_invert())
+    }
+
+    /// The value as its nonzero type, or `None` for zero. Discloses only whether the value is zero.
+    #[inline(always)]
+    #[must_use]
+    pub fn nonzero(self) -> Option<ConstantTime<T::NonZero>>
+    where
+        T: CtNonZero,
+    {
+        self.0.ct_nonzero().map(ConstantTime)
     }
 
     /// A square root, in the form that [`CtSqrt::Root`] names.
@@ -268,12 +277,31 @@ pub trait CtPow<E> {
     fn ct_pow(self, exponent: E) -> Self;
 }
 
-/// The multiplicative inverse, in time that depends on no value of `self`. Only the `Option`
-/// depends on the value.
-pub trait CtInvert: Sized {
-    /// The inverse, or `None` when it does not exist.
+/// The multiplicative inverse, in time that depends on no value of `self`.
+pub trait CtInvert {
+    /// The inverse.
     #[must_use]
-    fn ct_invert(self) -> Option<Self>;
+    fn ct_invert(self) -> Self;
+}
+
+/// The value as its nonzero type, in time that depends on no value of `self`. Only the `Option`
+/// depends on the value: it discloses whether the value is zero.
+pub trait CtNonZero: Sized {
+    /// The type of the nonzero values.
+    type NonZero;
+
+    /// The value, or `None` for zero.
+    #[must_use]
+    fn ct_nonzero(self) -> Option<Self::NonZero>;
+}
+
+/// `Some(value)` when `some`, else `None`: the one branch of a constant-time operation that may
+/// depend on a value, which the `Option` it builds discloses. The function keeps a symbol of its
+/// own, by which the constant-time check of `ct-check` exempts that branch.
+#[inline(never)]
+#[must_use]
+pub fn declassify<T>(some: bool, value: T) -> Option<T> {
+    if some { Some(value) } else { None }
 }
 
 /// A square root, in time that depends on no value of `self`.

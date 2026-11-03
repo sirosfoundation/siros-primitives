@@ -14,11 +14,12 @@ no dependencies, no `unsafe`, no allocation.
   Widths, moduli, divisors, shift amounts and public operands may steer the time.
 - Operators: `+ - * & | ^` and their assigning forms, unary `-`, `!`, and `<<` and `>>` by a
   public amount, between two wrapped values or with a `Public` value on either side.
-- Methods, with nothing to import: `square`, `double`, `pow`, `invert`, `sqrt`, `add_mod`,
-  `sub_mod`, `neg_mod`, `mul_mod`, `div_rem` and `get`.
+- Methods, with nothing to import: `square`, `double`, `pow`, `invert`, `sqrt`, `nonzero`,
+  `add_mod`, `sub_mod`, `neg_mod`, `mul_mod`, `div_rem` and `get`.
 - `From` wraps every `Public` value that converts into `T`.
-- No comparison and no formatting. A value leaves only through `reveal`, and through whether
-  `invert`, or a `sqrt` that returns an `Option`, found a result.
+- No comparison and no formatting. A value leaves only through `reveal`, through whether `nonzero`
+  found a nonzero value, and through whether a `sqrt` that returns an `Option` found a root.
+- `declassify`: the one place an implementation discloses a fact, as an `Option`.
 - `biguint`, `prime-field` and `binary-field` implement it for their types and re-export it.
 
 ## Wrapping your own type
@@ -60,6 +61,7 @@ assert_eq!(sum.reveal().0, 88);
 | `square`, `pow`, `invert`, `sqrt` | `CtSquare`, `CtPow`, `CtInvert`, `CtSqrt` |
 | `double` | `CtAdd` |
 | `add_mod`, `sub_mod`, `neg_mod`, `mul_mod` | `CtAddMod`, `CtSubMod`, `CtNegMod`, `CtMulMod` |
+| `nonzero` | `CtNonZero` |
 | `get` | `CtGet` |
 
 ## License

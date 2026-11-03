@@ -632,8 +632,8 @@ impl<P: Polynomial> Field<P> {
         }
     }
 
-    /// The inverse of a nonzero `a`, and `0` for `0`, the default: the table of inverses, or the
-    /// field's chain with the tables of its Frobenius powers.
+    /// The inverse of a nonzero `a`, the default: the table of inverses, or the field's chain with
+    /// the tables of its Frobenius powers.
     #[inline(always)]
     pub(crate) fn invert(a: Element<P>) -> Element<P> {
         if Plan::<P>::ELEMENT_TABLES {
@@ -645,8 +645,8 @@ impl<P: Polynomial> Field<P> {
         }
     }
 
-    /// The inverse of a nonzero `a`, and `0` for `0`, in constant time: `a^(2^n - 2)` along the
-    /// field's chain, with squarings or the constant-time maps of the Frobenius powers.
+    /// The inverse of a nonzero `a` in constant time: `a^(2^n - 2)` along the field's chain, with
+    /// squarings or the constant-time maps of the Frobenius powers.
     #[inline(always)]
     pub(crate) fn ct_invert(a: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {

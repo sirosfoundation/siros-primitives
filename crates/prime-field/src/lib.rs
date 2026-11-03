@@ -30,6 +30,6 @@ mod width;
 /// The integers that elements convert from and to.
 pub use biguint;
 
-pub use biguint::ConstantTime;
+pub use biguint::{ConstantTime, NonZero};
 pub use field::{Fp, Modulus, NotCanonical};
 pub use width::Width;
