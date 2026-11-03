@@ -2,6 +2,7 @@
 //! (Itoh and Tsujii, 1988).
 
 use biguint::Indices;
+use biguint::typenum::{U4, U8, U12, U16};
 
 use crate::chain::{Chains, MAX_STEPS, MaxSteps};
 use crate::plan::{Plan, Polynomial};
@@ -39,9 +40,26 @@ pub(crate) fn inverse<P: Polynomial, O: Inversion>(a: O::Value) -> O::Value {
         return binary::<P, O>(a);
     };
     let mut values = [a; MAX_STEPS + 1];
-    // One copy per step in builds without debug assertions: the values stay in registers, and
-    // each step's power is a constant.
-    MaxSteps::each(
+    match Chains::<P>::COPIES {
+        4 => steps::<U4, P, O>(&mut values, len),
+        8 => steps::<U8, P, O>(&mut values, len),
+        12 => steps::<U12, P, O>(&mut values, len),
+        16 => steps::<U16, P, O>(&mut values, len),
+        _ => steps::<MaxSteps, P, O>(&mut values, len),
+    }
+    let top = values.get(len).copied().unwrap_or(a);
+    O::frobenius(top, SQUARING, 1)
+}
+
+/// The `len` steps of the chain of the field with the polynomial `P` over `values`, one copy per
+/// index below `N` in builds without debug assertions: the values stay in registers, and each
+/// step's power is a constant.
+#[inline(always)]
+fn steps<N: Indices, P: Polynomial, O: Inversion>(
+    values: &mut [O::Value; MAX_STEPS + 1],
+    len: usize,
+) {
+    N::each(
         #[inline(always)]
         |index| {
             if index < len
@@ -54,8 +72,6 @@ pub(crate) fn inverse<P: Polynomial, O: Inversion>(a: O::Value) -> O::Value {
             }
         },
     );
-    let top = values.get(len).copied().unwrap_or(a);
-    O::frobenius(top, SQUARING, 1)
 }
 
 /// `a^(2^n - 2)` along the bits of `n - 1`, for degrees whose chain is longer than [`MaxSteps`]
