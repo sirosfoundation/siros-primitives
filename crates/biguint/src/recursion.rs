@@ -62,29 +62,6 @@ pub(crate) struct Level<D>(PhantomData<D>);
 /// eight times their thresholds.
 pub(crate) type Halvings = Level<Level<Level<Bottom>>>;
 
-/// The fewest limbs whose products and divisions run as ordinary calls: from there an operation
-/// costs hundreds of cycles, against a few for the call, and its copy at every call site costs
-/// more compile time than the call costs at run time.
-pub(crate) const CALLED_LIMBS: usize = 32;
-
-/// Runs `body`, inlined below [`CALLED_LIMBS`] limbs and as a call of [`called`] from there.
-/// `body` captures its operands by value, so their lengths stay constants in the call.
-#[inline(always)]
-pub(crate) fn by_width<R>(limbs: usize, body: impl FnOnce() -> R) -> R {
-    if limbs >= CALLED_LIMBS {
-        called(body)
-    } else {
-        body()
-    }
-}
-
-/// `body()` as an ordinary function, one per caller of [`by_width`] and width: LLVM inlines it
-/// where it judges the copy worth its size.
-#[inline]
-fn called<R>(body: impl FnOnce() -> R) -> R {
-    body()
-}
-
 impl Depth for Bottom {
     const LEVELS: usize = 0;
 

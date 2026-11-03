@@ -27,7 +27,7 @@ use crate::kernel::{
 };
 use crate::mul::WideningMul;
 use crate::nonzero::{NonZeroUint, significant_len};
-use crate::recursion::{Halvings, by_width};
+use crate::recursion::Halvings;
 use crate::stream::{LimbSource, ShlBits, ZeroExtended, funnel_left, funnel_right};
 use crate::uint::Uint;
 use reciprocal::{NormalizedLimb, Reciprocal, Reciprocal3By2, join};
@@ -38,16 +38,9 @@ impl<N: Bits> Uint<N> {
     #[inline(always)]
     #[must_use]
     pub fn div_rem<M: Bits>(self, divisor: NonZeroUint<M>) -> (Self, Uint<M>) {
-        by_width(
-            M::LIMBS,
-            #[inline(always)]
-            move || {
-                let mut quotient = GenericArray::<u64, N::Limbs>::default();
-                let remainder =
-                    divide::<N::Window, M>(&self.limbs, divisor, Top::Any, &mut quotient);
-                (Uint::from_generic_limbs(quotient), remainder)
-            },
-        )
+        let mut quotient = GenericArray::<u64, N::Limbs>::default();
+        let remainder = divide::<N::Window, M>(&self.limbs, divisor, Top::Any, &mut quotient);
+        (Uint::from_generic_limbs(quotient), remainder)
     }
 
     /// `(self / divisor, self % divisor)`, or `None` when `divisor` is zero. The divisor may be of
@@ -94,14 +87,8 @@ impl<N: Bits> Uint<N> {
         } else {
             Top::Any
         };
-        by_width(
-            N::LIMBS.max(ModN::LIMBS),
-            #[inline(always)]
-            move || {
-                let product = self.widening_mul(rhs);
-                divide::<Window<N, RhsN>, ModN>(&product.limbs, modulus, top, &mut DiscardQuotient)
-            },
-        )
+        let product = self.widening_mul(rhs);
+        divide::<Window<N, RhsN>, ModN>(&product.limbs, modulus, top, &mut DiscardQuotient)
     }
 
     /// `(self * rhs) mod modulus`, or `None` when `modulus` is zero. The operands may be of any
@@ -150,11 +137,7 @@ impl<N: Bits, M: Bits> Rem<NonZeroUint<M>> for Uint<N> {
 
     #[inline(always)]
     fn rem(self, divisor: NonZeroUint<M>) -> Self::Output {
-        by_width(
-            M::LIMBS,
-            #[inline(always)]
-            move || divide::<N::Window, M>(&self.limbs, divisor, Top::Any, &mut DiscardQuotient),
-        )
+        divide::<N::Window, M>(&self.limbs, divisor, Top::Any, &mut DiscardQuotient)
     }
 }
 
