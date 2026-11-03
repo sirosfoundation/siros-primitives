@@ -1,9 +1,5 @@
 # bench-compare
 
-Compares a crate's operations with other crates in user-mode CPU cycles per operation and writes
-the crate's `BENCHMARKS.md`. Needs Linux with `kernel.perf_event_paranoid` at 2 or below.
-
-
 Measures the operations of several crates side by side with the CPU's cycle counter, and writes
 the comparison tables of a `BENCHMARKS.md`. Runs on Linux with access to user-mode `perf_event`
 counters.
