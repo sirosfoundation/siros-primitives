@@ -51,6 +51,7 @@ pub use typenum;
 
 pub use bits::{Bits, Bits8, Bits16, Bits32, Bits64, Bits128, Bits256, Bits384, Bits512};
 pub use convert::OutOfRange;
+#[doc(hidden)]
 pub use indices::Indices;
 pub use modulus::{ConstantTimeResidue, Modulus, NotReduced, Residue, Ring};
 pub use mul::WideningMul;

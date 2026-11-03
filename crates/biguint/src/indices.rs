@@ -2,7 +2,8 @@
 
 use typenum::{Bit, UInt, UTerm, Unsigned};
 
-/// A `typenum` length whose [`each`](Indices::each) runs a body on every index below it.
+/// A `typenum` length whose [`each`](Indices::each) runs a body on every index below it: an
+/// internal helper that `prime-field`, `clmul` and `binary-field` share, outside the public API.
 ///
 /// Builds without debug assertions run one copy of the body per index, by recursion over the
 /// binary digits of the length. Every index is then a constant: limbs stay in registers, and a
@@ -10,6 +11,7 @@ use typenum::{Bit, UInt, UTerm, Unsigned};
 /// assertions run a loop, which keeps their code and their frames small.
 ///
 /// Every `typenum` unsigned integer implements it.
+#[doc(hidden)]
 pub trait Indices: Unsigned + sealed::Copies {
     /// Runs `body` on each index of `0..Self::USIZE`, in order. Mark a closure that is long or
     /// that captures much `#[inline(always)]`: its copies inline only then.
