@@ -9,7 +9,7 @@ use core::ops::{
 
 use biguint::generic_array::{ArrayLength, GenericArray};
 use biguint::typenum::{Quot, Sum, U1, U127, U128, Unsigned};
-use biguint::{Bits, Indices, OutOfRange, Uint};
+use biguint::{Bits, OutOfRange, Uint};
 use const_default::ConstDefault;
 
 use crate::backend::{self, Register};
@@ -127,7 +127,7 @@ where
     <Self::Lanes as ArrayLength>::ArrayType<Lane<U128>>: Copy + ConstDefault,
 {
     /// `ceil(N / 128)`.
-    type Lanes: ArrayLength + Indices;
+    type Lanes: ArrayLength;
 
     /// `ceil(N / 128)`.
     const LANES: usize;
@@ -137,7 +137,7 @@ impl<N> Width for N
 where
     N: Bits + Add<U127>,
     Sum<N, U127>: Div<U128>,
-    Quot<Sum<N, U127>, U128>: ArrayLength + Indices,
+    Quot<Sum<N, U127>, U128>: ArrayLength,
     <Quot<Sum<N, U127>, U128> as ArrayLength>::ArrayType<Lane<U128>>: Copy + ConstDefault,
 {
     type Lanes = Quot<Sum<N, U127>, U128>;
@@ -168,19 +168,27 @@ pub struct Poly<N: Width> {
     lanes: GenericArray<Lane<U128>, N::Lanes>,
 }
 
-/// The most registers whose loops run one copy per register; wider polynomials loop.
-const COPIED_LANES: usize = 4;
-
-/// Runs `body` on each register index of a `Poly<N>`: one copy per register up to
-/// [`COPIED_LANES`] in builds without debug assertions ([`Indices`]), a loop beyond.
+/// Runs `body` on each register index of a `Poly<N>`, in order. Builds without debug assertions
+/// run one call per register up to 4 registers, each with a literal index, so that every index is
+/// a constant; wider polynomials and debug builds loop.
 #[inline(always)]
 fn each_lane<N: Width>(mut body: impl FnMut(usize)) {
-    if N::LANES > COPIED_LANES {
-        for index in 0..N::LANES {
+    let lanes = N::LANES;
+    if cfg!(debug_assertions) || lanes > 4 {
+        for index in 0..lanes {
             body(index);
         }
     } else {
-        N::Lanes::each(body);
+        body(0);
+        if lanes > 1 {
+            body(1);
+        }
+        if lanes > 2 {
+            body(2);
+        }
+        if lanes > 3 {
+            body(3);
+        }
     }
 }
 

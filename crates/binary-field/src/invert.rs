@@ -1,10 +1,7 @@
 //! Inversion: `a^(2^n - 2) = (a^(2^(n-1) - 1))^2` along the field's addition chain for `n - 1`
 //! (Itoh and Tsujii, 1988).
 
-use biguint::Indices;
-use biguint::typenum::{U4, U8, U12, U16};
-
-use crate::chain::{Chains, MAX_STEPS, MaxSteps};
+use crate::chain::{Chains, MAX_STEPS};
 use crate::plan::{Plan, Polynomial};
 
 /// `Some(inverse)` when `invertible`, else `None`. The `Option` discloses `invertible`, so the
@@ -40,41 +37,109 @@ pub(crate) fn inverse<P: Polynomial, O: Inversion>(a: O::Value) -> O::Value {
         return binary::<P, O>(a);
     };
     let mut values = [a; MAX_STEPS + 1];
-    match Chains::<P>::COPIES {
-        4 => steps::<U4, P, O>(&mut values, len),
-        8 => steps::<U8, P, O>(&mut values, len),
-        12 => steps::<U12, P, O>(&mut values, len),
-        16 => steps::<U16, P, O>(&mut values, len),
-        _ => steps::<MaxSteps, P, O>(&mut values, len),
-    }
+    steps::<P, O>(&mut values, len);
     let top = values.get(len).copied().unwrap_or(a);
     O::frobenius(top, SQUARING, 1)
 }
 
-/// The `len` steps of the chain of the field with the polynomial `P` over `values`, one copy per
-/// index below `N` in builds without debug assertions: the values stay in registers, and each
-/// step's power is a constant.
+/// The `len` steps of the chain of the field with the polynomial `P` over `values`. Builds without
+/// debug assertions run one call per step, each with a literal index: the values stay in
+/// registers, and each step's power is a constant. Debug builds loop.
 #[inline(always)]
-fn steps<N: Indices, P: Polynomial, O: Inversion>(
-    values: &mut [O::Value; MAX_STEPS + 1],
-    len: usize,
-) {
-    N::each(
-        #[inline(always)]
-        |index| {
-            if index < len
-                && let Some(step) = Chains::<P>::CHAIN.steps.get(index)
-                && let (Some(&raised), Some(&kept)) =
-                    (values.get(step.raised), values.get(step.kept))
-                && let Some(slot) = values.get_mut(index + 1)
-            {
-                *slot = O::mul(O::frobenius(raised, index, step.power), kept);
-            }
-        },
-    );
+fn steps<P: Polynomial, O: Inversion>(values: &mut [O::Value; MAX_STEPS + 1], len: usize) {
+    if cfg!(debug_assertions) {
+        for index in 0..len {
+            step::<P, O>(values, index);
+        }
+        return;
+    }
+    // One call per index below `MAX_STEPS`.
+    if len > 0 {
+        step::<P, O>(values, 0);
+    }
+    if len > 1 {
+        step::<P, O>(values, 1);
+    }
+    if len > 2 {
+        step::<P, O>(values, 2);
+    }
+    if len > 3 {
+        step::<P, O>(values, 3);
+    }
+    if len > 4 {
+        step::<P, O>(values, 4);
+    }
+    if len > 5 {
+        step::<P, O>(values, 5);
+    }
+    if len > 6 {
+        step::<P, O>(values, 6);
+    }
+    if len > 7 {
+        step::<P, O>(values, 7);
+    }
+    if len > 8 {
+        step::<P, O>(values, 8);
+    }
+    if len > 9 {
+        step::<P, O>(values, 9);
+    }
+    if len > 10 {
+        step::<P, O>(values, 10);
+    }
+    if len > 11 {
+        step::<P, O>(values, 11);
+    }
+    if len > 12 {
+        step::<P, O>(values, 12);
+    }
+    if len > 13 {
+        step::<P, O>(values, 13);
+    }
+    if len > 14 {
+        step::<P, O>(values, 14);
+    }
+    if len > 15 {
+        step::<P, O>(values, 15);
+    }
+    if len > 16 {
+        step::<P, O>(values, 16);
+    }
+    if len > 17 {
+        step::<P, O>(values, 17);
+    }
+    if len > 18 {
+        step::<P, O>(values, 18);
+    }
+    if len > 19 {
+        step::<P, O>(values, 19);
+    }
+    if len > 20 {
+        step::<P, O>(values, 20);
+    }
+    if len > 21 {
+        step::<P, O>(values, 21);
+    }
+    if len > 22 {
+        step::<P, O>(values, 22);
+    }
+    if len > 23 {
+        step::<P, O>(values, 23);
+    }
 }
 
-/// `a^(2^n - 2)` along the bits of `n - 1`, for degrees whose chain is longer than [`MaxSteps`]
+/// Step `index` of the chain of the field with the polynomial `P` over `values`.
+#[inline(always)]
+fn step<P: Polynomial, O: Inversion>(values: &mut [O::Value; MAX_STEPS + 1], index: usize) {
+    if let Some(step) = Chains::<P>::CHAIN.steps.get(index)
+        && let (Some(&raised), Some(&kept)) = (values.get(step.raised), values.get(step.kept))
+        && let Some(slot) = values.get_mut(index + 1)
+    {
+        *slot = O::mul(O::frobenius(raised, index, step.power), kept);
+    }
+}
+
+/// `a^(2^n - 2)` along the bits of `n - 1`, for degrees whose chain is longer than [`MAX_STEPS`]
 /// steps: a doubling of `k` costs the Frobenius power `2^k` and one product, an increment one
 /// squaring and one product.
 #[inline(always)]
