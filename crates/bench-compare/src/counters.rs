@@ -73,10 +73,10 @@ mod linux {
 
         /// The value of `region` and the events that it counts. A region during which the
         /// kernel shared the counters with other groups is a [`Error::Multiplexed`].
-        pub(crate) fn count<T>(
+        pub(crate) fn count(
             &mut self,
-            region: impl FnOnce() -> T,
-        ) -> Result<(T, Counts), Error> {
+            region: &mut dyn FnMut() -> usize,
+        ) -> Result<(usize, Counts), Error> {
             let failure = |source: io::Error| Error::Counters { source };
             self.group.reset().map_err(failure)?;
             self.group.enable().map_err(failure)?;
@@ -131,10 +131,10 @@ mod other {
             Err(Error::NoPerfEvent)
         }
 
-        pub(crate) fn count<T>(
+        pub(crate) fn count(
             &mut self,
-            _region: impl FnOnce() -> T,
-        ) -> Result<(T, Counts), Error> {
+            _region: &mut dyn FnMut() -> usize,
+        ) -> Result<(usize, Counts), Error> {
             match *self {}
         }
     }

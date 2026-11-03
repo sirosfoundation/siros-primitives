@@ -6,8 +6,13 @@ counters.
 
 ## Features
 
-- `Suite`: what a crate's `compare` bench measures: its operations, its rows, the operand sets with
-  their accepted results, and one adapter per compared crate.
+- `Suite`: what a bench measures: its operations, its rows, the operand sets with their accepted
+  results, and one adapter per compared crate. A comparison splits over several bench binaries, one
+  per group of operations, that build in parallel. Operations whose cases call one crate function
+  belong in one group: LLVM decides the inlining of that function from all its callers, and a
+  split moves the code of the measured loops.
+- `Selected`: the operation of a case as a type, with whether the bench measures it as a constant.
+  A case of an operation that the bench leaves out compiles to nothing.
 - `Row::lib` offers one crate's cells:
   - `Cells::api` measures throughput, and `Cells::chain` throughput and the latency of
     `x = op(x, y)`;
@@ -22,17 +27,31 @@ counters.
 
 ## Usage
 
-A crate's `compare` bench declares a `Suite`:
+A bench declares a `Suite` and the operations that it measures:
 
 ```rust,no_run
-use bench_compare::{BATCH, Limbs, Rng, Row, Sample, Suite, Visitor, trim};
+use bench_compare::{BATCH, Limbs, Rng, Row, Sample, Selected, Suite, Visitor, trim};
 
 struct Add;
+
+/// The operation `add` as a type.
+struct AddOp;
+
+impl Selected<&'static str> for AddOp {
+    const MEASURED: bool = true;
+
+    fn op(&self) -> &'static str {
+        "add"
+    }
+}
 
 impl Suite for Add {
     type Op = &'static str;
     type Key = u32;
-    const OPS: &'static [&'static str] = &["add"];
+
+    fn ops() -> Vec<&'static str> {
+        vec!["add"]
+    }
 
     fn keys() -> Vec<u32> {
         vec![64]
@@ -58,7 +77,7 @@ impl Suite for Add {
     ) -> Row<&'static str, u32, V> {
         row.lib("core", |cells| {
             cells.chain(
-                "add",
+                AddOp,
                 "wrapping_add",
                 |set| (set[0][0], set[1][0]),
                 |&(a, b): &(u64, u64)| a.wrapping_add(b),
@@ -69,7 +88,7 @@ impl Suite for Add {
 }
 
 fn main() -> std::process::ExitCode {
-    bench_compare::main::<Add>("compare")
+    bench_compare::main::<Add>("add")
 }
 ```
 
@@ -81,7 +100,7 @@ use bench_compare::{Layout, Measured, NATIVE, Operation, Paths, sentence};
 
 const MEASURED: Measured = Measured {
     package: "biguint",
-    bench: "compare",
+    benches: &["add", "mul"],
     sources: "crates/biguint/src",
     pathspecs: &["Cargo.toml", "Cargo.lock", "crates/biguint", "crates/bench-compare"],
     versions: &["ruint"],

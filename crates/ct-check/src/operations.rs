@@ -1,5 +1,5 @@
 //! The checked operations of `ConstantTime`: over `Uint` and its residues at 64, 256, 521 and 4096
-//! bits under an odd and an even modulus, and over the fields of the `compare` benches of
+//! bits under an odd and an even modulus, and over the fields of the comparison benches of
 //! `prime-field` and `binary-field`. Each runs once through [`run_batch`], which keeps a symbol of
 //! its own for every operation and hides the address of the operands and of the result from the
 //! compiler. Only the wrapped operands are marked undefined.
@@ -69,7 +69,7 @@ const INTEGERS: [Check; 4] = [
     integers::<U4096>,
 ];
 
-/// The fields of the `compare` bench of `prime-field`.
+/// The fields of the comparison benches of `prime-field`.
 const PRIME_FIELDS: [Check; 10] = [
     prime::<Mersenne31>,
     prime::<BabyBear>,
@@ -83,7 +83,7 @@ const PRIME_FIELDS: [Check; 10] = [
     prime::<P521Base>,
 ];
 
-/// The fields of the `compare` bench of `binary-field`.
+/// The fields of the comparison benches of `binary-field`.
 const BINARY_FIELDS: [Check; 7] = [
     binary::<Aes>,
     binary::<Poly16>,

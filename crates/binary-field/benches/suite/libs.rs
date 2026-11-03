@@ -9,7 +9,7 @@
 
 use core::ops::{Add, Mul};
 
-use bench_compare::{Cells, Limbs, Row, Visitor};
+use bench_compare::{Cells, Limbs, Row, Selected, Visitor};
 use binary_field::biguint::NonZero;
 use binary_field::generic_array::GenericArray;
 use binary_field::{ConstantTime, Gf2, Square};
@@ -22,7 +22,9 @@ use polyval::hazmat::FieldElement;
 
 use super::basis::{Basis, Level, Tower};
 use super::reference::Modulus;
-use super::{AES, Field, GF8, GF16, GF64, GF128, GF233, GF256, GF571, Kind, Op, Timing, spec};
+use super::{
+    AES, Field, GF8, GF16, GF64, GF128, GF233, GF256, GF571, Kind, KindOf, Op, Timing, kind, spec,
+};
 
 /// The timing classes, by name at the adapters.
 const CONSTANT: Timing = Timing::Constant;
@@ -125,7 +127,7 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
     /// its result.
     fn binary_in<T: Copy>(
         self,
-        op: Op,
+        op: impl Selected<Op>,
         function: &'static str,
         run: impl Fn(&(T, T)) -> T + Copy,
         read: fn(&C, &T) -> Option<Limbs>,
@@ -148,7 +150,7 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
     /// The case of `op` on one operand whose result has its type, with its chain form.
     fn chained_unary_in<T>(
         self,
-        op: Op,
+        op: impl Selected<Op>,
         function: &'static str,
         run: impl Fn(&T) -> T + Copy,
         read: fn(&C, &T) -> Option<Limbs>,
@@ -171,7 +173,7 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
     /// The case of `op` on one operand.
     fn unary_in<T, R>(
         self,
-        op: Op,
+        op: impl Selected<Op>,
         function: &'static str,
         run: impl Fn(&T) -> R + Copy,
         read: fn(&C, &R) -> Option<Limbs>,
@@ -193,9 +195,9 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
 
     /// The case of `kind` on two operands in the row of `timing`, with its chain form, and the
     /// absent cell of the other row.
-    fn binary<T: Copy>(
+    fn binary<K: KindOf, T: Copy>(
         self,
-        kind: Kind,
+        kind: K,
         timing: Timing,
         function: &'static str,
         run: impl Fn(&(T, T)) -> T + Copy,
@@ -208,16 +210,16 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
         Self {
             cells: cells
                 .cells
-                .absent(kind.in_row(timing.other()), only(timing)),
+                .absent(K::KIND.in_row(timing.other()), only(timing)),
             carrier: cells.carrier,
         }
     }
 
     /// The case of `kind` on one operand in the row of `timing`, with its chain form, and the
     /// absent cell of the other row.
-    fn chained_unary<T>(
+    fn chained_unary<K: KindOf, T>(
         self,
-        kind: Kind,
+        kind: K,
         timing: Timing,
         function: &'static str,
         run: impl Fn(&T) -> T + Copy,
@@ -230,16 +232,16 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
         Self {
             cells: cells
                 .cells
-                .absent(kind.in_row(timing.other()), only(timing)),
+                .absent(K::KIND.in_row(timing.other()), only(timing)),
             carrier: cells.carrier,
         }
     }
 
     /// The case of `kind` on one operand in the row of `timing`, and the absent cell of the other
     /// row.
-    fn unary<T, R>(
+    fn unary<K: KindOf, T, R>(
         self,
-        kind: Kind,
+        kind: K,
         timing: Timing,
         function: &'static str,
         run: impl Fn(&T) -> R + Copy,
@@ -252,7 +254,7 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
         Self {
             cells: cells
                 .cells
-                .absent(kind.in_row(timing.other()), only(timing)),
+                .absent(K::KIND.in_row(timing.other()), only(timing)),
             carrier: cells.carrier,
         }
     }
@@ -274,7 +276,7 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
         let n = self.cells.key().bits;
         kinds.iter().fold(self, |cells, kind| match kind {
             Kind::Square => cells.chained_unary(
-                Kind::Square,
+                kind::Square,
                 timing,
                 "a * a",
                 #[inline(always)]
@@ -282,7 +284,7 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
                 read,
             ),
             Kind::Sqrt => cells.unary(
-                Kind::Sqrt,
+                kind::Sqrt,
                 timing,
                 "a^(2^(n−1)) by *",
                 #[inline(always)]
@@ -290,7 +292,7 @@ impl<V: Visitor<Op, Field>, C, F: Fn() -> C + Copy> Carried<V, F> {
                 read,
             ),
             Kind::Invert => cells.unary(
-                Kind::Invert,
+                kind::Invert,
                 timing,
                 "a^(2^n − 2) by *",
                 #[inline(always)]
@@ -381,7 +383,7 @@ where
     cells
         .carry(same)
         .binary(
-            Kind::Add,
+            kind::Add,
             CONSTANT,
             "+",
             #[inline(always)]
@@ -389,7 +391,7 @@ where
             element,
         )
         .binary(
-            Kind::Mul,
+            kind::Mul,
             mul,
             "*",
             #[inline(always)]
@@ -464,70 +466,70 @@ fn ours<P: binary_field::Polynomial, V: Visitor<Op, Field>>(cells: Crate<V>) -> 
     cells
         .carry(same)
         .binary_in(
-            Kind::Add.in_row(VARIABLE),
+            kind::Add.in_row(VARIABLE),
             "+",
             #[inline(always)]
             |&(a, b): &(Public<P>, _)| a + b,
             element,
         )
         .binary_in(
-            Kind::Mul.in_row(VARIABLE),
+            kind::Mul.in_row(VARIABLE),
             "*",
             #[inline(always)]
             |&(a, b): &(Public<P>, _)| a * b,
             element,
         )
         .chained_unary_in(
-            Kind::Square.in_row(VARIABLE),
+            kind::Square.in_row(VARIABLE),
             "square",
             #[inline(always)]
             |&a: &Public<P>| a.square(),
             element,
         )
         .unary_in(
-            Kind::Invert.in_row(VARIABLE),
+            kind::Invert.in_row(VARIABLE),
             "invert",
             #[inline(always)]
             |&a: &NonZero<Public<P>>| a.invert(),
             element,
         )
         .unary_in(
-            Kind::Sqrt.in_row(VARIABLE),
+            kind::Sqrt.in_row(VARIABLE),
             "sqrt",
             #[inline(always)]
             |&a: &Public<P>| a.sqrt(),
             element,
         )
         .binary_in(
-            Kind::Add.in_row(CONSTANT),
+            kind::Add.in_row(CONSTANT),
             "ConstantTime +",
             #[inline(always)]
             |&(a, b): &(ConstantTime<Gf2<P>>, _)| a + b,
             element,
         )
         .binary_in(
-            Kind::Mul.in_row(CONSTANT),
+            kind::Mul.in_row(CONSTANT),
             "ConstantTime *",
             #[inline(always)]
             |&(a, b): &(ConstantTime<Gf2<P>>, _)| a * b,
             element,
         )
         .chained_unary_in(
-            Kind::Square.in_row(CONSTANT),
+            kind::Square.in_row(CONSTANT),
             "ConstantTime::square",
             #[inline(always)]
             |&a: &ConstantTime<Gf2<P>>| a.square(),
             element,
         )
         .unary_in(
-            Kind::Invert.in_row(CONSTANT),
+            kind::Invert.in_row(CONSTANT),
             "ConstantTime::invert",
             #[inline(always)]
             |&a: &ConstantTime<NonZero<Gf2<P>>>| a.invert(),
             element,
         )
         .unary_in(
-            Kind::Sqrt.in_row(CONSTANT),
+            kind::Sqrt.in_row(CONSTANT),
             "ConstantTime::sqrt",
             #[inline(always)]
             |&a: &ConstantTime<Gf2<P>>| a.sqrt(),
@@ -573,7 +575,7 @@ macro_rules! gf256_ops {
                 element,
             )
             .unary(
-                Kind::Invert,
+                kind::Invert,
                 $timing,
                 "checked_recip",
                 #[inline(always)]
@@ -626,7 +628,7 @@ where
             element,
         )
         .unary(
-            Kind::Invert,
+            kind::Invert,
             VARIABLE,
             "inverse",
             #[inline(always)]
@@ -768,7 +770,7 @@ fn rs_erasure<T: Raw + Copy, V: Visitor<Op, Field>>(
 ) -> Crate<V> {
     cells
         .binary(
-            Kind::Add,
+            kind::Add,
             CONSTANT,
             "add",
             #[inline(always)]
@@ -776,7 +778,7 @@ fn rs_erasure<T: Raw + Copy, V: Visitor<Op, Field>>(
             element,
         )
         .binary(
-            Kind::Mul,
+            kind::Mul,
             VARIABLE,
             "mul",
             #[inline(always)]
@@ -847,7 +849,7 @@ fn hekate_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
         GF8 => operators::<Block8, V>(cells, CONSTANT)
             .chained_unary(
-                Kind::Square,
+                kind::Square,
                 CONSTANT,
                 "square",
                 #[inline(always)]
@@ -855,7 +857,7 @@ fn hekate_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
                 element,
             )
             .unary(
-                Kind::Invert,
+                kind::Invert,
                 CONSTANT,
                 "invert",
                 #[inline(always)]
@@ -877,7 +879,7 @@ fn hekate<T: BinaryFieldExtras + Raw, V: Visitor<Op, Field>>(
 ) -> Crate<V> {
     cells
         .binary(
-            Kind::Add,
+            kind::Add,
             CONSTANT,
             "+",
             #[inline(always)]
@@ -885,7 +887,7 @@ fn hekate<T: BinaryFieldExtras + Raw, V: Visitor<Op, Field>>(
             element,
         )
         .binary(
-            Kind::Mul,
+            kind::Mul,
             CONSTANT,
             "*",
             #[inline(always)]
@@ -893,7 +895,7 @@ fn hekate<T: BinaryFieldExtras + Raw, V: Visitor<Op, Field>>(
             element,
         )
         .chained_unary(
-            Kind::Square,
+            kind::Square,
             CONSTANT,
             "square",
             #[inline(always)]
@@ -901,7 +903,7 @@ fn hekate<T: BinaryFieldExtras + Raw, V: Visitor<Op, Field>>(
             element,
         )
         .unary(
-            Kind::Invert,
+            kind::Invert,
             CONSTANT,
             "invert",
             #[inline(always)]
@@ -995,7 +997,7 @@ fn p3<T: p3_field::Field, C: Carrier<T>, V: Visitor<Op, Field>>(
 ) -> Crate<V> {
     cells
         .binary(
-            Kind::Add,
+            kind::Add,
             CONSTANT,
             "+",
             #[inline(always)]
@@ -1003,7 +1005,7 @@ fn p3<T: p3_field::Field, C: Carrier<T>, V: Visitor<Op, Field>>(
             element,
         )
         .binary(
-            Kind::Mul,
+            kind::Mul,
             timings.mul,
             "*",
             #[inline(always)]
@@ -1011,7 +1013,7 @@ fn p3<T: p3_field::Field, C: Carrier<T>, V: Visitor<Op, Field>>(
             element,
         )
         .chained_unary(
-            Kind::Square,
+            kind::Square,
             timings.square,
             "square",
             #[inline(always)]
@@ -1019,7 +1021,7 @@ fn p3<T: p3_field::Field, C: Carrier<T>, V: Visitor<Op, Field>>(
             element,
         )
         .unary(
-            Kind::Invert,
+            kind::Invert,
             timings.invert,
             "try_inverse",
             #[inline(always)]
@@ -1027,7 +1029,7 @@ fn p3<T: p3_field::Field, C: Carrier<T>, V: Visitor<Op, Field>>(
             maybe,
         )
         .unary(
-            Kind::Sqrt,
+            kind::Sqrt,
             timings.sqrt,
             "try_sqrt",
             #[inline(always)]
@@ -1067,7 +1069,7 @@ where
     cells
         .carry(|| Longfellow(field))
         .binary(
-            Kind::Add,
+            kind::Add,
             CONSTANT,
             "addf",
             #[inline(always)]
@@ -1075,7 +1077,7 @@ where
             element,
         )
         .binary(
-            Kind::Mul,
+            kind::Mul,
             mul,
             "mulf",
             #[inline(always)]
@@ -1089,7 +1091,7 @@ where
             element,
         )
         .unary(
-            Kind::Invert,
+            kind::Invert,
             invert,
             "invert",
             #[inline(always)]
@@ -1182,7 +1184,7 @@ fn polyval<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         GF128 => cells
             .carry(move || Polyval::new(modulus))
             .binary(
-                Kind::Add,
+                kind::Add,
                 CONSTANT,
                 "+",
                 #[inline(always)]
@@ -1190,7 +1192,7 @@ fn polyval<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
                 element,
             )
             .binary(
-                Kind::Mul,
+                kind::Mul,
                 CONSTANT,
                 "*",
                 #[inline(always)]

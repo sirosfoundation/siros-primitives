@@ -1,0 +1,14 @@
+//! Compares `binary-field` with other binary-field crates on `a + b`, in variable and constant
+//! time, over fields from GF(2⁸) to GF(2⁵⁷¹). `binary-field-bench-report` runs every bench of the
+//! crate.
+
+mod suite;
+
+use std::process::ExitCode;
+
+/// The kinds of operation that this bench measures.
+const KINDS: &[suite::Kind] = &[suite::Kind::Add];
+
+fn main() -> ExitCode {
+    bench_compare::main::<suite::BinaryField>("add")
+}

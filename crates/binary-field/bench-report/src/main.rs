@@ -21,7 +21,7 @@ impl fmt::Display for Field {
 
 const MEASURED: Measured = Measured {
     package: "binary-field",
-    bench: "compare",
+    benches: &["add", "products"],
     sources: "crates/binary-field/src",
     pathspecs: &[
         "Cargo.toml",

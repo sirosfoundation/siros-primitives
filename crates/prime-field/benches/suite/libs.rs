@@ -6,7 +6,7 @@
 //! field, gets an absent cell with the reason. Elements enter and leave each crate in its own
 //! representation; the conversions run before and after the counted batch.
 
-use bench_compare::{Cells, Chain, Limbs, Row, Visitor};
+use bench_compare::{Cells, Chain, Limbs, Row, Selected, Visitor};
 use biguint::generic_array::GenericArray;
 use biguint::{Bits, NonZero, Uint};
 use core_algebra::{AlgebraicField, SerializableField};
@@ -19,7 +19,7 @@ use runtime_algebra::field::RuntimeSerializableField;
 
 use num_bigint::BigUint;
 
-use super::{Field, Kind, Op, Timing, big, limbs, spec};
+use super::{Field, Kind, Op, Timing, big, ct, kind, limbs, spec, var};
 
 /// The limbs of the modulus of `M`, zero-extended to `L` limbs.
 const fn words<M: Modulus, const L: usize>() -> [u64; L] {
@@ -100,7 +100,7 @@ impl<T: ToLimbs + Clone> ToLimbs for subtle::CtOption<T> {
 trait Offer<V> {
     fn case<I, R: ToLimbs>(
         self,
-        op: Op,
+        op: impl Selected<Op>,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
@@ -109,7 +109,7 @@ trait Offer<V> {
     /// Offers the case with its chain form, `x = op(x, y)`.
     fn chained<I: Chain<R>, R: ToLimbs>(
         self,
-        op: Op,
+        op: impl Selected<Op>,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
@@ -128,7 +128,7 @@ trait Offer<V> {
 impl<V: Visitor<Op, Field>> Offer<V> for Crate<V> {
     fn case<I, R: ToLimbs>(
         self,
-        op: Op,
+        op: impl Selected<Op>,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
@@ -138,7 +138,7 @@ impl<V: Visitor<Op, Field>> Offer<V> for Crate<V> {
 
     fn chained<I: Chain<R>, R: ToLimbs>(
         self,
-        op: Op,
+        op: impl Selected<Op>,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
@@ -250,10 +250,10 @@ macro_rules! ops {
     ($cells:expr, $t:ty, $row:ident, $other:ident, $reason:expr,
      add: $add:expr, sub: $sub:expr, mul: $mul:expr, square: $square:expr $(,)?) => {
         $cells
-            .chained($row(Kind::Add), "+", pair::<$t>, $add)
-            .chained($row(Kind::Sub), "-", pair::<$t>, $sub)
-            .chained($row(Kind::Mul), "*", pair::<$t>, $mul)
-            .chained($row(Kind::Square), "square", one::<$t>, $square)
+            .chained($row(kind::Add), "+", pair::<$t>, $add)
+            .chained($row(kind::Sub), "-", pair::<$t>, $sub)
+            .chained($row(kind::Mul), "*", pair::<$t>, $mul)
+            .chained($row(kind::Square), "square", one::<$t>, $square)
             .absent($other(Kind::Add), $reason)
             .absent($other(Kind::Sub), $reason)
             .absent($other(Kind::Mul), $reason)
@@ -336,84 +336,84 @@ fn this_crate<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 fn ours<M: Modulus, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     cells
         .chained(
-            vartime(Kind::Add),
+            var(kind::Add),
             "+",
             pair::<Fp<M>>,
             #[inline(always)]
             |&(a, b)| a + b,
         )
         .chained(
-            vartime(Kind::Sub),
+            var(kind::Sub),
             "-",
             pair::<Fp<M>>,
             #[inline(always)]
             |&(a, b)| a - b,
         )
         .chained(
-            vartime(Kind::Mul),
+            var(kind::Mul),
             "*",
             pair::<Fp<M>>,
             #[inline(always)]
             |&(a, b)| a * b,
         )
         .chained(
-            vartime(Kind::Square),
+            var(kind::Square),
             "square",
             one::<Fp<M>>,
             #[inline(always)]
             |a| a.square(),
         )
         .case(
-            vartime(Kind::Invert),
+            var(kind::Invert),
             "invert",
             one::<NonZero<Fp<M>>>,
             #[inline(always)]
             |a| a.invert(),
         )
         .case(
-            vartime(Kind::Sqrt),
+            var(kind::Sqrt),
             "sqrt",
             one::<Fp<M>>,
             #[inline(always)]
             |a| a.sqrt(),
         )
         .chained(
-            constant(Kind::Add),
+            ct(kind::Add),
             "ConstantTime +",
             pair::<ConstantTime<Fp<M>>>,
             #[inline(always)]
             |&(a, b)| a + b,
         )
         .chained(
-            constant(Kind::Sub),
+            ct(kind::Sub),
             "ConstantTime -",
             pair::<ConstantTime<Fp<M>>>,
             #[inline(always)]
             |&(a, b)| a - b,
         )
         .chained(
-            constant(Kind::Mul),
+            ct(kind::Mul),
             "ConstantTime *",
             pair::<ConstantTime<Fp<M>>>,
             #[inline(always)]
             |&(a, b)| a * b,
         )
         .chained(
-            constant(Kind::Square),
+            ct(kind::Square),
             "ConstantTime::square",
             one::<ConstantTime<Fp<M>>>,
             #[inline(always)]
             |a| a.square(),
         )
         .case(
-            constant(Kind::Invert),
+            ct(kind::Invert),
             "ConstantTime::invert",
             one::<ConstantTime<NonZero<Fp<M>>>>,
             #[inline(always)]
             |a| a.invert(),
         )
         .case(
-            constant(Kind::Sqrt),
+            ct(kind::Sqrt),
             "ConstantTime::sqrt",
             one::<ConstantTime<Fp<M>>>,
             #[inline(always)]
@@ -453,7 +453,7 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
     let read_option = |e: &Option<F>| e.as_ref().and_then(read);
     let mut cells = cells
         .chain(
-            vartime(Kind::Add),
+            var(kind::Add),
             "+",
             two,
             #[inline(always)]
@@ -461,7 +461,7 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
             read,
         )
         .chain(
-            vartime(Kind::Sub),
+            var(kind::Sub),
             "-",
             two,
             #[inline(always)]
@@ -469,7 +469,7 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
             read,
         )
         .chain(
-            vartime(Kind::Mul),
+            var(kind::Mul),
             "*",
             two,
             #[inline(always)]
@@ -477,7 +477,7 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
             read,
         )
         .chain(
-            vartime(Kind::Square),
+            var(kind::Square),
             "square",
             single,
             #[inline(always)]
@@ -485,7 +485,7 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
             read,
         )
         .api(
-            vartime(Kind::Invert),
+            var(kind::Invert),
             "inverse",
             single,
             #[inline(always)]
@@ -493,7 +493,7 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
             read_option,
         )
         .api(
-            vartime(Kind::Sqrt),
+            var(kind::Sqrt),
             "sqrt",
             single,
             #[inline(always)]
@@ -624,28 +624,28 @@ fn monty<
     cells: Crate<V>,
 ) -> Crate<V> {
     type Form<MOD, const L: usize> = crypto_bigint::modular::ConstMontyForm<MOD, L>;
-    ops!(cells, Form<MOD, L>, constant, vartime, NO_VARIABLE_TIME,
+    ops!(cells, Form<MOD, L>, ct, vartime, NO_VARIABLE_TIME,
         add: #[inline(always)] |(a, b)| a + b,
         sub: #[inline(always)] |(a, b)| a - b,
         mul: #[inline(always)] |(a, b)| a * b,
         square: #[inline(always)] |a| a.square(),
     )
     .case(
-        constant(Kind::Invert),
+        ct(kind::Invert),
         "invert",
         one::<Form<MOD, L>>,
         #[inline(always)]
         |a| a.invert(),
     )
     .case(
-        vartime(Kind::Invert),
+        var(kind::Invert),
         "invert_vartime",
         one::<Form<MOD, L>>,
         #[inline(always)]
         |a| a.invert_vartime(),
     )
     .case(
-        constant(Kind::Sqrt),
+        ct(kind::Sqrt),
         "sqrt",
         one::<Form<MOD, L>>,
         #[inline(always)]
@@ -724,7 +724,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             let mut cells = cells
                 .deviating(SKIPPED_REDUCTION)
                 .chained(
-                    constant(Kind::Add),
+                    ct(kind::Add),
                     "+",
                     pair::<Element>,
                     #[inline(always)]
@@ -732,7 +732,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
                 )
                 .deviating(SKIPPED_REDUCTION)
                 .chained(
-                    constant(Kind::Sub),
+                    ct(kind::Sub),
                     "-",
                     pair::<Element>,
                     #[inline(always)]
@@ -740,7 +740,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
                 )
                 .deviating(SKIPPED_NORMALIZATION)
                 .chained(
-                    constant(Kind::Mul),
+                    ct(kind::Mul),
                     "*",
                     pair::<Element>,
                     #[inline(always)]
@@ -748,7 +748,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
                 )
                 .deviating(SKIPPED_NORMALIZATION)
                 .chained(
-                    constant(Kind::Square),
+                    ct(kind::Square),
                     "square",
                     one::<Element>,
                     #[inline(always)]
@@ -756,7 +756,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
                 )
                 .deviating(SKIPPED_NORMALIZATION)
                 .case(
-                    constant(Kind::Invert),
+                    ct(kind::Invert),
                     "invert",
                     one::<Element>,
                     #[inline(always)]
@@ -764,7 +764,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
                 )
                 .deviating(SKIPPED_NORMALIZATION)
                 .case(
-                    constant(Kind::Sqrt),
+                    ct(kind::Sqrt),
                     "sqrt",
                     one::<Element>,
                     #[inline(always)]
@@ -775,14 +775,14 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             }
             cells
         }
-        "P-256 base" => ops!(cells, p256::FieldElement, constant, vartime, NO_VARIABLE_TIME,
+        "P-256 base" => ops!(cells, p256::FieldElement, ct, vartime, NO_VARIABLE_TIME,
             add: #[inline(always)] |&(a, b)| a + b,
             sub: #[inline(always)] |&(a, b)| a - b,
             mul: #[inline(always)] |&(a, b)| a * b,
             square: #[inline(always)] |a| a.square(),
         )
         .case(
-            constant(Kind::Invert),
+            ct(kind::Invert),
             "invert",
             one::<p256::FieldElement>,
             #[inline(always)]
@@ -790,7 +790,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         )
         .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
         .case(
-            constant(Kind::Sqrt),
+            ct(kind::Sqrt),
             "sqrt",
             one::<p256::FieldElement>,
             #[inline(always)]
@@ -800,30 +800,25 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         "P-256 scalar" => {
             use p256::elliptic_curve::ff::Field;
             use p256::elliptic_curve::ops::Invert;
-            ops!(cells, p256::Scalar, constant, vartime, NO_VARIABLE_TIME,
+            ops!(cells, p256::Scalar, ct, vartime, NO_VARIABLE_TIME,
                 add: #[inline(always)] |&(a, b)| a + b,
                 sub: #[inline(always)] |&(a, b)| a - b,
                 mul: #[inline(always)] |&(a, b)| a * b,
                 square: #[inline(always)] |a| a.square(),
             )
             .case(
-                constant(Kind::Invert),
+                ct(kind::Invert),
                 "invert",
                 one::<p256::Scalar>,
                 p256::Scalar::invert,
             )
             .case(
-                vartime(Kind::Invert),
+                var(kind::Invert),
                 "invert_vartime",
                 one::<p256::Scalar>,
                 Invert::invert_vartime,
             )
-            .case(
-                constant(Kind::Sqrt),
-                "sqrt",
-                one::<p256::Scalar>,
-                Field::sqrt,
-            )
+            .case(ct(kind::Sqrt), "sqrt", one::<p256::Scalar>, Field::sqrt)
             .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME)
         }
         "P-521 base" => cells.none("p521 keeps its field element private"),
@@ -881,28 +876,28 @@ fn ff_field<F: halo2curves::ff::Field + FromLimbs + ToLimbs, V: Visitor<Op, Fiel
 ) -> Crate<V> {
     let modulus = spec(cells.key()).modulus;
     let inverse_exponent = limbs(&(big(modulus) - 2u32), modulus.len());
-    ops!(cells, F, constant, vartime, NO_VARIABLE_TIME,
+    ops!(cells, F, ct, vartime, NO_VARIABLE_TIME,
         add: #[inline(always)] |&(a, b)| a + b,
         sub: #[inline(always)] |&(a, b)| a - b,
         mul: #[inline(always)] |&(a, b)| a * b,
         square: #[inline(always)] |a| a.square(),
     )
     .case(
-        vartime(Kind::Invert),
+        var(kind::Invert),
         "invert",
         one::<F>,
         #[inline(always)]
         |a| a.invert(),
     )
     .case(
-        constant(Kind::Invert),
+        ct(kind::Invert),
         "pow(p − 2)",
         one::<F>,
         #[inline(always)]
         |a| a.pow(&inverse_exponent),
     )
     .case(
-        constant(Kind::Sqrt),
+        ct(kind::Sqrt),
         "sqrt",
         one::<F>,
         #[inline(always)]
@@ -1006,15 +1001,15 @@ fn p3<F: p3_field::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
     representation: Representation,
 ) -> Crate<V> {
     let (sub_row, sub_other, sub_reason) = if subtraction_constant {
-        (constant(Kind::Sub), vartime(Kind::Sub), NO_VARIABLE_TIME)
+        (ct(kind::Sub), vartime(Kind::Sub), NO_VARIABLE_TIME)
     } else {
-        (vartime(Kind::Sub), constant(Kind::Sub), NO_CONSTANT_TIME)
+        (var(kind::Sub), constant(Kind::Sub), NO_CONSTANT_TIME)
     };
     let deviation = |kind| representation.deviation(kind);
     let mut cells = cells
         .declare(deviation(Kind::Add))
         .chained(
-            vartime(Kind::Add),
+            var(kind::Add),
             "+",
             pair::<F>,
             #[inline(always)]
@@ -1031,7 +1026,7 @@ fn p3<F: p3_field::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
         .absent(sub_other, sub_reason)
         .declare(deviation(Kind::Mul))
         .chained(
-            vartime(Kind::Mul),
+            var(kind::Mul),
             "*",
             pair::<F>,
             #[inline(always)]
@@ -1039,7 +1034,7 @@ fn p3<F: p3_field::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
         )
         .declare(deviation(Kind::Square))
         .chained(
-            vartime(Kind::Square),
+            var(kind::Square),
             "square",
             one::<F>,
             #[inline(always)]
@@ -1047,7 +1042,7 @@ fn p3<F: p3_field::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
         )
         .declare(deviation(Kind::Invert))
         .case(
-            vartime(Kind::Invert),
+            var(kind::Invert),
             "try_inverse",
             one::<F>,
             #[inline(always)]
@@ -1055,7 +1050,7 @@ fn p3<F: p3_field::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
         )
         .declare(deviation(Kind::Sqrt))
         .case(
-            vartime(Kind::Sqrt),
+            var(kind::Sqrt),
             "try_sqrt",
             one::<F>,
             #[inline(always)]
@@ -1088,14 +1083,14 @@ fn winter_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     use winter_math::FieldElement;
     use winter_math::fields::f64::BaseElement;
     match cells.key().field.as_str() {
-        "Goldilocks" => ops!(cells, BaseElement, constant, vartime, NO_VARIABLE_TIME,
+        "Goldilocks" => ops!(cells, BaseElement, ct, vartime, NO_VARIABLE_TIME,
             add: #[inline(always)] |&(a, b)| a + b,
             sub: #[inline(always)] |&(a, b)| a - b,
             mul: #[inline(always)] |&(a, b)| a * b,
             square: #[inline(always)] |a| a.square(),
         )
         .case(
-            constant(Kind::Invert),
+            ct(kind::Invert),
             "inv",
             one::<BaseElement>,
             #[inline(always)]
@@ -1180,7 +1175,7 @@ where
     let (inverse, root) = (&inverse, root.as_deref());
     let cells = match root {
         Some(root) => cells.api(
-            constant(Kind::Sqrt),
+            ct(kind::Sqrt),
             "mulf to (p + 1) / 4",
             single,
             #[inline(always)]
@@ -1191,7 +1186,7 @@ where
     };
     cells
         .chain(
-            constant(Kind::Add),
+            ct(kind::Add),
             "addf",
             two,
             #[inline(always)]
@@ -1199,7 +1194,7 @@ where
             read,
         )
         .chain(
-            constant(Kind::Sub),
+            ct(kind::Sub),
             "subf",
             two,
             #[inline(always)]
@@ -1207,7 +1202,7 @@ where
             read,
         )
         .chain(
-            constant(Kind::Mul),
+            ct(kind::Mul),
             "mulf",
             two,
             #[inline(always)]
@@ -1218,7 +1213,7 @@ where
         .absent(vartime(Kind::Sub), NO_VARIABLE_TIME)
         .absent(vartime(Kind::Mul), NO_VARIABLE_TIME)
         .chain(
-            constant(Kind::Square),
+            ct(kind::Square),
             "mulf(a, a)",
             single,
             #[inline(always)]
@@ -1227,7 +1222,7 @@ where
         )
         .absent(vartime(Kind::Square), NO_VARIABLE_TIME)
         .api(
-            vartime(Kind::Invert),
+            var(kind::Invert),
             "invert",
             single,
             #[inline(always)]
@@ -1235,7 +1230,7 @@ where
             read,
         )
         .api(
-            constant(Kind::Invert),
+            ct(kind::Invert),
             "mulf to p − 2",
             single,
             #[inline(always)]
@@ -1283,7 +1278,7 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
     let (_, root) = exponents(cells.key());
     let cells = cells
         .api(
-            vartime(Kind::Add),
+            var(kind::Add),
             "addf",
             two,
             #[inline(always)]
@@ -1291,7 +1286,7 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
             read,
         )
         .api(
-            vartime(Kind::Sub),
+            var(kind::Sub),
             "subf",
             two,
             #[inline(always)]
@@ -1299,7 +1294,7 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
             read,
         )
         .api(
-            vartime(Kind::Mul),
+            var(kind::Mul),
             "mulf",
             two,
             #[inline(always)]
@@ -1307,7 +1302,7 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
             read,
         )
         .api(
-            vartime(Kind::Invert),
+            var(kind::Invert),
             "invert",
             single,
             #[inline(always)]
@@ -1319,7 +1314,7 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
         .absent(constant(Kind::Mul), NO_CONSTANT_TIME)
         .absent(constant(Kind::Invert), NO_CONSTANT_TIME)
         .api(
-            vartime(Kind::Square),
+            var(kind::Square),
             "mulf(a, a)",
             single,
             #[inline(always)]
@@ -1330,7 +1325,7 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
         .absent(constant(Kind::Sqrt), NO_CONSTANT_TIME);
     match root.as_deref() {
         Some(root) => cells.api(
-            vartime(Kind::Sqrt),
+            var(kind::Sqrt),
             "mulf to (p + 1) / 4",
             single,
             #[inline(always)]

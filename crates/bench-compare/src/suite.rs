@@ -44,8 +44,9 @@ pub trait Suite {
     /// A row key: the width or the field of a row.
     type Key: Key;
 
-    /// Every operation, in measurement order.
-    const OPS: &'static [Self::Op];
+    /// The operations that the bench measures, in measurement order. A case offers its operation
+    /// as a [`Selected`], whose `MEASURED` must agree with this list.
+    fn ops() -> Vec<Self::Op>;
 
     /// Every row key, in measurement order.
     fn keys() -> Vec<Self::Key>;
@@ -62,6 +63,17 @@ pub trait Suite {
     fn offer<V: Visitor<Self::Op, Self::Key>>(
         row: Row<Self::Op, Self::Key, V>,
     ) -> Row<Self::Op, Self::Key, V>;
+}
+
+/// The operation of a case, with whether the bench measures it as a constant. A case of an
+/// operation that the bench leaves out instantiates no code: a suite split over several bench
+/// binaries compiles each case in one binary.
+pub trait Selected<O> {
+    /// Whether the bench measures the operation: it is in [`Suite::ops`].
+    const MEASURED: bool;
+
+    /// The operation.
+    fn op(&self) -> O;
 }
 
 /// One cell: an operation on a row in a crate. It displays as `op/key/crate`.
@@ -181,10 +193,10 @@ pub trait Visitor<O, K>: Sized {
 /// Offers every cell of `S` to `visitor`: operation by operation, row by row, crate by crate.
 #[must_use]
 pub fn visit<S: Suite, V: Visitor<S::Op, S::Key>>(visitor: V) -> V {
-    S::OPS.iter().fold(visitor, |visitor, op| {
+    S::ops().into_iter().fold(visitor, |visitor, op| {
         S::keys().into_iter().fold(visitor, |visitor, key| {
             S::offer(Row {
-                op: *op,
+                op,
                 key,
                 samples: None,
                 visitor,
@@ -235,6 +247,12 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Row<O, K, V> {
     #[must_use]
     pub const fn key(&self) -> &K {
         &self.key
+    }
+
+    /// The checking operand sets of the row, drawn on the first call.
+    fn samples(&mut self) -> &[Sample] {
+        let draw = self.draw;
+        self.samples.get_or_insert_with(|| draw(self.op, &self.key))
     }
 
     /// Offers the cells of `lib` through `adapter`. Panics unless the adapter offers exactly one
@@ -306,7 +324,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
     #[must_use]
     pub fn api<I, R>(
         self,
-        op: O,
+        op: impl Selected<O>,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
@@ -328,7 +346,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
     #[must_use]
     pub fn api_with<S, I, R>(
         self,
-        op: O,
+        op: impl Selected<O>,
         function: &'static str,
         setup: impl FnOnce() -> S,
         prepare: impl Fn(&S, &[Limbs]) -> I,
@@ -353,7 +371,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
     #[must_use]
     pub fn chain<I: Chain<R>, R>(
         self,
-        op: O,
+        op: impl Selected<O>,
         function: &'static str,
         prepare: impl Fn(&[Limbs]) -> I,
         run: impl Fn(&I) -> R + Copy,
@@ -374,7 +392,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
     #[must_use]
     pub fn chain_with<S, I: Chain<R>, R>(
         self,
-        op: O,
+        op: impl Selected<O>,
         function: &'static str,
         setup: impl FnOnce() -> S,
         prepare: impl Fn(&S, &[Limbs]) -> I,
@@ -397,9 +415,9 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
     /// Offers `case`, which runs the crate's `function`, for `op`, with the deviation declared
     /// before it: when the visitor wants it, checks it if the visitor asks, measures it, and hands
     /// its inputs to `chain`.
-    fn case<S, I, R, Setup, Prepare, Run, Read>(
+    fn case<P: Selected<O>, S, I, R, Setup, Prepare, Run, Read>(
         mut self,
-        op: O,
+        op: P,
         function: &'static str,
         case: Case<Setup, Prepare, Run, Read>,
         chain: impl FnOnce(V, &CaseId<O, K>, &Inputs<'_, I>) -> V,
@@ -411,7 +429,11 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
         Read: Fn(&S, &R) -> Option<Limbs>,
     {
         let deviation = self.deviation.take();
-        if op != self.row.op {
+        // A constant: a bench that leaves `op` out instantiates none of the code below.
+        if !P::MEASURED {
+            return self;
+        }
+        if op.op() != self.row.op {
             return self;
         }
         self.offered += 1;
@@ -424,15 +446,15 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
         if self.row.visitor.wants(&id) {
             let shared = (case.setup)();
             if self.row.visitor.checks(&id) {
-                let draw = self.row.draw;
-                let samples = self.row.samples.get_or_insert_with(|| draw(id.op, &id.key));
-                let batch: Vec<I> = samples
+                let samples = self.row.samples();
+                let results: Vec<Option<Limbs>> = samples
                     .iter()
-                    .map(|sample| (case.prepare)(&shared, &sample.operands))
+                    .map(|sample| {
+                        let input = (case.prepare)(&shared, &sample.operands);
+                        (case.read)(&shared, &apart(case.run, &input))
+                    })
                     .collect();
-                check(&id, samples, &batch, case.run, |result| {
-                    (case.read)(&shared, result)
-                });
+                check(&id, samples, &results);
             }
             let operands = self.row.operands;
             let fresh = |rng: &mut Rng| (case.prepare)(&shared, &operands(id.op, &id.key, rng));
@@ -478,16 +500,17 @@ struct Case<Setup, Prepare, Run, Read> {
     read: Read,
 }
 
-/// Panics unless `run` returns an accepted result on every input of `batch`.
-fn check<O: fmt::Display, K: fmt::Display, I, R>(
-    id: &CaseId<O, K>,
-    samples: &[Sample],
-    batch: &[I],
-    run: impl Fn(&I) -> R,
-    read: impl Fn(&R) -> Option<Limbs>,
-) {
-    for (index, (sample, input)) in samples.iter().zip(batch).enumerate() {
-        let result = read(&run(input));
+/// `run` on `input`, in a function of its own: the copy of the operation that the check runs stays
+/// out of the code of the case, whose optimization time grows faster than its size.
+#[inline(never)]
+fn apart<I, R>(run: impl Fn(&I) -> R, input: &I) -> R {
+    run(input)
+}
+
+/// Panics unless the case `id` returned an accepted result for every sample: `results` holds its
+/// result on each, in order.
+fn check(id: &dyn fmt::Display, samples: &[Sample], results: &[Option<Limbs>]) {
+    for (index, (sample, result)) in samples.iter().zip(results).enumerate() {
         let accepted = result
             .as_deref()
             .map(trim)

@@ -41,8 +41,11 @@ pub trait Barrier {
     /// The class of the barrier in the record.
     const CLASS: Class;
 
-    /// Whether the barrier holds a value of `bytes` bytes.
-    fn holds(bytes: usize) -> bool;
+    /// The fewest bytes of a value that the barrier holds.
+    const LEAST: usize;
+
+    /// The most bytes of a value that the barrier holds.
+    const MOST: usize;
 
     /// Runs `run` on the inputs of `batch` as the chain `x = op(x, y)`, with `x` held by the
     /// barrier, and returns the number of runs: from the second input on, the result of the run
@@ -61,9 +64,12 @@ impl Barrier for Memory {
     const CLASS: Class = Class::Memory;
 
     /// A value larger than the general-purpose registers hold, and every value off x86-64.
-    fn holds(bytes: usize) -> bool {
-        bytes > GPR_BYTES || cfg!(not(target_arch = "x86_64"))
-    }
+    const LEAST: usize = if cfg!(target_arch = "x86_64") {
+        GPR_BYTES + 1
+    } else {
+        0
+    };
+    const MOST: usize = usize::MAX;
 
     #[inline(always)]
     fn chain<I: Chain<R>, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
@@ -104,11 +110,21 @@ const LINE: usize = 64;
 /// per element otherwise counted its runs from farther memory: its single-`xor` add took 19 to 27
 /// cycles against 2 for the same instructions in other crates.
 pub(crate) fn touch<T>(batch: &[T]) {
-    let start = batch.as_ptr().cast::<core::mem::MaybeUninit<u8>>();
-    for offset in (0..core::mem::size_of_val(batch)).step_by(LINE) {
-        let line = start.wrapping_add(offset);
-        // SAFETY: `line` points into the bytes of `batch`; a `MaybeUninit<u8>` reads any byte,
-        // padding included.
+    // SAFETY: the bytes of `batch` are initialized memory of its length; a `MaybeUninit<u8>` holds
+    // any byte, padding included.
+    let bytes = unsafe {
+        core::slice::from_raw_parts(
+            batch.as_ptr().cast::<core::mem::MaybeUninit<u8>>(),
+            core::mem::size_of_val(batch),
+        )
+    };
+    touch_bytes(bytes);
+}
+
+/// Reads one byte of every cache line of `bytes`.
+fn touch_bytes(bytes: &[core::mem::MaybeUninit<u8>]) {
+    for line in bytes.iter().step_by(LINE) {
+        // SAFETY: `line` is a reference, valid for reads.
         let byte = unsafe { core::ptr::read_volatile(line) };
         sink(&byte);
     }
@@ -229,9 +245,8 @@ mod registers {
     impl Barrier for Gpr {
         const CLASS: Class = Class::Gpr;
 
-        fn holds(bytes: usize) -> bool {
-            bytes <= GPR_BYTES
-        }
+        const LEAST: usize = 0;
+        const MOST: usize = GPR_BYTES;
 
         #[inline(always)]
         fn chain<I: Chain<R>, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
@@ -242,9 +257,8 @@ mod registers {
     impl Barrier for Xmm {
         const CLASS: Class = Class::Xmm;
 
-        fn holds(bytes: usize) -> bool {
-            bytes <= XMM_BYTES
-        }
+        const LEAST: usize = 0;
+        const MOST: usize = XMM_BYTES;
 
         #[inline(always)]
         fn chain<I: Chain<R>, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
@@ -257,9 +271,8 @@ mod registers {
         const CLASS: Class = Class::Ymm;
 
         /// A value that one `xmm` register cannot hold, up to [`YMM_BYTES`].
-        fn holds(bytes: usize) -> bool {
-            XMM_WORD < bytes && bytes <= YMM_BYTES
-        }
+        const LEAST: usize = XMM_WORD + 1;
+        const MOST: usize = YMM_BYTES;
 
         #[inline(always)]
         fn chain<I: Chain<R>, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {

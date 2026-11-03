@@ -49,8 +49,13 @@ reed-solomon-erasure.workspace = true
 runtime-algebra.workspace = true
 serde.workspace = true
 
+# One bench per group of operations: each builds in its own LTO job, in parallel.
 [[bench]]
-name = "compare"
+name = "add"
+harness = false
+
+[[bench]]
+name = "products"
 harness = false
 
 [package.metadata.docs.rs]

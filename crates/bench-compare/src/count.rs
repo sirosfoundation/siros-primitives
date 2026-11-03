@@ -44,7 +44,7 @@ pub const TARGET: u64 = 1 << 20;
 pub const FEWEST_STEP_CYCLES: f64 = 0.75;
 
 /// The CPU of the measuring thread, unless `--cpu` names another.
-const CPU: usize = 15;
+pub(crate) const CPU: usize = 15;
 
 /// The seed of the operand sets of a sweep.
 const SEED: u64 = 0x5eed_0fc0_ffee;
@@ -93,47 +93,18 @@ pub fn main<S: Suite>(name: &str) -> ExitCode {
     }
 }
 
-/// Every cell of the comparison.
-struct AllCells<O, K> {
-    cells: Vec<(CaseId<O, K>, Call)>,
-}
-
-impl<O: Clone, K: Clone> Visitor<O, K> for AllCells<O, K> {
-    fn note(&mut self, id: &CaseId<O, K>, call: &Call) {
-        self.cells.push((id.clone(), *call));
-    }
-
-    fn wants(&self, _id: &CaseId<O, K>) -> bool {
-        false
-    }
-
-    fn measure<I, R>(
-        self,
-        _id: &CaseId<O, K>,
-        _inputs: &Inputs<'_, I>,
-        _run: impl Fn(&I) -> R + Copy,
-    ) -> Self {
-        self
-    }
-}
-
 /// Checks and measures every case on `cpu`; returns the line of every cell, in the order of
 /// [`visit`], then the line of the sweep.
 fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
-    let cells = visit::<S, _>(AllCells { cells: Vec::new() }).cells;
     pin(cpu)?;
     let mut counters = Counters::open()?;
-    let siblings = siblings(cpu)?;
-    let before = load()?;
-    let ticks_before = siblings
-        .iter()
-        .map(|sibling| ticks(*sibling))
-        .collect::<Result<Vec<_>, _>>()?;
+    let window = Window::open(cpu)?;
     // Pass 0 checks and sizes the cases; pass `r` runs repetition `r`.
     let mut measuring = Measuring {
         counters: &mut counters,
         pass: 0,
         rng: Rng(SEED),
+        cells: Vec::new(),
         cases: Vec::new(),
         next: 0,
         error: None,
@@ -148,24 +119,14 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
             return Err(error);
         }
     }
-    let after = load()?;
-    let siblings = siblings
-        .iter()
-        .zip(ticks_before)
-        .map(|(sibling, before)| {
-            Ok(Sibling {
-                cpu: *sibling,
-                busy: ticks(*sibling)?.busy_since(&before, *sibling)?,
-            })
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
+    let sweep = window.close()?;
+    let Measuring { cells, cases, .. } = measuring;
     let mut lines = Vec::with_capacity(cells.len() + 1);
     for (id, call) in &cells {
         let name = id.to_string();
         let outcome = match call {
             Call::Case(function) => {
-                let case = measuring
-                    .cases
+                let case = cases
                     .iter()
                     .find(|case| case.id == name)
                     .ok_or_else(|| Error::missing(&name, "the measured cases"))?;
@@ -181,13 +142,54 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
         });
         lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
     }
-    let line = Line::<S::Key>::Sweep(Sweep {
-        cpu,
-        load: Load { before, after },
-        siblings,
-    });
+    let line = Line::<S::Key>::Sweep(sweep);
     lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
     Ok(lines)
+}
+
+/// The span of a sweep on one CPU: the load at its start, and the ticks of the CPU's SMT siblings.
+pub(crate) struct Window {
+    cpu: usize,
+    before: f64,
+    siblings: Vec<(usize, Ticks)>,
+}
+
+impl Window {
+    /// Starts the span of a sweep on `cpu`.
+    pub(crate) fn open(cpu: usize) -> Result<Self, Error> {
+        let siblings = siblings(cpu)?
+            .into_iter()
+            .map(|sibling| Ok((sibling, ticks(sibling)?)))
+            .collect::<Result<Vec<_>, Error>>()?;
+        Ok(Self {
+            cpu,
+            before: load()?,
+            siblings,
+        })
+    }
+
+    /// Ends the span: the sweep with the load around it and the busy share of each sibling.
+    pub(crate) fn close(self) -> Result<Sweep, Error> {
+        let after = load()?;
+        let siblings = self
+            .siblings
+            .into_iter()
+            .map(|(sibling, before)| {
+                Ok(Sibling {
+                    cpu: sibling,
+                    busy: ticks(sibling)?.busy_since(&before, sibling)?,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        Ok(Sweep {
+            cpu: self.cpu,
+            load: Load {
+                before: self.before,
+                after,
+            },
+            siblings,
+        })
+    }
 }
 
 /// The 1-minute load average.
@@ -373,11 +375,13 @@ impl Case {
 
 /// The visitor of one pass of a sweep: pass 0 checks and sizes every case; pass `r` measures
 /// repetition `r` of every case.
-struct Measuring<'a> {
+struct Measuring<'a, O, K> {
     counters: &'a mut Counters,
     pass: usize,
     /// The generator of the sweep's operand sets.
     rng: Rng,
+    /// Every cell of the comparison, in the order of [`visit`], noted by pass 0.
+    cells: Vec<(CaseId<O, K>, Call)>,
     cases: Vec<Case>,
     /// The case that the pass visits next.
     next: usize,
@@ -398,49 +402,69 @@ fn ran(id: &str, runs: usize, count: usize) -> Result<(), Error> {
     }
 }
 
-impl Measuring<'_> {
-    /// Runs `region` on `count` fresh inputs, uncounted.
-    fn warm<I>(
-        &mut self,
-        inputs: &Inputs<'_, I>,
+/// One form of a case: the code that each case compiles. The rest of a sweep reaches it through
+/// `dyn`, so it compiles once.
+trait Trial {
+    /// Runs the form on `count` fresh inputs that `rng` draws, outside the counted region; returns
+    /// the number of runs.
+    fn warm(&self, rng: &mut Rng, count: usize) -> usize;
+
+    /// Runs the form on `count` fresh inputs that `rng` draws, counted by `counters`; returns the
+    /// number of runs and the counts.
+    fn counted(
+        &self,
+        rng: &mut Rng,
         count: usize,
-        region: impl Fn(&[I]) -> usize,
-        id: &str,
-    ) -> Result<(), Error> {
-        let batch = inputs.draw(&mut self.rng, count);
+        counters: &mut Counters,
+    ) -> Result<(usize, Counts), Error>;
+}
+
+/// A form of a case: `region` runs a batch of the inputs that `inputs` draws.
+struct Region<'a, I, F> {
+    inputs: &'a Inputs<'a, I>,
+    region: F,
+}
+
+impl<I, F: Fn(&[I]) -> usize> Trial for Region<'_, I, F> {
+    fn warm(&self, rng: &mut Rng, count: usize) -> usize {
+        let batch = self.inputs.draw(rng, count);
         touch(&batch);
-        ran(id, region(&batch), count)
+        (self.region)(&batch)
     }
 
-    /// The counts of `region` on `count` fresh inputs.
-    fn counted<I>(
-        &mut self,
-        inputs: &Inputs<'_, I>,
+    fn counted(
+        &self,
+        rng: &mut Rng,
         count: usize,
-        region: impl Fn(&[I]) -> usize,
-        id: &str,
-    ) -> Result<Counts, Error> {
-        let batch = inputs.draw(&mut self.rng, count);
+        counters: &mut Counters,
+    ) -> Result<(usize, Counts), Error> {
+        let batch = self.inputs.draw(rng, count);
         touch(&batch);
-        let (runs, counts) = self.counters.count(|| region(&batch))?;
+        counters.count(&mut || (self.region)(&batch))
+    }
+}
+
+impl<O, K> Measuring<'_, O, K> {
+    /// Runs `trial` on `count` fresh inputs, uncounted.
+    fn warm(&mut self, trial: &dyn Trial, count: usize, id: &str) -> Result<(), Error> {
+        ran(id, trial.warm(&mut self.rng, count), count)
+    }
+
+    /// The counts of `trial` on `count` fresh inputs.
+    fn counted(&mut self, trial: &dyn Trial, count: usize, id: &str) -> Result<Counts, Error> {
+        let (runs, counts) = trial.counted(&mut self.rng, count, self.counters)?;
         ran(id, runs, count)?;
         Ok(counts)
     }
 
-    /// The form of a case that `region` runs, with the operations of its short run: 16, doubled
+    /// The form of a case that `trial` runs, with the operations of its short run: 16, doubled
     /// until a counted run after an uncounted run of as many operations counts [`TARGET`] cycles,
     /// or until `cap`.
-    fn size<I>(
-        &mut self,
-        inputs: &Inputs<'_, I>,
-        cap: usize,
-        region: impl Fn(&[I]) -> usize,
-        id: &str,
-    ) -> Result<Form, Error> {
+    fn size(&mut self, trial: &dyn Trial, cap: usize, id: &str) -> Result<Form, Error> {
         let mut operations = FEWEST;
         loop {
-            self.warm(inputs, operations, &region, id)?;
-            let counts = self.counted(inputs, operations, &region, id)?;
+            self.warm(trial, operations, id)?;
+            let counts = self.counted(trial, operations, id)?;
             if counts.cycles >= TARGET || operations >= cap {
                 return Ok(Form {
                     operations,
@@ -451,19 +475,18 @@ impl Measuring<'_> {
         }
     }
 
-    /// Runs one repetition of `form` through `region`: its operations uncounted, then its
+    /// Runs one repetition of a form through `trial`: its operations uncounted, then its
     /// operations and twice as many counted, each run on fresh inputs.
-    fn repetition<I>(
+    fn repetition(
         &mut self,
-        inputs: &Inputs<'_, I>,
+        trial: &dyn Trial,
         operations: usize,
-        region: impl Fn(&[I]) -> usize,
         id: &str,
     ) -> Result<[Counts; 2], Error> {
-        self.warm(inputs, operations, &region, id)?;
+        self.warm(trial, operations, id)?;
         Ok([
-            self.counted(inputs, operations, &region, id)?,
-            self.counted(inputs, 2 * operations, &region, id)?,
+            self.counted(trial, operations, id)?,
+            self.counted(trial, 2 * operations, id)?,
         ])
     }
 
@@ -487,9 +510,81 @@ impl Measuring<'_> {
             },
         }
     }
+
+    /// Sizes, in pass 0, the batch form of the case `id`, which `trial` runs; in pass `r`, runs
+    /// its repetition `r`.
+    fn batch(&mut self, id: String, trial: &dyn Trial, cap: usize) -> Result<(), Error> {
+        if self.pass == 0 {
+            let batch = self.size(trial, cap, &id)?;
+            self.cases.push(Case {
+                id,
+                batch,
+                chains: Vec::new(),
+            });
+            return Ok(());
+        }
+        let index = self.case(&id)?;
+        let operations = self.cases[index].batch.operations;
+        let counts = self.repetition(trial, operations, &id)?;
+        self.cases[index].batch.repetitions.push(counts);
+        Ok(())
+    }
+
+    /// The index of the case `id`, whose batch form the pass measured just before.
+    fn last(&self, id: &str) -> Result<usize, Error> {
+        if self.pass == 0 {
+            self.cases.len().checked_sub(1)
+        } else {
+            self.next.checked_sub(1)
+        }
+        .filter(|index| self.cases.get(*index).is_some_and(|case| case.id == id))
+        .ok_or_else(|| Error::missing(id, "the cases of the first pass"))
+    }
+
+    /// Sizes, in pass 0, the chain form of the case `index` in `class`, which `trial` runs; in
+    /// pass `r`, runs its repetition `r`.
+    fn chain_form(
+        &mut self,
+        index: usize,
+        class: Class,
+        trial: &dyn Trial,
+        cap: usize,
+        id: &str,
+    ) -> Result<(), Error> {
+        if self.pass == 0 {
+            let form = self.size(trial, cap, id)?;
+            self.cases[index].chains.push(ChainForm { class, form });
+            return Ok(());
+        }
+        let missing = || Error::missing(&format!("chain in {class}"), id);
+        let operations = self.cases[index]
+            .chains
+            .iter()
+            .find(|chain| chain.class == class)
+            .map(|chain| chain.form.operations)
+            .ok_or_else(missing)?;
+        let counts = self.repetition(trial, operations, id)?;
+        self.cases[index]
+            .chains
+            .iter_mut()
+            .find(|chain| chain.class == class)
+            .ok_or_else(missing)?
+            .form
+            .repetitions
+            .push(counts);
+        Ok(())
+    }
 }
 
-impl<O: std::fmt::Display, K: std::fmt::Display> Visitor<O, K> for Measuring<'_> {
+impl<O: Clone + std::fmt::Display, K: Clone + std::fmt::Display> Visitor<O, K>
+    for Measuring<'_, O, K>
+{
+    fn note(&mut self, id: &CaseId<O, K>, call: &Call) {
+        if self.pass == 0 {
+            self.cells.push((id.clone(), *call));
+        }
+    }
+
     fn wants(&self, _id: &CaseId<O, K>) -> bool {
         self.error.is_none()
     }
@@ -504,24 +599,11 @@ impl<O: std::fmt::Display, K: std::fmt::Display> Visitor<O, K> for Measuring<'_>
         inputs: &Inputs<'_, I>,
         run: impl Fn(&I) -> R + Copy,
     ) -> Self {
-        let name = id.to_string();
-        let region = |batch: &[I]| run_batch(batch, run);
-        let result = if self.pass == 0 {
-            self.size(inputs, cap::<I>(), region, &name).map(|batch| {
-                self.cases.push(Case {
-                    id: name.clone(),
-                    batch,
-                    chains: Vec::new(),
-                });
-            })
-        } else {
-            self.case(&name).and_then(|index| {
-                let operations = self.cases[index].batch.operations;
-                let counts = self.repetition(inputs, operations, region, &name)?;
-                self.cases[index].batch.repetitions.push(counts);
-                Ok(())
-            })
+        let trial = Region {
+            inputs,
+            region: |batch: &[I]| run_batch(batch, run),
         };
+        let result = self.batch(id.to_string(), &trial, cap::<I>());
         self.fail(result)
     }
 
@@ -535,20 +617,14 @@ impl<O: std::fmt::Display, K: std::fmt::Display> Visitor<O, K> for Measuring<'_>
             return self;
         }
         let name = id.to_string();
-        // `measure` took note of the case just before.
-        let index = if self.pass == 0 {
-            self.cases.len().checked_sub(1)
-        } else {
-            self.next.checked_sub(1)
-        }
-        .filter(|index| self.cases.get(*index).is_some_and(|case| case.id == name))
-        .ok_or_else(|| Error::missing(&name, "the cases of the first pass"));
-        let result = index.and_then(|index| self.chains(index, inputs, run, &name));
+        let result = self
+            .last(&name)
+            .and_then(|index| self.chains(index, inputs, run, &name));
         self.fail(result)
     }
 }
 
-impl Measuring<'_> {
+impl<O, K> Measuring<'_, O, K> {
     /// Sizes or runs one repetition of the chain forms of the case `index`: one per [`Barrier`]
     /// that holds its result. A result that no barrier holds is an [`Error::Missing`].
     fn chains<I: Chain<R>, R>(
@@ -576,7 +652,8 @@ impl Measuring<'_> {
     }
 
     /// Sizes, in pass 0, the chain form of the case `index` whose value `B` holds; in pass `r`,
-    /// runs its repetition `r`. Nothing, for a result that `B` does not hold.
+    /// runs its repetition `r`. Nothing, for a result that `B` does not hold: that chain compiles
+    /// to nothing.
     fn chain<I: Chain<R>, R, B: Barrier>(
         &mut self,
         index: usize,
@@ -584,34 +661,13 @@ impl Measuring<'_> {
         run: impl Fn(&I) -> R + Copy,
         name: &str,
     ) -> Result<(), Error> {
-        if !B::holds(size_of::<R>()) {
+        if !const { B::LEAST <= size_of::<R>() && size_of::<R>() <= B::MOST } {
             return Ok(());
         }
-        let region = |batch: &[I]| run_chain::<I, R, B>(batch, run);
-        if self.pass == 0 {
-            let form = self.size(inputs, cap::<I>(), region, name)?;
-            self.cases[index].chains.push(ChainForm {
-                class: B::CLASS,
-                form,
-            });
-            return Ok(());
-        }
-        let missing = || Error::missing(&format!("chain in {}", B::CLASS), name);
-        let operations = self.cases[index]
-            .chains
-            .iter()
-            .find(|chain| chain.class == B::CLASS)
-            .map(|chain| chain.form.operations)
-            .ok_or_else(missing)?;
-        let counts = self.repetition(inputs, operations, region, name)?;
-        self.cases[index]
-            .chains
-            .iter_mut()
-            .find(|chain| chain.class == B::CLASS)
-            .ok_or_else(missing)?
-            .form
-            .repetitions
-            .push(counts);
-        Ok(())
+        let trial = Region {
+            inputs,
+            region: |batch: &[I]| run_chain::<I, R, B>(batch, run),
+        };
+        self.chain_form(index, B::CLASS, &trial, cap::<I>(), name)
     }
 }

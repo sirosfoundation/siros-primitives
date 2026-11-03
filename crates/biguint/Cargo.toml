@@ -34,8 +34,29 @@ ruint = { workspace = true, features = ["num-traits"] }
 serde.workspace = true
 uint.workspace = true
 
+# One bench per group of computations: each builds in its own LTO job, in parallel.
 [[bench]]
-name = "compare"
+name = "add"
+harness = false
+
+[[bench]]
+name = "mul"
+harness = false
+
+[[bench]]
+name = "division"
+harness = false
+
+[[bench]]
+name = "mulmod"
+harness = false
+
+[[bench]]
+name = "add_mod"
+harness = false
+
+[[bench]]
+name = "sub_mod"
 harness = false
 
 [lints]

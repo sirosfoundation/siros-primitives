@@ -8,8 +8,8 @@ cargo run -p prime-field-bench-report -- bench [--cpu <cpu>] [--machine <descrip
 cargo run -p prime-field-bench-report -- report
 ```
 
-`bench` runs the `compare` bench on one CPU (CPU 15 by default) with the flags of
-[`bench-compare`](../../bench-compare), checks every case against an independent oracle, and
-records the counts in `benchmarks/record.json` of the crate. `report` writes the document from the
-record and prints every cell more than 10% above the same crate's cell on a field of more bits in
-the same table. `bench` needs Linux with `kernel.perf_event_paranoid` at 2 or below.
+`bench` runs the benches of the crate, one per group of operations, on one CPU (CPU 15 by default)
+with the flags of [`bench-compare`](../../bench-compare), checks every case against an
+independent oracle, and records the counts in `benchmarks/record.json` of the crate. `report`
+writes the document from the record and prints every cell more than 10% above the same crate's
+cell on a field of more bits in the same table. `bench` needs Linux with `kernel.perf_event_paranoid` at 2 or below.

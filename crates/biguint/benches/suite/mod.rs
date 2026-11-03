@@ -6,7 +6,7 @@ mod limbs;
 
 use core::fmt;
 
-use bench_compare::{BATCH, Limbs, Rng, Row, Sample, Suite, Visitor, trim};
+use bench_compare::{BATCH, Limbs, Rng, Row, Sample, Selected, Suite, Visitor, trim};
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 
@@ -33,7 +33,12 @@ impl Suite for Biguint {
     type Op = Op;
     type Key = Width;
 
-    const OPS: &'static [Op] = &Op::ALL;
+    fn ops() -> Vec<Op> {
+        Op::ALL
+            .into_iter()
+            .filter(|op| crate::BASES.contains(&op.base()))
+            .collect()
+    }
 
     fn keys() -> Vec<Width> {
         WIDTHS.into_iter().map(|bits| Width { bits }).collect()
@@ -190,6 +195,74 @@ impl Op {
             (Self::SubMod, [a, b, modulus]) => (a + modulus - b) % modulus,
             (op, operands) => panic!("{op} on {} operands", operands.len()),
         }
+    }
+}
+
+/// Whether this bench measures the computation of the plain operation `op`: it is in the bench's
+/// `BASES`.
+const fn measures(op: Op) -> bool {
+    let mut index = 0;
+    while index < crate::BASES.len() {
+        if crate::BASES[index] as u8 == op as u8 {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+/// A computation as a type: the operation of the plain table, whose constant-time operation fills
+/// the constant-time table. Its cases compile in the benches that measure it.
+pub trait Base: Copy {
+    /// The operation of the plain table.
+    const OP: Op;
+    /// Whether this bench measures the computation.
+    const MEASURED: bool = measures(Self::OP);
+}
+
+/// The computations, one type each.
+pub mod op {
+    use super::{Base, Op};
+
+    /// Declares each computation `$name` of the plain operation `Op::$name`.
+    macro_rules! bases {
+        ($($name:ident),*) => {
+            $(
+                #[doc = concat!("The computation of `Op::", stringify!($name), "`.")]
+                #[derive(Clone, Copy)]
+                pub struct $name;
+
+                impl Base for $name {
+                    const OP: Op = Op::$name;
+                }
+            )*
+        };
+    }
+
+    bases!(Add, Mul, Div, Mod, MulMod, AddMod, SubMod);
+}
+
+/// The plain operation of the computation `B`.
+#[derive(Clone, Copy)]
+pub struct Plain<B>(pub B);
+
+/// The constant-time operation of the computation `B`.
+#[derive(Clone, Copy)]
+pub struct Ct<B>(pub B);
+
+impl<B: Base> Selected<Op> for Plain<B> {
+    const MEASURED: bool = B::MEASURED;
+
+    fn op(&self) -> Op {
+        B::OP
+    }
+}
+
+impl<B: Base> Selected<Op> for Ct<B> {
+    const MEASURED: bool = B::MEASURED;
+
+    fn op(&self) -> Op {
+        B::OP.constant_time()
     }
 }
 
