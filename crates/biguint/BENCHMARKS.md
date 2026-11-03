@@ -1,46 +1,32 @@
 # Benchmarks
 
-`biguint` at commit `1069a8e` against `native`, `ruint`, `crypto-bigint`, `bnum`, `uint` and `num-bigint`: add, mul, div, mod, mulmod, add_mod and sub_mod at 64, 128, 256, 384, 512, 1024, 2048 and 4096 bits, in cycles per operation, measured on 2026-11-02.
-
-The CPU is an AMD Ryzen 9 5950X 16-Core Processor, measured on its CPU 15.
-Its counters give each figure per operation as the median, over 31 repetitions, of a run of 2n operations on fresh operands less a run of n, over n.
+`biguint` at commit `35cb27c` against `native`, `ruint`, `crypto-bigint`, `bnum`, `uint` and `num-bigint`, in cycles per operation, measured on 2026-11-03.
 
 ## Setup
 
 |  |  |
 |---|---|
 | CPU | AMD Ryzen 9 5950X 16-Core Processor (`znver3`) |
-| Compiler | rustc 1.99.1 (58cf8f9c3 2026-10-13), LLVM 23.1.1, `bench` profile |
+| Compiler | rustc 1.99.1 (58cf8f9c3 2026-10-13), LLVM 23.1.1 |
+| Profile | `bench`: `opt-level = 3`, `lto = "fat"`, `codegen-units = 1` |
 | Features | `biguint` with its default features |
-| RUSTFLAGS | `-C target-cpu=native -C codegen-units=1` |
-| Extensions | adx, aes, avx, avx2, bmi1, bmi2, f16c, fma, lzcnt, movbe, pclmulqdq, popcnt, sha, sse, sse2, sse3, sse4.1, sse4.2, sse4a, ssse3, vaes, vpclmulqdq |
-| Counters | one Linux perf_event group: user-mode cycles and branch misses |
-| Load | 1-minute load average 19.91 before the sweep and 17.7 after; CPU 31, the SMT sibling of CPU 15, busy 6% of the sweep |
+| RUSTFLAGS | `-C target-cpu=native -C codegen-units=1 -C llvm-args=-align-loops=64` |
+| Load | CPU 15; 1-minute load 21.21 before, 18.38 after; its SMT sibling, CPU 31, 36% busy |
 | Crates | ruint 1.21.1, crypto-bigint 0.7.10, bnum 0.14.4, uint 0.10.2, num-bigint 0.5.1 |
 
 ## Method
 
-A sweep measures every case in 31 repetitions; repetition r of every case runs before repetition r + 1 of any case, so a drift of the machine reaches all cases alike. Each run draws fresh operand sets from the case's distribution, outside the counted region: no operand set runs twice, so the branch predictor never learns a sequence. A repetition runs n operations uncounted, then counts a run of n operations and a run of 2n. Before the repetitions, n starts at 16 operations and doubles until a run of n, counted after an uncounted run of as many, takes 1,048,576 cycles; n stops earlier where the operand sets of 2n operations fill 256 KiB.
-
-One perf_event group on the measuring thread, pinned to one CPU, counts user-mode cycles and branch misses; a run during which the kernel shares the counters with other groups stops the sweep. A figure per operation is the median, over the 31 repetitions, of the long run less the short run, divided by n: the fixed cost of a run cancels, as in nanoBench's differencing, and each difference pairs two runs taken back to back. A case whose long runs count no more cycles than its short runs stops the sweep, and so does a chain step under one cycle.
-
-Throughput runs independent operations, with operands and results behind `core::hint::black_box`. Latency runs the chain `x = op(x, y)`: from the second operand set on, each result is the first operand of the next operation, so each operation waits for the one before. Each result passes through an empty inline-assembly block, which keeps the compiler from regrouping the chain. The block holds a result of up to 64 bytes in general-purpose registers in one chain and in vector registers in another, each chain a case of its own in the sweep; it can only add moves between the two, so the latency is the chain with fewer cycles. A larger result passes through memory, in a single chain. The chain applies where the result has the type of the first operand and the other operands are plain values: a step copies them, and the copy of an allocated value would allocate.
-
-The sweep ran at a 1-minute load of 2 or more, so its cycles compare within each table only.
-
-Before a case is measured, its results on 256 operand sets equal `num-bigint`'s, reduced modulo 2^N for the crates that wrap. The functions that a case calls, such as the allocator of `num-bigint`, are part of its counts.
-
-The chains are those of add, of the native mul, whose hardware multiply takes the same time on all operands, and of the modular functions that return the type of their operands and reduce any operand: each step of such a chain has its own modulus, below which the result of the step before may not lie. A chain of products modulo 2^N gathers trailing zeros and a chain of quotients falls to zero, so the other cases of mul, div and mod have no chain; `crypto-bigint`'s add_mod and sub_mod need operands below the modulus, `biguint`'s mulmod returns an `Option`, and a step of `num-bigint` would copy allocated operands.
-
-| Operation | Operands at width N |
-|---|---|
-| add, mul | `a` and `b` uniform below 2^N |
-| div, mod | a dividend with bit N − 1 set; a divisor below 2^(N/2) with bit N/2 − 1 set, held in an N-bit integer |
-| mulmod, add_mod, sub_mod | a modulus `m` with bit N − 1 set; `a` and `b` uniform below `m` |
+- Each cell: throughput / latency, in user-mode cycles per operation.
+- Throughput: independent operations on fresh operands.
+- Latency: the chain `x = op(x, y)`, with `x` in registers or in memory, whichever is faster.
+- Each figure: the median over 31 repetitions of the cycles of 2n operations less those of n, over n.
+- A sweep ran at a 1-minute load of 2 or more: compare figures within a table only.
+- Operands at width N: uniform below 2^N; a divisor of N/2 bits; a modulus of N bits with operands below it.
+- Every result matches `num-bigint` before it is measured.
+- A row compares the functions of `biguint`'s timing class: fixed for add and for mul up to 1024 bits, variable for the rest.
+- A constant-time table compares `ConstantTime<Uint>` with every function whose time the width fixes; divisors and moduli are public.
 
 ## Functions
-
-Each cell measures the crate's own function:
 
 | Operation | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
 |---|---|---|---|---|---|---|---|
@@ -48,127 +34,228 @@ Each cell measures the crate's own function:
 | mul | `*` | `wrapping_mul` at 64 and 128 bits | `wrapping_mul` at 64, 128, 256, 384, 512, 2048 and 4096 bits | `wrapping_mul` at 64, 128, 256, 384, 512 and 1024 bits | `wrapping_mul` at 64, 128, 256, 384, 512 and 1024 bits | `overflowing_mul` at 64, 128, 256, 384 and 1024 bits | `&a * &b` at 2048 and 4096 bits |
 | div | `div_rem` | `/ NonZero` at 64 and 128 bits | `wrapping_div` | `wrapping_div_vartime` | `wrapping_div` | `/` | `&a / &b` |
 | mod | `div_rem` | `% NonZero` at 64 and 128 bits | `wrapping_rem` | `rem_vartime` | `wrapping_rem` | `%` | `&a % &b` |
-| mulmod | `mul_mod` | – | `mul_mod` | `mul_mod_vartime` | – | – | – |
-| add_mod | `add_mod` | – | `add_mod` | – | – | – | `(&a + &b) % &m` |
-| sub_mod | `sub_mod` | – | `a.add_mod(m - b.reduce_mod(m), m)` | – | – | – | `(&a + &m - &b) % &m` |
-
-- Each row compares functions of one timing class, the class of `biguint`'s function: add, and mul up to 1024 bits, take a time that the width fixes; mul from 2048 bits, div, mod, mulmod, add_mod and sub_mod take a time that depends on the values.
-- `native` is `u64` at 64 bits and `u128` at 128 bits.
-- `crypto-bigint` is constant-time; its div, mod and mulmod cases run its `*_vartime` functions.
-- `num-bigint` allocates each result.
-- `uint` is `construct_uint!`, as in `primitive-types`.
-- No primitive of this width: `native` at 256, 384, 512, 1024, 2048 and 4096 bits.
-- No modular product: `native` mulmod at 64 and 128 bits, `bnum` mulmod, `uint` mulmod and `num-bigint` mulmod.
-- No modular sum or difference: `native` add_mod and sub_mod at 64 and 128 bits, `bnum` add_mod and sub_mod and `uint` add_mod and sub_mod.
-- Variable time in a fixed-time row: `ruint` mul at 1024 bits, `uint` add at 128, 256, 384, 512, 1024, 2048 and 4096 bits and mul at 512 bits and `num-bigint` add and mul at 64, 128, 256, 384, 512 and 1024 bits.
-- Fixed time in a variable-time row: `crypto-bigint` mul at 2048 and 4096 bits, add_mod and sub_mod, `bnum` mul at 2048 and 4096 bits and `uint` mul at 2048 and 4096 bits.
+| mulmod | `mul_mod` | `u128 product % m` at 64 bits | `mul_mod` | `mul_mod_vartime` | – | – | `(&a * &b) % &m` |
+| add_mod | `add_mod` | `overflowing_add, then - m` at 64 and 128 bits | `add_mod` | – | `overflowing_add, then - m` | `overflowing_add, then - m` | `(&a + &b) % &m` |
+| sub_mod | `sub_mod` | `-, else wrapping_sub then + m` at 64 and 128 bits | `a.add_mod(m - b.reduce_mod(m), m)` | – | `-, else overflowing_sub then + m` | `-, else overflowing_sub then + m` | `(&a + &m - &b) % &m` |
+| add, constant time | `ConstantTime +` | `wrapping_add` at 64 and 128 bits | `wrapping_add` | `wrapping_add` | `wrapping_add` | `overflowing_add` at 64 bits | – |
+| mul, constant time | `ConstantTime *` | `wrapping_mul` at 64 and 128 bits | `wrapping_mul` at 64, 128, 256, 384 and 512 bits | `wrapping_mul` | `wrapping_mul` | `overflowing_mul` at 64, 128, 256, 384, 1024, 2048 and 4096 bits | – |
+| div, constant time | `ConstantTime::div_rem` | – | – | `div_rem` | – | – | – |
+| mod, constant time | `ConstantTime::div_rem` | – | – | `rem` | – | – | – |
+| mulmod, constant time | `ConstantTime::mul_mod` | – | – | `mul_mod` | – | – | – |
+| add_mod, constant time | `ConstantTime::add_mod` | – | – | `add_mod` | – | – | – |
+| sub_mod, constant time | `ConstantTime::sub_mod` | – | – | `sub_mod` | – | – | – |
 
 ## Results
 
 ### add: a + b
 
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
 
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 2.2 / **1.3** | 2.2 / 1.3 | 2.2 / 1.3 | **2.2** / 2.0 | 2.2 / 1.3 | 2.2 / 1.3 | – |
-| 128 | 3.3 / **2.0** | 3.2 / 2.0 | 3.3 / 2.0 | **3.2** / 2.0 | 3.3 / 2.1 | – | – |
-| 256 | 5.7 / 3.3 | – | **5.6** / **3.3** | 6.0 / 5.3 | 5.7 / 3.3 | – | – |
-| 384 | 8.3 / 4.1 | – | **8.0** / **4.1** | 9.6 / 10.5 | 8.3 / 5.4 | – | – |
-| 512 | 10.9 / 5.7 | – | **10.2** / **5.7** | 12.4 / 16.5 | 11.7 / 7.9 | – | – |
-| 1024 | 25.9 / 40.2 | – | **23.1** / 40.1 | 29.1 / **39.7** | 29.3 / 39.7 | – | – |
-| 2048 | **59.4** / **75.8** | – | 83.2 / 103 | 79.6 / 115 | 96.6 / 104 | – | – |
-| 4096 | **163** / **220** | – | 173 / 238 | 204 / 323 | 211 / 315 | – | – |
+| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
+|---|---:|---:|---:|---:|---:|---:|
+| 64 | **1.4** / **1.1** | 1.5 / **1.1** | 1.5 / **1.1** | 1.5 / **1.1** | 1.5 / **1.1** | 1.5 / **1.1** |
+| 128 | 2.7 / 1.7 | **2.6** / **1.5** | **2.6** / **1.5** | **2.6** / **1.5** | 2.7 / **1.5** | – |
+| 256 | 5.2 / **2.7** | – | **5.0** / **2.7** | 5.8 / 5.5 | 5.2 / 3.2 | – |
+| 384 | 7.8 / **3.9** | – | **7.4** / 4.0 | 9.2 / 10.7 | 8.0 / 5.2 | – |
+| 512 | 10.4 / **5.4** | – | **10.1** / **5.4** | 12.5 / 16.7 | 11.5 / 8.5 | – |
+| 1024 | **25.4** / 23.8 | – | 29.5 / **22.9** | 29.2 / 28.9 | 28.1 / 29.5 | – |
+| 2048 | **57.0** / **53.2** | – | 124 / 71.2 | 79.5 / 97.1 | 98.6 / 107 | – |
+| 4096 | 188 / **178** | – | **171** / 196 | 205 / 281 | 221 / 267 | – |
 
 ### mul: a × b
 
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
 
 | Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 2.3 / – | 2.2 / **3.0** | 2.3 / – | **2.2** / – | 2.2 / – | 2.3 / – | – |
-| 128 | 3.8 / – | 3.7 / **5.0** | **3.3** / – | 3.3 / – | 3.6 / – | 3.3 / – | – |
-| 256 | 13.0 / – | – | **12.7** / – | 13.0 / – | 16.0 / – | 16.0 / – | – |
-| 384 | **29.3** / – | – | 30.9 / – | 30.5 / – | 33.0 / – | 37.9 / – | – |
-| 512 | **54.9** / – | – | 59.6 / – | 96.5 / – | 77.8 / – | – | – |
-| 1024 | **228** / – | – | – | 390 / – | 393 / – | 438 / – | – |
-| 2048 | **1,166** / – | – | 1,611 / – | – | – | – | 3,495 / – |
-| 4096 | **4,740** / – | – | 6,655 / – | – | – | – | 11,339 / – |
+| 64 | **1.5** / – | **1.5** / **3.0** | **1.5** / – | **1.5** / – | **1.5** / – | **1.5** / – | – |
+| 128 | **3.0** / – | 3.1 / **5.0** | **3.0** / – | **3.0** / – | **3.0** / – | **3.0** / – | – |
+| 256 | 16.0 / – | – | **12.5** / – | 13.0 / – | 13.0 / – | 16.0 / – | – |
+| 384 | 30.0 / – | – | 30.5 / – | **29.8** / – | 33.6 / – | 36.6 / – | – |
+| 512 | **52.6** / – | – | 60.1 / – | 79.8 / – | 88.2 / – | – | – |
+| 1024 | **220** / – | – | – | 373 / – | 395 / – | 436 / – | – |
+| 2048 | **1,361** / – | – | 1,605 / – | – | – | – | 3,606 / – |
+| 4096 | **4,170** / – | – | 6,475 / – | – | – | – | 11,324 / – |
 
 ### div: a / b
 
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
 
 | Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 7.0 / – | **7.0** / – | 7.0 / – | 229 / – | 7.0 / – | 7.0 / – | 39.5 / – |
-| 128 | 17.3 / – | **16.8** / – | 32.5 / – | 272 / – | 31.2 / – | 30.6 / – | 113 / – |
-| 256 | 87.0 / – | – | **82.3** / – | 544 / – | 246 / – | 202 / – | 290 / – |
-| 384 | **164** / – | – | 199 / – | 707 / – | 363 / – | 314 / – | 354 / – |
-| 512 | **221** / – | – | 257 / – | 844 / – | 492 / – | 397 / – | 420 / – |
-| 1024 | **514** / – | – | 593 / – | 1,636 / – | 1,131 / – | 991 / – | 816 / – |
-| 2048 | **1,447** / – | – | 1,564 / – | 4,119 / – | 3,403 / – | 3,307 / – | 2,091 / – |
-| 4096 | **4,605** / – | – | 4,924 / – | 12,952 / – | 12,618 / – | 12,561 / – | 6,441 / – |
+| 64 | **7.0** / – | **7.0** / – | **7.0** / – | 223 / – | **7.0** / – | **7.0** / – | 37.3 / – |
+| 128 | 17.5 / – | **16.4** / – | 31.9 / – | 268 / – | 30.0 / – | 30.0 / – | 103 / – |
+| 256 | **60.6** / – | – | 81.6 / – | 546 / – | 244 / – | 204 / – | 273 / – |
+| 384 | **131** / – | – | 200 / – | 713 / – | 361 / – | 313 / – | 339 / – |
+| 512 | **186** / – | – | 268 / – | 854 / – | 455 / – | 418 / – | 400 / – |
+| 1024 | **506** / – | – | 594 / – | 1,670 / – | 1,056 / – | 1,000 / – | 805 / – |
+| 2048 | **1,397** / – | – | 1,546 / – | 4,138 / – | 3,424 / – | 3,313 / – | 2,098 / – |
+| 4096 | **4,666** / – | – | 4,870 / – | 12,834 / – | 12,465 / – | 12,541 / – | 6,455 / – |
 
 ### mod: a mod b
 
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
 
 | Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **7.0** / – | 7.0 / – | 7.0 / – | 229 / – | 7.0 / – | 7.0 / – | 8.0 / – |
-| 128 | 18.8 / – | **18.1** / – | 31.2 / – | 273 / – | 33.1 / – | 31.1 / – | 115 / – |
-| 256 | 83.9 / – | – | **83.8** / – | 544 / – | 258 / – | 197 / – | 303 / – |
-| 384 | **175** / – | – | 191 / – | 704 / – | 370 / – | 331 / – | 359 / – |
-| 512 | **226** / – | – | 230 / – | 845 / – | 523 / – | 393 / – | 423 / – |
-| 1024 | **501** / – | – | 573 / – | 1,634 / – | 1,150 / – | 988 / – | 819 / – |
-| 2048 | **1,424** / – | – | 1,538 / – | 4,110 / – | 3,404 / – | 3,287 / – | 2,094 / – |
-| 4096 | **4,582** / – | – | 4,921 / – | 12,982 / – | 12,713 / – | 12,629 / – | 6,463 / – |
+| 64 | **7.0** / – | **7.0** / – | **7.0** / – | 221 / – | **7.0** / – | **7.0** / – | 8.0 / – |
+| 128 | 18.4 / – | **17.4** / – | 31.0 / – | 271 / – | 31.0 / – | 31.0 / – | 103 / – |
+| 256 | **59.3** / – | – | 82.9 / – | 545 / – | 254 / – | 200 / – | 273 / – |
+| 384 | **131** / – | – | 194 / – | 714 / – | 364 / – | 330 / – | 340 / – |
+| 512 | **183** / – | – | 249 / – | 852 / – | 474 / – | 428 / – | 401 / – |
+| 1024 | **512** / – | – | 573 / – | 1,656 / – | 1,063 / – | 995 / – | 806 / – |
+| 2048 | **1,444** / – | – | 1,545 / – | 4,109 / – | 3,444 / – | 3,308 / – | 2,095 / – |
+| 4096 | **4,680** / – | – | 4,899 / – | 12,835 / – | 12,583 / – | 12,587 / – | 6,435 / – |
 
 ### mulmod: a × b mod m
 
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
 
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **12.0** / – | – | 23.5 / **46.6** | 254 / 254 | – | – | – |
-| 128 | **66.5** / – | – | 86.4 / **88.0** | 500 / 510 | – | – | – |
-| 256 | 186 / – | – | **171** / **208** | 1,001 / 1,001 | – | – | – |
-| 384 | **354** / – | – | 384 / **400** | 1,469 / 1,480 | – | – | – |
-| 512 | 573 / – | – | **526** / **548** | 2,000 / 2,007 | – | – | – |
-| 1024 | 1,795 / – | – | **1,552** / **1,564** | 5,312 / 5,351 | – | – | – |
-| 2048 | **5,946** / – | – | 7,429 / **7,451** | 16,412 / 16,511 | – | – | – |
-| 4096 | **19,903** / – | – | 29,612 / **29,630** | 57,739 / 58,315 | – | – | – |
+| Bits | biguint | native | ruint | crypto-bigint | num-bigint |
+|---|---:|---:|---:|---:|---:|
+| 64 | **12.0** / **23.1** | **12.0** / **23.1** | 20.5 / 44.9 | 237 / 233 | 146 / – |
+| 128 | **51.4** / **59.0** | – | 83.3 / 91.2 | 493 / 502 | 371 / – |
+| 256 | 194 / 222 | – | **170** / **206** | 980 / 984 | 564 / – |
+| 384 | **348** / **359** | – | 374 / 392 | 1,465 / 1,498 | 863 / – |
+| 512 | **528** / **539** | – | 543 / 561 | 1,999 / 2,037 | 1,173 / – |
+| 1024 | **1,498** / **1,476** | – | 1,594 / 1,585 | 5,254 / 5,337 | 3,217 / – |
+| 2048 | **5,643** / **5,619** | – | 7,410 / 7,395 | 16,347 / 16,430 | 10,092 / – |
+| 4096 | **20,580** / **20,759** | – | 29,598 / 29,550 | 58,327 / 58,395 | 34,254 / – |
 
 ### add_mod: a + b mod m
 
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
 
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 15.5 / 15.5 | – | **13.0** / **14.0** | – | – | – | 114 / – |
-| 128 | **18.3** / **21.4** | – | 38.9 / 24.5 | – | – | – | 274 / – |
-| 256 | **23.5** / **29.5** | – | 46.6 / 59.5 | – | – | – | 266 / – |
-| 384 | **34.9** / **44.8** | – | 62.8 / 74.6 | – | – | – | 279 / – |
-| 512 | **40.1** / **46.8** | – | 81.2 / 93.1 | – | – | – | 284 / – |
-| 1024 | **83.6** / **115** | – | 159 / 193 | – | – | – | 341 / – |
-| 2048 | **215** / **226** | – | 381 / 461 | – | – | – | 462 / – |
-| 4096 | **328** / **392** | – | 731 / 818 | – | – | – | 839 / – |
+| Bits | biguint | native | ruint | bnum | uint | num-bigint |
+|---|---:|---:|---:|---:|---:|---:|
+| 64 | 4.0 / **9.0** | **3.0** / – | 12.0 / 13.5 | 17.4 / – | **3.0** / – | 102 / – |
+| 128 | 8.0 / **17.3** | **6.0** / – | 34.7 / 22.4 | 17.2 / – | 25.9 / – | 248 / – |
+| 256 | **23.5** / **24.3** | – | 44.6 / 61.6 | 24.0 / – | 58.4 / – | 249 / – |
+| 384 | 34.5 / **40.6** | – | 58.2 / 81.3 | **32.9** / – | 91.8 / – | 252 / – |
+| 512 | 41.9 / **49.3** | – | 75.3 / 97.7 | **40.9** / – | 133 / – | 258 / – |
+| 1024 | 93.0 / **93.7** | – | 151 / 175 | **76.0** / – | 281 / – | 298 / – |
+| 2048 | 173 / **165** | – | 382 / 401 | **168** / – | 591 / – | 492 / – |
+| 4096 | **337** / **410** | – | 759 / 830 | 415 / – | 1,431 / – | 1,074 / – |
 
 ### sub_mod: a − b mod m
 
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row. –: no such function or no chain form.
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
 
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **4.0** / **6.1** | – | 14.0 / 14.0 | – | – | – | 179 / – |
-| 128 | **16.8** / **20.5** | – | 33.1 / 22.9 | – | – | – | 365 / – |
-| 256 | **21.7** / **28.3** | – | 50.1 / 64.4 | – | – | – | 354 / – |
-| 384 | **33.3** / **44.6** | – | 69.4 / 83.2 | – | – | – | 369 / – |
-| 512 | **41.7** / **51.6** | – | 87.3 / 103 | – | – | – | 339 / – |
-| 1024 | **64.0** / **89.2** | – | 193 / 222 | – | – | – | 500 / – |
-| 2048 | **164** / **328** | – | 557 / 493 | – | – | – | 609 / – |
-| 4096 | **310** / **376** | – | 1,035 / 1,110 | – | – | – | 1,090 / – |
+| Bits | biguint | native | ruint | bnum | uint | num-bigint |
+|---|---:|---:|---:|---:|---:|---:|
+| 64 | **4.0** / **7.7** | 12.2 / – | 12.0 / 13.5 | 13.5 / – | 12.4 / – | 163 / – |
+| 128 | 6.0 / **12.3** | **3.9** / – | 33.4 / 23.3 | 14.2 / – | 18.7 / – | 341 / – |
+| 256 | **13.1** / **16.7** | – | 48.2 / 64.3 | 22.9 / – | 49.3 / – | 344 / – |
+| 384 | **21.0** / **28.0** | – | 70.0 / 88.6 | 30.0 / – | 81.5 / – | 364 / – |
+| 512 | **29.4** / **37.6** | – | 91.7 / 111 | 40.6 / – | 133 / – | 311 / – |
+| 1024 | **63.0** / **82.0** | – | 179 / 201 | 69.2 / – | 292 / – | 379 / – |
+| 2048 | **142** / **157** | – | 484 / 472 | 166 / – | 667 / – | 590 / – |
+| 4096 | **288** / **422** | – | 1,018 / 1,089 | 416 / – | 1,596 / – | 868 / – |
+
+### add, constant time: a + b
+
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
+
+| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
+|---|---:|---:|---:|---:|---:|---:|
+| 64 | **1.5** / 1.1 | **1.5** / 1.1 | **1.5** / 1.1 | **1.5** / 1.1 | **1.5** / **1.0** | **1.5** / **1.0** |
+| 128 | 2.7 / **1.5** | **2.6** / 1.6 | 2.7 / **1.5** | **2.6** / **1.5** | **2.6** / **1.5** | – |
+| 256 | **5.1** / 2.8 | – | **5.1** / **2.7** | 5.8 / 5.5 | 5.3 / 3.2 | – |
+| 384 | 7.7 / **4.0** | – | **7.4** / **4.0** | 9.2 / 10.7 | 8.0 / 5.2 | – |
+| 512 | 10.4 / 5.5 | – | **10.1** / **5.4** | 12.4 / 16.8 | 11.7 / 8.5 | – |
+| 1024 | **25.1** / 23.6 | – | 29.6 / **22.7** | 29.2 / 29.0 | 28.1 / 29.9 | – |
+| 2048 | **56.5** / **53.4** | – | 124 / 71.5 | 79.6 / 97.4 | 98.8 / 106 | – |
+| 4096 | 191 / **177** | – | **171** / 196 | 203 / 280 | 225 / 266 | – |
+
+### mul, constant time: a × b
+
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
+
+| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
+|---|---:|---:|---:|---:|---:|---:|
+| 64 | **1.5** / – | **1.5** / **3.0** | **1.5** / – | **1.5** / – | **1.5** / – | **1.5** / – |
+| 128 | **3.0** / – | 3.1 / **5.0** | **3.0** / – | **3.0** / – | **3.0** / – | **3.0** / – |
+| 256 | 16.0 / – | – | **12.6** / – | 13.0 / – | 13.0 / – | 16.0 / – |
+| 384 | 30.0 / – | – | 30.5 / – | **29.8** / – | 33.6 / – | 36.6 / – |
+| 512 | **51.0** / – | – | 59.8 / – | 79.8 / – | 88.6 / – | – |
+| 1024 | **226** / – | – | – | 372 / – | 391 / – | 435 / – |
+| 2048 | **1,180** / – | – | – | 1,801 / – | 1,541 / – | 4,723 / – |
+| 4096 | **4,736** / – | – | – | 7,394 / – | 6,147 / – | 25,032 / – |
+
+### div, constant time: a / b
+
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
+
+| Bits | biguint | crypto-bigint |
+|---|---:|---:|
+| 64 | **25.5** / – | 198 / – |
+| 128 | **113** / – | 412 / – |
+| 256 | **277** / – | 760 / – |
+| 384 | **290** / – | 1,119 / – |
+| 512 | **478** / – | 1,455 / – |
+| 1024 | **1,141** / – | 3,381 / – |
+| 2048 | **3,437** / – | 10,237 / – |
+| 4096 | **11,904** / – | 30,980 / – |
+
+### mod, constant time: a mod b
+
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
+
+| Bits | biguint | crypto-bigint |
+|---|---:|---:|
+| 64 | **25.9** / – | 192 / – |
+| 128 | **112** / – | 390 / – |
+| 256 | **225** / – | 734 / – |
+| 384 | **312** / – | 1,087 / – |
+| 512 | **492** / – | 1,449 / – |
+| 1024 | **1,159** / – | 3,354 / – |
+| 2048 | **3,460** / – | 10,138 / – |
+| 4096 | **11,884** / – | 30,931 / – |
+
+### mulmod, constant time: a × b mod m
+
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
+
+| Bits | biguint | crypto-bigint |
+|---|---:|---:|
+| 64 | **52.0** / **93.8** | 232 / – |
+| 128 | **216** / **219** | 599 / – |
+| 256 | **451** / **459** | 1,226 / – |
+| 384 | **824** / **826** | 1,969 / – |
+| 512 | **1,193** / **1,187** | 3,015 / – |
+| 1024 | **3,861** / **3,852** | 7,753 / – |
+| 2048 | **13,694** / **13,564** | 25,520 / – |
+| 4096 | **50,607** / **50,728** | 87,027 / – |
+
+### add_mod, constant time: a + b mod m
+
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
+
+| Bits | biguint | crypto-bigint |
+|---|---:|---:|
+| 64 | 52.4 / **60.6** | **11.2** / – |
+| 128 | 165 / **161** | **27.4** / – |
+| 256 | 232 / **222** | **71.0** / – |
+| 384 | 309 / **304** | **91.1** / – |
+| 512 | 348 / **346** | **123** / – |
+| 1024 | 556 / **544** | **143** / – |
+| 2048 | 1,003 / **1,183** | **436** / – |
+| 4096 | 2,169 / **2,147** | **911** / – |
+
+### sub_mod, constant time: a − b mod m
+
+Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
+
+| Bits | biguint | crypto-bigint |
+|---|---:|---:|
+| 64 | 50.0 / **64.6** | **4.7** / – |
+| 128 | 168 / **166** | **11.5** / – |
+| 256 | 231 / **224** | **49.2** / – |
+| 384 | 278 / **280** | **82.3** / – |
+| 512 | 345 / **345** | **111** / – |
+| 1024 | 551 / **531** | **132** / – |
+| 2048 | 1,136 / **980** | **292** / – |
+| 4096 | 2,099 / **2,088** | **599** / – |
 
 ## Reproduce
 

@@ -175,6 +175,22 @@ impl<'a, K: Key> Table<'a, K> {
         Ok(table)
     }
 
+    /// The crates, in table order, with a counted cell of any of `ops` on any row; a table shows
+    /// no column of a crate that has none.
+    fn measured(&self, ops: &[Operation<'_>]) -> Vec<&'a str> {
+        self.crates
+            .iter()
+            .copied()
+            .filter(|library| {
+                ops.iter().any(|operation| {
+                    self.keys
+                        .iter()
+                        .any(|key| self.count(operation.op, key, library).is_some())
+                })
+            })
+            .collect()
+    }
+
     /// The count of `op` on the row `key` in `library`; `None` for an absent cell.
     fn count(&self, op: &str, key: &K, library: &str) -> Option<&'a Count> {
         match self
@@ -428,10 +444,11 @@ fn value(figure: f64) -> String {
 }
 
 fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
+    let crates = table.measured(&table.ops);
     let mut rows = Vec::new();
     for Operation { op, name, .. } in &table.ops {
         let mut row = vec![(*name).to_owned()];
-        for library in &table.crates {
+        for library in &crates {
             // Each function with the rows it runs on.
             let mut groups: Vec<(&str, Vec<K>)> = Vec::new();
             for key in &table.keys {
@@ -465,7 +482,7 @@ fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String
         rows.push(row);
     }
     let mut header = vec!["Operation".to_owned()];
-    header.extend(table.crates.iter().map(|library| (*library).to_owned()));
+    header.extend(crates.iter().map(|library| (*library).to_owned()));
     let mut lines = vec!["## Functions".to_owned(), String::new()];
     lines.extend(markdown_table(&header, &rows, &"l".repeat(header.len())));
     lines.push(String::new());
@@ -502,12 +519,12 @@ fn results<K: Key>(
     let mut lines = vec![heading];
     for operation in &table.ops {
         let op = operation.op;
+        let crates = table.measured(core::slice::from_ref(operation));
         let mut rows = Vec::new();
         // Each starred cell: its crate, its deviation and its row.
         let mut starred: Vec<(&str, &str, &K)> = Vec::new();
         for key in &table.keys {
-            let counts: Vec<Option<&Count>> = table
-                .crates
+            let counts: Vec<Option<&Count>> = crates
                 .iter()
                 .map(|library| table.count(op, key, library))
                 .collect();
@@ -523,7 +540,7 @@ fn results<K: Key>(
                     .reduce(f64::min)
             });
             let mut row = vec![key.to_string()];
-            for (library, count) in table.crates.iter().zip(&counts) {
+            for (library, count) in crates.iter().zip(&counts) {
                 let Some(count) = count else {
                     row.push("–".to_owned());
                     continue;
@@ -554,7 +571,7 @@ fn results<K: Key>(
             rows.push(row);
         }
         let mut header = vec![layout.row_header.to_owned()];
-        header.extend(table.crates.iter().map(|library| (*library).to_owned()));
+        header.extend(crates.iter().map(|library| (*library).to_owned()));
         let title = title(operation, build);
         let legend = if starred.is_empty() {
             LEGEND.to_owned()
@@ -576,7 +593,7 @@ fn results<K: Key>(
         lines.extend(markdown_table(
             &header,
             &rows,
-            &("l".to_owned() + &"r".repeat(table.crates.len())),
+            &("l".to_owned() + &"r".repeat(crates.len())),
         ));
         lines.extend(deviations(layout, &starred));
     }
