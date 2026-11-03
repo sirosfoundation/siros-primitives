@@ -211,7 +211,7 @@ impl<P: Polynomial> Gf2<P> {
     }
 
     /// The square root. Every element of a field of characteristic 2 has exactly one.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn sqrt(self) -> Self {
         Self::of(Field::<P>::sqrt(self.value))
@@ -408,7 +408,7 @@ impl<P: Polynomial> Neg for Gf2<P> {
 impl<P: Polynomial> Mul for Gf2<P> {
     type Output = Self;
 
-    #[inline]
+    #[inline(always)]
     fn mul(self, rhs: Self) -> Self {
         Self::of(Field::<P>::mul(self.value, rhs.value))
     }

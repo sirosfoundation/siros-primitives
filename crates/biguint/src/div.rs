@@ -378,10 +378,9 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
     Uint::from_generic_limbs(remainder)
 }
 
-/// [`dc::divide_window`] with its scratch for a remainder of `M` bits. An unoptimized build calls
-/// it, as it does the product kernels, so the scratch takes stack only when the division runs.
-#[cfg_attr(debug_assertions, inline(never))]
-#[cfg_attr(not(debug_assertions), inline(always))]
+/// [`dc::divide_window`] with its scratch for a remainder of `M` bits. The
+/// scratch takes stack only while the division runs.
+#[inline]
 fn divide_and_conquer<M: Bits>(
     window: &mut [u64],
     divisor: &[u64],
@@ -493,8 +492,7 @@ fn divide_by_two_limbs(
 /// writes the low `numerator.len() - divisor.len()` quotient limbs to `quotient`, leaves the
 /// remainder in the low `divisor.len()` limbs of `numerator` and zeros above them, and returns
 /// the top quotient limb, `0` or `1`.
-#[cfg_attr(debug_assertions, inline(never))]
-#[cfg_attr(not(debug_assertions), inline(always))]
+#[inline]
 pub(crate) fn schoolbook(
     numerator: &mut [u64],
     divisor: &[u64],
@@ -513,9 +511,8 @@ pub(crate) fn schoolbook(
 /// The window shrinks from the top by one limb per quotient limb. The top `divisor.len()` limbs of
 /// `window` are below `divisor`. `CONSTANT` tells that the compiler knows the divisor's length,
 /// which unrolls the subtraction of each scaled divisor into two carry chains
-/// ([`sub_mul_row_chains`]). An unoptimized build calls it, as it does the product kernels.
-#[cfg_attr(debug_assertions, inline(never))]
-#[cfg_attr(not(debug_assertions), inline(always))]
+/// ([`sub_mul_row_chains`]).
+#[inline]
 pub(crate) fn divide_by_limbs<const CONSTANT: bool>(
     window: &mut [u64],
     divisor: &[u64],

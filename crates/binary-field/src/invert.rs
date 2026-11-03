@@ -1,6 +1,7 @@
 //! Inversion: `a^(2^n - 2) = (a^(2^(n-1) - 1))^2` along the field's addition chain for `n - 1`
 //! (Itoh and Tsujii, 1988).
 
+use crate::arith::each;
 use crate::chain::{Chains, MAX_STEPS};
 use crate::plan::{Plan, Polynomial};
 
@@ -144,14 +145,18 @@ fn binary<P: Polynomial, O: Inversion>(a: O::Value) -> O::Value {
     let bits = Plan::<P>::CHAIN_BITS;
     let mut power = a;
     let mut k = 1;
-    for step in 0..bits - 1 {
-        let index = bits - 2 - step;
-        power = O::mul(O::frobenius(power, SQUARING, k), power);
-        k *= 2;
-        if (exponent >> index) & 1 == 1 {
-            power = O::mul(O::frobenius(power, SQUARING, 1), a);
-            k += 1;
-        }
-    }
+    each(
+        bits - 1,
+        #[inline(always)]
+        |step| {
+            let index = bits - 2 - step;
+            power = O::mul(O::frobenius(power, SQUARING, k), power);
+            k *= 2;
+            if (exponent >> index) & 1 == 1 {
+                power = O::mul(O::frobenius(power, SQUARING, 1), a);
+                k += 1;
+            }
+        },
+    );
     O::frobenius(power, SQUARING, 1)
 }

@@ -111,10 +111,8 @@ const fn window_scratch(len: usize, levels: usize) -> usize {
 /// Leaves `window mod divisor` in the low `divisor.len()` limbs of `window` and zeros above them,
 /// and gives the quotient limbs to `quotient`: blocks of `divisor.len()` quotient limbs from the
 /// top, the first block shorter when the quotient length is not a multiple. The top
-/// `divisor.len()` limbs of `window` are below `divisor`. An unoptimized build calls it, as it does
-/// the product kernels.
-#[cfg_attr(debug_assertions, inline(never))]
-#[cfg_attr(not(debug_assertions), inline(always))]
+/// `divisor.len()` limbs of `window` are below `divisor`.
+#[inline]
 pub(super) fn divide_window<D: Depth>(
     window: &mut [u64],
     divisor: &[u64],

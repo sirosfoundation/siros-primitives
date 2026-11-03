@@ -27,7 +27,7 @@ pub(crate) const fn negated_inverse(low: u64) -> u64 {
 /// Writes `t * R^-1 mod m` to `out`, `k = m.len()` limbs, for `t < m * R` in the low `2k` limbs of
 /// `t`, which the reduction overwrites. `inverse` is `-m^-1 mod 2^64`.
 ///
-/// An unoptimized build calls the kernel, as it does [`crate::mul::basecase`].
+/// An unoptimized build calls the kernel.
 #[cfg_attr(debug_assertions, inline(never))]
 #[cfg_attr(not(debug_assertions), inline(always))]
 pub(crate) fn reduce<L: ArrayLength>(

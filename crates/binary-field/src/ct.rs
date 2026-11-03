@@ -39,7 +39,7 @@ impl<P: Polynomial> CtSub for Gf2<P> {
 impl<P: Polynomial> CtMul for Gf2<P> {
     type Output = Self;
 
-    #[inline]
+    #[inline(always)]
     fn ct_mul(self, rhs: Self) -> Self {
         Self::of(Field::<P>::ct_mul(self.value(), rhs.value()))
     }
@@ -75,7 +75,7 @@ impl<P: Polynomial> CtNonZero for Gf2<P> {
 impl<P: Polynomial> CtSqrt for Gf2<P> {
     type Root = ConstantTime<Self>;
 
-    #[inline]
+    #[inline(always)]
     fn ct_sqrt(self) -> ConstantTime<Self> {
         ConstantTime::new(Self::of(Field::<P>::ct_sqrt(self.value())))
     }

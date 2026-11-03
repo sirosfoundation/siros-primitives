@@ -107,10 +107,9 @@ pub(crate) fn square<A: ArrayLength>(out: &mut [u64], a: &GenericArray<u64, A>) 
 /// Writes `a * b mod 2^(64 * out.len())` to `out`. `out` is at most `a.len() + b.len()` limbs
 /// long.
 ///
-/// An unoptimized build calls the kernel: inlined, every row keeps its own stack slots in the
-/// caller's frame, and a 4096-bit product inlines dozens of kernels.
-#[cfg_attr(debug_assertions, inline(never))]
-#[cfg_attr(not(debug_assertions), inline(always))]
+/// A call: inlined, every row keeps its own stack slots in the caller's frame, and a 4096-bit
+/// product inlines dozens of kernels, which cost minutes of compile time per caller.
+#[inline]
 pub(crate) fn basecase(out: &mut [u64], a: &[u64], b: &[u64]) {
     let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
     for (index, &multiplier) in short.iter().enumerate() {

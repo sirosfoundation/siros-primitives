@@ -66,6 +66,47 @@ const fn low_mask(bits: usize) -> u64 {
     }
 }
 
+/// Runs `body` on each index below `len`, in order. Builds without debug assertions call it at a
+/// literal index for each index below 8 and loop past 8, so that a constant `len` folds to
+/// straight-line code before the optimizer schedules it: with plain loops, which LLVM unrolls late,
+/// a GF(2^128) product without carry-less multiplication took 8% more cycles. Debug builds loop.
+#[inline(always)]
+pub(crate) fn each(len: usize, mut body: impl FnMut(usize)) {
+    if cfg!(debug_assertions) {
+        for index in 0..len {
+            body(index);
+        }
+        return;
+    }
+    if len > 0 {
+        body(0);
+    }
+    if len > 1 {
+        body(1);
+    }
+    if len > 2 {
+        body(2);
+    }
+    if len > 3 {
+        body(3);
+    }
+    if len > 4 {
+        body(4);
+    }
+    if len > 5 {
+        body(5);
+    }
+    if len > 6 {
+        body(6);
+    }
+    if len > 7 {
+        body(7);
+    }
+    for index in 8..len {
+        body(index);
+    }
+}
+
 /// Where a squaring runs: alone, or in a run of squarings, a Frobenius power.
 #[derive(Clone, Copy)]
 pub(crate) enum Squaring {
@@ -87,22 +128,30 @@ impl<P: Polynomial> Field<P> {
         let degree = Plan::<P>::DEGREE;
         let taps = Plan::<P>::TAPS;
         let mut overflow = W::ZERO;
-        for index in 0..taps.len() {
-            if let Some(&tap) = taps.get(index)
-                && tap > 0
-            {
-                overflow = overflow ^ (high >> (degree - tap));
-            }
-        }
+        each(
+            taps.len(),
+            #[inline(always)]
+            |index| {
+                if let Some(&tap) = taps.get(index)
+                    && tap > 0
+                {
+                    overflow = overflow ^ (high >> (degree - tap));
+                }
+            },
+        );
         let high = high ^ overflow;
         let mut sum = low ^ high;
-        for index in 0..taps.len() {
-            if let Some(&tap) = taps.get(index)
-                && tap > 0
-            {
-                sum = sum ^ (high << tap);
-            }
-        }
+        each(
+            taps.len(),
+            #[inline(always)]
+            |index| {
+                if let Some(&tap) = taps.get(index)
+                    && tap > 0
+                {
+                    sum = sum ^ (high << tap);
+                }
+            },
+        );
         if degree >= 64 {
             sum
         } else {
@@ -122,16 +171,24 @@ impl<P: Polynomial> Field<P> {
         }
         let taps = Plan::<P>::TAPS;
         let (mut sum, mut rest) = (product & mask, product >> degree);
-        for _round in 0..Plan::<P>::ROUNDS {
-            let mut folded = W::ZERO;
-            for index in 0..taps.len() {
-                if let Some(&tap) = taps.get(index) {
-                    folded = folded ^ (rest << tap);
-                }
-            }
-            sum = sum ^ (folded & mask);
-            rest = folded >> degree;
-        }
+        each(
+            Plan::<P>::ROUNDS,
+            #[inline(always)]
+            |_round| {
+                let mut folded = W::ZERO;
+                each(
+                    taps.len(),
+                    #[inline(always)]
+                    |index| {
+                        if let Some(&tap) = taps.get(index) {
+                            folded = folded ^ (rest << tap);
+                        }
+                    },
+                );
+                sum = sum ^ (folded & mask);
+                rest = folded >> degree;
+            },
+        );
         sum
     }
 
@@ -251,13 +308,17 @@ impl<P: Polynomial> Field<P> {
         } else {
             let high = (product >> degree).resize::<U64>();
             let mut sum = high;
-            for index in 0..Plan::<P>::TAPS.len() {
-                if let Some(&tap) = Plan::<P>::TAPS.get(index)
-                    && tap > 0
-                {
-                    sum ^= high << tap;
-                }
-            }
+            each(
+                Plan::<P>::TAPS.len(),
+                #[inline(always)]
+                |index| {
+                    if let Some(&tap) = Plan::<P>::TAPS.get(index)
+                        && tap > 0
+                    {
+                        sum ^= high << tap;
+                    }
+                },
+            );
             sum.resize()
         };
         (product ^ folded ^ spill).resize()
@@ -270,13 +331,17 @@ impl<P: Polynomial> Field<P> {
         let degree = Plan::<P>::DEGREE;
         let taps = Plan::<P>::TAPS;
         let mut overflow = Poly::<N>::ZERO;
-        for index in 0..taps.len() {
-            if let Some(&tap) = taps.get(index)
-                && tap > 0
-            {
-                overflow ^= high.shr_within_words((degree - tap) as u32);
-            }
-        }
+        each(
+            taps.len(),
+            #[inline(always)]
+            |index| {
+                if let Some(&tap) = taps.get(index)
+                    && tap > 0
+                {
+                    overflow ^= high.shr_within_words((degree - tap) as u32);
+                }
+            },
+        );
         overflow
     }
 
@@ -304,13 +369,17 @@ impl<P: Polynomial> Field<P> {
         let taps = Plan::<P>::TAPS;
         let high = (product >> degree).resize::<U64>();
         let mut sum = (product.resize::<U64>() & Poly::of(low_mask(degree))) ^ high;
-        for index in 0..taps.len() {
-            if let Some(&tap) = taps.get(index)
-                && tap > 0
-            {
-                sum ^= high << tap;
-            }
-        }
+        each(
+            taps.len(),
+            #[inline(always)]
+            |index| {
+                if let Some(&tap) = taps.get(index)
+                    && tap > 0
+                {
+                    sum ^= high << tap;
+                }
+            },
+        );
         sum.resize()
     }
 
@@ -339,13 +408,17 @@ impl<P: Polynomial> Field<P> {
         let taps = Plan::<P>::TAPS;
         let spills = |value: Poly<U128>| {
             let mut spill = Poly::<U128>::ZERO;
-            for index in 0..taps.len() {
-                if let Some(&tap) = taps.get(index)
-                    && tap > 0
-                {
-                    spill ^= value.shr_within_words((64 - tap) as u32);
-                }
-            }
+            each(
+                taps.len(),
+                #[inline(always)]
+                |index| {
+                    if let Some(&tap) = taps.get(index)
+                        && tap > 0
+                    {
+                        spill ^= value.shr_within_words((64 - tap) as u32);
+                    }
+                },
+            );
             spill
         };
         let spill = spills(high);
@@ -356,13 +429,17 @@ impl<P: Polynomial> Field<P> {
             spills(high)
         };
         let mut sum = low ^ high ^ (carries << 64);
-        for index in 0..taps.len() {
-            if let Some(&tap) = taps.get(index)
-                && tap > 0
-            {
-                sum ^= high.shl_within_words(tap as u32);
-            }
-        }
+        each(
+            taps.len(),
+            #[inline(always)]
+            |index| {
+                if let Some(&tap) = taps.get(index)
+                    && tap > 0
+                {
+                    sum ^= high.shl_within_words(tap as u32);
+                }
+            },
+        );
         sum
     }
 
@@ -385,17 +462,25 @@ impl<P: Polynomial> Field<P> {
         } else {
             // Rounds of shifted copies, one per tap.
             let mut rest = product >> degree;
-            for _round in 0..Plan::<P>::ROUNDS {
-                let mut folded = Poly::<Wide<P>>::ZERO;
-                let taps = Plan::<P>::TAPS;
-                for index in 0..taps.len() {
-                    if let Some(&tap) = taps.get(index) {
-                        folded ^= rest << tap;
-                    }
-                }
-                low ^= folded.resize();
-                rest = folded >> degree;
-            }
+            each(
+                Plan::<P>::ROUNDS,
+                #[inline(always)]
+                |_round| {
+                    let mut folded = Poly::<Wide<P>>::ZERO;
+                    let taps = Plan::<P>::TAPS;
+                    each(
+                        taps.len(),
+                        #[inline(always)]
+                        |index| {
+                            if let Some(&tap) = taps.get(index) {
+                                folded ^= rest << tap;
+                            }
+                        },
+                    );
+                    low ^= folded.resize();
+                    rest = folded >> degree;
+                },
+            );
             low
         }
     }
@@ -408,22 +493,30 @@ impl<P: Polynomial> Field<P> {
         let degree = Plan::<P>::DEGREE;
         let taps = Plan::<P>::TAPS;
         let mut overflow = Lanes::<P>::ZERO;
-        for index in 0..taps.len() {
-            if let Some(&tap) = taps.get(index)
-                && tap > 0
-            {
-                overflow ^= high >> (degree - tap);
-            }
-        }
+        each(
+            taps.len(),
+            #[inline(always)]
+            |index| {
+                if let Some(&tap) = taps.get(index)
+                    && tap > 0
+                {
+                    overflow ^= high >> (degree - tap);
+                }
+            },
+        );
         let high = high ^ overflow;
         let mut sum = high;
-        for index in 0..taps.len() {
-            if let Some(&tap) = taps.get(index)
-                && tap > 0
-            {
-                sum ^= high << tap;
-            }
-        }
+        each(
+            taps.len(),
+            #[inline(always)]
+            |index| {
+                if let Some(&tap) = taps.get(index)
+                    && tap > 0
+                {
+                    sum ^= high << tap;
+                }
+            },
+        );
         sum
     }
 
@@ -469,9 +562,13 @@ impl<P: Polynomial> Field<P> {
             }
         } else {
             let mut power = a;
-            for _step in 0..Plan::<P>::DEGREE - 1 {
-                power = Self::run_square(power);
-            }
+            each(
+                Plan::<P>::DEGREE - 1,
+                #[inline(always)]
+                |_step| {
+                    power = Self::run_square(power);
+                },
+            );
             power
         }
     }
@@ -726,14 +823,18 @@ impl<N: clmul::Width> Masks<N> {
 fn gather<N: clmul::Width>(a: Poly<N>) -> Poly<N> {
     let mut x = gather_within(a);
     let half = N::BITS.div_ceil(2);
-    for level in 0..5 {
-        let chunk = 32 << level;
-        if chunk < half
-            && let Some(&mask) = Masks::<N>::BLOCKS.get(level)
-        {
-            x = (x | (x >> chunk)) & mask;
-        }
-    }
+    each(
+        5,
+        #[inline(always)]
+        |level| {
+            let chunk = 32 << level;
+            if chunk < half
+                && let Some(&mask) = Masks::<N>::BLOCKS.get(level)
+            {
+                x = (x | (x >> chunk)) & mask;
+            }
+        },
+    );
     x
 }
 
@@ -743,11 +844,15 @@ fn gather<N: clmul::Width>(a: Poly<N>) -> Poly<N> {
 fn gather_within<N: clmul::Width>(a: Poly<N>) -> Poly<N> {
     let within = Masks::<N>::WITHIN;
     let mut x = a & within[0];
-    for level in 0..5 {
-        if let Some(&mask) = within.get(level + 1) {
-            x = (x | x.shr_within_words(1u32 << level)) & mask;
-        }
-    }
+    each(
+        5,
+        #[inline(always)]
+        |level| {
+            if let Some(&mask) = within.get(level + 1) {
+                x = (x | x.shr_within_words(1u32 << level)) & mask;
+            }
+        },
+    );
     x
 }
 
