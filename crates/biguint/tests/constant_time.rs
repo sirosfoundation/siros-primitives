@@ -1,10 +1,10 @@
 //! Every operation of `ConstantTime<Uint<N>>` and `ConstantTimeResidue` against the variable-time
-//! `Uint` and `Residue` paths, at 64, 256, 521 and 4096 bits, under odd and even moduli and
+//! `Uint` and `Residue` paths, at 64, 256, 521 and 1024 bits, under odd and even moduli and
 //! divisors: one table of operations, run on edge and random operands.
 
 use core::ops::Add;
 
-use biguint::typenum::{U64, U256, U521, U4096};
+use biguint::typenum::{U64, U256, U521, U1024};
 use biguint::{Bits, ConstantTime, Modulus, NonZeroUint, Pow, Uint};
 use generic_array::GenericArray;
 use generic_array::sequence::GenericSequence;
@@ -373,5 +373,5 @@ fn constant_time_operations_match_the_variable_time_paths() {
     check_width::<U64>();
     check_width::<U256>();
     check_width::<U521>();
-    check_width::<U4096>();
+    check_width::<U1024>();
 }

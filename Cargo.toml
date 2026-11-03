@@ -96,3 +96,6 @@ result_unit_err = "deny"
 opt-level = 3
 lto = "fat"
 codegen-units = 1
+
+[profile.test]
+opt-level = 1
