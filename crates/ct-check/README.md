@@ -1,9 +1,5 @@
 # ct-check
 
-Checks that the operations of `ConstantTime` in `biguint`, `prime-field` and `binary-field` never
-branch on a wrapped operand and never compute a memory address from one.
-
-
 Checks that the `ConstantTime` operations of `biguint`, `prime-field` and `binary-field` never
 branch on a wrapped value and never compute a memory address from one. Runs on x86-64 Linux with
 `valgrind` in `PATH`.
