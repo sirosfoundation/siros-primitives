@@ -22,7 +22,7 @@ use std::process::ExitCode;
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 use crate::barrier::Ymm;
-use crate::barrier::{Barrier, Memory};
+use crate::barrier::{Barrier, Memory, touch};
 #[cfg(target_arch = "x86_64")]
 use crate::barrier::{Gpr, Xmm};
 use crate::counters::{Counters, Counts, pin};
@@ -408,6 +408,7 @@ impl Measuring<'_> {
         id: &str,
     ) -> Result<(), Error> {
         let batch = inputs.draw(&mut self.rng, count);
+        touch(&batch);
         ran(id, region(&batch), count)
     }
 
@@ -420,6 +421,7 @@ impl Measuring<'_> {
         id: &str,
     ) -> Result<Counts, Error> {
         let batch = inputs.draw(&mut self.rng, count);
+        touch(&batch);
         let (runs, counts) = self.counters.count(|| region(&batch))?;
         ran(id, runs, count)?;
         Ok(counts)

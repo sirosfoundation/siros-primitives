@@ -9,9 +9,9 @@
 //! place on the stack, whose address a block takes after each step: one store and one load per
 //! word and step. Off x86-64, every chain runs through [`Memory`] and `core::hint::black_box`
 //! does the hiding.
-#![cfg_attr(
-    target_arch = "x86_64",
-    expect(unsafe_code, reason = "a barrier is inline assembly")
+#![expect(
+    unsafe_code,
+    reason = "a barrier is inline assembly, and `touch` reads padding bytes"
 )]
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
@@ -94,6 +94,24 @@ fn clobber<T>(value: &mut T) {
         reason = "the reference that `black_box` returns is `value`"
     )]
     core::hint::black_box(value);
+}
+
+/// The bytes of a cache line.
+const LINE: usize = 64;
+
+/// Reads one byte of every cache line of `batch`, so every run starts with its operand sets in
+/// the caches whatever their drawing and conversion evicted. A crate whose conversion allocates
+/// per element otherwise counted its runs from farther memory: its single-`xor` add took 19 to 27
+/// cycles against 2 for the same instructions in other crates.
+pub(crate) fn touch<T>(batch: &[T]) {
+    let start = batch.as_ptr().cast::<core::mem::MaybeUninit<u8>>();
+    for offset in (0..core::mem::size_of_val(batch)).step_by(LINE) {
+        let line = start.wrapping_add(offset);
+        // SAFETY: `line` points into the bytes of `batch`; a `MaybeUninit<u8>` reads any byte,
+        // padding included.
+        let byte = unsafe { core::ptr::read_volatile(line) };
+        sink(&byte);
+    }
 }
 
 /// `value` behind an address that the optimizer cannot see through, so it can neither precompute
