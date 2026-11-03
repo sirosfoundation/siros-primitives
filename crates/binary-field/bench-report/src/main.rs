@@ -62,7 +62,8 @@ const MEASURED: Measured = Measured {
             slug: "without-clmul",
             // polyval selects its PCLMULQDQ backend at run time unless its backend is "soft".
             rustflags: "-C target-cpu=native -C target-feature=-pclmulqdq,-vpclmulqdq \
-                        -C codegen-units=1 --cfg polyval_backend=\"soft\"",
+                        -C codegen-units=1 -C llvm-args=-align-loops=64 \
+                        --cfg polyval_backend=\"soft\"",
         },
     ],
 };

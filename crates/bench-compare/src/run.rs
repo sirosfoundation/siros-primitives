@@ -23,11 +23,13 @@ pub struct Build {
 
 /// The build for the CPU that runs the bench. One codegen unit makes the code of each crate
 /// independent of the rest of the bench: with sixteen, a change to the measured crate moved the
-/// counts of others by up to 14%.
+/// counts of others by up to 14%. Every loop starts on a 64-byte line, so a loop of up to 64 bytes
+/// never straddles two: two identical one-`add` chain loops took 1.0 and 2.0 cycles per step where
+/// the second's branch crossed a line.
 pub const NATIVE: Build = Build {
     name: "",
     slug: "",
-    rustflags: "-C target-cpu=native -C codegen-units=1",
+    rustflags: "-C target-cpu=native -C codegen-units=1 -C llvm-args=-align-loops=64",
 };
 
 /// The CPUs of the machine.
