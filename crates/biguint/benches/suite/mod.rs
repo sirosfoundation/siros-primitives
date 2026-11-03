@@ -41,7 +41,7 @@ impl Suite for Biguint {
     }
 
     fn keys() -> Vec<Width> {
-        WIDTHS.into_iter().map(|bits| Width { bits }).collect()
+        crate::WIDTHS.iter().map(|&bits| Width { bits }).collect()
     }
 
     /// The operand sets of `op` at the width, with their exact results. The seed depends on the

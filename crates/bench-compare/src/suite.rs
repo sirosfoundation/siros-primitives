@@ -451,7 +451,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
                     .iter()
                     .map(|sample| {
                         let input = (case.prepare)(&shared, &sample.operands);
-                        (case.read)(&shared, &(case.run)(&input))
+                        (case.read)(&shared, &apart(case.run, &input))
                     })
                     .collect();
                 check(&id, samples, &results);
@@ -498,6 +498,13 @@ struct Case<Setup, Prepare, Run, Read> {
     prepare: Prepare,
     run: Run,
     read: Read,
+}
+
+/// `run` on `input`, in a function of its own: the copy of the operation that the check runs stays
+/// out of the code of the case, whose optimization time grows faster than its size.
+#[inline(never)]
+fn apart<I, R>(run: impl Fn(&I) -> R, input: &I) -> R {
+    run(input)
 }
 
 /// Panics unless the case `id` returned an accepted result for every sample: `results` holds its

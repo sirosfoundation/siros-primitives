@@ -181,6 +181,19 @@ const VARIABLE_IN_FIXED_ROW: &str = "variable time in a fixed-time row";
 /// The reason for a cell whose function's time is fixed, in a variable-time row.
 const FIXED_IN_VARIABLE_ROW: &str = "fixed time in a variable-time row";
 
+/// Whether this bench measures the width `bits`. The adapters of the other widths compile to
+/// nothing.
+const fn measures(bits: u32) -> bool {
+    let mut index = 0;
+    while index < crate::WIDTHS.len() {
+        if crate::WIDTHS[index] == bits {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
 /// Generates [`WIDTHS`] and [`offer`] from one line per width: the width in bits, the `biguint`
 /// width type, the native adapter, the `u64` limbs, the bytes, and the `uint` crate's adapter.
 macro_rules! widths {
@@ -192,7 +205,7 @@ macro_rules! widths {
         pub fn offer<V: Visitor<Op, Width>>(row: Row<Op, Width, V>) -> Row<Op, Width, V> {
             match row.key().bits {
                 $(
-                    $bits => row
+                    $bits if const { measures($bits) } => row
                         .lib("biguint", this_crate::<$biguint, V>)
                         .lib("native", $native)
                         .lib("ruint", ruint::<$bits, $limbs, V>)
