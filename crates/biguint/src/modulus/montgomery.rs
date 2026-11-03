@@ -97,9 +97,11 @@ fn fold<L: ArrayLength + Indices>(
 /// Runs `row` on each row index of a `L`-limb modulus: one copy per row up to [`BUFFERED_ROW`]
 /// limbs, a loop beyond.
 #[inline(always)]
-fn each_row<L: Indices>(row: impl FnMut(usize)) {
+fn each_row<L: Indices>(mut row: impl FnMut(usize)) {
     if L::USIZE > BUFFERED_ROW {
-        (0..L::USIZE).for_each(row);
+        for index in 0..L::USIZE {
+            row(index);
+        }
     } else {
         L::each(row);
     }

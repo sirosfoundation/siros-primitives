@@ -165,9 +165,11 @@ impl<M: Modulus> Shape<M> {
 
     /// The indices below `N` as [`Self::each_limb`] runs them.
     #[inline(always)]
-    fn each<N: Indices>(body: impl FnMut(usize)) {
+    fn each<N: Indices>(mut body: impl FnMut(usize)) {
         if Self::LIMBS > COPIED_LIMBS {
-            (0..N::USIZE).for_each(body);
+            for index in 0..N::USIZE {
+                body(index);
+            }
         } else {
             N::each(body);
         }

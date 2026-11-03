@@ -169,14 +169,16 @@ pub struct Poly<N: Width> {
 }
 
 /// The most registers whose loops run one copy per register; wider polynomials loop.
-const COPIED_LANES: usize = 8;
+const COPIED_LANES: usize = 4;
 
 /// Runs `body` on each register index of a `Poly<N>`: one copy per register up to
 /// [`COPIED_LANES`] in builds without debug assertions ([`Indices`]), a loop beyond.
 #[inline(always)]
-fn each_lane<N: Width>(body: impl FnMut(usize)) {
+fn each_lane<N: Width>(mut body: impl FnMut(usize)) {
     if N::LANES > COPIED_LANES {
-        (0..N::LANES).for_each(body);
+        for index in 0..N::LANES {
+            body(index);
+        }
     } else {
         N::Lanes::each(body);
     }
