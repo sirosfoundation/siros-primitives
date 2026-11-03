@@ -16,7 +16,7 @@ impl<M: Modulus> Public for Fp<M> {}
 impl<M: Modulus> CtAdd for Fp<M> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn ct_add(self, rhs: Self) -> Self {
         self.add_with(rhs)
     }
@@ -26,7 +26,7 @@ impl<M: Modulus> CtAdd for Fp<M> {
 impl<M: Modulus> CtSub for Fp<M> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn ct_sub(self, rhs: Self) -> Self {
         self.sub_with(rhs)
     }
@@ -36,7 +36,7 @@ impl<M: Modulus> CtSub for Fp<M> {
 impl<M: Modulus> CtMul for Fp<M> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn ct_mul(self, rhs: Self) -> Self {
         self.mul_with::<true>(rhs)
     }
@@ -44,7 +44,7 @@ impl<M: Modulus> CtMul for Fp<M> {
 
 /// `-self`.
 impl<M: Modulus> CtNeg for Fp<M> {
-    #[inline(always)]
+    #[inline]
     fn ct_neg(self) -> Self {
         self.neg_with()
     }
@@ -52,7 +52,7 @@ impl<M: Modulus> CtNeg for Fp<M> {
 
 /// `self * self`.
 impl<M: Modulus> CtSquare for Fp<M> {
-    #[inline(always)]
+    #[inline]
     fn ct_square(self) -> Self {
         self.square_with::<true>()
     }
@@ -60,7 +60,7 @@ impl<M: Modulus> CtSquare for Fp<M> {
 
 /// `self^exponent` for a public exponent, by sliding windows of odd powers over its bits.
 impl<M: Modulus, E: Bits> CtPow<Uint<E>> for Fp<M> {
-    #[inline(always)]
+    #[inline]
     fn ct_pow(self, exponent: Uint<E>) -> Self {
         self.pow_with::<true, E>(exponent)
     }
@@ -70,7 +70,7 @@ impl<M: Modulus, E: Bits> CtPow<Uint<E>> for Fp<M> {
 impl<M: Modulus> CtNonZero for Fp<M> {
     type NonZero = NonZero<Self>;
 
-    #[inline(always)]
+    #[inline]
     fn ct_nonzero(self) -> Option<NonZero<Self>> {
         NonZero::ct_new(self)
     }
@@ -81,7 +81,7 @@ impl<M: Modulus> CtNonZero for Fp<M> {
 impl<M: Modulus> CtSqrt for Fp<M> {
     type Root = Option<ConstantTime<Self>>;
 
-    #[inline(always)]
+    #[inline]
     fn ct_sqrt(self) -> Option<ConstantTime<Self>> {
         self.sqrt_ct().map(ConstantTime::new)
     }
@@ -94,7 +94,7 @@ macro_rules! public_left {
             impl<M: Modulus> $op<ConstantTime<Fp<M>>> for Fp<M> {
                 type Output = ConstantTime<Self>;
 
-                #[inline(always)]
+                #[inline]
                 fn $method(self, rhs: ConstantTime<Self>) -> ConstantTime<Self> {
                     ConstantTime::new($ct::$ct_method(self, rhs.reveal()))
                 }

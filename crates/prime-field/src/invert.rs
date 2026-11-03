@@ -42,6 +42,7 @@ const MASKED_BATCH: usize = 2 * HALF;
 const LOW: u64 = (1 << BATCH) - 1;
 
 impl<M: Modulus> biguint::Field for Fp<M> {
+    // As a call, the P-256 base inverse measured 2.5% more cycles.
     #[inline(always)]
     fn invert_nonzero(self) -> Self {
         if Shape::<M>::LIMBS == 1 {
