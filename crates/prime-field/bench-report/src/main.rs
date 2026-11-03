@@ -21,7 +21,7 @@ impl fmt::Display for Field {
 
 const MEASURED: Measured = Measured {
     package: "prime-field",
-    benches: &["sums", "products"],
+    benches: &["sums", "products", "integers"],
     sources: "crates/prime-field/src",
     pathspecs: &[
         "Cargo.toml",
@@ -62,18 +62,35 @@ const LAYOUT: Layout<'static, Field> = Layout {
         Operation::new("square_vartime", "square", "a²"),
         Operation::new("invert_vartime", "invert", "a⁻¹"),
         Operation::new("sqrt_vartime", "sqrt", "√a"),
+        Operation::new("mul_u64_vartime", "mul_u64", "a × k, k of 64 bits"),
+        Operation::new("mul_uint_vartime", "mul_uint", "a × k, k of the bit length of p"),
+        Operation::new("add_u64_vartime", "add_u64", "a + k, k of 64 bits"),
+        Operation::new("add_uint_vartime", "add_uint", "a + k, k of the bit length of p"),
+        Operation::new("sub_u64_vartime", "sub_u64", "a − k, k of 64 bits"),
+        Operation::new("sub_uint_vartime", "sub_uint", "a − k, k of the bit length of p"),
+        Operation::new("from_u64_vartime", "from_u64", "k mod p, k of 64 bits"),
         Operation::constant_time("add_ct", "add", "a + b"),
         Operation::constant_time("sub_ct", "sub", "a − b"),
         Operation::constant_time("mul_ct", "mul", "a × b"),
         Operation::constant_time("square_ct", "square", "a²"),
         Operation::constant_time("invert_ct", "invert", "a⁻¹"),
         Operation::constant_time("sqrt_ct", "sqrt", "√a"),
+        Operation::constant_time("mul_u64_ct", "mul_u64", "a × k, k of 64 bits"),
+        Operation::constant_time("mul_uint_ct", "mul_uint", "a × k, k of the bit length of p"),
+        Operation::constant_time("add_u64_ct", "add_u64", "a + k, k of 64 bits"),
+        Operation::constant_time("add_uint_ct", "add_uint", "a + k, k of the bit length of p"),
+        Operation::constant_time("sub_u64_ct", "sub_u64", "a − k, k of 64 bits"),
+        Operation::constant_time("sub_uint_ct", "sub_uint", "a − k, k of the bit length of p"),
+        Operation::constant_time("from_u64_ct", "from_u64", "k mod p, k of 64 bits"),
     ],
     row_header: "Field",
     rows_phrase: |fields| format!("over {}", sentence(fields)),
     bits: |field| field.bits,
     method: &[
         "Operands: canonical residues, the same for every crate.",
+        "Integer operands `k`: uniform of exactly 64 bits, or of exactly the bit length of `p`, which \
+         may reach `p`. A crate without an operation on an integer runs its own conversion of `k` \
+         and then its operation on two elements.",
         "Every result matches `num-bigint` before it is measured.",
         "`prime-field` runs `Fp` in the tables without a label and `ConstantTime` in the \
          constant-time tables.",

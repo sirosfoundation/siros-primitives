@@ -148,10 +148,18 @@ impl<M: Modulus> Shape<M> {
     /// long division of `2^n mod p = 2^n - p` through 128 more bits.
     const RECIPROCAL: [u64; 2] = {
         let mut power = M::Width::EXTENDED_ZERO;
-        set(power.as_mut_slice(), Self::BITS / 64, 1 << (Self::BITS % 64));
+        set(
+            power.as_mut_slice(),
+            Self::BITS / 64,
+            1 << (Self::BITS % 64),
+        );
         let mut remainder = M::Width::ZERO;
         // The borrow out of the limbs cancels the bit of `2^n` above them when `n = 64 L`.
-        fits(sub(remainder.as_mut_slice(), power.as_slice(), Self::P.as_slice()));
+        fits(sub(
+            remainder.as_mut_slice(),
+            power.as_slice(),
+            Self::P.as_slice(),
+        ));
         let mut quotient = [0u64; 2];
         let mut index = 128;
         while index > 0 {
@@ -305,8 +313,8 @@ impl<M: Modulus> Shape<M> {
 
     /// A one-limb Mersenne modulus `2^n - 1` whose [`Self::CHUNKS`] chunks of `n` bits sum
     /// within a limb.
-    const MERSENNE_CHUNKED: bool = Self::MERSENNE
-        && (Self::CHUNKS as u128) * (Self::P0 as u128) < 1 << 64;
+    const MERSENNE_CHUNKED: bool =
+        Self::MERSENNE && (Self::CHUNKS as u128) * (Self::P0 as u128) < 1 << 64;
 
     /// The chunks of `n` bits of a value below `2^(n + 65)` for a Mersenne modulus; `0` for any
     /// other.
@@ -336,7 +344,7 @@ impl<M: Modulus> Shape<M> {
         unroll!(chunk in 0, Self::CHUNKS => {
             sum += (value >> (chunk * Self::BITS)) as u64 & Self::P0;
         });
-        unroll!(fold in 0, Self::CHUNK_FOLDS + 1 => {
+        unroll!(_fold in 0, Self::CHUNK_FOLDS + 1 => {
             sum = (sum & Self::P0) + (sum >> Self::BITS);
         });
         let (reduced, below_p) = sum.overflowing_sub(Self::P0);

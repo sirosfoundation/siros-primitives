@@ -374,7 +374,17 @@ impl<M: Modulus> Shape<M> {
         if CT || !Self::FINAL_BRANCH {
             return Self::reduce_select(t, top);
         }
-        Self::reduce_branch(t, top)
+        // [`Self::reduce_branch`], written out: a call to it moves the register allocation of
+        // the BN254 square root.
+        if top != 0 || limb(t.as_slice(), Self::LIMBS - 1) >= Self::P_TOP {
+            let (reduced, borrow) = Self::sub_limbs(&t, &Self::P);
+            return if borrow > top {
+                Self::add_masked(reduced, u64::MAX)
+            } else {
+                reduced
+            };
+        }
+        t
     }
 
     /// `top 2^(64 L) + t mod p` for a value below `2 p`, by a branch on the top limb, for values

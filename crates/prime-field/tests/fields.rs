@@ -473,7 +473,8 @@ fn check_integers<M: Modulus>(rng: &mut Rng) {
                 rows.push(integer_results(x, uint::<M::Width>(k)));
             }
             for row in &rows {
-                for ((name, results), expected) in ["mul", "add", "sub"].iter().zip(row).zip(&expected)
+                for ((name, results), expected) in
+                    ["mul", "add", "sub"].iter().zip(row).zip(&expected)
                 {
                     agree::<M>(name, a, k, expected, results);
                 }

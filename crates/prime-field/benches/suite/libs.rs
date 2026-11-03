@@ -8,6 +8,7 @@
 
 use bench_compare::{Cells, Chain, Limbs, Row, Selected, Visitor};
 use biguint::generic_array::GenericArray;
+use biguint::typenum::U64;
 use biguint::{Bits, NonZero, Uint};
 use core_algebra::{AlgebraicField, SerializableField};
 use prime_field::standard::{
@@ -19,7 +20,7 @@ use runtime_algebra::field::RuntimeSerializableField;
 
 use num_bigint::BigUint;
 
-use super::{Field, Kind, Op, Timing, big, ct, kind, limbs, spec, var};
+use super::{Field, Kind, KindOf, Op, Timing, big, ct, in_row, kind, limbs, spec, var};
 
 /// The limbs of the modulus of `M`, zero-extended to `L` limbs.
 const fn words<M: Modulus, const L: usize>() -> [u64; L] {
@@ -184,6 +185,192 @@ fn one<T: FromLimbs>(set: &[Limbs]) -> T {
     match set {
         [a] => T::from_limbs(a),
         _ => panic!("{} operands where one was drawn", set.len()),
+    }
+}
+
+/// The element and the integer of a set.
+fn mixed<A: FromLimbs, B: FromLimbs>(set: &[Limbs]) -> (A, B) {
+    match set {
+        [a, b] => (A::from_limbs(a), B::from_limbs(b)),
+        _ => panic!("{} operands where two were drawn", set.len()),
+    }
+}
+
+impl FromLimbs for u64 {
+    fn from_limbs(limbs: &[u64]) -> Self {
+        let [value] = array::<1>(limbs);
+        value
+    }
+}
+
+impl<K: Bits> FromLimbs for Uint<K> {
+    fn from_limbs(limbs: &[u64]) -> Self {
+        let mut array = GenericArray::<u64, K::Limbs>::default();
+        array[..limbs.len()].copy_from_slice(limbs);
+        Self::from_generic_limbs(array)
+    }
+}
+
+impl<K: Bits> FromLimbs for ConstantTime<Uint<K>> {
+    fn from_limbs(limbs: &[u64]) -> Self {
+        Self::new(<Uint<K> as FromLimbs>::from_limbs(limbs))
+    }
+}
+
+/// The operations with an integer operand.
+const INTEGER_KINDS: [Kind; 7] = [
+    Kind::MulU64,
+    Kind::MulUint,
+    Kind::AddU64,
+    Kind::AddUint,
+    Kind::SubU64,
+    Kind::SubUint,
+    Kind::FromU64,
+];
+
+/// The operations with an integer of the bit length of `p`.
+const UINT_KINDS: [Kind; 3] = [Kind::MulUint, Kind::AddUint, Kind::SubUint];
+
+/// The reason for an absent cell of an integer that may reach `p`.
+const NO_REDUCING_CONVERSION: &str = "no conversion that reduces an integer at or above p";
+
+/// Records `reason` for both timings of each of `kinds`.
+fn absent_kinds<V: Visitor<Op, Field>>(
+    mut cells: Crate<V>,
+    kinds: &[Kind],
+    reason: &'static str,
+) -> Crate<V> {
+    for &kind in kinds {
+        cells = cells.neither(kind, reason);
+    }
+    cells
+}
+
+/// Records `reason` in the row of `timing` for each of `kinds`.
+fn absent_in<V: Visitor<Op, Field>>(
+    mut cells: Crate<V>,
+    timing: Timing,
+    kinds: &[Kind],
+    reason: &'static str,
+) -> Crate<V> {
+    for &kind in kinds {
+        cells = cells.absent(Op { kind, timing }, reason);
+    }
+    cells
+}
+
+/// Offers a crate's `op(a, from(k))` for `kind` in the row of `timing`, with its chain form:
+/// `element` reads `a`, `integer` reads `k`, and `from` converts `k` inside the measured step.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is one part of the composed operation"
+)]
+fn integer_op<K: KindOf, E: Copy, I: Copy, V: Visitor<Op, Field>>(
+    cells: Crate<V>,
+    kind: K,
+    timing: Timing,
+    function: &'static str,
+    element: &impl Fn(&[u64]) -> E,
+    integer: &impl Fn(&[u64]) -> I,
+    convert: (impl Fn(I) -> E + Copy, impl Fn(E, E) -> E + Copy),
+    read: impl Fn(&E) -> Option<Limbs>,
+) -> Crate<V> {
+    let (from, op) = convert;
+    cells.chain(
+        in_row(kind, timing),
+        function,
+        |set| match set {
+            [a, k] => (element(a), integer(k)),
+            _ => panic!("{} operands where two were drawn", set.len()),
+        },
+        #[inline(always)]
+        move |&(a, k)| op(a, from(k)),
+        read,
+    )
+}
+
+/// Offers a crate's `a * from(k)`, `a + from(k)` and `a - from(k)` for `k` of 64 bits, and
+/// `from(k)`, in the row of `timing`, and records `reason` in the other row. `deviation` tells how
+/// each kind's result deviates from its row's definition.
+fn word_ops<E, V: Visitor<Op, Field>>(
+    cells: Crate<V>,
+    timing: Timing,
+    element: &impl Fn(&[u64]) -> E,
+    from: (&'static str, impl Fn(u64) -> E + Copy),
+    read: impl Fn(&E) -> Option<Limbs> + Copy,
+    deviation: impl Fn(Kind) -> Option<&'static str>,
+) -> Crate<V>
+where
+    E: Copy + core::ops::Add<Output = E> + core::ops::Sub<Output = E> + core::ops::Mul<Output = E>,
+{
+    let (name, from) = from;
+    let word = |limbs: &[u64]| u64::from_limbs(limbs);
+    let names = word_names(name);
+    let cells = integer_op(
+        cells.declare(deviation(Kind::MulU64)),
+        kind::MulU64,
+        timing,
+        names[0],
+        element,
+        &word,
+        (from, |a, b| a * b),
+        read,
+    );
+    let cells = integer_op(
+        cells.declare(deviation(Kind::AddU64)),
+        kind::AddU64,
+        timing,
+        names[1],
+        element,
+        &word,
+        (from, |a, b| a + b),
+        read,
+    );
+    let cells = integer_op(
+        cells.declare(deviation(Kind::SubU64)),
+        kind::SubU64,
+        timing,
+        names[2],
+        element,
+        &word,
+        (from, |a, b| a - b),
+        read,
+    );
+    let other = match timing {
+        Timing::Variable => Timing::Constant,
+        Timing::Constant => Timing::Variable,
+    };
+    let reason = match other {
+        Timing::Variable => NO_VARIABLE_TIME,
+        Timing::Constant => NO_CONSTANT_TIME,
+    };
+    let cells = cells.declare(deviation(Kind::FromU64)).api(
+        in_row(kind::FromU64, timing),
+        name,
+        |set| match set {
+            [k] => u64::from_limbs(k),
+            _ => panic!("{} operands where one was drawn", set.len()),
+        },
+        #[inline(always)]
+        move |&k| from(k),
+        read,
+    );
+    absent_in(
+        cells,
+        other,
+        &[Kind::MulU64, Kind::AddU64, Kind::SubU64, Kind::FromU64],
+        reason,
+    )
+}
+
+/// The functions of [`word_ops`]'s cells for the conversion `name`.
+fn word_names(name: &'static str) -> [&'static str; 3] {
+    match name {
+        "From<u64>" => ["* From<u64>", "+ From<u64>", "- From<u64>"],
+        "from_u64" => ["* from_u64", "+ from_u64", "- from_u64"],
+        "from_int" => ["* from_int", "+ from_int", "- from_int"],
+        "new" => ["* new", "+ new", "- new"],
+        _ => panic!("no names for {name}"),
     }
 }
 
@@ -419,7 +606,102 @@ fn ours<M: Modulus, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             #[inline(always)]
             |a| a.sqrt(),
         )
+        .chained(
+            var(kind::MulU64),
+            "* Uint<U64>",
+            mixed::<Fp<M>, Uint<U64>>,
+            #[inline(always)]
+            |&(a, k)| a * k,
+        )
+        .chained(
+            var(kind::MulUint),
+            "* Uint",
+            mixed::<Fp<M>, Uint<M::Width>>,
+            #[inline(always)]
+            |&(a, k)| a * k,
+        )
+        .chained(
+            var(kind::AddU64),
+            "+ Uint<U64>",
+            mixed::<Fp<M>, Uint<U64>>,
+            #[inline(always)]
+            |&(a, k)| a + k,
+        )
+        .chained(
+            var(kind::AddUint),
+            "+ Uint",
+            mixed::<Fp<M>, Uint<M::Width>>,
+            #[inline(always)]
+            |&(a, k)| a + k,
+        )
+        .chained(
+            var(kind::SubU64),
+            "- Uint<U64>",
+            mixed::<Fp<M>, Uint<U64>>,
+            #[inline(always)]
+            |&(a, k)| a - k,
+        )
+        .chained(
+            var(kind::SubUint),
+            "- Uint",
+            mixed::<Fp<M>, Uint<M::Width>>,
+            #[inline(always)]
+            |&(a, k)| a - k,
+        )
+        .case(
+            var(kind::FromU64),
+            "From<u64>",
+            one::<u64>,
+            #[inline(always)]
+            |&k| Fp::<M>::from(k),
+        )
+        .chained(
+            ct(kind::MulU64),
+            "ConstantTime * ConstantTime<Uint<U64>>",
+            mixed::<ConstantTime<Fp<M>>, ConstantTime<Uint<U64>>>,
+            #[inline(always)]
+            |&(a, k)| a * k,
+        )
+        .chained(
+            ct(kind::MulUint),
+            "ConstantTime * ConstantTime<Uint>",
+            mixed::<ConstantTime<Fp<M>>, ConstantTime<Uint<M::Width>>>,
+            #[inline(always)]
+            |&(a, k)| a * k,
+        )
+        .chained(
+            ct(kind::AddU64),
+            "ConstantTime + ConstantTime<Uint<U64>>",
+            mixed::<ConstantTime<Fp<M>>, ConstantTime<Uint<U64>>>,
+            #[inline(always)]
+            |&(a, k)| a + k,
+        )
+        .chained(
+            ct(kind::AddUint),
+            "ConstantTime + ConstantTime<Uint>",
+            mixed::<ConstantTime<Fp<M>>, ConstantTime<Uint<M::Width>>>,
+            #[inline(always)]
+            |&(a, k)| a + k,
+        )
+        .chained(
+            ct(kind::SubU64),
+            "ConstantTime - ConstantTime<Uint<U64>>",
+            mixed::<ConstantTime<Fp<M>>, ConstantTime<Uint<U64>>>,
+            #[inline(always)]
+            |&(a, k)| a - k,
+        )
+        .chained(
+            ct(kind::SubUint),
+            "ConstantTime - ConstantTime<Uint>",
+            mixed::<ConstantTime<Fp<M>>, ConstantTime<Uint<M::Width>>>,
+            #[inline(always)]
+            |&(a, k)| a - k,
+        )
+        .absent(constant(Kind::FromU64), PUBLIC_INTEGER)
 }
+
+/// The reason for an absent constant-time conversion of a `u64`, which is a public operand.
+const PUBLIC_INTEGER: &str = "a u64 is public: From<u64> takes time that depends on it";
 
 // ---------------------------------------------------------------------------------------------
 // ark-ff
@@ -451,7 +733,15 @@ fn ark_field<F: ark_ff::PrimeField, V: Visitor<Op, Field>>(cells: Crate<V>) -> C
     };
     let read = |e: &F| Some(from_le_bytes(&e.into_bigint().to_bytes_le()));
     let read_option = |e: &Option<F>| e.as_ref().and_then(read);
-    let mut cells = cells
+    let cells = word_ops(
+        cells,
+        Timing::Variable,
+        &element,
+        ("From<u64>", <F as From<u64>>::from),
+        read,
+        |_| None,
+    );
+    let mut cells = absent_kinds(cells, &UINT_KINDS, NO_REDUCING_CONVERSION)
         .chain(
             var(kind::Add),
             "+",
@@ -624,6 +914,49 @@ fn monty<
     cells: Crate<V>,
 ) -> Crate<V> {
     type Form<MOD, const L: usize> = crypto_bigint::modular::ConstMontyForm<MOD, L>;
+    let element = |limbs: &[u64]| Form::<MOD, L>::from_limbs(limbs);
+    let read = |e: &Form<MOD, L>| e.to_limbs();
+    let new = |k: crypto_bigint::Uint<L>| Form::<MOD, L>::new(&k);
+    let words = |limbs: &[u64]| crypto_bigint::Uint::<L>::from_words(array::<L>(limbs));
+    let cells = word_ops(
+        cells,
+        Timing::Constant,
+        &element,
+        ("new", move |k| new(crypto_bigint::Uint::from_u64(k))),
+        read,
+        |_| None,
+    );
+    let cells = integer_op(
+        cells,
+        kind::MulUint,
+        Timing::Constant,
+        "* new",
+        &element,
+        &words,
+        (new, |a, b| a * b),
+        read,
+    );
+    let cells = integer_op(
+        cells,
+        kind::AddUint,
+        Timing::Constant,
+        "+ new",
+        &element,
+        &words,
+        (new, |a, b| a + b),
+        read,
+    );
+    let cells = integer_op(
+        cells,
+        kind::SubUint,
+        Timing::Constant,
+        "- new",
+        &element,
+        &words,
+        (new, |a, b| a - b),
+        read,
+    );
+    let cells = absent_in(cells, Timing::Variable, &UINT_KINDS, NO_VARIABLE_TIME);
     ops!(cells, Form<MOD, L>, ct, vartime, NO_VARIABLE_TIME,
         add: #[inline(always)] |(a, b)| a + b,
         sub: #[inline(always)] |(a, b)| a - b,
@@ -773,33 +1106,104 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             for kind in KINDS {
                 cells = cells.absent(vartime(kind), NO_VARIABLE_TIME);
             }
-            cells
+            let cells = word_ops(
+                cells,
+                Timing::Constant,
+                &<Element as FromLimbs>::from_limbs,
+                ("from_u64", Element::from_u64),
+                <Element as ToLimbs>::to_limbs,
+                |kind| {
+                    if kind == Kind::MulU64 {
+                        Some(SKIPPED_NORMALIZATION)
+                    } else if kind == Kind::AddU64 || kind == Kind::SubU64 {
+                        Some(SKIPPED_REDUCTION)
+                    } else {
+                        None
+                    }
+                },
+            );
+            absent_kinds(cells, &UINT_KINDS, NO_REDUCING_CONVERSION)
         }
-        "P-256 base" => ops!(cells, p256::FieldElement, ct, vartime, NO_VARIABLE_TIME,
-            add: #[inline(always)] |&(a, b)| a + b,
-            sub: #[inline(always)] |&(a, b)| a - b,
-            mul: #[inline(always)] |&(a, b)| a * b,
-            square: #[inline(always)] |a| a.square(),
-        )
-        .case(
-            ct(kind::Invert),
-            "invert",
-            one::<p256::FieldElement>,
-            #[inline(always)]
-            |a| a.invert(),
-        )
-        .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
-        .case(
-            ct(kind::Sqrt),
-            "sqrt",
-            one::<p256::FieldElement>,
-            #[inline(always)]
-            |a| a.sqrt(),
-        )
-        .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME),
+        "P-256 base" => {
+            let cells = ops!(cells, p256::FieldElement, ct, vartime, NO_VARIABLE_TIME,
+                add: #[inline(always)] |&(a, b)| a + b,
+                sub: #[inline(always)] |&(a, b)| a - b,
+                mul: #[inline(always)] |&(a, b)| a * b,
+                square: #[inline(always)] |a| a.square(),
+            )
+            .case(
+                ct(kind::Invert),
+                "invert",
+                one::<p256::FieldElement>,
+                #[inline(always)]
+                |a| a.invert(),
+            )
+            .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
+            .case(
+                ct(kind::Sqrt),
+                "sqrt",
+                one::<p256::FieldElement>,
+                #[inline(always)]
+                |a| a.sqrt(),
+            )
+            .absent(vartime(Kind::Sqrt), NO_VARIABLE_TIME);
+            let cells = word_ops(
+                cells,
+                Timing::Constant,
+                &<p256::FieldElement as FromLimbs>::from_limbs,
+                ("From<u64>", <p256::FieldElement as From<u64>>::from),
+                <p256::FieldElement as ToLimbs>::to_limbs,
+                |_| None,
+            );
+            absent_kinds(cells, &UINT_KINDS, NO_REDUCING_CONVERSION)
+        }
         "P-256 scalar" => {
             use p256::elliptic_curve::ff::Field;
-            use p256::elliptic_curve::ops::Invert;
+            use p256::elliptic_curve::ops::{Invert, Reduce};
+            type Scalar = p256::Scalar;
+            let element = <Scalar as FromLimbs>::from_limbs;
+            let words = |limbs: &[u64]| p256::U256::from_words(array::<4>(limbs));
+            let reduce = <Scalar as Reduce<p256::U256>>::reduce;
+            let read = <Scalar as ToLimbs>::to_limbs;
+            let cells = word_ops(
+                cells,
+                Timing::Constant,
+                &element,
+                ("From<u64>", <Scalar as From<u64>>::from),
+                read,
+                |_| None,
+            );
+            let cells = integer_op(
+                cells,
+                kind::MulUint,
+                Timing::Constant,
+                "* Reduce<U256>",
+                &element,
+                &words,
+                (reduce, |a, b| a * b),
+                read,
+            );
+            let cells = integer_op(
+                cells,
+                kind::AddUint,
+                Timing::Constant,
+                "+ Reduce<U256>",
+                &element,
+                &words,
+                (reduce, |a, b| a + b),
+                read,
+            );
+            let cells = integer_op(
+                cells,
+                kind::SubUint,
+                Timing::Constant,
+                "- Reduce<U256>",
+                &element,
+                &words,
+                (reduce, |a, b| a - b),
+                read,
+            );
+            let cells = absent_in(cells, Timing::Variable, &UINT_KINDS, NO_VARIABLE_TIME);
             ops!(cells, p256::Scalar, ct, vartime, NO_VARIABLE_TIME,
                 add: #[inline(always)] |&(a, b)| a + b,
                 sub: #[inline(always)] |&(a, b)| a - b,
@@ -831,6 +1235,19 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 
 /// The limb conversions of a `halo2curves` field with `$limbs` limbs and the byte order of its
 /// `to_bytes`.
+/// A halo2curves field read from the limbs of any integer of its width by `from_raw`, which reduces
+/// it.
+trait Raw {
+    /// The limbs that `from_raw` takes.
+    type Words: Copy;
+
+    /// The limbs of an integer.
+    fn words(limbs: &[u64]) -> Self::Words;
+
+    /// The element of the integer.
+    fn raw(words: Self::Words) -> Self;
+}
+
 macro_rules! halo2_field {
     ($t:ty, $limbs:literal, $read:ident) => {
         impl FromLimbs for $t {
@@ -842,6 +1259,18 @@ macro_rules! halo2_field {
         impl ToLimbs for $t {
             fn to_limbs(&self) -> Option<Limbs> {
                 Some($read(&self.to_bytes()))
+            }
+        }
+
+        impl Raw for $t {
+            type Words = [u64; $limbs];
+
+            fn words(limbs: &[u64]) -> Self::Words {
+                array::<$limbs>(limbs)
+            }
+
+            fn raw(words: Self::Words) -> Self {
+                Self::from_raw(words)
             }
         }
     };
@@ -871,11 +1300,53 @@ fn halo2curves<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 /// constant-time Tonelli–Shanks or exponentiation of `ff` in `sqrt`. Its `invert` runs the
 /// variable-time division steps of halo2curves' `BYInverter`, which branch on the trailing
 /// zeros of `g`.
-fn ff_field<F: halo2curves::ff::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
-    cells: Crate<V>,
-) -> Crate<V> {
+fn ff_field<F, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V>
+where
+    F: halo2curves::ff::Field + From<u64> + Raw + FromLimbs + ToLimbs,
+{
     let modulus = spec(cells.key()).modulus;
     let inverse_exponent = limbs(&(big(modulus) - 2u32), modulus.len());
+    let element = <F as FromLimbs>::from_limbs;
+    let read = <F as ToLimbs>::to_limbs;
+    let cells = word_ops(
+        cells,
+        Timing::Constant,
+        &element,
+        ("From<u64>", <F as From<u64>>::from),
+        read,
+        |_| None,
+    );
+    let cells = integer_op(
+        cells,
+        kind::MulUint,
+        Timing::Constant,
+        "* from_raw",
+        &element,
+        &F::words,
+        (F::raw, |a, b| a * b),
+        read,
+    );
+    let cells = integer_op(
+        cells,
+        kind::AddUint,
+        Timing::Constant,
+        "+ from_raw",
+        &element,
+        &F::words,
+        (F::raw, |a, b| a + b),
+        read,
+    );
+    let cells = integer_op(
+        cells,
+        kind::SubUint,
+        Timing::Constant,
+        "- from_raw",
+        &element,
+        &F::words,
+        (F::raw, |a, b| a - b),
+        read,
+    );
+    let cells = absent_in(cells, Timing::Variable, &UINT_KINDS, NO_VARIABLE_TIME);
     ops!(cells, F, ct, vartime, NO_VARIABLE_TIME,
         add: #[inline(always)] |&(a, b)| a + b,
         sub: #[inline(always)] |&(a, b)| a - b,
@@ -980,11 +1451,23 @@ impl Representation {
     /// encoding of zero.
     const fn deviation(self, kind: Kind) -> Option<&'static str> {
         match (self, kind) {
-            (Self::ZeroAsP, Kind::Add | Kind::Sub | Kind::Mul | Kind::Square) => {
-                Some("returns p for a zero result, which is not canonical")
-            }
+            (
+                Self::ZeroAsP,
+                Kind::Add
+                | Kind::Sub
+                | Kind::Mul
+                | Kind::Square
+                | Kind::MulU64
+                | Kind::MulUint
+                | Kind::AddU64
+                | Kind::AddUint
+                | Kind::SubU64
+                | Kind::SubUint,
+            ) => Some("returns p for a zero result, which is not canonical"),
             (Self::Below2To64, _) => Some(SKIPPED_REDUCTION),
-            (Self::Canonical, _) | (Self::ZeroAsP, Kind::Invert | Kind::Sqrt) => None,
+            (Self::Canonical, _) | (Self::ZeroAsP, Kind::Invert | Kind::Sqrt | Kind::FromU64) => {
+                None
+            }
         }
     }
 }
@@ -994,7 +1477,10 @@ impl Representation {
 /// Goldilocks' `-` branch on the borrow. `subtraction_constant` tells the arithmetic `-`; `sqrt` is the
 /// field's own `try_sqrt`, which BabyBear specializes in an inherent method; `representation`
 /// tells which results deviate from canonical residues.
-fn p3<F: p3_field::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
+fn p3<
+    F: p3_field::Field + p3_field::integers::QuotientMap<u64> + FromLimbs + ToLimbs,
+    V: Visitor<Op, Field>,
+>(
     cells: Crate<V>,
     subtraction_constant: bool,
     sqrt: impl Fn(&F) -> Option<F> + Copy,
@@ -1059,7 +1545,50 @@ fn p3<F: p3_field::Field + FromLimbs + ToLimbs, V: Visitor<Op, Field>>(
     for kind in [Kind::Add, Kind::Mul, Kind::Square, Kind::Invert, Kind::Sqrt] {
         cells = cells.absent(constant(kind), NO_CONSTANT_TIME);
     }
-    cells
+    let element = <F as FromLimbs>::from_limbs;
+    let read = <F as ToLimbs>::to_limbs;
+    let from_int = <F as p3_field::integers::QuotientMap<u64>>::from_int;
+    let cells = word_ops(
+        cells,
+        Timing::Variable,
+        &element,
+        ("from_int", from_int),
+        read,
+        deviation,
+    );
+    // The field fits 64 bits, so an integer of its width is a `u64`.
+    let word = <u64 as FromLimbs>::from_limbs;
+    let cells = integer_op(
+        cells.declare(deviation(Kind::MulUint)),
+        kind::MulUint,
+        Timing::Variable,
+        "* from_int",
+        &element,
+        &word,
+        (from_int, |a, b| a * b),
+        read,
+    );
+    let cells = integer_op(
+        cells.declare(deviation(Kind::AddUint)),
+        kind::AddUint,
+        Timing::Variable,
+        "+ from_int",
+        &element,
+        &word,
+        (from_int, |a, b| a + b),
+        read,
+    );
+    let cells = integer_op(
+        cells.declare(deviation(Kind::SubUint)),
+        kind::SubUint,
+        Timing::Variable,
+        "- from_int",
+        &element,
+        &word,
+        (from_int, |a, b| a - b),
+        read,
+    );
+    absent_in(cells, Timing::Constant, &UINT_KINDS, NO_CONSTANT_TIME)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1083,21 +1612,66 @@ fn winter_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     use winter_math::FieldElement;
     use winter_math::fields::f64::BaseElement;
     match cells.key().field.as_str() {
-        "Goldilocks" => ops!(cells, BaseElement, ct, vartime, NO_VARIABLE_TIME,
-            add: #[inline(always)] |&(a, b)| a + b,
-            sub: #[inline(always)] |&(a, b)| a - b,
-            mul: #[inline(always)] |&(a, b)| a * b,
-            square: #[inline(always)] |a| a.square(),
-        )
-        .case(
-            ct(kind::Invert),
-            "inv",
-            one::<BaseElement>,
-            #[inline(always)]
-            |a| a.inv(),
-        )
-        .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
-        .neither(Kind::Sqrt, NO_SQRT_POWER),
+        "Goldilocks" => {
+            let element = <BaseElement as FromLimbs>::from_limbs;
+            let read = <BaseElement as ToLimbs>::to_limbs;
+            let cells = word_ops(
+                cells,
+                Timing::Constant,
+                &element,
+                ("new", BaseElement::new),
+                read,
+                |_| None,
+            );
+            // The field fits 64 bits, so an integer of its width is a `u64`.
+            let word = <u64 as FromLimbs>::from_limbs;
+            let cells = integer_op(
+                cells,
+                kind::MulUint,
+                Timing::Constant,
+                "* new",
+                &element,
+                &word,
+                (BaseElement::new, |a, b| a * b),
+                read,
+            );
+            let cells = integer_op(
+                cells,
+                kind::AddUint,
+                Timing::Constant,
+                "+ new",
+                &element,
+                &word,
+                (BaseElement::new, |a, b| a + b),
+                read,
+            );
+            let cells = integer_op(
+                cells,
+                kind::SubUint,
+                Timing::Constant,
+                "- new",
+                &element,
+                &word,
+                (BaseElement::new, |a, b| a - b),
+                read,
+            );
+            let cells = absent_in(cells, Timing::Variable, &UINT_KINDS, NO_VARIABLE_TIME);
+            ops!(cells, BaseElement, ct, vartime, NO_VARIABLE_TIME,
+                add: #[inline(always)] |&(a, b)| a + b,
+                sub: #[inline(always)] |&(a, b)| a - b,
+                mul: #[inline(always)] |&(a, b)| a * b,
+                square: #[inline(always)] |a| a.square(),
+            )
+            .case(
+                ct(kind::Invert),
+                "inv",
+                one::<BaseElement>,
+                #[inline(always)]
+                |a| a.inv(),
+            )
+            .absent(vartime(Kind::Invert), NO_VARIABLE_TIME)
+            .neither(Kind::Sqrt, NO_SQRT_POWER)
+        }
         _ => cells.none("winter-math declares no such field"),
     }
 }
@@ -1184,7 +1758,64 @@ where
         ),
         None => cells.absent(constant(Kind::Sqrt), NO_SQRT_POWER),
     };
-    cells
+    let words = [Kind::MulU64, Kind::AddU64, Kind::SubU64, Kind::FromU64];
+    // `words64_to_element` refuses a value at or above `p`, which a `u64` reaches on one limb.
+    let cells = if W > 1 {
+        let word = <u64 as FromLimbs>::from_limbs;
+        let from = |k: u64| {
+            let mut words = [0; W];
+            words[0] = k;
+            field
+                .words64_to_element(&words)
+                .expect("an integer below p")
+        };
+        let cells = integer_op(
+            cells,
+            kind::MulU64,
+            Timing::Variable,
+            "mulf of words64_to_element",
+            &element,
+            &word,
+            (from, |a, b| field.mulf(&a, &b)),
+            read,
+        );
+        let cells = integer_op(
+            cells,
+            kind::AddU64,
+            Timing::Variable,
+            "addf of words64_to_element",
+            &element,
+            &word,
+            (from, |a, b| field.addf(&a, &b)),
+            read,
+        );
+        let cells = integer_op(
+            cells,
+            kind::SubU64,
+            Timing::Variable,
+            "subf of words64_to_element",
+            &element,
+            &word,
+            (from, |a, b| field.subf(&a, &b)),
+            read,
+        );
+        let cells = cells.api(
+            var(kind::FromU64),
+            "words64_to_element",
+            one::<u64>,
+            #[inline(always)]
+            move |&k| from(k),
+            read,
+        );
+        absent_in(cells, Timing::Constant, &words, NO_CONSTANT_TIME)
+    } else {
+        absent_kinds(
+            cells,
+            &words,
+            "words64_to_element refuses an integer at or above p",
+        )
+    };
+    absent_kinds(cells, &UINT_KINDS, NO_REDUCING_CONVERSION)
         .chain(
             ct(kind::Add),
             "addf",
@@ -1276,6 +1907,11 @@ fn compile<T: 'static, V: Visitor<Op, Field>>(
         Some(value)
     };
     let (_, root) = exponents(cells.key());
+    let cells = absent_kinds(
+        cells,
+        &INTEGER_KINDS,
+        "no conversion of an integer: bytes_to_element takes a byte slice",
+    );
     let cells = cells
         .api(
             var(kind::Add),
