@@ -42,7 +42,7 @@ impl<N> Lane<N> {
 }
 
 impl<N> Clone for Lane<N> {
-    #[inline(always)]
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
@@ -59,7 +59,7 @@ impl<N: Width<Lanes = U1>> Lane<N> {
     pub const ZERO: Self = Self::of(backend::ZERO);
 
     /// The register of `poly`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn from_poly(poly: Poly<N>) -> Self {
         let [lane] = poly.lanes.into_array::<1>();
@@ -67,7 +67,7 @@ impl<N: Width<Lanes = U1>> Lane<N> {
     }
 
     /// The polynomial in the register.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn into_poly(self) -> Poly<N> {
         Poly {
@@ -77,14 +77,14 @@ impl<N: Width<Lanes = U1>> Lane<N> {
 }
 
 impl<N: Width<Lanes = U1>> Default for Lane<N> {
-    #[inline(always)]
+    #[inline]
     fn default() -> Self {
         Self::ZERO
     }
 }
 
 impl<N: Width<Lanes = U1>> PartialEq for Lane<N> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.into_poly() == other.into_poly()
     }
@@ -106,14 +106,14 @@ impl<N: Width<Lanes = U1>> fmt::Debug for Lane<N> {
 }
 
 impl<N: Width<Lanes = U1>> From<Poly<N>> for Lane<N> {
-    #[inline(always)]
+    #[inline]
     fn from(poly: Poly<N>) -> Self {
         Self::from_poly(poly)
     }
 }
 
 impl<N: Width<Lanes = U1>> From<Lane<N>> for Poly<N> {
-    #[inline(always)]
+    #[inline]
     fn from(lane: Lane<N>) -> Self {
         lane.into_poly()
     }
@@ -270,7 +270,7 @@ impl<N: Width> Poly<N> {
     pub const ONE: Self = Self::from_uint(Uint::ONE);
 
     /// The polynomial whose coefficients are the bits of `value`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn from_uint(value: Uint<N>) -> Self {
         let mut lanes = GenericArray::<Lane<U128>, N::Lanes>::DEFAULT;
@@ -293,7 +293,7 @@ impl<N: Width> Poly<N> {
     }
 
     /// The integer whose bits are the coefficients.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub const fn to_uint(self) -> Uint<N> {
         let mut limbs = GenericArray::<u64, N::Limbs>::DEFAULT;
@@ -323,7 +323,7 @@ impl<N: Width> Poly<N> {
     /// # Errors
     ///
     /// A bit at or above `N` is set.
-    #[inline(always)]
+    #[inline]
     pub fn from_le_bytes(bytes: &GenericArray<u8, N::Bytes>) -> Result<Self, OutOfRange> {
         Uint::from_le_bytes(bytes).map(Self::from_uint)
     }
@@ -333,27 +333,27 @@ impl<N: Width> Poly<N> {
     /// # Errors
     ///
     /// A bit at or above `N` is set.
-    #[inline(always)]
+    #[inline]
     pub fn from_be_bytes(bytes: &GenericArray<u8, N::Bytes>) -> Result<Self, OutOfRange> {
         Uint::from_be_bytes(bytes).map(Self::from_uint)
     }
 
     /// The little-endian bytes.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn to_le_bytes(&self) -> GenericArray<u8, N::Bytes> {
         self.to_uint().to_le_bytes()
     }
 
     /// The big-endian bytes.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn to_be_bytes(&self) -> GenericArray<u8, N::Bytes> {
         self.to_uint().to_be_bytes()
     }
 
     /// Whether every coefficient is zero.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn is_zero(&self) -> bool {
         self.lanes.iter().fold(0, |acc, lane| {
@@ -398,7 +398,7 @@ impl<N: Width> Poly<N> {
     }
 
     /// The polynomial modulo `x^M`, or zero-extended to `M` bits.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn resize<M: Width>(self) -> Poly<M> {
         let mut out = Poly::<M>::ZERO;
@@ -417,7 +417,7 @@ impl<N: Width> Poly<N> {
 
     /// Every 64-bit word shifted left by `bits`, below 64, on its own: the coefficients that leave
     /// a word drop, and the result keeps the bits below `N`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn shl_within_words(mut self, bits: u32) -> Self {
         each_lane::<N>(
@@ -437,7 +437,7 @@ impl<N: Width> Poly<N> {
     /// TBL on aarch64, and the images selected by the bits of the nibble elsewhere. The bytes at and
     /// above `N` index nibble 0, whose image is 0; when `N` is not a multiple of 8 the result's
     /// bits at and above `N` are cleared.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn map_low_nibbles(mut self, map: NibbleMap) -> Self {
         let low = backend::register([0x0F0F_0F0F_0F0F_0F0F; 2]);
@@ -456,7 +456,7 @@ impl<N: Width> Poly<N> {
 
     /// Every byte replaced by the image of its high nibble under `map`, as
     /// [`map_low_nibbles`](Self::map_low_nibbles).
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn map_high_nibbles(mut self, map: NibbleMap) -> Self {
         let low = backend::register([0x0F0F_0F0F_0F0F_0F0F; 2]);
@@ -476,7 +476,7 @@ impl<N: Width> Poly<N> {
 
     /// Every 64-bit word shifted right by `bits`, below 64, on its own: the coefficients that
     /// leave a word drop.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn shr_within_words(mut self, bits: u32) -> Self {
         each_lane::<N>(
@@ -490,7 +490,7 @@ impl<N: Width> Poly<N> {
 
     /// The carry-less product of word `i` of `self` and word `j` of `rhs`: two coefficients of
     /// `x^(64 i)` and `x^(64 j)` times `x^(64 (i + j))` are the 128 bits of the result.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn clmul_words<M: Width>(self, i: usize, rhs: Poly<M>, j: usize) -> Poly<U128> {
         let mut out = Poly::<U128>::ZERO;
@@ -510,7 +510,7 @@ impl<N: Width> Poly<N> {
 
     /// The whole product `self * rhs`, in `N + M` bits. Two-word registers multiply by
     /// Karatsuba's three word products; the registers combine by the schoolbook.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn widening_mul<M>(self, rhs: Poly<M>) -> Poly<Sum<N, M>>
     where
@@ -570,7 +570,7 @@ impl<N: Width> Poly<N> {
 
     /// The whole square `self * self`, in `2N` bits: the cross terms cancel, so each word squares
     /// alone onto its register, bit `i` at bit `2 i`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn widening_square(self) -> Poly<Sum<N, N>>
     where
@@ -681,7 +681,7 @@ impl<N: Width> Poly<N> {
 }
 
 impl<N: Width> Clone for Poly<N> {
-    #[inline(always)]
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
@@ -690,14 +690,14 @@ impl<N: Width> Clone for Poly<N> {
 impl<N: Width> Copy for Poly<N> {}
 
 impl<N: Width> Default for Poly<N> {
-    #[inline(always)]
+    #[inline]
     fn default() -> Self {
         Self::ZERO
     }
 }
 
 impl<N: Width> PartialEq for Poly<N> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.lanes
             .iter()
@@ -722,14 +722,14 @@ impl<N: Width> fmt::Debug for Poly<N> {
 }
 
 impl<N: Width> From<Uint<N>> for Poly<N> {
-    #[inline(always)]
+    #[inline]
     fn from(value: Uint<N>) -> Self {
         Self::from_uint(value)
     }
 }
 
 impl<N: Width> From<Poly<N>> for Uint<N> {
-    #[inline(always)]
+    #[inline]
     fn from(poly: Poly<N>) -> Self {
         poly.to_uint()
     }
@@ -741,7 +741,7 @@ macro_rules! bitwise {
         impl<N: Width> $trait for Poly<N> {
             type Output = Self;
 
-            #[inline(always)]
+            #[inline]
             fn $method(mut self, rhs: Self) -> Self {
                 each_lane::<N>(
                     #[inline(always)]
@@ -754,7 +754,7 @@ macro_rules! bitwise {
         }
 
         impl<N: Width> $assign_trait for Poly<N> {
-            #[inline(always)]
+            #[inline]
             fn $assign(&mut self, rhs: Self) {
                 *self = $trait::$method(*self, rhs);
             }
@@ -770,7 +770,7 @@ bitwise!(BitOr, bitor, BitOrAssign, bitor_assign, backend::or);
 impl<N: Width> Shl<usize> for Poly<N> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn shl(self, bits: usize) -> Self {
         self.shifted_left(bits)
     }
@@ -780,7 +780,7 @@ impl<N: Width> Shl<usize> for Poly<N> {
 impl<N: Width> Shr<usize> for Poly<N> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn shr(self, bits: usize) -> Self {
         self.shifted_right(bits)
     }

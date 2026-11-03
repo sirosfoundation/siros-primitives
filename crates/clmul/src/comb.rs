@@ -18,9 +18,15 @@ const WIDE_LANE: u128 = (LANE as u128) | ((LANE as u128) << 64);
 /// The carry-less product `a * b` of [`clmul64`](crate::clmul64), evaluable in const contexts.
 ///
 /// Builds without PCLMULQDQ or PMULL run it as [`clmul64`](crate::clmul64).
-#[inline(always)]
+#[inline]
 #[must_use]
 pub const fn const_clmul64(a: u64, b: u64) -> u128 {
+    clmul64(a, b)
+}
+
+/// [`const_clmul64`], for the backends' word products.
+#[inline(always)]
+pub(crate) const fn clmul64(a: u64, b: u64) -> u128 {
     let low = a & ((1 << 60) - 1);
     let x = [
         (low & LANE) as u128,

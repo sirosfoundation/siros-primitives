@@ -59,7 +59,7 @@ impl<N: Bits> CarrylessMul<N> for Uint<N> {
 
 /// [`CarrylessMul::carryless_mul`], evaluable in const contexts: the word products come from
 /// [`const_clmul64`](crate::const_clmul64).
-#[inline(always)]
+#[inline]
 #[must_use]
 pub const fn const_carryless_mul<N: Bits, M: Bits>(a: Uint<N>, b: Uint<M>) -> Uint<N> {
     const_product(&a, &b)
@@ -67,7 +67,7 @@ pub const fn const_carryless_mul<N: Bits, M: Bits>(a: Uint<N>, b: Uint<M>) -> Ui
 
 /// [`CarrylessMul::widening_carryless_mul`], evaluable in const contexts: the word products come
 /// from [`const_clmul64`](crate::const_clmul64).
-#[inline(always)]
+#[inline]
 #[must_use]
 pub const fn const_widening_carryless_mul<N, M>(a: Uint<N>, b: Uint<M>) -> Uint<Sum<N, M>>
 where

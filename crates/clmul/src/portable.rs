@@ -1,7 +1,7 @@
 //! The backend of builds without PCLMULQDQ or PMULL: a register is two `u64` words, and the word
 //! products come from the comb.
 
-pub(crate) use crate::comb::const_clmul64 as clmul64;
+pub(crate) use crate::comb::clmul64;
 use crate::{REDUCTION, to_limbs};
 
 /// A register: two 64-bit words, word 0 first.

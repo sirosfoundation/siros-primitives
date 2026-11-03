@@ -72,7 +72,7 @@ pub use uint::{CarrylessMul, const_carryless_mul, const_widening_carryless_mul};
 /// over GF(2), and the result is the product polynomial, of degree at most 126.
 ///
 /// The build's target features select PCLMULQDQ, PMULL or the comb of [`const_clmul64`].
-#[inline(always)]
+#[inline]
 #[must_use]
 pub fn clmul64(a: u64, b: u64) -> u128 {
     backend::clmul64(a, b)
@@ -83,12 +83,12 @@ pub fn clmul64(a: u64, b: u64) -> u128 {
 /// An element is a pair of little-endian limbs; bit `i` of its 128-bit value is the coefficient of
 /// `x^i`. GCM numbers the bits of a block the other way round: its element is
 /// `u128::from_be_bytes(block).reverse_bits()`.
-#[inline(always)]
+#[inline]
 #[must_use]
 pub fn gf2p128_mul(a: [u64; 2], b: [u64; 2]) -> [u64; 2] {
-    let mut sum = Gf2p128Accumulator::zero();
-    sum.accumulate(a, b);
-    sum.finalize()
+    let mut sum = backend::Accumulator::from_seed(0);
+    sum.accumulate(from_limbs(a), from_limbs(b));
+    to_limbs(sum.finalize())
 }
 
 /// A sum of GF(2^128) products that [`finalize`](Self::finalize) reduces once.
@@ -102,13 +102,13 @@ pub struct Gf2p128Accumulator {
 
 impl Gf2p128Accumulator {
     /// The empty sum.
-    #[inline(always)]
+    #[inline]
     pub fn zero() -> Self {
         Self::from_seed([0, 0])
     }
 
     /// The sum that holds the element `seed`.
-    #[inline(always)]
+    #[inline]
     pub fn from_seed(seed: [u64; 2]) -> Self {
         Self {
             sum: backend::Accumulator::from_seed(from_limbs(seed)),
@@ -116,13 +116,13 @@ impl Gf2p128Accumulator {
     }
 
     /// Adds the product `lhs * rhs`.
-    #[inline(always)]
+    #[inline]
     pub fn accumulate(&mut self, lhs: [u64; 2], rhs: [u64; 2]) {
         self.sum.accumulate(from_limbs(lhs), from_limbs(rhs));
     }
 
     /// The sum, reduced to an element.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn finalize(self) -> [u64; 2] {
         to_limbs(self.sum.finalize())

@@ -8,7 +8,7 @@ use crate::to_limbs;
 macro_rules! schoolbook {
     ($(#[$attribute:meta])* [$($qualifier:tt)*] fn $name:ident uses $leaf:path) => {
         $(#[$attribute])*
-        #[inline(always)]
+        #[inline]
         pub $($qualifier)* fn $name(out: &mut [u64], a: &[u64], b: &[u64]) {
             let mut slots = &mut *out;
             while let [slot, slots_rest @ ..] = slots {
@@ -54,11 +54,11 @@ schoolbook! {
     /// above it are zero.
     ///
     /// [`clmul64`](crate::clmul64) computes the word products.
-    [] fn clmul_into uses crate::clmul64
+    [] fn clmul_into uses crate::backend::clmul64
 }
 
 schoolbook! {
     /// [`clmul_into`], evaluable in const contexts: the word products come from
     /// [`const_clmul64`](crate::const_clmul64).
-    [const] fn const_clmul_into uses crate::const_clmul64
+    [const] fn const_clmul_into uses crate::comb::clmul64
 }

@@ -17,7 +17,7 @@ impl<P: Polynomial> Public for Gf2<P> {}
 impl<P: Polynomial> CtAdd for Gf2<P> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn ct_add(self, rhs: Self) -> Self {
         Self::of(self.value().add(rhs.value()))
     }
@@ -27,7 +27,7 @@ impl<P: Polynomial> CtAdd for Gf2<P> {
 impl<P: Polynomial> CtSub for Gf2<P> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn ct_sub(self, rhs: Self) -> Self {
         self.ct_add(rhs)
     }
@@ -37,7 +37,7 @@ impl<P: Polynomial> CtSub for Gf2<P> {
 impl<P: Polynomial> CtMul for Gf2<P> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn ct_mul(self, rhs: Self) -> Self {
         Self::of(Field::<P>::ct_mul(self.value(), rhs.value()))
     }
@@ -45,7 +45,7 @@ impl<P: Polynomial> CtMul for Gf2<P> {
 
 /// `-self`, which equals `self`.
 impl<P: Polynomial> CtNeg for Gf2<P> {
-    #[inline(always)]
+    #[inline]
     fn ct_neg(self) -> Self {
         self
     }
@@ -53,7 +53,7 @@ impl<P: Polynomial> CtNeg for Gf2<P> {
 
 /// `self * self`.
 impl<P: Polynomial> CtSquare for Gf2<P> {
-    #[inline(always)]
+    #[inline]
     fn ct_square(self) -> Self {
         Self::of(Field::<P>::ct_square(self.value()))
     }
@@ -61,7 +61,7 @@ impl<P: Polynomial> CtSquare for Gf2<P> {
 
 /// The multiplicative inverse, or `None` for `0`. Only the `Option` depends on the value.
 impl<P: Polynomial> CtInvert for Gf2<P> {
-    #[inline(always)]
+    #[inline]
     fn ct_invert(self) -> Option<Self> {
         let value = self.value();
         let inverse = Self::of(Field::<P>::ct_invert(value));
@@ -73,7 +73,7 @@ impl<P: Polynomial> CtInvert for Gf2<P> {
 impl<P: Polynomial> CtSqrt for Gf2<P> {
     type Root = ConstantTime<Self>;
 
-    #[inline(always)]
+    #[inline]
     fn ct_sqrt(self) -> ConstantTime<Self> {
         ConstantTime::new(Self::of(Field::<P>::ct_sqrt(self.value())))
     }
@@ -86,7 +86,7 @@ macro_rules! public_left {
             impl<P: Polynomial> $op<ConstantTime<Gf2<P>>> for Gf2<P> {
                 type Output = ConstantTime<Self>;
 
-                #[inline(always)]
+                #[inline]
                 fn $method(self, rhs: ConstantTime<Self>) -> ConstantTime<Self> {
                     ConstantTime::new($ct::$ct_method(self, rhs.reveal()))
                 }
