@@ -8,9 +8,6 @@ use std::process::ExitCode;
 /// The computations that this bench measures.
 const BASES: &[suite::Op] = &[suite::Op::Add];
 
-/// The widths that this bench measures.
-const WIDTHS: &[u32] = &suite::WIDTHS;
-
 fn main() -> ExitCode {
     bench_compare::main::<suite::Biguint>("add")
 }
