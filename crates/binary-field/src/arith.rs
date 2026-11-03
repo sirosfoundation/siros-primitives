@@ -13,7 +13,7 @@ use typenum::{U8, U64, U96, U128};
 use crate::frobenius::Frobenius;
 use crate::invert::{Inversion, inverse};
 use crate::kernel::{clmul8, clmul16, spread_half};
-use crate::plan::{Plan, Polynomial, Shape, Wide};
+use crate::plan::{Half, Plan, Polynomial, Shape, Wide};
 use crate::representation::{Representation, Storage};
 use crate::table::Tables;
 
@@ -430,7 +430,8 @@ impl<P: Polynomial> Field<P> {
     /// `sqrt(a) = e(x) + sqrt(x) o(x)` for the even and odd coefficients `e(x^2)` and `x o(x^2)` of
     /// `a`, which the masks and shifts within words gather. Up to 64 bits one gather takes `a` and
     /// `a / x` side by side in the two words of a register, and one word product multiplies `o`.
-    /// At 128 bits `o` fills one word: two word products and one fold.
+    /// At 128 bits `o` fills one word: two word products and one fold. Above, `o` keeps
+    /// `ceil(n / 2)` bits, and its product takes the registers of those bits alone.
     #[inline(always)]
     pub(crate) fn lanes_sqrt(a: Lanes<P>) -> Lanes<P> {
         if Plan::<P>::SQRT_BY_SPLIT {
@@ -462,8 +463,8 @@ impl<P: Polynomial> Field<P> {
                 }
                 Shape::Lanes => {
                     let even = gather(a);
-                    let odd = gather(a.shr_within_words(1));
-                    even ^ Self::lanes_mul(odd, root_x)
+                    let odd = gather(a.shr_within_words(1)).resize::<Half<P>>();
+                    even ^ Self::reduce_lanes(odd.widening_mul(root_x).resize())
                 }
             }
         } else {

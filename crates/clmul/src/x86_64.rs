@@ -438,7 +438,7 @@ pub(crate) fn clmul64(a: u64, b: u64) -> u128 {
 #[cfg(not(target_feature = "pclmulqdq"))]
 #[inline(always)]
 pub(crate) fn clmul64(a: u64, b: u64) -> u128 {
-    crate::comb::const_clmul64(a, b)
+    crate::comb::clmul64(a, b)
 }
 
 /// The unreduced sum `low + middle * x^64 + high * x^128`.

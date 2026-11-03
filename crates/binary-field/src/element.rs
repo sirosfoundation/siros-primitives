@@ -74,7 +74,7 @@ impl<P: Polynomial> Gf2<P> {
     /// # Errors
     ///
     /// A bit of `value` at or above `n` is set.
-    #[inline(always)]
+    #[inline]
     pub fn from_u64(value: u64) -> Result<Self, OutOfField> {
         Self::from_uint(Uint::<biguint::Bits64>::from_u64(value))
     }
@@ -84,7 +84,7 @@ impl<P: Polynomial> Gf2<P> {
     /// # Errors
     ///
     /// A bit of `value` at or above `n` is set.
-    #[inline(always)]
+    #[inline]
     pub fn from_u128(value: u128) -> Result<Self, OutOfField> {
         Self::from_uint(Uint::<biguint::Bits128>::from_u128(value))
     }
@@ -94,7 +94,7 @@ impl<P: Polynomial> Gf2<P> {
     /// # Errors
     ///
     /// A bit of `value` at or above `n` is set.
-    #[inline(always)]
+    #[inline]
     pub fn from_uint<M: Bits>(value: Uint<M>) -> Result<Self, OutOfField> {
         Ok(Self::of(Element::<P>::from_uint(value.try_resize()?)))
     }
@@ -104,7 +104,7 @@ impl<P: Polynomial> Gf2<P> {
     /// # Errors
     ///
     /// A bit at or above `n` is set.
-    #[inline(always)]
+    #[inline]
     pub fn from_limbs(limbs: GenericArray<u64, Limbs<P>>) -> Result<Self, OutOfField> {
         let value = Uint::from_generic_limbs(limbs);
         if value.into_limbs() == limbs {
@@ -119,7 +119,7 @@ impl<P: Polynomial> Gf2<P> {
     /// # Errors
     ///
     /// A bit at or above `n` is set.
-    #[inline(always)]
+    #[inline]
     pub fn from_le_bytes(bytes: &GenericArray<u8, Bytes<P>>) -> Result<Self, OutOfField> {
         Ok(Self::of(Element::<P>::from_uint(Uint::from_le_bytes(
             bytes,
@@ -131,7 +131,7 @@ impl<P: Polynomial> Gf2<P> {
     /// # Errors
     ///
     /// A bit at or above `n` is set.
-    #[inline(always)]
+    #[inline]
     pub fn from_be_bytes(bytes: &GenericArray<u8, Bytes<P>>) -> Result<Self, OutOfField> {
         Ok(Self::of(Element::<P>::from_uint(Uint::from_be_bytes(
             bytes,
@@ -139,14 +139,14 @@ impl<P: Polynomial> Gf2<P> {
     }
 
     /// The polynomial as an integer of `n` bits.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn into_uint(self) -> Uint<P::Degree> {
         self.value.uint()
     }
 
     /// The element of the polynomial `poly`: every `Poly<n>` has degree below `n`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn from_poly(poly: Poly<P::Degree>) -> Self {
         Self::of(Element::<P>::from_poly(poly))
@@ -154,42 +154,42 @@ impl<P: Polynomial> Gf2<P> {
 
     /// The polynomial in `clmul`'s vector registers, where the element lives above degree 16; up to
     /// degree 16 it moves from a general register.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn into_poly(self) -> Poly<P::Degree> {
         self.value.poly()
     }
 
     /// The little-endian limbs of the polynomial.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn into_limbs(self) -> GenericArray<u64, Limbs<P>> {
         self.into_uint().into_limbs()
     }
 
     /// The little-endian bytes of the polynomial.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn to_le_bytes(&self) -> GenericArray<u8, Bytes<P>> {
         self.into_uint().to_le_bytes()
     }
 
     /// The big-endian bytes of the polynomial.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn to_be_bytes(&self) -> GenericArray<u8, Bytes<P>> {
         self.into_uint().to_be_bytes()
     }
 
     /// Whether the element is `0`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn is_zero(&self) -> bool {
         self.value == Element::<P>::ZERO
     }
 
     /// `self * x`: a shift, with `r` added when the top coefficient falls off.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn times_x(self) -> Self {
         let value = self.into_limbs();
@@ -201,7 +201,7 @@ impl<P: Polynomial> Gf2<P> {
     }
 
     /// `self / x`: a shift, with `x^-1` added when the constant coefficient falls off.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn over_x(self) -> Self {
         let mut limbs = self.into_limbs();
@@ -211,14 +211,14 @@ impl<P: Polynomial> Gf2<P> {
     }
 
     /// The square root. Every element of a field of characteristic 2 has exactly one.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn sqrt(self) -> Self {
         Self::of(Field::<P>::sqrt(self.value))
     }
 
     /// The trace `a + a^2 + a^4 + ... + a^(2^(n-1))`, which is `0` or `1`.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn trace(&self) -> bool {
         masked_parity(&self.into_limbs(), &Self::TRACE_MASK)
@@ -314,14 +314,14 @@ impl<P: Polynomial> fmt::Debug for Gf2<P> {
 }
 
 impl<P: Polynomial> From<Uint<P::Degree>> for Gf2<P> {
-    #[inline(always)]
+    #[inline]
     fn from(value: Uint<P::Degree>) -> Self {
         Self::of(Element::<P>::from_uint(value))
     }
 }
 
 impl<P: Polynomial> From<Gf2<P>> for Uint<P::Degree> {
-    #[inline(always)]
+    #[inline]
     fn from(element: Gf2<P>) -> Self {
         element.into_uint()
     }
@@ -359,14 +359,14 @@ impl<P: Polynomial> One for Gf2<P> {
 impl<P: Polynomial> Add for Gf2<P> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn add(self, rhs: Self) -> Self {
         Self::of(self.value.add(rhs.value))
     }
 }
 
 impl<P: Polynomial> AddAssign for Gf2<P> {
-    #[inline(always)]
+    #[inline]
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
@@ -379,7 +379,7 @@ impl<P: Polynomial> AddAssign for Gf2<P> {
 impl<P: Polynomial> Sub for Gf2<P> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn sub(self, rhs: Self) -> Self {
         self + rhs
     }
@@ -390,7 +390,7 @@ impl<P: Polynomial> Sub for Gf2<P> {
     reason = "subtraction in characteristic 2 is addition"
 )]
 impl<P: Polynomial> SubAssign for Gf2<P> {
-    #[inline(always)]
+    #[inline]
     fn sub_assign(&mut self, rhs: Self) {
         *self += rhs;
     }
@@ -399,7 +399,7 @@ impl<P: Polynomial> SubAssign for Gf2<P> {
 impl<P: Polynomial> Neg for Gf2<P> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn neg(self) -> Self {
         self
     }
@@ -408,14 +408,14 @@ impl<P: Polynomial> Neg for Gf2<P> {
 impl<P: Polynomial> Mul for Gf2<P> {
     type Output = Self;
 
-    #[inline(always)]
+    #[inline]
     fn mul(self, rhs: Self) -> Self {
         Self::of(Field::<P>::mul(self.value, rhs.value))
     }
 }
 
 impl<P: Polynomial> MulAssign for Gf2<P> {
-    #[inline(always)]
+    #[inline]
     fn mul_assign(&mut self, rhs: Self) {
         *self = *self * rhs;
     }
@@ -425,7 +425,7 @@ impl<P: Polynomial> Square for Gf2<P> {
     type Output = Self;
 
     /// `self * self`: in characteristic 2 the cross terms cancel.
-    #[inline(always)]
+    #[inline]
     fn square(self) -> Self {
         Self::of(Field::<P>::square(self.value))
     }
