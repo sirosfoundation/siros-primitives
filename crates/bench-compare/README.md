@@ -8,7 +8,9 @@ counters.
 
 - `Suite`: what a bench measures: its operations, its rows, the operand sets with their accepted
   results, and one adapter per compared crate. A comparison splits over several bench binaries, one
-  per group of operations, that build in parallel.
+  per group of operations, that build in parallel. Operations whose cases call one crate function
+  belong in one group: LLVM decides the inlining of that function from all its callers, and a
+  split moves the code of the measured loops.
 - `Selected`: the operation of a case as a type, with whether the bench measures it as a constant.
   A case of an operation that the bench leaves out compiles to nothing.
 - `Row::lib` offers one crate's cells:
