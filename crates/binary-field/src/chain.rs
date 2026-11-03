@@ -7,10 +7,15 @@
 
 use core::marker::PhantomData;
 
+use typenum::{U24, Unsigned};
+
 use crate::plan::{Plan, Polynomial};
 
-/// The steps an inverse unrolls; longer chains take the binary chain in a loop.
-pub(crate) const MAX_STEPS: usize = 24;
+/// The most steps of a chain that an inverse runs; longer chains take the binary chain in a loop.
+pub(crate) type MaxSteps = U24;
+
+/// [`MaxSteps`] as a number.
+pub(crate) const MAX_STEPS: usize = MaxSteps::USIZE;
 
 /// The largest `n - 1` the dynamic program covers.
 const MAX_EXPONENT: usize = 4096;

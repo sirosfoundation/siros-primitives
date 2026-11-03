@@ -147,6 +147,22 @@ No operation allocates. A 4096-bit `*`, `div_rem` or `mul_mod` uses at most 7.9 
 release build. `pow` of a 4096-bit `ConstantTimeResidue` holds a table of 32 residues,
 16 KiB.
 
+## Loops over widths
+
+`Indices::each` runs a closure on every index below a `typenum` length, such as `N::Limbs`.
+Release builds run one inlined copy per index, so every index is a constant and limbs stay in
+registers; builds with debug assertions run a loop. `prime-field`, `clmul` and `binary-field`
+run their limb loops on it.
+
+```rust
+use biguint::typenum::U4;
+use biguint::Indices;
+
+let mut sum = 0;
+U4::each(|index| sum += index);
+assert_eq!(sum, 6);
+```
+
 ## Features
 
 - `not-precomputed`: removes the 512-byte table that seeds the division reciprocal on targets

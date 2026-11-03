@@ -92,3 +92,5 @@ result_unit_err = "deny"
 
 [profile.test]
 opt-level = 1
+# Line tables keep file and line in backtraces; full debug info triples the IR that LLVM optimizes.
+debug = "line-tables-only"

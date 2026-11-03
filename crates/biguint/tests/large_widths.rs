@@ -193,7 +193,7 @@ where
 
 #[test]
 fn modulus_context_at_large_widths_matches_reference() {
-    // Rows past the unrolled length and Karatsuba products; divide-and-conquer reduction.
+    // Rows past the grouped length and Karatsuba products; divide-and-conquer reduction.
     check_modulus::<U1088>();
     check_modulus::<U2048>();
 }

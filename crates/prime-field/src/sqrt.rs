@@ -2,8 +2,8 @@
 
 use crate::field::{Fp, Modulus};
 use crate::invert::declassify;
+use crate::limb::select;
 use crate::params::{ROOT_POWERS, Shape};
-use crate::unrolled::select;
 
 impl<M: Modulus> Fp<M> {
     /// A square root of `self`, or `None` when `self` is a quadratic non-residue. Of the two

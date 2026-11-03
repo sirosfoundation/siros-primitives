@@ -9,37 +9,11 @@ use core::ops::{
 
 use biguint::generic_array::{ArrayLength, GenericArray};
 use biguint::typenum::{Quot, Sum, U1, U127, U128, Unsigned};
-use biguint::{Bits, OutOfRange, Uint};
+use biguint::{Bits, Indices, OutOfRange, Uint};
 use const_default::ConstDefault;
 
 use crate::backend::{self, Register};
 use crate::nibble::NibbleMap;
-
-/// Runs `$body` with `$index` bound to each of `0..$len`. Optimized builds get one copy per index
-/// below 8, so that constant lengths fold to straight-line code, and a loop beyond; debug builds
-/// get the loop alone, which keeps the frames of the inlined operations small.
-macro_rules! each {
-    ($index:ident < $len:expr => $body:block) => {{
-        let len: usize = $len;
-        #[cfg(not(debug_assertions))]
-        each!(@ $index, len, 8, $body; 0 1 2 3 4 5 6 7);
-        #[cfg(debug_assertions)]
-        each!(@ $index, len, 0, $body;);
-    }};
-    (@ $index:ident, $len:ident, $from:literal, $body:block; $($k:literal)*) => {
-        $(
-            if $k < $len {
-                let $index: usize = $k;
-                $body
-            }
-        )*
-        let mut $index: usize = $from;
-        while $index < $len {
-            $body
-            $index += 1;
-        }
-    };
-}
 
 /// One vector register that holds a polynomial over GF(2) of degree below `N`, for `N` up to 128.
 /// The bits at and above `N` are zero, so the conversions to and from `Poly<N>` take no
@@ -153,7 +127,7 @@ where
     <Self::Lanes as ArrayLength>::ArrayType<Lane<U128>>: Copy + ConstDefault,
 {
     /// `ceil(N / 128)`.
-    type Lanes: ArrayLength;
+    type Lanes: ArrayLength + Indices;
 
     /// `ceil(N / 128)`.
     const LANES: usize;
@@ -163,7 +137,7 @@ impl<N> Width for N
 where
     N: Bits + Add<U127>,
     Sum<N, U127>: Div<U128>,
-    Quot<Sum<N, U127>, U128>: ArrayLength,
+    Quot<Sum<N, U127>, U128>: ArrayLength + Indices,
     <Quot<Sum<N, U127>, U128> as ArrayLength>::ArrayType<Lane<U128>>: Copy + ConstDefault,
 {
     type Lanes = Quot<Sum<N, U127>, U128>;
@@ -412,9 +386,12 @@ impl<N: Width> Poly<N> {
     #[must_use]
     pub fn resize<M: Width>(self) -> Poly<M> {
         let mut out = Poly::<M>::ZERO;
-        each!(index < M::LANES => {
-            out.set(index, self.lane(index));
-        });
+        M::Lanes::each(
+            #[inline(always)]
+            |index| {
+                out.set(index, self.lane(index));
+            },
+        );
         if M::BITS < N::BITS {
             out.truncated()
         } else {
@@ -427,9 +404,12 @@ impl<N: Width> Poly<N> {
     #[inline(always)]
     #[must_use]
     pub fn shl_within_words(mut self, bits: u32) -> Self {
-        each!(index < N::LANES => {
-            self.set(index, backend::shl_words(self.lane(index), bits));
-        });
+        N::Lanes::each(
+            #[inline(always)]
+            |index| {
+                self.set(index, backend::shl_words(self.lane(index), bits));
+            },
+        );
         if N::BITS % 64 == 0 {
             self
         } else {
@@ -445,9 +425,12 @@ impl<N: Width> Poly<N> {
     #[must_use]
     pub fn map_low_nibbles(mut self, map: NibbleMap) -> Self {
         let low = backend::register([0x0F0F_0F0F_0F0F_0F0F; 2]);
-        each!(index < N::LANES => {
-            self.set(index, map.apply(backend::and(self.lane(index), low)));
-        });
+        N::Lanes::each(
+            #[inline(always)]
+            |index| {
+                self.set(index, map.apply(backend::and(self.lane(index), low)));
+            },
+        );
         if N::BITS % 8 == 0 {
             self
         } else {
@@ -461,10 +444,13 @@ impl<N: Width> Poly<N> {
     #[must_use]
     pub fn map_high_nibbles(mut self, map: NibbleMap) -> Self {
         let low = backend::register([0x0F0F_0F0F_0F0F_0F0F; 2]);
-        each!(index < N::LANES => {
-            let nibbles = backend::and(backend::shr_words(self.lane(index), 4), low);
-            self.set(index, map.apply(nibbles));
-        });
+        N::Lanes::each(
+            #[inline(always)]
+            |index| {
+                let nibbles = backend::and(backend::shr_words(self.lane(index), 4), low);
+                self.set(index, map.apply(nibbles));
+            },
+        );
         if N::BITS % 8 == 0 {
             self
         } else {
@@ -477,9 +463,12 @@ impl<N: Width> Poly<N> {
     #[inline(always)]
     #[must_use]
     pub fn shr_within_words(mut self, bits: u32) -> Self {
-        each!(index < N::LANES => {
-            self.set(index, backend::shr_words(self.lane(index), bits));
-        });
+        N::Lanes::each(
+            #[inline(always)]
+            |index| {
+                self.set(index, backend::shr_words(self.lane(index), bits));
+            },
+        );
         self
     }
 
@@ -519,38 +508,47 @@ impl<N: Width> Poly<N> {
         let mut odd = Poly::<Sum<N, M>>::ZERO;
         let (a_words, b_words) = (N::LIMBS, M::LIMBS);
         // One pass over the register pairs `(i, j)`.
-        each!(pair < N::LANES * M::LANES => {
-            let (i, j) = (pair / M::LANES, pair % M::LANES);
-            let (a, b) = (self.lane(i), rhs.lane(j));
-            let (a_full, b_full) = (2 * i + 1 < a_words, 2 * j + 1 < b_words);
-            if a_full && b_full {
-                let [low, middle, high] = karatsuba(a, b);
-                even.add_to(i + j, low);
-                even.add_to(i + j + 1, high);
-                odd.add_to(i + j, middle);
-            } else {
-                let bits = |width: usize, word: usize| word_bits(width, word);
-                let (a_low, b_low) = (bits(N::BITS, 2 * i), bits(M::BITS, 2 * j));
-                even.add_to(i + j, word_product(a, 0, a_low, b, 0, b_low));
-                if a_full {
-                    let a_high = bits(N::BITS, 2 * i + 1);
-                    odd.add_to(i + j, word_product(a, 1, a_high, b, 0, b_low));
-                } else if b_full {
-                    let b_high = bits(M::BITS, 2 * j + 1);
-                    odd.add_to(i + j, word_product(a, 0, a_low, b, 1, b_high));
-                }
-            }
-        });
-        let lanes = <Sum<N, M> as Width>::LANES;
-        each!(k < lanes => {
-            let value = backend::xor(backend::up(odd.lane(k)), even.lane(k));
-            let carried = if k == 0 {
-                value
-            } else {
-                backend::xor(value, backend::down(odd.lane(k - 1)))
-            };
-            even.set(k, carried);
-        });
+        N::Lanes::each(
+            #[inline(always)]
+            |i| {
+                M::Lanes::each(
+                    #[inline(always)]
+                    |j| {
+                        let (a, b) = (self.lane(i), rhs.lane(j));
+                        let (a_full, b_full) = (2 * i + 1 < a_words, 2 * j + 1 < b_words);
+                        if a_full && b_full {
+                            let [low, middle, high] = karatsuba(a, b);
+                            even.add_to(i + j, low);
+                            even.add_to(i + j + 1, high);
+                            odd.add_to(i + j, middle);
+                        } else {
+                            let bits = |width: usize, word: usize| word_bits(width, word);
+                            let (a_low, b_low) = (bits(N::BITS, 2 * i), bits(M::BITS, 2 * j));
+                            even.add_to(i + j, word_product(a, 0, a_low, b, 0, b_low));
+                            if a_full {
+                                let a_high = bits(N::BITS, 2 * i + 1);
+                                odd.add_to(i + j, word_product(a, 1, a_high, b, 0, b_low));
+                            } else if b_full {
+                                let b_high = bits(M::BITS, 2 * j + 1);
+                                odd.add_to(i + j, word_product(a, 0, a_low, b, 1, b_high));
+                            }
+                        }
+                    },
+                );
+            },
+        );
+        <Sum<N, M> as Width>::Lanes::each(
+            #[inline(always)]
+            |k| {
+                let value = backend::xor(backend::up(odd.lane(k)), even.lane(k));
+                let carried = if k == 0 {
+                    value
+                } else {
+                    backend::xor(value, backend::down(odd.lane(k - 1)))
+                };
+                even.set(k, carried);
+            },
+        );
         even
     }
 
@@ -564,11 +562,14 @@ impl<N: Width> Poly<N> {
         Sum<N, N>: Width,
     {
         let mut out = Poly::<Sum<N, N>>::ZERO;
-        each!(index < N::LANES => {
-            let (first, second) = backend::spread(self.lane(index));
-            out.set(2 * index, first);
-            out.set(2 * index + 1, second);
-        });
+        N::Lanes::each(
+            #[inline(always)]
+            |index| {
+                let (first, second) = backend::spread(self.lane(index));
+                out.set(2 * index, first);
+                out.set(2 * index + 1, second);
+            },
+        );
         out
     }
 
@@ -586,33 +587,41 @@ impl<N: Width> Poly<N> {
             return if N::BITS < 64 { out.truncated() } else { out };
         }
         // Whole registers, then one word, then the bits below a word.
-        each!(k < N::LANES => {
-            let source = |index: usize| -> Register {
-                if index < lanes { backend::ZERO } else { self.lane(index - lanes) }
-            };
-            let worded = |index: usize| -> Register {
-                if words == 0 {
-                    source(index)
-                } else if index == 0 {
-                    backend::up(source(0))
+        N::Lanes::each(
+            #[inline(always)]
+            |k| {
+                let source = |index: usize| -> Register {
+                    if index < lanes {
+                        backend::ZERO
+                    } else {
+                        self.lane(index - lanes)
+                    }
+                };
+                let worded = |index: usize| -> Register {
+                    if words == 0 {
+                        source(index)
+                    } else if index == 0 {
+                        backend::up(source(0))
+                    } else {
+                        backend::xor(backend::up(source(index)), backend::down(source(index - 1)))
+                    }
+                };
+                let value = if shift == 0 {
+                    worded(k)
                 } else {
-                    backend::xor(backend::up(source(index)), backend::down(source(index - 1)))
-                }
-            };
-            let value = if shift == 0 {
-                worded(k)
-            } else {
-                let carry = backend::shr_words(worded(k), 64 - shift);
-                let lane = backend::xor(backend::shl_words(worded(k), shift), backend::up(carry));
-                if k == 0 {
-                    lane
-                } else {
-                    let below = backend::shr_words(worded(k - 1), 64 - shift);
-                    backend::xor(lane, backend::down(below))
-                }
-            };
-            out.set(k, value);
-        });
+                    let carry = backend::shr_words(worded(k), 64 - shift);
+                    let lane =
+                        backend::xor(backend::shl_words(worded(k), shift), backend::up(carry));
+                    if k == 0 {
+                        lane
+                    } else {
+                        let below = backend::shr_words(worded(k - 1), 64 - shift);
+                        backend::xor(lane, backend::down(below))
+                    }
+                };
+                out.set(k, value);
+            },
+        );
         out.truncated()
     }
 
@@ -628,26 +637,29 @@ impl<N: Width> Poly<N> {
             out.set(0, backend::shr_words(self.lane(0), shift));
             return out;
         }
-        each!(k < N::LANES => {
-            let source = |index: usize| -> Register { self.lane(index + lanes) };
-            let worded = |index: usize| -> Register {
-                if words == 0 {
-                    source(index)
+        N::Lanes::each(
+            #[inline(always)]
+            |k| {
+                let source = |index: usize| -> Register { self.lane(index + lanes) };
+                let worded = |index: usize| -> Register {
+                    if words == 0 {
+                        source(index)
+                    } else {
+                        backend::xor(backend::down(source(index)), backend::up(source(index + 1)))
+                    }
+                };
+                let value = if shift == 0 {
+                    worded(k)
                 } else {
-                    backend::xor(backend::down(source(index)), backend::up(source(index + 1)))
-                }
-            };
-            let value = if shift == 0 {
-                worded(k)
-            } else {
-                let carry = backend::shl_words(worded(k), 64 - shift);
-                let lane =
-                    backend::xor(backend::shr_words(worded(k), shift), backend::down(carry));
-                let above = backend::shl_words(worded(k + 1), 64 - shift);
-                backend::xor(lane, backend::up(above))
-            };
-            out.set(k, value);
-        });
+                    let carry = backend::shl_words(worded(k), 64 - shift);
+                    let lane =
+                        backend::xor(backend::shr_words(worded(k), shift), backend::down(carry));
+                    let above = backend::shl_words(worded(k + 1), 64 - shift);
+                    backend::xor(lane, backend::up(above))
+                };
+                out.set(k, value);
+            },
+        );
         out
     }
 }
@@ -715,9 +727,12 @@ macro_rules! bitwise {
 
             #[inline(always)]
             fn $method(mut self, rhs: Self) -> Self {
-                each!(index < N::LANES => {
-                    self.set(index, $op(self.lane(index), rhs.lane(index)));
-                });
+                N::Lanes::each(
+                    #[inline(always)]
+                    |index| {
+                        self.set(index, $op(self.lane(index), rhs.lane(index)));
+                    },
+                );
                 self
             }
         }

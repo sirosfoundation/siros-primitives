@@ -4,6 +4,8 @@ use const_default::ConstDefault;
 use generic_array::ArrayLength;
 use typenum::{Gr, IsGreater, Mod, NonZero, Prod, Quot, Sum, U0, U1, U2, U3, U4, U8, Unsigned};
 
+use crate::indices::Indices;
+
 type DivUp<A, B> = Sum<Quot<A, B>, Gr<Mod<A, B>, U0>>;
 type LimbsFor<N> = DivUp<N, typenum::U64>;
 type BytesFor<N> = DivUp<N, typenum::U8>;
@@ -16,7 +18,7 @@ pub(crate) mod sealed {
     /// Seals [`super::Bits`] and carries the array lengths of the work areas.
     pub trait Sealed {
         /// `ceil(N / 64) + 1`: a dividend shifted left until its divisor's top bit is set.
-        type Window: ArrayLength;
+        type Window: ArrayLength + crate::indices::Indices;
         /// `ceil(N / 64) + 8`: the work area of a full product into `N` bits of two equally long
         /// operands.
         type BalancedScratch: ArrayLength;
@@ -38,7 +40,7 @@ where
     Mod<N, typenum::U64>: IsGreater<U0>,
     Quot<N, typenum::U64>: Add<Gr<Mod<N, typenum::U64>, U0>>,
     LimbsFor<N>: Add<U1> + Add<U8> + Mul<U2> + Mul<U3> + Mul<U4>,
-    Sum<LimbsFor<N>, U1>: ArrayLength,
+    Sum<LimbsFor<N>, U1>: ArrayLength + Indices,
     Sum<LimbsFor<N>, U8>: ArrayLength,
     Prod<LimbsFor<N>, U2>: Add<U8> + Add<U1>,
     Sum<Prod<LimbsFor<N>, U2>, U1>: ArrayLength,
@@ -64,7 +66,7 @@ where
     <Self::Limbs as ArrayLength>::ArrayType<u64>: Copy + ConstDefault,
 {
     /// `ceil(N / 64)`: the little-endian `u64` limbs of a `Uint<N>`.
-    type Limbs: ArrayLength;
+    type Limbs: ArrayLength + Indices;
     /// `ceil(N / 8)`: the bytes of an encoded `Uint<N>`.
     type Bytes: ArrayLength;
 
@@ -84,7 +86,7 @@ where
     N: Div<typenum::U64> + Rem<typenum::U64> + Div<typenum::U8> + Rem<typenum::U8>,
     Mod<N, typenum::U64>: IsGreater<U0>,
     Quot<N, typenum::U64>: Add<Gr<Mod<N, typenum::U64>, U0>>,
-    LimbsFor<N>: ArrayLength,
+    LimbsFor<N>: ArrayLength + Indices,
     <LimbsFor<N> as ArrayLength>::ArrayType<u64>: Copy + ConstDefault,
     Mod<N, typenum::U8>: IsGreater<U0>,
     Quot<N, typenum::U8>: Add<Gr<Mod<N, typenum::U8>, U0>>,
