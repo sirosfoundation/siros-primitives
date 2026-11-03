@@ -23,6 +23,7 @@ mod cmp;
 mod convert;
 mod ct;
 mod div;
+mod each;
 mod fmt;
 mod indices;
 mod kernel;

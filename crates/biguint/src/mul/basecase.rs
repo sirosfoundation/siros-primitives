@@ -6,21 +6,21 @@
 //! run loops of multiply-accumulate steps.
 //!
 //! [`product`] and [`square`] take their lengths as types and run one copy of each row and each
-//! limb ([`Indices`]), so the limbs of a product stay in registers. [`basecase`] takes slices,
+//! limb ([`each`]), so the limbs of a product stay in registers. [`basecase`] takes slices,
 //! whose lengths become constants only where it is inlined; it loops over the rows and runs one
 //! copy per limb up to [`GROUPED_ROW`], the copies past the length folding away.
 
 use generic_array::{ArrayLength, GenericArray};
 use typenum::{U16, Unsigned};
 
-use crate::indices::Indices;
+use crate::each::each;
 use crate::kernel::{add_mul_row, mul_row, split, split_mut};
 use crate::limb::CarryingAdd;
 
 /// Writes `a * b mod 2^(64 * out.len())` to `out`, at most `A + B` limbs: one copy per row and
 /// per group up to [`GROUPED_ROW`] limbs.
 #[inline(always)]
-pub(crate) fn product<A: ArrayLength + Indices, B: ArrayLength + Indices>(
+pub(crate) fn product<A: ArrayLength, B: ArrayLength>(
     out: &mut [u64],
     a: &GenericArray<u64, A>,
     b: &GenericArray<u64, B>,
@@ -36,8 +36,8 @@ pub(crate) fn product<A: ArrayLength + Indices, B: ArrayLength + Indices>(
 
 /// The rows of [`product`]: one per limb of `short`, each over the limbs of `long`.
 #[inline(always)]
-fn rows<Long: Indices, Short: Indices>(out: &mut [u64], long: &[u64], short: &[u64]) {
-    Short::each(
+fn rows<Long: Unsigned, Short: Unsigned>(out: &mut [u64], long: &[u64], short: &[u64]) {
+    each::<Short>(
         #[inline(always)]
         |index| {
             if let Some(&multiplier) = short.get(index) {
@@ -52,7 +52,7 @@ fn rows<Long: Indices, Short: Indices>(out: &mut [u64], long: &[u64], short: &[u
 /// the squares of the limbs, with `A * (A + 1) / 2` multiplications where a product takes `A^2`.
 /// Operands of up to [`GROUPED_ROW`] limbs run one copy per row; longer ones run the product.
 #[inline(always)]
-pub(crate) fn square<A: ArrayLength + Indices>(out: &mut [u64], a: &GenericArray<u64, A>) {
+pub(crate) fn square<A: ArrayLength>(out: &mut [u64], a: &GenericArray<u64, A>) {
     if A::USIZE > GROUPED_ROW {
         basecase(out, a, a);
         return;
@@ -61,7 +61,7 @@ pub(crate) fn square<A: ArrayLength + Indices>(out: &mut [u64], a: &GenericArray
         *slot = 0;
     }
     // Row `i` adds `a_i * a_(i+1..)` at limb `2i + 1`.
-    A::each(
+    each::<A>(
         #[inline(always)]
         |index| {
             if let Some(&multiplier) = a.get(index)
@@ -75,7 +75,7 @@ pub(crate) fn square<A: ArrayLength + Indices>(out: &mut [u64], a: &GenericArray
     );
     // Doubles the cross products, two limbs per index; they sum below `2^(128 A - 1)`.
     let mut below = 0;
-    A::each(
+    each::<A>(
         #[inline(always)]
         |index| {
             if let Some(pair) = out.get_mut(2 * index..2 * index + 2) {
@@ -88,7 +88,7 @@ pub(crate) fn square<A: ArrayLength + Indices>(out: &mut [u64], a: &GenericArray
         },
     );
     let mut carry = 0;
-    A::each(
+    each::<A>(
         #[inline(always)]
         |index| {
             if let (Some(&limb), Some(pair)) = (a.get(index), out.get_mut(2 * index..2 * index + 2))
@@ -139,14 +139,14 @@ const ROW_GROUP: usize = 4;
 /// above the products is fresh: the rows before it in this output reach below it. The carries
 /// are locals of this function, so that they stay in registers and flags.
 #[inline(always)]
-fn add_row<Copies: Indices>(window: &mut [u64], long: &[u64], multiplier: u64, first: bool) {
+fn add_row<Copies: Unsigned>(window: &mut [u64], long: &[u64], multiplier: u64, first: bool) {
     let len = long.len().min(window.len());
     // A full row ends in a limb above the window's products; a cut row's last product lands on
     // the window's top limb, which takes its low half.
     let full = window.len() > len;
     let mut group = [0u64; ROW_GROUP];
     let (mut carry, mut high, mut sum_carry) = (0, 0, 0);
-    Copies::each(
+    each::<Copies>(
         #[inline(always)]
         |index| {
             if index >= len {

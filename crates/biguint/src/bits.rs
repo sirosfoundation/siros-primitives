@@ -18,7 +18,7 @@ pub(crate) mod sealed {
     /// Seals [`super::Bits`] and carries the array lengths of the work areas.
     pub trait Sealed {
         /// `ceil(N / 64) + 1`: a dividend shifted left until its divisor's top bit is set.
-        type Window: ArrayLength + crate::indices::Indices;
+        type Window: ArrayLength;
         /// `ceil(N / 64) + 8`: the work area of a full product into `N` bits of two equally long
         /// operands.
         type BalancedScratch: ArrayLength;
@@ -40,7 +40,7 @@ where
     Mod<N, typenum::U64>: IsGreater<U0>,
     Quot<N, typenum::U64>: Add<Gr<Mod<N, typenum::U64>, U0>>,
     LimbsFor<N>: Add<U1> + Add<U8> + Mul<U2> + Mul<U3> + Mul<U4>,
-    Sum<LimbsFor<N>, U1>: ArrayLength + Indices,
+    Sum<LimbsFor<N>, U1>: ArrayLength,
     Sum<LimbsFor<N>, U8>: ArrayLength,
     Prod<LimbsFor<N>, U2>: Add<U8> + Add<U1>,
     Sum<Prod<LimbsFor<N>, U2>, U1>: ArrayLength,

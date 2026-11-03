@@ -16,7 +16,6 @@ use generic_array::{ArrayLength, GenericArray};
 use typenum::Sum;
 
 use crate::bits::Bits;
-use crate::indices::Indices;
 use crate::recursion::{Depth, Halvings};
 use crate::uint::Uint;
 use karatsuba::{THRESHOLD, blocks};
@@ -132,12 +131,7 @@ const fn min(a: usize, b: usize) -> usize {
 /// `a * b` in the limbs of the width `P`, which holds it. `MASKED` runs every correction under
 /// masks: no branch and no memory address depends on the operands.
 #[inline(always)]
-pub(crate) fn full_product<
-    P: Bits,
-    A: ArrayLength + Indices,
-    B: ArrayLength + Indices,
-    const MASKED: bool,
->(
+pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength, const MASKED: bool>(
     a: &GenericArray<u64, A>,
     b: &GenericArray<u64, B>,
 ) -> GenericArray<u64, P::Limbs> {
@@ -186,7 +180,7 @@ fn karatsuba_into<P: Bits, const MASKED: bool>(
 
 /// `a * b mod 2^N`; `MASKED` as for [`full_product`].
 #[inline(always)]
-pub(crate) fn truncated_product<N: Bits, B: ArrayLength + Indices, const MASKED: bool>(
+pub(crate) fn truncated_product<N: Bits, B: ArrayLength, const MASKED: bool>(
     a: &GenericArray<u64, N::Limbs>,
     b: &GenericArray<u64, B>,
 ) -> GenericArray<u64, N::Limbs> {

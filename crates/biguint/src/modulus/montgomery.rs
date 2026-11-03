@@ -4,7 +4,7 @@
 
 use generic_array::{ArrayLength, GenericArray};
 
-use crate::indices::Indices;
+use crate::each::each;
 use crate::kernel::{
     add_mul_row, reduced, split, split_mut, subtract_when_above, subtract_when_above_masked,
 };
@@ -30,7 +30,7 @@ pub(crate) const fn negated_inverse(low: u64) -> u64 {
 /// An unoptimized build calls the kernel, as it does [`crate::mul::basecase`].
 #[cfg_attr(debug_assertions, inline(never))]
 #[cfg_attr(not(debug_assertions), inline(always))]
-pub(crate) fn reduce<L: ArrayLength + Indices>(
+pub(crate) fn reduce<L: ArrayLength>(
     out: &mut [u64],
     t: &mut [u64],
     modulus: &GenericArray<u64, L>,
@@ -47,7 +47,7 @@ pub(crate) fn reduce<L: ArrayLength + Indices>(
 /// address depends on `t`.
 #[cfg_attr(debug_assertions, inline(never))]
 #[cfg_attr(not(debug_assertions), inline(always))]
-pub(crate) fn reduce_masked<L: ArrayLength + Indices>(
+pub(crate) fn reduce_masked<L: ArrayLength>(
     out: &mut [u64],
     t: &mut [u64],
     modulus: &GenericArray<u64, L>,
@@ -64,11 +64,7 @@ pub(crate) fn reduce_masked<L: ArrayLength + Indices>(
 /// The rows of [`reduce`]: adds to `t` the multiples of the modulus that clear its low `k` limbs,
 /// which leaves the value below `2m` in the limbs above them, and returns the carry out of the top.
 #[inline(always)]
-fn fold<L: ArrayLength + Indices>(
-    t: &mut [u64],
-    modulus: &GenericArray<u64, L>,
-    inverse: u64,
-) -> u64 {
+fn fold<L: ArrayLength>(t: &mut [u64], modulus: &GenericArray<u64, L>, inverse: u64) -> u64 {
     let k = L::USIZE;
     // The carry out of the limb above each row: the rows' sums reach `2^(64 * (2k)) + ...`, one
     // bit above the `2k` limbs.
@@ -97,13 +93,13 @@ fn fold<L: ArrayLength + Indices>(
 /// Runs `row` on each row index of a `L`-limb modulus: one copy per row up to [`BUFFERED_ROW`]
 /// limbs, a loop beyond.
 #[inline(always)]
-fn each_row<L: Indices>(mut row: impl FnMut(usize)) {
+fn each_row<L: ArrayLength>(mut row: impl FnMut(usize)) {
     if L::USIZE > BUFFERED_ROW {
         for index in 0..L::USIZE {
             row(index);
         }
     } else {
-        L::each(row);
+        each::<L>(row);
     }
 }
 
@@ -115,17 +111,13 @@ const BUFFERED_ROW: usize = 16;
 /// into a buffer, then the add chain, for rows of up to [`BUFFERED_ROW`] limbs; the
 /// multiply-accumulate loop beyond.
 #[inline(always)]
-fn add_row<L: ArrayLength + Indices>(
-    row: &mut [u64],
-    modulus: &GenericArray<u64, L>,
-    q: u64,
-) -> u64 {
+fn add_row<L: ArrayLength>(row: &mut [u64], modulus: &GenericArray<u64, L>, q: u64) -> u64 {
     if L::USIZE > BUFFERED_ROW {
         return add_mul_row(row, modulus, q);
     }
     let mut products = GenericArray::<u64, L>::default();
     let (mut carry, mut high) = (0, 0);
-    L::each(
+    each::<L>(
         #[inline(always)]
         |index| {
             if let (Some(&limb), Some(slot)) = (modulus.get(index), products.get_mut(index)) {
@@ -138,7 +130,7 @@ fn add_row<L: ArrayLength + Indices>(
     // A high half is at most `2^64 - 2`.
     let top = high + carry;
     let mut carry = 0;
-    L::each(
+    each::<L>(
         #[inline(always)]
         |index| {
             if let (Some(slot), Some(&limb)) = (row.get_mut(index), products.get(index)) {
