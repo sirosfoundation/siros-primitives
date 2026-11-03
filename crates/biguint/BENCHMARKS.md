@@ -31,18 +31,18 @@
 | Operation | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
 |---|---|---|---|---|---|---|---|
 | add | `+` | `wrapping_add` | `wrapping_add` | `wrapping_add` | `wrapping_add` | `overflowing_add` | – |
-| mul | `*` | `wrapping_mul` | `wrapping_mul` | `wrapping_mul` | `wrapping_mul` | `overflowing_mul` | `&a * &b` |
+| mul | `*` | `wrapping_mul` | `wrapping_mul` | `wrapping_mul`, `wrapping_mul`° | `wrapping_mul`, `wrapping_mul`° | `overflowing_mul`, `overflowing_mul`° | `&a * &b` |
 | div | `div_rem` | `/ NonZero` | `wrapping_div` | `wrapping_div_vartime` | `wrapping_div` | `/` | `&a / &b` |
 | mod | `div_rem` | `% NonZero` | `wrapping_rem` | `rem_vartime` | `wrapping_rem` | `%` | `&a % &b` |
 | mulmod | `mul_mod` | `u128 product % m` | `mul_mod` | `mul_mod_vartime` | – | – | `(&a * &b) % &m` |
-| add_mod | `add_mod` | `overflowing_add, then - m` | `add_mod` | – | `overflowing_add, then - m` | `overflowing_add, then - m` | `(&a + &b) % &m` |
-| sub_mod | `sub_mod` | `-, else wrapping_sub then + m` | `a.add_mod(m - b.reduce_mod(m), m)` | – | `-, else overflowing_sub then + m` | `-, else overflowing_sub then + m` | `(&a + &m - &b) % &m` |
+| add_mod | `add_mod` | `overflowing_add, then - m` | `add_mod` | `add_mod`° | `overflowing_add, then - m` | `overflowing_add, then - m` | `(&a + &b) % &m` |
+| sub_mod | `sub_mod` | `-, else wrapping_sub then + m` | `a.add_mod(m - b.reduce_mod(m), m)` | `sub_mod`° | `-, else overflowing_sub then + m` | `-, else overflowing_sub then + m` | `(&a + &m - &b) % &m` |
+
+° The crate's constant-time function, where it has no variable-time one.
 
 - `native`: add, mul, div, mod, add_mod and sub_mod at 64 and 128 bits; mulmod at 64 bits.
 - `ruint`: mul at 64, 128, 256, 384, 512, 2048 and 4096 bits.
-- `crypto-bigint`: mul at 64, 128, 256, 384, 512 and 1024 bits.
-- `bnum`: mul at 64, 128, 256, 384, 512 and 1024 bits.
-- `uint`: add at 64 bits; mul at 64, 128, 256, 384 and 1024 bits.
+- `uint`: add at 64 bits; mul at 64, 128, 256, 384, 1024, 2048 and 4096 bits.
 - `num-bigint`: mul at 2048 and 4096 bits.
 
 ## Functions, constant time
@@ -90,8 +90,10 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | 384 | 30.0 / – | – | 30.5 / – | **29.8** / – | 33.6 / – | 36.6 / – | – |
 | 512 | **52.6** / – | – | 60.1 / – | 79.8 / – | 88.2 / – | – | – |
 | 1024 | **220** / – | – | – | 373 / – | 395 / – | 436 / – | – |
-| 2048 | **1,361** / – | – | 1,605 / – | – | – | – | 3,606 / – |
-| 4096 | **4,170** / – | – | 6,475 / – | – | – | – | 11,324 / – |
+| 2048 | **1,361** / – | – | 1,605 / – | 1,801° / – | 1,541° / – | 4,723° / – | 3,606 / – |
+| 4096 | **4,170** / – | – | 6,475 / – | 7,394° / – | 6,147° / – | 25,032° / – | 11,324 / – |
+
+° The crate's constant-time function, where it has no variable-time one.
 
 ### div: a / b
 
@@ -142,31 +144,35 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
 
-| Bits | biguint | native | ruint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | 4.0 / **9.0** | **3.0** / – | 12.0 / 13.5 | 17.4 / – | **3.0** / – | 102 / – |
-| 128 | 8.0 / **17.3** | **6.0** / – | 34.7 / 22.4 | 17.2 / – | 25.9 / – | 248 / – |
-| 256 | **23.5** / **24.3** | – | 44.6 / 61.6 | 24.0 / – | 58.4 / – | 249 / – |
-| 384 | 34.5 / **40.6** | – | 58.2 / 81.3 | **32.9** / – | 91.8 / – | 252 / – |
-| 512 | 41.9 / **49.3** | – | 75.3 / 97.7 | **40.9** / – | 133 / – | 258 / – |
-| 1024 | 93.0 / **93.7** | – | 151 / 175 | **76.0** / – | 281 / – | 298 / – |
-| 2048 | 173 / **165** | – | 382 / 401 | **168** / – | 591 / – | 492 / – |
-| 4096 | **337** / **410** | – | 759 / 830 | 415 / – | 1,431 / – | 1,074 / – |
+| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 64 | 4.0 / **9.0** | **3.0** / – | 12.0 / 13.5 | 11.2° / – | 17.4 / – | **3.0** / – | 102 / – |
+| 128 | 8.0 / **17.3** | **6.0** / – | 34.7 / 22.4 | 27.4° / – | 17.2 / – | 25.9 / – | 248 / – |
+| 256 | **23.5** / **24.3** | – | 44.6 / 61.6 | 71.0° / – | 24.0 / – | 58.4 / – | 249 / – |
+| 384 | 34.5 / **40.6** | – | 58.2 / 81.3 | 91.1° / – | **32.9** / – | 91.8 / – | 252 / – |
+| 512 | 41.9 / **49.3** | – | 75.3 / 97.7 | 123° / – | **40.9** / – | 133 / – | 258 / – |
+| 1024 | 93.0 / **93.7** | – | 151 / 175 | 143° / – | **76.0** / – | 281 / – | 298 / – |
+| 2048 | 173 / **165** | – | 382 / 401 | 436° / – | **168** / – | 591 / – | 492 / – |
+| 4096 | **337** / **410** | – | 759 / 830 | 911° / – | 415 / – | 1,431 / – | 1,074 / – |
+
+° The crate's constant-time function, where it has no variable-time one.
 
 ### sub_mod: a − b mod m
 
 Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
 
-| Bits | biguint | native | ruint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | **4.0** / **7.7** | 12.2 / – | 12.0 / 13.5 | 13.5 / – | 12.4 / – | 163 / – |
-| 128 | 6.0 / **12.3** | **3.9** / – | 33.4 / 23.3 | 14.2 / – | 18.7 / – | 341 / – |
-| 256 | **13.1** / **16.7** | – | 48.2 / 64.3 | 22.9 / – | 49.3 / – | 344 / – |
-| 384 | **21.0** / **28.0** | – | 70.0 / 88.6 | 30.0 / – | 81.5 / – | 364 / – |
-| 512 | **29.4** / **37.6** | – | 91.7 / 111 | 40.6 / – | 133 / – | 311 / – |
-| 1024 | **63.0** / **82.0** | – | 179 / 201 | 69.2 / – | 292 / – | 379 / – |
-| 2048 | **142** / **157** | – | 484 / 472 | 166 / – | 667 / – | 590 / – |
-| 4096 | **288** / **422** | – | 1,018 / 1,089 | 416 / – | 1,596 / – | 868 / – |
+| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 64 | **4.0** / **7.7** | 12.2 / – | 12.0 / 13.5 | 4.7° / – | 13.5 / – | 12.4 / – | 163 / – |
+| 128 | 6.0 / **12.3** | **3.9** / – | 33.4 / 23.3 | 11.5° / – | 14.2 / – | 18.7 / – | 341 / – |
+| 256 | **13.1** / **16.7** | – | 48.2 / 64.3 | 49.2° / – | 22.9 / – | 49.3 / – | 344 / – |
+| 384 | **21.0** / **28.0** | – | 70.0 / 88.6 | 82.3° / – | 30.0 / – | 81.5 / – | 364 / – |
+| 512 | **29.4** / **37.6** | – | 91.7 / 111 | 111° / – | 40.6 / – | 133 / – | 311 / – |
+| 1024 | **63.0** / **82.0** | – | 179 / 201 | 132° / – | 69.2 / – | 292 / – | 379 / – |
+| 2048 | **142** / **157** | – | 484 / 472 | 292° / – | 166 / – | 667 / – | 590 / – |
+| 4096 | **288** / **422** | – | 1,018 / 1,089 | 599° / – | 416 / – | 1,596 / – | 868 / – |
+
+° The crate's constant-time function, where it has no variable-time one.
 
 ### add, constant time: a + b
 
