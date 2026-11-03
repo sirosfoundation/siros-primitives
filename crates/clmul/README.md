@@ -4,21 +4,30 @@
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
 ![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
-Carry-less multiplication of words, limb slices and GF(2^128) elements, in Rust.
+Carry-less multiplication of words, limb slices and GF(2^128) elements, in Rust: `no_std`, no
+allocation, no panics.
 
 ## Features
 
-- `clmul64`: two words into a `u128`. `clmul_into`: limb slices of any length.
-- `gf2p128_mul` and `Gf2p128Accumulator`: products and sums in GF(2¹²⁸) with the GCM polynomial.
-- `const_clmul64` and `const_clmul_into` compute the same products in const contexts.
-- With the `biguint` feature: `CarrylessMul` on `biguint::Uint`, and `Poly<N>`, a polynomial held
-  in `ceil(N / 128)` vector registers, with products, squares, shifts and nibble maps.
-- Backends picked at compile time from the build's target features, with no runtime detection.
-- `no_std`, no allocation, no panics. The hardware backends hold the crate's only `unsafe`.
+- `clmul64`: the product of two words, in a `u128`.
+- `clmul_into`: the product of two little-endian limb slices of any lengths.
+- `gf2p128_mul` and `Gf2p128Accumulator`: products and sums of products in GF(2¹²⁸) with the GCM
+  polynomial.
+- `const_clmul64` and `const_clmul_into`: the same products in const contexts.
+- `HARDWARE`: `true` when the build multiplies with PCLMULQDQ or PMULL.
+- With the `biguint` feature:
+  - `CarrylessMul` on `biguint::Uint`: `carryless_mul` keeps the width of `self`,
+    `widening_carryless_mul` keeps the whole product. `const_carryless_mul` and
+    `const_widening_carryless_mul` compute them in const contexts.
+  - `Poly<N>`: a polynomial of degree below `N` in vector registers, with `widening_mul`,
+    `widening_square`, word products, shifts, `& | ^`, and `Uint` and byte conversions.
+  - `Lane<N>`: a polynomial of up to 128 bits in one register.
+  - `NibbleMap`: a GF(2)-linear map of nibbles to bytes, applied to every byte of a `Poly` by
+    `map_low_nibbles` and `map_high_nibbles`.
 
 ## Usage
 
-Bit `i` of a word is the coefficient of `x^i`; limbs are little-endian.
+Bit `i` of a word is the coefficient of `x^i`.
 
 ```rust
 use clmul::{clmul64, clmul_into, const_clmul64, gf2p128_mul};
@@ -38,7 +47,26 @@ const SQUARE: u128 = const_clmul64(0b11, 0b11);
 assert_eq!(SQUARE, 0b101);
 ```
 
+## Integers and polynomials
+
+With the `biguint` feature:
+
+```rust
+# #[cfg(feature = "biguint")] {
+use biguint::{typenum::U128, Uint};
+use clmul::{CarrylessMul, Poly};
+
+let a = Uint::<U128>::from_u64(0b11);
+assert_eq!(a.widening_carryless_mul(a), Uint::from_u64(0b101));
+
+let p = Poly::<U128>::from_uint(a);
+assert_eq!(p.widening_square().to_uint(), Uint::from_u64(0b101));
+# }
+```
+
 ## Backends
+
+The build's target features select the backend when the crate compiles.
 
 | Target | Target features | Word products | Squares |
 |---|---|---|---|
@@ -55,9 +83,7 @@ RUSTFLAGS="-C target-feature=+pclmulqdq,+sse4.1" cargo build   # x86-64
 RUSTFLAGS="-C target-feature=+aes" cargo build                 # aarch64
 ```
 
-A default `x86_64` build has neither PCLMULQDQ nor SSSE3. `HARDWARE` is `true` in builds with
-PCLMULQDQ or PMULL. The backend is fixed when the crate compiles: to select at run time, build once
-per feature set and load the build the CPU supports.
+To choose at run time, build once per feature set and load the build the CPU supports.
 
 ## License
 

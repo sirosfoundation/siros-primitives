@@ -4,24 +4,26 @@
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
 ![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
-A zero-cost wrapper for constant-time arithmetic, shared by the SIROS primitives.
+A zero-cost wrapper whose operations take the same path for every wrapped value, in Rust: `no_std`,
+no dependencies, no `unsafe`, no allocation.
 
 ## Features
 
-- `ConstantTime<T>` holds a `T` in the same memory; `new` and `reveal` cost nothing.
+- `ConstantTime<T>`: holds a `T` in the same memory. `new` and `reveal` cost nothing.
 - Its operations run with no branch and no memory address that depends on the wrapped values.
-- Operators combine two wrapped values, or a wrapped value and a `Public` one on either side.
-- Modular operations, division by a public divisor, `square`, `pow`, `invert` and `sqrt` are
-  inherent methods: nothing to import.
+  Widths, moduli, divisors, shift amounts and public operands may steer the time.
+- Operators: `+ - * & | ^` and their assigning forms, unary `-`, `!`, and `<<` and `>>` by a
+  public amount, between two wrapped values or with a `Public` value on either side.
+- Methods, with nothing to import: `square`, `double`, `pow`, `invert`, `sqrt`, `add_mod`,
+  `sub_mod`, `neg_mod`, `mul_mod`, `div_rem` and `get`.
+- `From` wraps every `Public` value that converts into `T`.
+- No comparison and no formatting. A value leaves only through `reveal`, and through whether
+  `invert`, or a `sqrt` that returns an `Option`, found a result.
 - `biguint`, `prime-field` and `binary-field` implement it for their types and re-export it.
-- No comparison and no formatting: nothing reveals a value by accident.
-- `no_std`, no dependencies, no `unsafe`, no allocation.
 
-## Usage
+## Wrapping your own type
 
-Use it through `biguint`, `prime-field` or `binary-field`. To wrap your own type, implement
-the `Ct*` trait of each operation, in time that depends on no wrapped value. Widths,
-moduli, divisors, shift amounts and public operands may steer the time.
+Implement the `Ct*` trait of each operation, in time that depends on no wrapped value.
 
 ```rust
 use constant_time::{ConstantTime, CtAdd, CtSquare, Public};
@@ -53,14 +55,12 @@ assert_eq!(sum.reveal().0, 88);
 |---|---|
 | `+ - * & \| ^` and their assigning forms | `CtAdd`, `CtSub`, `CtMul`, `CtBitAnd`, `CtBitOr`, `CtBitXor` |
 | unary `-`, `!` | `CtNeg`, `CtNot` |
-| `<<`, `>>` by a public amount | `CtShl`, `CtShr` |
-| `/`, `%`, `div_rem` by a public divisor | `CtDivRem` |
+| `<<`, `>>` | `CtShl`, `CtShr` |
+| `/`, `%`, `div_rem` | `CtDivRem` |
 | `square`, `pow`, `invert`, `sqrt` | `CtSquare`, `CtPow`, `CtInvert`, `CtSqrt` |
 | `double` | `CtAdd` |
 | `add_mod`, `sub_mod`, `neg_mod`, `mul_mod` | `CtAddMod`, `CtSubMod`, `CtNegMod`, `CtMulMod` |
 | `get` | `CtGet` |
-
-`invert`, and a `sqrt` whose root is an `Option`, disclose whether the result exists.
 
 ## License
 

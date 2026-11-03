@@ -4,21 +4,25 @@
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
 ![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
-Binary fields GF(2^n) of any degree, declared by their polynomial, in pure Rust.
+Binary fields GF(2^n) of any degree, declared by their polynomial, in pure Rust: `no_std`, no
+`unsafe`, no allocation, no panics.
 
 ## Features
 
-- One `impl Polynomial` declares a field of any degree. The taps are checked at compile time.
-- Standard fields: AES GF(2⁸), GF(2¹⁶), GF(2⁶⁴), GCM/POLYVAL GF(2¹²⁸), NIST B-233 and B-571, and
-  GF(2²⁵⁶).
-- Add, mul, square, invert, pow, sqrt, trace, `x` and `x⁻¹` multiples, GCM and POLYVAL block
-  conversions.
-- Hardware carry-less multiplication when the build enables it (PCLMULQDQ, PMULL), integer and
-  vector combs otherwise, through [`clmul`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/clmul).
-- Lookup tables bounded by default, and selectable by feature.
-- Constant time on request: `ConstantTime<Gf2>`. CI checks every such operation under Valgrind
-  with [`ct-check`](https://github.com/sirosfoundation/siros-primitives/tree/main/crates/ct-check).
-- `no_std`, no `unsafe`, no allocation, no panics.
+- `Gf2<P>`: an element of the field of `P`. One `impl Polynomial` declares a field of any degree;
+  its taps are checked at compile time.
+- Standard fields: `Gf2p8` (AES), `Gf2p16`, `Gf2p64`, `Gf2p128` (GCM), `Gf2p233` (B-233),
+  `Gf2p256` and `Gf2p571` (B-571).
+- Arithmetic: `+ - *` and their assigning forms, `square`, `invert`, `pow` by an exponent of any
+  width, `sqrt`, `trace`, `times_x` and `over_x`.
+- Conversions: `u64`, `u128`, limbs, `biguint::Uint`, `clmul::Poly`, and little- and big-endian
+  bytes. `Gf2p128` also converts GCM and POLYVAL blocks. A bit at or above the degree is refused
+  with `OutOfField`.
+- Hardware carry-less multiplication where the build enables it: PCLMULQDQ on x86-64, PMULL on
+  aarch64.
+- Lookup tables of at most 16 KiB per field by default, resized by Cargo feature.
+- Constant time: `ConstantTime<Gf2>` runs every operation with no branch and no memory address that
+  depends on the wrapped values.
 - [Benchmarks](https://github.com/sirosfoundation/siros-primitives/blob/main/crates/binary-field/BENCHMARKS.md)
   against other binary-field crates, with and without carry-less multiplication.
 
@@ -28,8 +32,8 @@ Binary fields GF(2^n) of any degree, declared by their polynomial, in pure Rust.
 use binary_field::{Gf2p8, Gf2p128};
 
 // FIPS 197: {53}^-1 = {CA} in the field of AES.
-let a = Gf2p8::from_u64(0x53).unwrap();
-assert_eq!(a.invert(), Gf2p8::from_u64(0xCA).ok());
+let a = Gf2p8::from_u64(0x53)?;
+assert_eq!(a.invert(), Some(Gf2p8::from_u64(0xCA)?));
 
 // GHASH: the product of two GCM blocks.
 let h = Gf2p128::from_gcm_block(*b"\x66\xe9\x4b\xd4\xef\x8a\x2c\x3b\x88\x4c\xfa\x59\xca\x34\x2b\x2e");
@@ -38,25 +42,12 @@ assert_eq!(
     (c * h).to_gcm_block(),
     *b"\x5e\x2e\xc7\x46\x91\x70\x62\x88\x2c\x85\xb0\x68\x53\x53\xde\xb7"
 );
-```
-
-## Constant time
-
-`Gf2` takes the fastest path and may index tables with the value. `ConstantTime<Gf2>` runs with no
-branch and no memory address that depends on the wrapped values. `invert` discloses whether the
-input is zero.
-
-```rust
-use binary_field::{ConstantTime, Gf2p128};
-
-let h = Gf2p128::from_u64(0x87).unwrap();
-let secret = ConstantTime::new(h);
-assert_eq!((secret * h).reveal(), h * h);
+# Ok::<(), binary_field::OutOfField>(())
 ```
 
 ## Declaring a field
 
-`Degree` is `n`; `TAPS` lists the exponents of the other terms, below `n` and including `0`.
+`Degree` is `n`. `TAPS` lists the exponents of the other terms, below `n` and including `0`.
 Irreducibility is yours to check.
 
 ```rust
@@ -71,20 +62,39 @@ impl Polynomial for B163 {
 }
 
 let x = Gf2::<B163>::X;
-assert_eq!(x.pow(163u32), Gf2::<B163>::from_u64(0b1100_1001).unwrap());
+assert_eq!(x.pow(163u32), Gf2::<B163>::from_u64(0b1100_1001)?);
+# Ok::<(), binary_field::OutOfField>(())
+```
+
+## Constant time
+
+`invert` discloses whether the input is zero.
+
+```rust
+use binary_field::{ConstantTime, Gf2p128};
+
+let h = Gf2p128::from_u64(0x87)?;
+let secret = ConstantTime::new(h);
+assert_eq!((secret * h).reveal(), h * h);
+assert_eq!(secret.square().reveal(), h * h);
+# Ok::<(), binary_field::OutOfField>(())
 ```
 
 ## Hardware
 
-The build's target features select the backend; there is no runtime detection.
+The build's target features select the multiplier.
 
 ```sh
 RUSTFLAGS="-C target-feature=+pclmulqdq,+sse4.1" cargo build   # x86-64: PCLMULQDQ
 RUSTFLAGS="-C target-feature=+aes" cargo build                 # aarch64: PMULL
-RUSTFLAGS="-C target-cpu=native" cargo build                   # whatever the build machine has
+RUSTFLAGS="-C target-cpu=native" cargo build                   # the build machine's features
 ```
 
 ## Cargo features
+
+- default: tables of at most 16 KiB per field.
+- `precomputed`: the fastest tables, of any size.
+- `not-precomputed`: no tables. It wins over `precomputed`.
 
 `.rodata` bytes of each field's tables in an x86-64 release build:
 
@@ -97,11 +107,6 @@ RUSTFLAGS="-C target-cpu=native" cargo build                   # whatever the bu
 | GF(2²³³) | 976 | 976 | 976 |
 | GF(2²⁵⁶) | 600 | 600 | 600 |
 | GF(2⁵⁷¹) | 2,216 | 2,216 | 2,216 |
-
-- default: at most 16 KiB per field.
-- `precomputed`: the fastest tables, of any size.
-- `not-precomputed`: no tables; wins over `precomputed`. One dependent enabling either decides
-  the whole build.
 
 ## License
 
