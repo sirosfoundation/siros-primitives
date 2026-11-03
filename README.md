@@ -6,18 +6,16 @@
 ![Apache-2.0/MIT licensed](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)
 ![Rust 1.93+](https://img.shields.io/badge/rustc-1.93+-blue.svg)
 
-Big-integer, prime-field, carry-less and binary-field arithmetic in pure Rust. Every crate is
-`no_std` and free of allocation and panics. Rust 1.93 or newer.
+Big-integer, prime-field, carry-less and binary-field arithmetic in pure Rust. `no_std`, no
+allocation, no panics. Rust 1.93 or newer.
 
 | Crate | Description |
 |---|---|
-| [`constant-time`](crates/constant-time) | `ConstantTime<T>`: operations in constant time over the wrapped values |
-| [`biguint`](crates/biguint) | Fixed-width unsigned integers of any bit width, with constant-time arithmetic in `ConstantTime` |
-| [`prime-field`](crates/prime-field) | Prime fields declared by their modulus; `Fp` is variable-time, `ConstantTime<Fp>` constant-time |
+| [`constant-time`](crates/constant-time) | `ConstantTime<T>`, the constant-time wrapper of every crate |
+| [`biguint`](crates/biguint) | Fixed-width unsigned integers of any bit width |
+| [`prime-field`](crates/prime-field) | Prime fields declared by their modulus |
 | [`clmul`](crates/clmul) | Carry-less multiplication of words, limb slices and GF(2^128) elements |
 | [`binary-field`](crates/binary-field) | Binary fields GF(2^n) of any degree, declared by their polynomial |
-
-`bench-compare`, the `*-bench-report` tools and `ct-check` are unpublished tools.
 
 ## Development
 
