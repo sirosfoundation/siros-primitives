@@ -8,12 +8,13 @@ use crate::params::{ROOT_POWERS, Shape};
 impl<M: Modulus> Fp<M> {
     /// A square root of `self`, or `None` when `self` is a quadratic non-residue. Of the two
     /// roots of a residue, which one is returned is unspecified.
-    #[inline]
+    // As a call, the P-256 scalar root measured 5.5% more cycles.
+    #[inline(always)]
     #[must_use]
     pub fn sqrt(self) -> Option<Self> {
         if Shape::<M>::THREE_MOD_FOUR {
             let root = self.pow_program::<false>(&Shape::<M>::SQRT_CHAIN);
-            return if root.square().equals(&self) {
+            return if root.square_with::<false>().equals(&self) {
                 Some(root)
             } else {
                 None
@@ -30,14 +31,14 @@ impl<M: Modulus> Fp<M> {
         // entry: `index` counts down from `s` with the squarings that find `i`, and lands on the
         // entry of the next generator.
         let w = self.pow_program::<false>(&Shape::<M>::SQRT_CHAIN);
-        let mut root = w.mul(self);
-        let mut b = w.mul(root);
+        let mut root = w.mul_with::<false>(self);
+        let mut b = w.mul_with::<false>(root);
         let mut offset = 0;
         while !b.equals(&Self::ONE) {
             let mut power = b;
             let mut index = Shape::<M>::TWO_ADICITY;
             loop {
-                power = power.square();
+                power = power.square_with::<false>();
                 index -= 1;
                 if index == offset {
                     return None;
@@ -46,8 +47,8 @@ impl<M: Modulus> Fp<M> {
                     break;
                 }
             }
-            root = root.mul(Self::root_power(index - 1));
-            b = b.mul(Self::root_power(index));
+            root = root.mul_with::<false>(Self::root_power(index - 1));
+            b = b.mul_with::<false>(Self::root_power(index));
             offset = index;
         }
         Some(root)
@@ -123,7 +124,7 @@ impl<M: Modulus> Fp<M> {
         }
         let mut power = Self::from_limbs(Shape::<M>::TWO_ADIC_ROOT_POWERS[ROOT_POWERS - 1]);
         for _ in ROOT_POWERS - 1..index {
-            power = power.square();
+            power = power.square_with::<false>();
         }
         power
     }
