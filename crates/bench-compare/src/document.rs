@@ -266,6 +266,11 @@ impl Figure<'_> {
     fn mark(self) -> &'static str {
         if self.constant_time { "°" } else { "" }
     }
+
+    /// The function as a `Functions` cell names it.
+    fn function(self) -> String {
+        format!("`{}`{}", self.count.function, self.mark())
+    }
 }
 
 /// The odd cells of `table` in `build`, one line each: a crate's figure, as the table shows it,
@@ -539,11 +544,7 @@ fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String
                         .filter_map(|key| table.figure(operation, key, library))
                         .collect();
                     filled |= figures.iter().any(|figure| figure.constant_time);
-                    let names = unique(
-                        figures
-                            .iter()
-                            .map(|figure| format!("`{}`{}", figure.count.function, figure.mark())),
-                    );
+                    let names = unique(figures.iter().map(|figure| figure.function()));
                     if names.is_empty() {
                         "–".to_owned()
                     } else {
