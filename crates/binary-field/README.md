@@ -8,12 +8,13 @@ Binary fields GF(2^n) of any degree, declared by their polynomial. `no_std`, no 
 allocation, no panics.
 
 ```rust
+use binary_field::biguint::NonZero;
 use binary_field::typenum::U163;
 use binary_field::{ConstantTime, Gf2, Gf2p8, Gf2p128, Polynomial, Pow};
 
 // FIPS 197: {53}^-1 = {CA} in the field of AES.
 let a = Gf2p8::from_u64(0x53).unwrap();
-assert_eq!(a.invert(), Gf2p8::from_u64(0xCA).ok());
+assert_eq!(NonZero::new(a).map(|a| a.invert().get()), Gf2p8::from_u64(0xCA).ok());
 
 // GHASH: the product of two GCM blocks.
 let h = Gf2p128::from_gcm_block(*b"\x66\xe9\x4b\xd4\xef\x8a\x2c\x3b\x88\x4c\xfa\x59\xca\x34\x2b\x2e");

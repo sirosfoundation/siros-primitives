@@ -38,7 +38,7 @@ assert_eq!(sum.reveal().0, 88);
 ```
 
 Public values may steer the time: widths, moduli, divisors, shift amounts and public operands.
-`invert` and an `Option` square root disclose whether the result exists.
+`nonzero` discloses whether the value is zero, and an `Option` square root whether a root exists.
 
 ## License
 

@@ -3,11 +3,13 @@
 
 use core::ops::{Add, Mul, Sub};
 
-use constant_time::{ConstantTime, CtAdd, CtInvert, CtMul, CtNeg, CtSqrt, CtSquare, CtSub, Public};
+use biguint::NonZero;
+use constant_time::{
+    ConstantTime, CtAdd, CtMul, CtNeg, CtNonZero, CtSqrt, CtSquare, CtSub, Public,
+};
 
 use crate::arith::Field;
 use crate::element::Gf2;
-use crate::invert::declassify;
 use crate::plan::Polynomial;
 use crate::representation::Storage;
 
@@ -59,13 +61,13 @@ impl<P: Polynomial> CtSquare for Gf2<P> {
     }
 }
 
-/// The multiplicative inverse, or `None` for `0`. Only the `Option` depends on the value.
-impl<P: Polynomial> CtInvert for Gf2<P> {
+/// The element, or `None` for `0`.
+impl<P: Polynomial> CtNonZero for Gf2<P> {
+    type NonZero = NonZero<Self>;
+
     #[inline(always)]
-    fn ct_invert(self) -> Option<Self> {
-        let value = self.value();
-        let inverse = Self::of(Field::<P>::ct_invert(value));
-        declassify(!value.is_zero(), inverse)
+    fn ct_nonzero(self) -> Option<NonZero<Self>> {
+        NonZero::ct_new(self)
     }
 }
 

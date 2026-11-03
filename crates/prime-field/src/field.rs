@@ -14,7 +14,7 @@ use crate::width::Width;
 /// [`Fp`] of that type, and every other constant derives from `MODULUS` at compile time.
 ///
 /// `MODULUS` is an odd prime. A composite odd modulus yields the ring of its residues, in which
-/// [`Fp::invert`] returns `None` for every non-unit and [`Fp::sqrt`] is meaningless.
+/// the inverse of a non-unit and [`Fp::sqrt`] are meaningless.
 pub trait Modulus: Copy + 'static {
     /// The container width. Its limbs hold an element; the modulus fits the width.
     type Width: Width;
@@ -488,6 +488,19 @@ impl<M: Modulus> Product for Fp<M> {
     #[inline(always)]
     fn product<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.fold(Self::ONE, |product, item| product.mul_with::<false>(item))
+    }
+}
+
+/// `is_zero` runs in time independent of the value.
+impl<M: Modulus> num_traits::Zero for Fp<M> {
+    #[inline(always)]
+    fn zero() -> Self {
+        Self::ZERO
+    }
+
+    #[inline(always)]
+    fn is_zero(&self) -> bool {
+        Self::is_zero(self)
     }
 }
 

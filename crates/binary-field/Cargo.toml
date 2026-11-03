@@ -29,6 +29,7 @@ clmul = { path = "../clmul", version = "0.1.0", features = ["biguint"] }
 const-default.workspace = true
 derive-where.workspace = true
 generic-array.workspace = true
+num-traits.workspace = true
 thiserror.workspace = true
 typenum.workspace = true
 

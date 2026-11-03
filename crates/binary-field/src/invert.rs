@@ -8,15 +8,6 @@ use crate::arith::each;
 use crate::chain::{Chains, MAX_STEPS};
 use crate::plan::{Plan, Polynomial};
 
-/// `Some(inverse)` when `invertible`, else `None`. The `Option` discloses `invertible`, so the
-/// branch on it is the one decision of a constant-time inversion that may depend on the value.
-/// The function keeps a symbol of its own, by which the constant-time check of `ct-check` exempts
-/// that branch; it would exempt any other code here too.
-#[inline(never)]
-pub(crate) fn declassify<T>(invertible: bool, inverse: T) -> Option<T> {
-    if invertible { Some(inverse) } else { None }
-}
-
 /// The step of the final squaring, past every step of a chain.
 pub(crate) const SQUARING: usize = MAX_STEPS;
 

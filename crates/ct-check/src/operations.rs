@@ -11,7 +11,7 @@ use bench_compare::run_batch;
 use biguint::generic_array::GenericArray;
 use biguint::generic_array::sequence::GenericSequence;
 use biguint::typenum::{Sum, U64, U256, U521, U4096};
-use biguint::{Bits, ConstantTime, NonZeroUint, Uint};
+use biguint::{Bits, ConstantTime, NonZero, NonZeroUint, Uint};
 use binary_field::{Aes, B233, B571, Gcm, Gf2, Poly16, Poly64, Poly256, Polynomial, Pow};
 use prime_field::standard::{
     BabyBear, Bls12381Base, Bn254Scalar, Goldilocks, Mersenne31, P256Base, P256Scalar, P521Base,
@@ -28,7 +28,7 @@ pub(crate) fn main() -> ExitCode {
         .chain(&PRIME_FIELDS)
         .chain(&BINARY_FIELDS)
         .try_fold(0, |operations, check| {
-            Ok::<_, Unhandled>(operations + check()?)
+            Ok::<_, Failure>(operations + check()?)
         });
     match operations {
         Ok(operations) => {
@@ -47,8 +47,19 @@ pub(crate) fn main() -> ExitCode {
 const A: u64 = 0x243f_6a88_85a3_08d3;
 const B: u64 = 0x1319_8a2e_0370_7344;
 
+/// A failure of the checks.
+#[derive(Debug, thiserror::Error)]
+enum Failure {
+    /// The operations ran outside memcheck.
+    #[error(transparent)]
+    Unhandled(#[from] Unhandled),
+    /// The operand of `invert` is zero.
+    #[error("the operand of `invert` is zero")]
+    ZeroOperand,
+}
+
 /// The checks of one type: the number of operations that ran.
-type Check = fn() -> Result<usize, Unhandled>;
+type Check = fn() -> Result<usize, Failure>;
 
 /// The widths of `Uint`.
 const INTEGERS: [Check; 4] = [
@@ -120,7 +131,7 @@ macro_rules! operators {
 
 /// Runs every operation of `ConstantTime<Uint<N>>`, and of `ConstantTimeResidue` under an odd and
 /// an even modulus.
-fn integers<N>() -> Result<usize, Unhandled>
+fn integers<N>() -> Result<usize, Failure>
 where
     N: Bits + Add<N>,
     Sum<N, N>: Bits,
@@ -193,11 +204,15 @@ where
 
 /// Runs every operation of `ConstantTime<Fp<M>>`: the operators between two wrapped values and
 /// with a public element on either side, with their assigning forms, `-`, `square`, `double`,
-/// `pow` by a public exponent, `invert` and `sqrt`.
-fn prime<M: Modulus>() -> Result<usize, Unhandled> {
+/// `pow` by a public exponent, `nonzero`, `invert` of a nonzero element and `sqrt`.
+fn prime<M: Modulus>() -> Result<usize, Failure> {
     let (a, b) = (Fp::<M>::from_u64(A), Fp::<M>::from_u64(B));
     let mut pair = [(ConstantTime::new(a), ConstantTime::new(b))];
+    let mut nonzero = [ConstantTime::new(
+        NonZero::new(a).ok_or(Failure::ZeroOperand)?,
+    )];
     classify(&mut pair)?;
+    classify(&mut nonzero)?;
     let public = b;
     let exponent = Uint::<M::Width>::from_u64(B);
     Ok(operators!(&pair, public; + +=, - -=, * *=)
@@ -205,21 +220,27 @@ fn prime<M: Modulus>() -> Result<usize, Unhandled> {
         + run_batch(&pair, |&(a, _)| a.square())
         + run_batch(&pair, |&(a, _)| a.double())
         + run_batch(&pair, |&(a, _)| a.pow(exponent))
-        + run_batch(&pair, |&(a, _)| a.invert())
+        + run_batch(&pair, |&(a, _)| a.nonzero())
+        + run_batch(&nonzero, |&a| a.invert())
         + run_batch(&pair, |&(a, _)| a.sqrt()))
 }
 
 /// Runs every operation of `ConstantTime<Gf2<P>>`: the operators between two wrapped values and
-/// with a public element on either side, with their assigning forms, `-`, `square`, `sqrt` and
-/// `invert`.
-fn binary<P: Polynomial>() -> Result<usize, Unhandled> {
+/// with a public element on either side, with their assigning forms, `-`, `square`, `sqrt`,
+/// `nonzero` and `invert` of a nonzero element.
+fn binary<P: Polynomial>() -> Result<usize, Failure> {
     let (a, b) = (Gf2::<P>::X.pow(A), Gf2::<P>::X.pow(B));
     let mut pair = [(ConstantTime::new(a), ConstantTime::new(b))];
+    let mut nonzero = [ConstantTime::new(
+        NonZero::new(a).ok_or(Failure::ZeroOperand)?,
+    )];
     classify(&mut pair)?;
+    classify(&mut nonzero)?;
     let public = b;
     Ok(operators!(&pair, public; + +=, - -=, * *=)
         + run_batch(&pair, |&(a, _)| -a)
         + run_batch(&pair, |&(a, _)| a.square())
         + run_batch(&pair, |&(a, _)| a.sqrt())
-        + run_batch(&pair, |&(a, _)| a.invert()))
+        + run_batch(&pair, |&(a, _)| a.nonzero())
+        + run_batch(&nonzero, |&a| a.invert()))
 }

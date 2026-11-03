@@ -8,7 +8,7 @@
 
 use bench_compare::{Cells, Chain, Limbs, Row, Visitor};
 use biguint::generic_array::GenericArray;
-use biguint::{Bits, Uint};
+use biguint::{Bits, NonZero, Uint};
 use core_algebra::{AlgebraicField, SerializableField};
 use prime_field::standard::{
     BabyBear, Bls12381Base, Bn254Scalar, Goldilocks, Mersenne31, P256Base, P256Scalar, P521Base,
@@ -290,6 +290,30 @@ impl<M: Modulus> ToLimbs for ConstantTime<Fp<M>> {
     }
 }
 
+impl<M: Modulus> FromLimbs for NonZero<Fp<M>> {
+    fn from_limbs(limbs: &[u64]) -> Self {
+        Self::new(Fp::from_limbs(limbs)).expect("a nonzero operand")
+    }
+}
+
+impl<M: Modulus> ToLimbs for NonZero<Fp<M>> {
+    fn to_limbs(&self) -> Option<Limbs> {
+        self.get().to_limbs()
+    }
+}
+
+impl<M: Modulus> FromLimbs for ConstantTime<NonZero<Fp<M>>> {
+    fn from_limbs(limbs: &[u64]) -> Self {
+        Self::new(NonZero::from_limbs(limbs))
+    }
+}
+
+impl<M: Modulus> ToLimbs for ConstantTime<NonZero<Fp<M>>> {
+    fn to_limbs(&self) -> Option<Limbs> {
+        self.reveal().to_limbs()
+    }
+}
+
 /// `prime-field`, the crate under test.
 fn this_crate<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     match cells.key().field.as_str() {
@@ -342,7 +366,7 @@ fn ours<M: Modulus, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         .case(
             vartime(Kind::Invert),
             "invert",
-            one::<Fp<M>>,
+            one::<NonZero<Fp<M>>>,
             #[inline(always)]
             |a| a.invert(),
         )
@@ -384,7 +408,7 @@ fn ours<M: Modulus, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
         .case(
             constant(Kind::Invert),
             "ConstantTime::invert",
-            one::<ConstantTime<Fp<M>>>,
+            one::<ConstantTime<NonZero<Fp<M>>>>,
             #[inline(always)]
             |a| a.invert(),
         )

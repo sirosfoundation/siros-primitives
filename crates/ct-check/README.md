@@ -14,4 +14,5 @@ cargo run -p ct-check
 
 It runs each operation under Valgrind's memcheck with the wrapped operands marked undefined, in an
 `x86-64` and an `x86-64-v3` release build, and fails on any memcheck error. `memcheck.supp` exempts
-`declassify`, the one place where `invert` and `sqrt` disclose whether a result exists.
+`declassify`, the one place where `nonzero` discloses whether a value is zero and `sqrt` whether a
+root exists.

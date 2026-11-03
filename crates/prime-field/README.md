@@ -8,18 +8,22 @@ Prime fields declared by their modulus, from 31 to thousands of bits. `no_std`, 
 allocation, no panics.
 
 ```rust
+use prime_field::biguint::NonZero;
 use prime_field::standard::secp256k1::Base as Fq;
 use prime_field::ConstantTime;
 
 // Variable time: the fastest path.
 let x = Fq::from_u64(7);
-let y = x.invert().ok_or("zero")?;
+// `invert` takes a `NonZero`, which `NonZero::new` refuses to make from `0`.
+let y = NonZero::new(x).ok_or("zero")?.invert().get();
 assert_eq!(x * y, Fq::ONE);
 assert_eq!(Fq::from_u64(4).sqrt().map(|r| r.square()), Some(Fq::from_u64(4)));
 
 // Constant time: no branch or memory address depends on the wrapped values.
 let k = ConstantTime::new(x);
 assert_eq!((k * y + k.square()).reveal(), Fq::from_u64(50));
+// `nonzero` discloses only whether the value is zero.
+assert_eq!(k.nonzero().map(|k| k.invert().reveal().get()), Some(y));
 
 // Const contexts.
 const FORTY_NINE: Fq = Fq::from_u64(7).const_mul(Fq::from_u64(7));
@@ -28,7 +32,7 @@ assert_eq!(FORTY_NINE, Fq::from_u64(49));
 ```
 
 ```rust
-use prime_field::biguint::{typenum::U255, Uint};
+use prime_field::biguint::{typenum::U255, NonZero, Uint};
 use prime_field::{Fp, Modulus};
 
 // A field of your own: 2^255 - 19. The representation follows from the modulus.
@@ -46,7 +50,8 @@ impl Modulus for Curve25519Base {
 }
 
 let two = Fp::<Curve25519Base>::from_u64(2);
-assert_eq!(two.invert().map(|half| half.double()), Some(Fp::ONE));
+let half = NonZero::new(two).map(|two| two.invert().get());
+assert_eq!(half.map(|half| half.double()), Some(Fp::ONE));
 ```
 
 `prime_field::standard` holds Mersenne-31, BabyBear, Goldilocks, BN254, secp256k1, P-256,

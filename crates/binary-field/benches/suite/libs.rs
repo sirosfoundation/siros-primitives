@@ -10,6 +10,7 @@
 use core::ops::{Add, Mul};
 
 use bench_compare::{Cells, Limbs, Row, Visitor};
+use binary_field::biguint::NonZero;
 use binary_field::generic_array::GenericArray;
 use binary_field::{ConstantTime, Gf2, Square};
 use core_algebra::{AlgebraicField, SerializableField, SupportsU128Conversions};
@@ -436,6 +437,26 @@ impl<P: binary_field::Polynomial> Raw for ConstantTime<Gf2<P>> {
     }
 }
 
+impl<P: binary_field::Polynomial> Raw for NonZero<Gf2<P>> {
+    fn from_raw(bits: &[u64]) -> Self {
+        Self::new(Gf2::from_raw(bits)).expect("a nonzero operand")
+    }
+
+    fn raw(&self) -> Limbs {
+        self.get().raw()
+    }
+}
+
+impl<P: binary_field::Polynomial> Raw for ConstantTime<NonZero<Gf2<P>>> {
+    fn from_raw(bits: &[u64]) -> Self {
+        Self::new(NonZero::from_raw(bits))
+    }
+
+    fn raw(&self) -> Limbs {
+        self.reveal().raw()
+    }
+}
+
 /// `Gf2`'s defaults in the variable-time rows, `ConstantTime`'s operations in the constant-time
 /// rows.
 fn ours<P: binary_field::Polynomial, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
@@ -467,8 +488,8 @@ fn ours<P: binary_field::Polynomial, V: Visitor<Op, Field>>(cells: Crate<V>) -> 
             Kind::Invert.in_row(VARIABLE),
             "invert",
             #[inline(always)]
-            |&a: &Public<P>| a.invert(),
-            maybe,
+            |&a: &NonZero<Public<P>>| a.invert(),
+            element,
         )
         .unary_in(
             Kind::Sqrt.in_row(VARIABLE),
@@ -502,8 +523,8 @@ fn ours<P: binary_field::Polynomial, V: Visitor<Op, Field>>(cells: Crate<V>) -> 
             Kind::Invert.in_row(CONSTANT),
             "ConstantTime::invert",
             #[inline(always)]
-            |&a: &ConstantTime<Gf2<P>>| a.invert(),
-            maybe,
+            |&a: &ConstantTime<NonZero<Gf2<P>>>| a.invert(),
+            element,
         )
         .unary_in(
             Kind::Sqrt.in_row(CONSTANT),

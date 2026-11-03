@@ -14,7 +14,7 @@ use crate::uint::Uint;
 /// A value that is not zero.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct NonZero<T>(T);
+pub struct NonZero<T>(pub(crate) T);
 
 /// An `N`-bit integer that is not zero.
 pub type NonZeroUint<N> = NonZero<Uint<N>>;
