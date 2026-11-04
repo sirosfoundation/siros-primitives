@@ -15,6 +15,10 @@ panics.
   P-521, with element aliases by curve such as `standard::p256::{Base, Scalar}`.
 - Arithmetic: `+ - *` and their assigning forms, unary `-`, `double`, `square`, `invert` on a
   `NonZero` element, `pow` by a `Uint` exponent, `sqrt`, and `Sum` and `Product` over iterators.
+- Integer operands: `Fp + Uint<K>`, `Fp - Uint<K>`, `Fp * Uint<K>` and their assigning forms take an
+  integer `k` of any width and value, reduced modulo `p`. The product takes one limb product and
+  one quotient step per limb of `k`, from its top nonzero limb; a small `k` costs a fraction of
+  a product of two elements. `From<u64>` takes the same path.
 - `const_add`, `const_sub`, `const_neg`, `const_double`, `const_mul` and `const_square` compute in
   const contexts.
 - Conversions: `from_u64`, `from_uint` and `to_uint`, and little- and big-endian bytes. A value at
@@ -27,10 +31,13 @@ panics.
 ## Usage
 
 ```rust
+use prime_field::biguint::{typenum::U64, Uint};
 use prime_field::standard::secp256k1::Base as Fq;
 use prime_field::NonZero;
 
 let x = Fq::from_u64(7);
+assert_eq!(x * Uint::<U64>::from_u64(3), x + x + x);
+assert_eq!(x - Uint::<U64>::from_u64(7), Fq::ZERO);
 let y = NonZero::new(x).ok_or("zero")?.invert().get();
 assert_eq!(x * y, Fq::ONE);
 assert_eq!(Fq::from_u64(4).sqrt().map(|r| r.square()), Some(Fq::from_u64(4)));
@@ -71,7 +78,8 @@ assert_eq!(two.invert().get().double(), Fp::ONE);
 ## Constant time
 
 `nonzero` discloses whether the value is zero, and `sqrt` whether a root exists. The time of
-`pow` depends on its public exponent.
+`pow` depends on its public exponent. A wrapped integer operand takes time that depends on its width
+alone.
 
 ```rust
 use prime_field::standard::secp256k1::Base as Fq;

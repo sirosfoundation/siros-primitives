@@ -255,7 +255,15 @@ impl<M: Modulus> Shape<M> {
     fn add1(a: u64, b: u64) -> u64 {
         if Self::MERSENNE {
             Self::mersenne_fold(a, b)
-        } else if Self::SPARE {
+        } else {
+            Self::add_residues1(a, b)
+        }
+    }
+
+    /// `a + b mod p` for residues `a, b < p` on one limb.
+    #[inline(always)]
+    pub(crate) fn add_residues1(a: u64, b: u64) -> u64 {
+        if Self::SPARE {
             // `a + b < 2 p` fits the limb.
             let sum = a + b;
             let (reduced, borrow) = sum.overflowing_sub(Self::P0);
@@ -294,7 +302,7 @@ impl<M: Modulus> Shape<M> {
 
     /// `a * b` on one limb.
     #[inline(always)]
-    fn mul1<const CT: bool>(a: u64, b: u64) -> u64 {
+    pub(crate) fn mul1<const CT: bool>(a: u64, b: u64) -> u64 {
         if Self::MERSENNE {
             // `x = high 2^BITS + low` with `2^BITS = 1`: `high + low`, at least `1` since the
             // factors are, and below `2^(BITS + 1) - 2`.
@@ -360,13 +368,18 @@ impl<M: Modulus> Shape<M> {
             let (result, borrow) = sbb(0, high, quotient);
             select(borrow != 0, result.wrapping_add(Self::P0), result)
         } else {
-            let product = u128::from(a) * u128::from(b);
-            let (low, high) = (product as u64, (product >> 64) as u64);
-            let m = low.wrapping_mul(Self::INV);
-            let reduction = ((u128::from(m) * u128::from(Self::P0)) >> 64) as u64;
-            let (result, carry) = adc(u8::from(low != 0), high, reduction);
-            Self::reduce1::<CT>(result, carry)
+            Self::redc1::<CT>(u128::from(a) * u128::from(b))
         }
+    }
+
+    /// Montgomery reduction `value / 2^64 mod p` of `value < p 2^64` on one limb.
+    #[inline(always)]
+    pub(crate) fn redc1<const CT: bool>(value: u128) -> u64 {
+        let (low, high) = (value as u64, (value >> 64) as u64);
+        let m = low.wrapping_mul(Self::INV);
+        let reduction = ((u128::from(m) * u128::from(Self::P0)) >> 64) as u64;
+        let (result, carry) = adc(u8::from(low != 0), high, reduction);
+        Self::reduce1::<CT>(result, carry)
     }
 
     /// One limb with `p^-1 = 1 + 2^32 mod 2^64`, that is `p = 2^64 - 2^32 + 1`: the Montgomery
@@ -376,7 +389,7 @@ impl<M: Modulus> Shape<M> {
 
     /// `carry 2^64 + t mod p` for `carry 2^64 + t < 2 p`, on one limb.
     #[inline(always)]
-    fn reduce1<const CT: bool>(t: u64, carry: u8) -> u64 {
+    pub(crate) fn reduce1<const CT: bool>(t: u64, carry: u8) -> u64 {
         let (reduced, borrow) = sbb(0, t, Self::P0);
         select(borrow > carry, t, reduced)
     }
@@ -455,7 +468,7 @@ impl<M: Modulus> Shape<M> {
     /// `top 2^(64 L) + t mod p` for a value below `2 p`, without a branch: `t - p`, then `t` back
     /// by conditional moves, or `p` back under a mask when [`Self::REDUCE_MASKED`] holds.
     #[inline(always)]
-    fn reduce_select(t: Limbs<M>, top: u8) -> Limbs<M> {
+    pub(crate) fn reduce_select(t: Limbs<M>, top: u8) -> Limbs<M> {
         // `-top`, taken while a carry out of a sum still stands in the flags.
         let spread = 0u64.wrapping_sub(u64::from(top));
         let (reduced, borrow) = Self::sub_limbs(&t, &Self::P);
@@ -485,6 +498,23 @@ impl<M: Modulus> Shape<M> {
         if CT || !Self::FINAL_BRANCH {
             return Self::reduce_select(t, top);
         }
+        // [`Self::reduce_branch`], written out: a call to it moves the register allocation of
+        // the BN254 square root.
+        if top != 0 || limb(t.as_slice(), Self::LIMBS - 1) >= Self::P_TOP {
+            let (reduced, borrow) = Self::sub_limbs(&t, &Self::P);
+            return if borrow > top {
+                Self::add_masked(reduced, u64::MAX)
+            } else {
+                reduced
+            };
+        }
+        t
+    }
+
+    /// `top 2^(64 L) + t mod p` for a value below `2 p`, by a branch on the top limb, for values
+    /// that rarely reach `p`.
+    #[inline(always)]
+    pub(crate) fn reduce_branch(t: Limbs<M>, top: u8) -> Limbs<M> {
         if top != 0 || limb(t.as_slice(), Self::LIMBS - 1) >= Self::P_TOP {
             // Below `p` only when the top limbs are equal; the top absorbs the borrow of a value at
             // or above `2^(64 L)`.
@@ -961,7 +991,7 @@ impl<M: Modulus> Shape<M> {
     /// `out = (value mod 2^BITS) + (value >> BITS) c` over the first `len` limbs of `out`. For
     /// `c = 1` (P-521) the fold is a sum, on the carry chain of `adc`.
     #[inline(always)]
-    fn fold_once(out: &mut ExtendedLimbs<M>, len: usize, value: &[u64]) {
+    pub(crate) fn fold_once(out: &mut ExtendedLimbs<M>, len: usize, value: &[u64]) {
         let deficit = Self::DEFICIT_VALUE;
         if deficit == 1 {
             let mut carry = 0;

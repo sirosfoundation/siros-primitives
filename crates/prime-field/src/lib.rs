@@ -23,6 +23,7 @@ mod invert;
 mod kernel;
 mod limb;
 mod params;
+mod scale;
 mod sqrt;
 pub mod standard;
 mod width;

@@ -53,5 +53,9 @@ harness = false
 name = "products"
 harness = false
 
+[[bench]]
+name = "integers"
+harness = false
+
 [lints]
 workspace = true

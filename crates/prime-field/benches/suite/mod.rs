@@ -181,6 +181,20 @@ pub enum Kind {
     Invert,
     /// A square root of `a`.
     Sqrt,
+    /// `a k` for an integer `k` of 64 bits.
+    MulU64,
+    /// `a k` for an integer `k` of the bit length of `p`, which may reach `p`.
+    MulUint,
+    /// `a + k` for an integer `k` of 64 bits.
+    AddU64,
+    /// `a + k` for an integer `k` of the bit length of `p`.
+    AddUint,
+    /// `a - k` for an integer `k` of 64 bits.
+    SubU64,
+    /// `a - k` for an integer `k` of the bit length of `p`.
+    SubUint,
+    /// The element `k mod p` of an integer `k` of 64 bits.
+    FromU64,
 }
 
 /// The timing class of a function, read from its source.
@@ -194,7 +208,7 @@ pub enum Timing {
 
 impl Op {
     /// Every operation, in measurement order: each kind in variable time, then in constant time.
-    pub const ALL: [Self; 12] = {
+    pub const ALL: [Self; 26] = {
         let kinds = [
             Kind::Add,
             Kind::Sub,
@@ -202,11 +216,18 @@ impl Op {
             Kind::Square,
             Kind::Invert,
             Kind::Sqrt,
+            Kind::MulU64,
+            Kind::MulUint,
+            Kind::AddU64,
+            Kind::AddUint,
+            Kind::SubU64,
+            Kind::SubUint,
+            Kind::FromU64,
         ];
         let mut all = [Self {
             kind: Kind::Add,
             timing: Timing::Variable,
-        }; 12];
+        }; 26];
         let mut index = 0;
         while index < kinds.len() {
             all[2 * index] = Self {
@@ -243,9 +264,49 @@ impl Kind {
                 let result = match self {
                     Self::Add => (&x + &y) % p,
                     Self::Sub => (&x + p - &y) % p,
-                    Self::Mul | Self::Square | Self::Invert | Self::Sqrt => &x * &y % p,
+                    Self::Mul
+                    | Self::Square
+                    | Self::Invert
+                    | Self::Sqrt
+                    | Self::MulU64
+                    | Self::MulUint
+                    | Self::AddU64
+                    | Self::AddUint
+                    | Self::SubU64
+                    | Self::SubUint
+                    | Self::FromU64 => &x * &y % p,
                 };
                 (vec![a, b], vec![result])
+            }
+            Self::MulU64
+            | Self::MulUint
+            | Self::AddU64
+            | Self::AddUint
+            | Self::SubU64
+            | Self::SubUint
+            | Self::FromU64 => {
+                let operands = self.operands(p, modulus, rng);
+                let result = match operands.as_slice() {
+                    [a, k] => {
+                        let (x, k) = (big(a), big(k) % p);
+                        match self {
+                            Self::AddU64 | Self::AddUint => (&x + &k) % p,
+                            Self::SubU64 | Self::SubUint => (&x + p - &k) % p,
+                            Self::Add
+                            | Self::Sub
+                            | Self::Mul
+                            | Self::Square
+                            | Self::Invert
+                            | Self::Sqrt
+                            | Self::MulU64
+                            | Self::MulUint
+                            | Self::FromU64 => &x * &k % p,
+                        }
+                    }
+                    [k] => big(k) % p,
+                    _ => panic!("{} operands of {self:?}", operands.len()),
+                };
+                (operands, vec![result])
             }
             Self::Square => {
                 let a = nonzero(rng);
@@ -280,6 +341,14 @@ impl Kind {
                 let r = big(&nonzero(rng));
                 vec![limbs(&(&r * &r % p), modulus.len())]
             }
+            Self::MulU64 | Self::AddU64 | Self::SubU64 => {
+                vec![rng.below(modulus), rng.exact(1, 64)]
+            }
+            Self::MulUint | Self::AddUint | Self::SubUint => vec![
+                rng.below(modulus),
+                rng.exact(modulus.len(), p.bits() as usize),
+            ],
+            Self::FromU64 => vec![rng.exact(1, 64)],
         }
     }
 }
@@ -323,7 +392,10 @@ pub mod kind {
         };
     }
 
-    kinds!(Add, Sub, Mul, Square, Invert, Sqrt);
+    kinds!(
+        Add, Sub, Mul, Square, Invert, Sqrt, MulU64, MulUint, AddU64, AddUint, SubU64, SubUint,
+        FromU64
+    );
 }
 
 /// The operation of a case: the kind `K` in the row of `timing`.
@@ -341,6 +413,14 @@ impl<K: KindOf> Selected<Op> for InRow<K> {
             kind: K::KIND,
             timing: self.timing,
         }
+    }
+}
+
+/// The case of `kind` in the row of `timing`.
+pub const fn in_row<K: KindOf>(_: K, timing: Timing) -> InRow<K> {
+    InRow {
+        timing,
+        kind: PhantomData,
     }
 }
 
@@ -369,6 +449,13 @@ impl fmt::Display for Op {
             Kind::Square => "square",
             Kind::Invert => "invert",
             Kind::Sqrt => "sqrt",
+            Kind::MulU64 => "mul_u64",
+            Kind::MulUint => "mul_uint",
+            Kind::AddU64 => "add_u64",
+            Kind::AddUint => "add_uint",
+            Kind::SubU64 => "sub_u64",
+            Kind::SubUint => "sub_uint",
+            Kind::FromU64 => "from_u64",
         };
         let timing = match self.timing {
             Timing::Variable => "vartime",

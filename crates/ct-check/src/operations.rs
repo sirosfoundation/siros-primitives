@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use bench_compare::run_batch;
 use biguint::generic_array::GenericArray;
 use biguint::generic_array::sequence::GenericSequence;
-use biguint::typenum::{Sum, U64, U256, U521, U4096};
+use biguint::typenum::{Sum, U64, U256, U521, U1024, U4096};
 use biguint::{Bits, ConstantTime, NonZero, NonZeroUint, Uint};
 use binary_field::{Aes, B233, B571, Gcm, Gf2, Poly16, Poly64, Poly256, Polynomial, Pow};
 use prime_field::standard::{
@@ -204,7 +204,8 @@ where
 
 /// Runs every operation of `ConstantTime<Fp<M>>`: the operators between two wrapped values and
 /// with a public element on either side, with their assigning forms, `-`, `square`, `double`,
-/// `pow` by a public exponent, `nonzero`, `invert` of a nonzero element and `sqrt`.
+/// `pow` by a public exponent, `nonzero`, `invert` of a nonzero element, `sqrt`, and `+ - *` with a
+/// wrapped integer of 64 bits, of the field's width and of 1024 bits.
 fn prime<M: Modulus>() -> Result<usize, Failure> {
     let (a, b) = (Fp::<M>::from_u64(A), Fp::<M>::from_u64(B));
     let mut pair = [(ConstantTime::new(a), ConstantTime::new(b))];
@@ -222,7 +223,29 @@ fn prime<M: Modulus>() -> Result<usize, Failure> {
         + run_batch(&pair, |&(a, _)| a.pow(exponent))
         + run_batch(&pair, |&(a, _)| a.nonzero())
         + run_batch(&nonzero, |&a| a.invert())
-        + run_batch(&pair, |&(a, _)| a.sqrt()))
+        + run_batch(&pair, |&(a, _)| a.sqrt())
+        + integer_operands::<M, U64>(a)?
+        + integer_operands::<M, M::Width>(a)?
+        + integer_operands::<M, U1024>(a)?)
+}
+
+/// Runs `+ - *` of `ConstantTime<Fp<M>>` and a wrapped `Uint<K>`, with their assigning forms.
+fn integer_operands<M: Modulus, K: Bits>(a: Fp<M>) -> Result<usize, Failure> {
+    let mut pair = [(ConstantTime::new(a), ConstantTime::new(spread::<K>(B)))];
+    classify(&mut pair)?;
+    let assigned = |apply: fn(&mut ConstantTime<Fp<M>>, ConstantTime<Uint<K>>)| {
+        run_batch(&pair, move |&(a, k)| {
+            let mut target = a;
+            apply(&mut target, k);
+            target
+        })
+    };
+    Ok(run_batch(&pair, |&(a, k)| a + k)
+        + run_batch(&pair, |&(a, k)| a - k)
+        + run_batch(&pair, |&(a, k)| a * k)
+        + assigned(|target, k| *target += k)
+        + assigned(|target, k| *target -= k)
+        + assigned(|target, k| *target *= k))
 }
 
 /// Runs every operation of `ConstantTime<Gf2<P>>`: the operators between two wrapped values and

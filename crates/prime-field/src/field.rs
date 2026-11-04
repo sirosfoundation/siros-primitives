@@ -304,6 +304,19 @@ impl<M: Modulus> Fp<M> {
         Self::from_limbs(Shape::<M>::mul::<CT>(&self.limbs, &rhs.limbs))
     }
 
+    /// `self * k` for the integer `k` in little-endian limbs, in constant time when `CT` holds.
+    #[inline(always)]
+    pub(crate) fn scale_with<const CT: bool>(self, k: &[u64]) -> Self {
+        Self::from_limbs(Shape::<M>::scale::<CT>(&self.limbs, k))
+    }
+
+    /// The element `k mod p` for the integer `k` in little-endian limbs, in constant time when
+    /// `CT` holds.
+    #[inline(always)]
+    pub(crate) fn integer_with<const CT: bool>(k: &[u64]) -> Self {
+        Self::from_limbs(Shape::<M>::integer::<CT>(k))
+    }
+
     /// `self * self`, in constant time when `CT` holds.
     #[inline(always)]
     pub(crate) fn square_with<const CT: bool>(self) -> Self {
@@ -477,6 +490,58 @@ impl<M: Modulus> MulAssign for Fp<M> {
     }
 }
 
+/// `self + k mod p` for an integer `k` of any width and value.
+impl<M: Modulus, K: Bits> Add<Uint<K>> for Fp<M> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn add(self, rhs: Uint<K>) -> Self {
+        self.add_with(Self::integer_with::<false>(rhs.as_limbs()))
+    }
+}
+
+/// `self - k mod p` for an integer `k` of any width and value.
+impl<M: Modulus, K: Bits> Sub<Uint<K>> for Fp<M> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn sub(self, rhs: Uint<K>) -> Self {
+        self.sub_with(Self::integer_with::<false>(rhs.as_limbs()))
+    }
+}
+
+/// `self k mod p` for an integer `k` of any width and value. The time grows with the limbs of
+/// `k` below its top nonzero limb.
+impl<M: Modulus, K: Bits> Mul<Uint<K>> for Fp<M> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn mul(self, rhs: Uint<K>) -> Self {
+        self.scale_with::<false>(rhs.as_limbs())
+    }
+}
+
+impl<M: Modulus, K: Bits> AddAssign<Uint<K>> for Fp<M> {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: Uint<K>) {
+        *self = *self + rhs;
+    }
+}
+
+impl<M: Modulus, K: Bits> SubAssign<Uint<K>> for Fp<M> {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: Uint<K>) {
+        *self = *self - rhs;
+    }
+}
+
+impl<M: Modulus, K: Bits> MulAssign<Uint<K>> for Fp<M> {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: Uint<K>) {
+        *self = *self * rhs;
+    }
+}
+
 impl<M: Modulus> Sum for Fp<M> {
     #[inline]
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
@@ -507,7 +572,7 @@ impl<M: Modulus> num_traits::Zero for Fp<M> {
 impl<M: Modulus> From<u64> for Fp<M> {
     #[inline]
     fn from(value: u64) -> Self {
-        Self::from_u64(value)
+        Self::integer_with::<false>(&[value])
     }
 }
 
