@@ -8,12 +8,18 @@
 //! reads them on `/end`. The module's other imports are synchronous requests of the measuring
 //! worker. Before the bench starts, the measuring worker spins for two seconds: the thread
 //! whose CPU time grows the most meanwhile is the measuring thread, which the driver then pins to
-//! the measuring CPU alone.
+//! the measuring CPU.
+//!
+//! A thread of the driver holds the measuring CPU meanwhile: it yields to the measuring thread
+//! whenever that one runs, and keeps the CPU from idling while it sleeps, which drew other work
+//! onto the CPU between counts. Firefox's one-`add` chain step took 1.06 to 1.40 cycles with the
+//! holder and 1.34 to 1.64 without, three runs each at a load of 21 to 31.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use nix::sys::signal::{Signal, kill};
@@ -54,8 +60,8 @@ const CALIBRATION_TICKS: u64 = 50;
 const CALIBRATIONS: usize = 5;
 
 /// Runs the bench `module` in `browser` at `executable` on `cpus`, counting `threads`; returns
-/// the lines that the bench sends. A thread of its own drives the browser: its pin to the
-/// browser's CPU leaves the calling thread as it was.
+/// the lines that the bench sends. A thread of its own drives the browser, and another holds the
+/// measuring CPU: their pins leave the calling thread as it was.
 pub fn run(
     module: &[u8],
     browser: &Browser,
@@ -64,20 +70,41 @@ pub fn run(
     threads: Threads,
 ) -> Result<Vec<String>, Error> {
     std::thread::scope(|scope| {
-        scope
+        let (stop, stopped) = mpsc::channel::<()>();
+        let holder = scope.spawn(move || hold(cpus.measuring, &stopped));
+        let driven = scope
             .spawn(|| drive(module, browser, executable, cpus, threads))
             .join()
-            .map_err(|payload| Error::Browser {
-                reason: format!(
-                    "the thread of the driver panicked: {}",
-                    payload
-                        .downcast_ref::<&str>()
-                        .copied()
-                        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
-                        .unwrap_or("a payload of another type")
-                ),
-            })?
+            .map_err(panicked);
+        // The holder stops once the channel is closed.
+        drop(stop);
+        holder.join().map_err(panicked)??;
+        driven?
     })
+}
+
+/// The error of a thread of the driver that panicked with `payload`.
+fn panicked(payload: Box<dyn std::any::Any + Send>) -> Error {
+    Error::Browser {
+        reason: format!(
+            "a thread of the driver panicked: {}",
+            payload
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                .unwrap_or("a payload of another type")
+        ),
+    }
+}
+
+/// Holds `cpu` until `stopped` closes: yields it to any thread of equal priority, the measuring
+/// thread among them, and keeps it from idling while the measuring thread sleeps.
+fn hold(cpu: usize, stopped: &mpsc::Receiver<()>) -> Result<(), Error> {
+    pin(cpu)?;
+    while let Err(mpsc::TryRecvError::Empty) = stopped.try_recv() {
+        std::thread::yield_now();
+    }
+    Ok(())
 }
 
 /// [`run`], on the calling thread.

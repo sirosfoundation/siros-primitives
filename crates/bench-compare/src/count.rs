@@ -78,6 +78,13 @@ const PASSES: bool = cfg!(target_arch = "wasm32");
 /// case at 16 operations.
 const SIZING: usize = if cfg!(target_arch = "wasm32") { 3 } else { 1 };
 
+/// Whether a figure takes the difference of the two runs of each repetition, which run back to
+/// back and mostly meet the same sibling thread: natively. In a browser, the two requests of a
+/// count part the runs, and a busy sibling slowed a one-`add` chain step to 1.7 cycles in either
+/// run alone: the difference of rank 4 gave 0.54 cycles per step, and the difference of the
+/// counts of rank 4 of each length 1.01.
+const PAIRED: bool = !cfg!(target_arch = "wasm32");
+
 /// The fewest times the noise of a difference of two empty counts that a difference of a case
 /// counts, where the counts reach the counters through requests: its figure then moves by at most
 /// 2% with the cost of a count.
@@ -284,22 +291,36 @@ struct Form {
 }
 
 impl Form {
-    /// The events per operation of the form `name`: the difference of rank [`RANK`], from the
-    /// fewest, of the long run less the short run of each repetition, over the operations of a
-    /// short run. A cycle difference of zero or less is an [`Error::Flat`], and one under
+    /// The events per operation of the form `name`, over the operations of a short run: the
+    /// difference of rank [`RANK`], from the fewest, of the long run less the short run of each
+    /// repetition; without [`PAIRED`], the count of rank [`RANK`] of the long runs less that of
+    /// the short runs. A cycle difference of zero or less is an [`Error::Flat`], and one under
     /// [`SIGNAL`] times `noise` an [`Error::Noisy`].
     fn events(&self, name: &str, noise: Option<f64>) -> Result<Events, Error> {
         let difference = |event: fn(&Counts) -> u64| -> Result<f64, Error> {
-            let mut differences: Vec<f64> = self
-                .repetitions
-                .iter()
-                .map(|[short, long]| event(long) as f64 - event(short) as f64)
-                .collect();
-            if differences.len() <= RANK {
+            if self.repetitions.len() <= RANK {
                 return Err(Error::missing("repetitions", name));
             }
-            let (_, difference, _) = differences.select_nth_unstable_by(RANK, f64::total_cmp);
-            Ok(*difference)
+            let ranked = |mut values: Vec<f64>| {
+                let (_, value, _) = values.select_nth_unstable_by(RANK, f64::total_cmp);
+                *value
+            };
+            let count = |run: usize| {
+                self.repetitions
+                    .iter()
+                    .map(|counts| event(&counts[run]) as f64)
+                    .collect::<Vec<_>>()
+            };
+            Ok(if PAIRED {
+                ranked(
+                    self.repetitions
+                        .iter()
+                        .map(|[short, long]| event(long) as f64 - event(short) as f64)
+                        .collect(),
+                )
+            } else {
+                ranked(count(1)) - ranked(count(0))
+            })
         };
         let operations = self.run.operations();
         let per = |event| Ok::<f64, Error>(difference(event)? / operations as f64);

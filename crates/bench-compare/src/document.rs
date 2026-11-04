@@ -410,13 +410,15 @@ fn webassembly<K: Key>(
 
 /// How the WebAssembly builds ran, one short line each.
 const WEBASSEMBLY: &[&str] = &[
-    "The bench module runs in a dedicated worker of the browser, alone on the measuring CPU. A \
-     driver counts that thread with perf_event.",
+    "The bench module runs in a dedicated worker of the browser, on the measuring CPU. A driver \
+     counts that thread with perf_event, and holds the CPU while the thread sleeps.",
     "A second worker carries the start and the end of each count to the driver while the \
-     measuring worker sleeps. The cost of a count cancels in the difference of two runs.",
+     measuring worker sleeps.",
     "The browser's flags compile every function with its optimizing tier when the module loads.",
     "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count a \
-     million cycles. A case whose difference of two runs counts under 50 times the noise of two \
+     million cycles.",
+    "Each figure: the counts of rank 4 from the fewest among 31 of each run length, 2n \
+     operations less n, over n. A case whose difference counts under 50 times the noise of two \
      empty counts stops the sweep.",
     "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \
      whichever is faster.",

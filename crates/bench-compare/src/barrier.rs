@@ -200,6 +200,13 @@ pub(crate) fn opaque<T>(value: &T) -> &T {
 pub(crate) fn sink<T>(value: &T) {
     #[cfg(target_arch = "x86_64")]
     registers::sink(value);
+    // A value of up to two words stays in locals: a copy of it takes one store per word, where
+    // its address takes as many and one more for the address.
+    #[cfg(target_arch = "wasm32")]
+    if size_of::<T>() <= WASM_WORDS {
+        show(value);
+        return;
+    }
     #[cfg(not(target_arch = "x86_64"))]
     #[expect(
         unused_results,
@@ -207,6 +214,10 @@ pub(crate) fn sink<T>(value: &T) {
     )]
     core::hint::black_box(value);
 }
+
+/// The bytes of the two `i64` locals that hold a value of WebAssembly.
+#[cfg(target_arch = "wasm32")]
+const WASM_WORDS: usize = 16;
 
 #[cfg(target_arch = "x86_64")]
 mod registers {
