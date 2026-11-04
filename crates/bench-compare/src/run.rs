@@ -8,10 +8,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 
+use crate::browser::{
+    Browser, CHROME, CHROME_WIDE, Cpus, FIREFOX, FIREFOX_WIDE, Threads, run as run_in_browser,
+    version as browser_version,
+};
 use crate::count::CPU;
-use crate::window::Window;
 use crate::error::Error;
-use crate::record::{Cell, Key, Line, Measurement, Record, Sweep, Version};
+use crate::record::{Cell, Engine, Key, Line, Measurement, Record, Sweep, Version};
+use crate::window::Window;
 use crate::workspace::Sources;
 
 /// A build of the bench.
@@ -22,7 +26,21 @@ pub struct Build {
     pub slug: &'static str,
     /// The `RUSTFLAGS` of the build.
     pub rustflags: &'static str,
+    /// What runs the build.
+    pub runner: Runner,
 }
+
+/// What runs a build.
+#[derive(Clone, Copy, Debug)]
+pub enum Runner {
+    /// The CPU, natively.
+    Native,
+    /// A browser, which runs the bench built for `wasm32-unknown-unknown`.
+    Browser(Browser),
+}
+
+/// The target of a WebAssembly build.
+const WASM_TARGET: &str = "wasm32-unknown-unknown";
 
 /// The build for the CPU that runs the bench. One codegen unit makes the code of each crate
 /// independent of the rest of the bench: with sixteen, a change to the measured crate moved the
@@ -33,7 +51,45 @@ pub const NATIVE: Build = Build {
     name: "",
     slug: "",
     rustflags: "-C target-cpu=native -C codegen-units=1 -C llvm-args=-align-loops=64",
+    runner: Runner::Native,
 };
+
+/// The flags of the WebAssembly builds without the instructions of the wide-arithmetic proposal:
+/// the default features of the target, which every current browser runs.
+const WASM_FLAGS: &str = "-C codegen-units=1";
+
+/// The flags of the WebAssembly builds with the instructions of the wide-arithmetic proposal:
+/// `i64.add128`, `i64.sub128`, `i64.mul_wide_s` and `i64.mul_wide_u`.
+const WASM_WIDE_FLAGS: &str = "-C codegen-units=1 -C target-feature=+wide-arithmetic";
+
+/// The WebAssembly builds of every comparison, which `bench-wasm` measures: with and without the
+/// instructions of the wide-arithmetic proposal, in Chrome and in Firefox.
+pub const WASM: [Build; 4] = [
+    Build {
+        name: "in WebAssembly, Chrome",
+        slug: "wasm",
+        rustflags: WASM_FLAGS,
+        runner: Runner::Browser(CHROME),
+    },
+    Build {
+        name: "in WebAssembly with wide arithmetic, Chrome",
+        slug: "wasm-wide",
+        rustflags: WASM_WIDE_FLAGS,
+        runner: Runner::Browser(CHROME_WIDE),
+    },
+    Build {
+        name: "in WebAssembly, Firefox",
+        slug: "wasm",
+        rustflags: WASM_FLAGS,
+        runner: Runner::Browser(FIREFOX),
+    },
+    Build {
+        name: "in WebAssembly with wide arithmetic, Firefox",
+        slug: "wasm-wide",
+        rustflags: WASM_WIDE_FLAGS,
+        runner: Runner::Browser(FIREFOX_WIDE),
+    },
+];
 
 /// The CPUs of the machine.
 const CPUINFO: &str = "/proc/cpuinfo";
@@ -44,19 +100,22 @@ pub struct Paths {
     pub root: PathBuf,
     /// The crate whose benchmarks the document describes.
     pub library: PathBuf,
-    /// The run record.
+    /// The run record of the native builds.
     pub record: PathBuf,
+    /// The run record of the WebAssembly builds.
+    pub wasm_record: PathBuf,
 }
 
 impl Paths {
     /// The paths of the tool at `manifest_dir`, which lives in the library's directory; the
-    /// record is `benchmarks/record.json` there.
+    /// records are `benchmarks/record.json` and `benchmarks/record-wasm.json` there.
     #[must_use]
     pub fn new(manifest_dir: &str) -> Self {
         let library = Path::new(manifest_dir).join("..");
         let root = library.join("..").join("..");
         Self {
             record: library.join("benchmarks").join("record.json"),
+            wasm_record: library.join("benchmarks").join("record-wasm.json"),
             root,
             library,
         }
@@ -91,22 +150,30 @@ pub struct Measured {
     pub builds: &'static [Build],
 }
 
-/// The options of `bench`.
+/// The options of `bench` and `bench-wasm`.
 #[derive(Default)]
 pub struct Options {
     /// The CPU of the measuring thread; the bench's own default when absent.
     pub cpu: Option<String>,
     /// The operator's description of the machine.
     pub machine: Option<String>,
+    /// The CPU of the browser's other threads; the measuring CPU when absent.
+    pub browser_cpu: Option<String>,
+    /// The executable of Chrome or Chromium.
+    pub chrome: Option<PathBuf>,
+    /// The executable of Firefox.
+    pub firefox: Option<PathBuf>,
 }
 
 impl Options {
-    /// The options of `args`: `--cpu <cpu>` and `--machine <description>`, each at most once.
-    fn parse(args: &[String]) -> Option<Self> {
+    /// The options of `args`: `--cpu <cpu>` and `--machine <description>`, and with `browsers`
+    /// `--browser-cpu <cpu>`, `--chrome <executable>` and `--firefox <executable>`, each at most
+    /// once.
+    fn parse(args: &[String], browsers: bool) -> Option<Self> {
         match args {
             [] => Some(Self::default()),
             [flag, value, rest @ ..] => {
-                let options = Self::parse(rest)?;
+                let options = Self::parse(rest, browsers)?;
                 match flag.as_str() {
                     "--cpu" if options.cpu.is_none() => Some(Self {
                         cpu: Some(value.clone()),
@@ -116,16 +183,42 @@ impl Options {
                         machine: Some(value.clone()),
                         ..options
                     }),
+                    "--browser-cpu" if browsers && options.browser_cpu.is_none() => Some(Self {
+                        browser_cpu: Some(value.clone()),
+                        ..options
+                    }),
+                    "--chrome" if browsers && options.chrome.is_none() => Some(Self {
+                        chrome: Some(PathBuf::from(value)),
+                        ..options
+                    }),
+                    "--firefox" if browsers && options.firefox.is_none() => Some(Self {
+                        firefox: Some(PathBuf::from(value)),
+                        ..options
+                    }),
                     _ => None,
                 }
             }
             [_] => None,
         }
     }
+
+    /// The executable of `browser`, which the options must name.
+    fn executable(&self, browser: &Browser) -> Result<&Path, Error> {
+        let (executable, flag) = match browser {
+            Browser::Chrome { .. } => (&self.chrome, "--chrome"),
+            Browser::Firefox { .. } => (&self.firefox, "--firefox"),
+        };
+        executable
+            .as_deref()
+            .ok_or_else(|| Error::missing(&format!("{flag} <executable>"), "the options"))
+    }
 }
 
 /// Runs the report tool `tool` with the process arguments: `bench [--cpu <cpu>] [--machine
-/// <description>]` measures and records; `report` writes the document from the record.
+/// <description>]` measures the native builds and records them; `bench-wasm --chrome
+/// <executable> --firefox <executable> [--cpu <cpu>] [--browser-cpu <cpu>] [--machine
+/// <description>]` measures the WebAssembly builds and records them; `report` writes the
+/// document from the records.
 #[must_use]
 pub fn execute<K: Key>(
     tool: &str,
@@ -138,11 +231,22 @@ pub fn execute<K: Key>(
         tool: tool.to_owned(),
     };
     let result = match args.as_slice() {
-        [command, options @ ..] if command == "bench" => Options::parse(options)
+        [command, options @ ..] if command == "bench" => Options::parse(options, false)
             .ok_or_else(usage)
-            .and_then(|options| bench::<K>(paths, measured, options)),
-        [command] if command == "report" => Record::read(&paths.record)
-            .and_then(|record| crate::document::report(paths, layout, &record)),
+            .and_then(|options| {
+                bench::<K>(paths, measured, measured.builds, &paths.record, options)
+            }),
+        [command, options @ ..] if command == "bench-wasm" => Options::parse(options, true)
+            .ok_or_else(usage)
+            .and_then(|options| bench::<K>(paths, measured, &WASM, &paths.wasm_record, options)),
+        [command] if command == "report" => Record::read(&paths.record).and_then(|record| {
+            let wasm = if paths.wasm_record.exists() {
+                Some(Record::read(&paths.wasm_record)?)
+            } else {
+                None
+            };
+            crate::document::report(paths, layout, &record, wasm.as_ref())
+        }),
         _ => Err(usage()),
     };
     match result {
@@ -154,8 +258,14 @@ pub fn execute<K: Key>(
     }
 }
 
-/// Measures every case of the bench and writes the record.
-pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Result<(), Error> {
+/// Measures every case of the bench in each of `builds` and writes the record at `record`.
+pub fn bench<K: Key>(
+    paths: &Paths,
+    measured: &Measured,
+    builds: &[Build],
+    record: &Path,
+    options: Options,
+) -> Result<(), Error> {
     let started = now()?;
     let rustc = output(Command::new("rustc").arg("-vV").current_dir(&paths.root))?;
     let target_cpus = output(
@@ -170,22 +280,30 @@ pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Re
         &sources.executable(),
     )?;
     let profile = bench_profile(paths)?;
-    let builds = measured
-        .builds
+    let measurements = builds
         .iter()
         .map(|build| {
             let target_features = target_features(paths, build)?;
-            let (cells, sweep) = cells(paths, measured, build, options.cpu.as_deref())?;
+            let browser = match build.runner {
+                Runner::Native => None,
+                Runner::Browser(browser) => Some(Engine {
+                    name: browser.name().to_owned(),
+                    version: browser_version(options.executable(&browser)?)?,
+                    settings: browser.settings(),
+                }),
+            };
+            let (cells, sweep) = cells(paths, measured, build, &options)?;
             Ok(Measurement {
                 name: build.name.to_owned(),
                 rustflags: build.rustflags.to_owned(),
                 target_features,
+                browser,
                 sweep,
                 cells,
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;
-    let record = Record::<K> {
+    let written = Record::<K> {
         date: date(started),
         head: git(paths, &["rev-parse", "HEAD"], &[])?,
         library_commit: git(
@@ -212,28 +330,32 @@ pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Re
             .map(|&feature| feature.to_owned())
             .collect(),
         versions: versions(paths, measured.package, measured.versions)?,
-        builds,
+        builds: measurements,
     };
-    if let Some(directory) = paths.record.parent() {
+    if let Some(directory) = record.parent() {
         fs::create_dir_all(directory).map_err(|source| Error::io(directory, source))?;
     }
-    record.write(&paths.record)
+    written.write(record)
 }
 
 /// Every cell of the comparison in `build` with its counts, and the sweep: the lines that the
-/// benches print, measuring on `cpu`, the bench's default CPU when absent. The benches are built
-/// first, in parallel, and the features of the build must pass [`check_features`]. They then run
-/// one after the other, in the order of [`Measured::benches`]; the sweep spans them all.
+/// benches print, measuring on the CPU of `options`, the bench's default CPU when absent. The
+/// benches are built first, in parallel, and the features of the build must pass
+/// [`check_features`]. They then run one after the other, in the order of
+/// [`Measured::benches`]; the sweep spans them all.
 fn cells<K: Key>(
     paths: &Paths,
     measured: &Measured,
     build: &Build,
-    cpu: Option<&str>,
+    options: &Options,
 ) -> Result<(Vec<Cell<K>>, Sweep), Error> {
     let features = measured.features.join(",");
     let mut args = vec!["bench", "--locked", "-p", measured.package];
     if !features.is_empty() {
         args.extend(["--features", &features]);
+    }
+    if let Runner::Browser(_) = build.runner {
+        args.extend(["--target", WASM_TARGET]);
     }
     let mut build_args = args.clone();
     for bench in measured.benches {
@@ -246,13 +368,16 @@ fn cells<K: Key>(
         build.rustflags,
         &build_args,
     )?;
-    check_features(measured, &messages)?;
-    let cpu_number = match cpu {
-        Some(cpu) => cpu
-            .parse::<usize>()
-            .map_err(|source| Error::number("CPU", cpu, source))?,
-        None => CPU,
-    };
+    let executables = check_features(measured, &messages)?;
+    let cpu = options.cpu.as_deref();
+    let cpu_number = parse_cpu(cpu)?.unwrap_or(CPU);
+    if let Runner::Browser(browser) = build.runner {
+        let cpus = Cpus {
+            measuring: cpu_number,
+            browser: parse_cpu(options.browser_cpu.as_deref())?.unwrap_or(cpu_number),
+        };
+        return browser_cells(&browser, options.executable(&browser)?, cpus, &executables);
+    }
     let window = Window::open(cpu_number)?;
     let mut cells = Vec::new();
     for bench in measured.benches {
@@ -304,6 +429,8 @@ struct Message {
     target: Option<Target>,
     #[serde(default)]
     features: Vec<String>,
+    /// The executable of a bench, a `.wasm` module for a WebAssembly build.
+    executable: Option<PathBuf>,
 }
 
 /// The target of a compiled unit.
@@ -315,7 +442,8 @@ struct Target {
 
 /// Checks the units of a build from its JSON `messages`: every bench of `measured` has every
 /// feature in [`Measured::features`], and no unit has a feature in [`Measured::forbidden`].
-fn check_features(measured: &Measured, messages: &str) -> Result<(), Error> {
+/// Returns the executable of every bench, in the order of [`Measured::benches`].
+fn check_features(measured: &Measured, messages: &str) -> Result<Vec<PathBuf>, Error> {
     let mut benches = Vec::new();
     for line in messages.lines().filter(|line| !line.trim().is_empty()) {
         let message: Message = serde_json::from_str(line).map_err(Error::Messages)?;
@@ -339,13 +467,14 @@ fn check_features(measured: &Measured, messages: &str) -> Result<(), Error> {
             .target
             .filter(|target| target.kind.iter().any(|kind| kind == "bench"))
         {
-            benches.push((target.name, message.features));
+            benches.push((target.name, message.features, message.executable));
         }
     }
+    let mut executables = Vec::with_capacity(measured.benches.len());
     for bench in measured.benches {
-        let (_, built) = benches
+        let (_, built, executable) = benches
             .iter()
-            .find(|(name, _)| name == bench)
+            .find(|(name, _, _)| name == bench)
             .ok_or_else(|| {
                 Error::missing(&format!("bench {bench}"), "the messages of the build")
             })?;
@@ -359,8 +488,50 @@ fn check_features(measured: &Measured, messages: &str) -> Result<(), Error> {
                 feature: (*feature).to_owned(),
             });
         }
+        executables.push(executable.clone().ok_or_else(|| {
+            Error::missing(
+                &format!("executable of the bench {bench}"),
+                "the messages of the build",
+            )
+        })?);
     }
-    Ok(())
+    Ok(executables)
+}
+
+/// The CPU that `cpu` names, if any.
+fn parse_cpu(cpu: Option<&str>) -> Result<Option<usize>, Error> {
+    cpu.map(|cpu| {
+        cpu.parse::<usize>()
+            .map_err(|source| Error::number("CPU", cpu, source))
+    })
+    .transpose()
+}
+
+/// Every cell of the comparison in the WebAssembly modules `modules`, one per bench, counted in
+/// `browser` at `executable` on `cpus`, and the sweep that spans them.
+fn browser_cells<K: Key>(
+    browser: &Browser,
+    executable: &Path,
+    cpus: Cpus,
+    modules: &[PathBuf],
+) -> Result<(Vec<Cell<K>>, Sweep), Error> {
+    let window = Window::open(cpus.measuring)?;
+    let mut cells = Vec::new();
+    for path in modules {
+        let module = fs::read(path).map_err(|source| Error::io(path, source))?;
+        for line in run_in_browser(&module, browser, executable, cpus, Threads::Measuring)? {
+            match serde_json::from_str(&line).map_err(Error::Cells)? {
+                Line::Cell(cell) => cells.push(cell),
+                Line::Sweep(_) => {
+                    return Err(Error::missing(
+                        "cells alone, where it sent a sweep",
+                        &format!("the WebAssembly bench {}", path.display()),
+                    ));
+                }
+            }
+        }
+    }
+    Ok((cells, window.close()?))
 }
 
 /// The standard output of `cargo` with `args` in the workspace at `root`, which must succeed. The
@@ -382,12 +553,17 @@ pub fn cargo(
     )
 }
 
-/// The target features that `rustc --print cfg` reports under the flags of `build`. A build
-/// without AVX2 is a [`Error::NoAvx2`].
+/// The target features that `rustc --print cfg` reports under the flags and the target of
+/// `build`. A native build without AVX2 is a [`Error::NoAvx2`].
 fn target_features(paths: &Paths, build: &Build) -> Result<Vec<String>, Error> {
+    let target: &[&str] = match build.runner {
+        Runner::Native => &[],
+        Runner::Browser(_) => &["--target", WASM_TARGET],
+    };
     let text = output(
         Command::new("rustc")
             .args(["--print", "cfg"])
+            .args(target)
             .args(build.rustflags.split_whitespace())
             .current_dir(&paths.root),
     )?;
@@ -397,12 +573,11 @@ fn target_features(paths: &Paths, build: &Build) -> Result<Vec<String>, Error> {
         .filter_map(|rest| rest.strip_suffix('"'))
         .map(str::to_owned)
         .collect();
-    if features.iter().any(|feature| feature == "avx2") {
-        Ok(features)
-    } else {
-        Err(Error::NoAvx2 {
+    match build.runner {
+        Runner::Native if !features.iter().any(|feature| feature == "avx2") => Err(Error::NoAvx2 {
             rustflags: build.rustflags.to_owned(),
-        })
+        }),
+        Runner::Native | Runner::Browser(_) => Ok(features),
     }
 }
 

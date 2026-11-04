@@ -222,4 +222,3 @@ pub struct Cpus {
     /// The CPU of the driver and of every other thread of the browser.
     pub browser: usize,
 }
-

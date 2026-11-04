@@ -8,7 +8,11 @@ use std::time::Duration;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// The arguments name no command.
-    #[error("usage: {tool} bench [--cpu <cpu>] [--machine <description>] | report")]
+    #[error(
+        "usage: {tool} bench [--cpu <cpu>] [--machine <description>] | bench-wasm --chrome \
+         <executable> --firefox <executable> [--cpu <cpu>] [--browser-cpu <cpu>] [--machine \
+         <description>] | report"
+    )]
     Usage {
         /// The tool.
         tool: String,

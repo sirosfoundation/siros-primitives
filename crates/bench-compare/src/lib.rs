@@ -22,26 +22,28 @@ mod workspace;
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 pub use barrier::Ymm;
 pub use barrier::{Barrier, Memory};
-#[cfg(not(target_arch = "wasm32"))]
-pub use browser::{
-    Browser, CHROME, CHROME_WIDE, Cpus, FIREFOX, FIREFOX_WIDE, Pref, Threads, run as run_in_browser,
-    version as browser_version,
-};
 #[cfg(target_arch = "x86_64")]
 pub use barrier::{Gpr, Xmm};
+#[cfg(not(target_arch = "wasm32"))]
+pub use browser::{
+    Browser, CHROME, CHROME_WIDE, Cpus, FIREFOX, FIREFOX_WIDE, Pref, Threads,
+    run as run_in_browser, version as browser_version,
+};
 pub use count::{CPU, FEWEST_STEP_CYCLES, RANK, REPETITIONS, TARGET, main};
 #[cfg(not(target_arch = "wasm32"))]
 pub use document::{LOAD, Layout, Operation, markdown_table, report, sentence};
 pub use error::Error;
 pub use record::{
-    Cell, Class, Count, Events, Key, Latency, Line, Load, Measurement, Outcome, Record, Sibling,
-    Sweep, Version,
+    Cell, Class, Count, Engine, Events, Key, Latency, Line, Load, Measurement, Outcome, Record,
+    Sibling, Sweep, Version,
 };
 #[cfg(not(target_arch = "wasm32"))]
-pub use run::{Build, Measured, NATIVE, Options, Paths, bench, cargo, execute, output};
-#[cfg(not(target_arch = "wasm32"))]
-pub use window::Window;
+pub use run::{
+    Build, Measured, NATIVE, Options, Paths, Runner, WASM, bench, cargo, execute, output,
+};
 pub use suite::{
     BATCH, Call, CaseId, Cells, Chain, Function, Inputs, Limbs, Rng, Row, Sample, Selected, Suite,
     Visitor, run_batch, run_chain, trim, visit,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use window::Window;

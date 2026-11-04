@@ -207,10 +207,23 @@ pub struct Measurement<K> {
     pub rustflags: String,
     /// The target features that `rustc --print cfg` reports under these flags.
     pub target_features: Vec<String>,
+    /// The browser that ran a WebAssembly build; `None` for a native build.
+    pub browser: Option<Engine>,
     /// The sweep that measured the build.
     pub sweep: Sweep,
     /// Every cell of the comparison.
     pub cells: Vec<Cell<K>>,
+}
+
+/// The browser that ran a WebAssembly build.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Engine {
+    /// The browser, such as `Chrome`.
+    pub name: String,
+    /// The version that the browser reports.
+    pub version: String,
+    /// The flags or preferences of the build, as the setup of the document shows them.
+    pub settings: String,
 }
 
 impl<K: Key> Record<K> {

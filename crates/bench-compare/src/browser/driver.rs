@@ -54,8 +54,34 @@ const CALIBRATION_TICKS: u64 = 50;
 const CALIBRATIONS: usize = 5;
 
 /// Runs the bench `module` in `browser` at `executable` on `cpus`, counting `threads`; returns
-/// the lines that the bench sends.
+/// the lines that the bench sends. A thread of its own drives the browser: its pin to the
+/// browser's CPU leaves the calling thread as it was.
 pub fn run(
+    module: &[u8],
+    browser: &Browser,
+    executable: &Path,
+    cpus: Cpus,
+    threads: Threads,
+) -> Result<Vec<String>, Error> {
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| drive(module, browser, executable, cpus, threads))
+            .join()
+            .map_err(|payload| Error::Browser {
+                reason: format!(
+                    "the thread of the driver panicked: {}",
+                    payload
+                        .downcast_ref::<&str>()
+                        .copied()
+                        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                        .unwrap_or("a payload of another type")
+                ),
+            })?
+    })
+}
+
+/// [`run`], on the calling thread.
+fn drive(
     module: &[u8],
     browser: &Browser,
     executable: &Path,
@@ -220,8 +246,12 @@ impl Session<'_> {
         let script = SCRIPTS.iter().find(|(name, _)| *name == path);
         let (reply, asked) = match (request.method(), path.as_str(), script) {
             (Method::Get, "/", _) => (Reply::of(PAGE, "text/html"), Asked::More),
-            (Method::Get, "/bench.wasm", _) => (Reply::of(self.module, "application/wasm"), Asked::More),
-            (Method::Get, _, Some((_, source))) => (Reply::of(source, "text/javascript"), Asked::More),
+            (Method::Get, "/bench.wasm", _) => {
+                (Reply::of(self.module, "application/wasm"), Asked::More)
+            }
+            (Method::Get, _, Some((_, source))) => {
+                (Reply::of(source, "text/javascript"), Asked::More)
+            }
             (Method::Post, "/calibrate", _) => {
                 self.calibration = Some(tasks()?);
                 (Reply::empty(), Asked::More)
@@ -315,7 +345,7 @@ impl Session<'_> {
                 (task.ticks.saturating_sub(earlier), task)
             })
             .collect();
-        grown.sort_by(|a, b| b.0.cmp(&a.0));
+        grown.sort_by_key(|(ticks, _)| core::cmp::Reverse(*ticks));
         self.calibrations += 1;
         let measuring = match grown.as_slice() {
             [(ticks, task), rest @ ..]

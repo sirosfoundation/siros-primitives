@@ -32,8 +32,8 @@ mod linux {
     use std::path::Path;
 
     use bench_compare::{
-        Browser, CHROME, CHROME_WIDE, CPU, Cpus, Error, FIREFOX, FIREFOX_WIDE, Line, Pref,
-        Threads, Window, run_in_browser,
+        Browser, CHROME, CHROME_WIDE, CPU, Cpus, Error, FIREFOX, FIREFOX_WIDE, Line, Pref, Threads,
+        Window, run_in_browser,
     };
 
     /// The usage of the tool.
@@ -86,6 +86,15 @@ mod linux {
         }
     }
 
+    /// The CPU that `text` names.
+    fn cpu(text: &str) -> Result<usize, Error> {
+        text.parse().map_err(|source| Error::Number {
+            what: "CPU".to_owned(),
+            text: text.to_owned(),
+            source,
+        })
+    }
+
     fn parse(args: &[String]) -> Result<Arguments<'_>, Error> {
         let [module, engine, executable, options @ ..] = args else {
             return Err(usage());
@@ -110,9 +119,9 @@ mod linux {
         };
         for [flag, value] in pairs {
             match (flag.as_str(), value.as_str()) {
-                ("--cpu", cpu) => arguments.cpu = cpu.parse().map_err(|_| usage())?,
-                ("--browser-cpu", cpu) => {
-                    arguments.browser_cpu = Some(cpu.parse().map_err(|_| usage())?);
+                ("--cpu", text) => arguments.cpu = cpu(text)?,
+                ("--browser-cpu", text) => {
+                    arguments.browser_cpu = Some(cpu(text)?);
                 }
                 ("--build", "baseline") => arguments.wide = false,
                 ("--build", "wide") => arguments.wide = true,

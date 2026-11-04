@@ -130,7 +130,8 @@ impl Barrier for Locals {
 fn show<T>(value: &T) {
     // SAFETY: a `MaybeUninit<T>` has the layout of a `T`, and `value` is a valid `T`; the copy, a
     // `MaybeUninit`, drops nothing, so it duplicates no ownership.
-    let copy = unsafe { core::ptr::read(core::ptr::from_ref(value).cast::<core::mem::MaybeUninit<T>>()) };
+    let copy =
+        unsafe { core::ptr::read(core::ptr::from_ref(value).cast::<core::mem::MaybeUninit<T>>()) };
     // `black_box` stores its argument and passes the block its address; nothing reads the value
     // that it returns, so the optimizer drops its load.
     #[expect(
