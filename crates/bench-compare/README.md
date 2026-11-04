@@ -97,11 +97,9 @@ cargo run --release -p bench-compare --bin bench-browser -- \
 
 ## Protocol
 
-- A figure is (cycles of 2n operations − cycles of n) / n, the fourth fewest of 31 repetitions
-  that count both runs back to back, after nanoBench (Abel and Reineke, ISPASS 2020). A busy
-  sibling hardware thread doubled a one-`add` chain step: a low difference is a pair of runs that
-  met an idle sibling, and the rank passes over three pairs that met different siblings or
-  operands on a fast path.
+- A figure is (fewest cycles of 2n operations − fewest cycles of n) / n over 31 repetitions,
+  after nanoBench (Abel and Reineke, ISPASS 2020). A busy sibling hardware thread doubled a
+  one-`add` chain step: the fewest of each length is the run that met an idle sibling.
 - Latency runs the chain `x = op(x, y)` with `x` held in registers between steps. Every case first
   matches the accepted results. The bench pins itself to CPU 15.
 - A sweep stops on multiplexed counters, on long runs that count no more cycles than short runs,
@@ -130,11 +128,9 @@ cargo run --release -p bench-compare --bin bench-browser -- \
 - A run passes over its operand sets, of up to 256 KiB as natively, as many times as it takes to
   count 4 million instructions, which load does not change: sizing on cycles stopped early on a
   loaded machine.
-- A figure is the difference of the counts of rank 4 of each run length: the requests of a count
-  part the two runs of a repetition, so they meet the sibling thread in different states.
 - Each bench first counts 1,000 empty regions: a case whose difference counts under 50 times the
-  noise of the fixed cost of a count stops the sweep: the difference of the counts of rank 4 of two
-  sets of 31 empty counts, the largest of four pairs.
+  noise of the fixed cost of a count stops the sweep. That noise is the difference of the fewest
+  counts of two sets of 31 empty counts, the largest of four pairs.
 - A chain holds `x` in WebAssembly locals and stores a copy after each step, which keeps every
   intermediate `x`; it also runs with `x` in memory, and the faster counts.
 - The driver needs to trace the browser: it starts the browser itself and adopts its orphans as

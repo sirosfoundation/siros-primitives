@@ -241,7 +241,10 @@ fn prime<M: Modulus>() -> Result<usize, Failure> {
     classify(&mut nonzero)?;
     let public = b;
     let exponent = Uint::<M::Width>::from_u64(B);
+    let mut word = [B];
+    classify(&mut word)?;
     Ok(operators!(&pair, public; + +=, - -=, * *=)
+        + run_batch(&word, |&k| ConstantTime::new(Fp::<M>::from_u64(k)))
         + run_batch(&pair, |&(a, _)| -a)
         + run_batch(&pair, |&(a, _)| a.square())
         + run_batch(&pair, |&(a, _)| a.double())

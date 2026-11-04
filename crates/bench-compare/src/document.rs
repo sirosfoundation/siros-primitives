@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::fs;
 
-use crate::count::{RANK, REPETITIONS};
+use crate::count::REPETITIONS;
 use crate::error::Error;
 use crate::record::{Cell, Count, Key, Measurement, Outcome, Record, Sweep};
 use crate::run::Paths;
@@ -417,9 +417,8 @@ const WEBASSEMBLY: &[&str] = &[
     "The browser's flags compile every function with its optimizing tier when the module loads.",
     "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count 4 \
      million instructions.",
-    "Each figure: the counts of rank 4 from the fewest among 31 of each run length, 2n \
-     operations less n, over n. A case whose difference counts under 50 times the noise of the \
-     fixed cost of a count stops the sweep.",
+    "A case whose difference counts under 50 times the noise of the fixed cost of a count stops \
+     the sweep.",
     "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \
      whichever is faster.",
 ];
@@ -548,9 +547,8 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
          faster."
             .to_owned(),
         format!(
-            "- Each figure: the cycles of 2n operations less those of n, over n, of rank {} from \
-             the fewest among {REPETITIONS} repetitions that count both runs back to back.",
-            RANK + 1
+            "- Each figure: over {REPETITIONS} repetitions, the fewest cycles of 2n operations \
+             less the fewest of n, over n."
         ),
     ];
     if record.builds.iter().any(|build| loaded(&build.sweep)) {

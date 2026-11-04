@@ -8,22 +8,20 @@
 //! cycles, or until the operand sets of a run of `2n` would outgrow 256 KiB. It then
 //! runs [`REPETITIONS`] repetitions of every case, interleaved: repetition `r` of every case runs
 //! before repetition `r + 1` of any case. A repetition of a case draws fresh operand sets for
-//! every run, outside the counted region; it runs `n` operations uncounted, then draws the
-//! operand sets of a run of `n` operations and of a run of `2n`, and counts both runs back to back
-//! through [`run_batch`]. A case with a chain form does the same through [`run_chain`] once per
-//! [`Barrier`] that holds its result, each with its own `n`. The figure per operation of an event
-//! is the difference of the `2n` count less the `n` count of rank [`RANK`] among the repetitions,
-//! from the fewest, divided by `n`: the fixed cost of a run cancels. A run shares its core with
-//! the sibling hardware thread, which only adds counts: a one-`add` chain step took 1 cycle while
-//! the sibling idled and 2 while it ran. Two runs counted back to back mostly meet the same
-//! sibling, so a low difference is a pair that met an idle one (Chen and Revels, "Robust
-//! benchmarking in noisy environments", 2016, for the minimum). The rank passes over a few pairs
-//! whose runs met different siblings, the case where a median of differences fell to 0.06 cycles
-//! per step, and over a few long runs whose operands ran a fast path: a GF(2⁸) square chain that
-//! started at 1 took 19 instructions per step against 218. The latency of a case is its chain
-//! with the fewest cycles. A case
+//! every run, outside the counted region, and counts a run of `n` operations and a run of `2n`
+//! through [`run_batch`], each right after an uncounted run of `n` operations. A case with a
+//! chain form does the same through [`run_chain`] once per [`Barrier`] that holds its result,
+//! each with its own `n`. The
+//! figure per operation of an event is the fewest that a `2n` run counts less the fewest that an
+//! `n` run counts, divided by `n`: the fixed cost of a run cancels. A disturbance only adds
+//! counts, so the fewest of each length is its undisturbed run (Chen and Revels, "Robust
+//! benchmarking in noisy environments", 2016). A run shares its core with the sibling hardware
+//! thread: a one-`add` chain step took 1 cycle while the sibling idled and 2 while it ran, and a
+//! median of paired differences fell to 0.06 cycles where the two runs of a pair met different
+//! siblings. The latency of a case is its chain with the fewest cycles. A case
 //! whose `2n` runs count no more cycles than its `n` runs stops the sweep, and so does a chain
-//! step under [`FEWEST_STEP_CYCLES`].
+//! step under [`FEWEST_STEP_CYCLES`]. A WebAssembly bench sizes and repeats its runs by its own
+//! [`Protocol`].
 
 use std::mem::size_of;
 use std::process::ExitCode;
@@ -45,10 +43,6 @@ use crate::suite::{
 /// The counted repetitions of every case.
 pub const REPETITIONS: usize = 31;
 
-/// The rank, from the fewest, of the repetition whose difference a figure takes: the fourth of
-/// 31. It passes over three pairs that the sibling thread or a fast path disturbed.
-pub const RANK: usize = REPETITIONS / 8;
-
 /// The cycles that a native short run takes at least, unless its operations reach their cap.
 pub const TARGET: u64 = 1 << 20;
 
@@ -66,7 +60,7 @@ const SEED: u64 = 0x5eed_0fc0_ffee;
 /// The most memory that the operand sets of a long run take.
 const FOOTPRINT: usize = 256 * 1024;
 
-/// How a sweep sizes its runs and takes its figures.
+/// How a sweep sizes its runs.
 struct Protocol {
     /// Whether a run passes several times over its operand sets once they fill [`FOOTPRINT`],
     /// until it is long enough.
@@ -75,9 +69,6 @@ struct Protocol {
     sizing: usize,
     /// The count from which a run is long enough.
     long: Length,
-    /// Whether a figure takes the difference of the two runs of each repetition; otherwise the
-    /// difference of the counts of rank [`RANK`] of each run length.
-    paired: bool,
 }
 
 /// The count from which a run is long enough.
@@ -90,32 +81,24 @@ enum Length {
 }
 
 /// The native protocol: one pass over the operand sets, sized until a run takes [`TARGET`]
-/// cycles, and paired differences: the two runs of a repetition run back to back and mostly meet
-/// the same sibling thread.
+/// cycles.
 const NATIVE_PROTOCOL: Protocol = Protocol {
     passes: false,
     sizing: 1,
     long: Length::Cycles(TARGET),
-    paired: true,
 };
 
-/// The protocol of a WebAssembly bench.
-///
-/// A count in a browser costs two requests to the driver, whose cycles varied by 4,000 to 8,000
-/// between counts on a loaded machine, against the 8,192 cycles of a long run of 8,192
-/// one-cycle `add`s: a run passes over its operand sets, which stay in the L2 cache as natively,
-/// until it counts 4 million instructions, a million cycles at 4 instructions per cycle. Cycles
-/// sized it badly: at a load of 65 a sizing run of a GF(2⁶⁴) add chain counted 2.3 times the
-/// cycles of the runs that followed, and the fewest of nine such runs ended the sizing early.
-///
-/// The requests of a count part the two runs of a repetition: a busy sibling slowed a one-`add`
-/// chain step to 1.7 cycles in either run alone, the difference of rank 4 gave 0.54 cycles per
-/// step, and the difference of the counts of rank 4 of each length 1.01.
+/// The protocol of a WebAssembly bench. A count in a browser costs two requests to the driver,
+/// whose cycles varied by 4,000 to 8,000 between counts on a loaded machine, against the 8,192
+/// cycles of a long run of 8,192 one-cycle `add`s: a run passes over its operand sets, which stay
+/// in the L2 cache as natively, until it counts 4 million instructions, a million cycles at 4
+/// instructions per cycle. Cycles sized it badly: at a load of 65 a sizing run of a GF(2⁶⁴) add
+/// chain counted 2.3 times the cycles of the runs that followed, and the fewest of nine such runs
+/// ended the sizing early.
 const WASM_PROTOCOL: Protocol = Protocol {
     passes: true,
     sizing: 3,
     long: Length::Instructions(4 << 20),
-    paired: false,
 };
 
 /// The protocol of this build.
@@ -147,8 +130,8 @@ const FEWEST: usize = 16;
 #[cfg(target_arch = "wasm32")]
 const GLUE_COUNTS: usize = 1000;
 
-/// The sets of [`REPETITIONS`] empty counts whose counts of rank [`RANK`] give the noise of a
-/// figure, in pairs.
+/// The sets of [`REPETITIONS`] empty counts whose fewest counts give the noise of a figure, in
+/// pairs.
 #[cfg(target_arch = "wasm32")]
 const NOISE_SETS: usize = 8;
 
@@ -231,19 +214,15 @@ fn overhead(counters: &mut Counters) -> Result<Overhead, Error> {
         let (_, median, _) = values.select_nth_unstable(middle);
         *median as f64
     };
-    // A figure takes the counts of rank `RANK` of two sets of runs; the fixed cost of a count
-    // moves it by the difference of the counts of that rank of two sets of empty counts.
-    let ranked: Vec<f64> = last
+    // A figure takes the fewest counts of two sets of runs; the fixed cost of a count moves it by
+    // the difference of the fewest counts of two sets of empty counts.
+    let fewest: Vec<f64> = last
         .as_chunks::<REPETITIONS>()
         .0
         .iter()
-        .map(|set| {
-            let mut cycles: Vec<u64> = set.iter().map(|counts| counts.cycles).collect();
-            let (_, ranked, _) = cycles.select_nth_unstable(RANK);
-            *ranked as f64
-        })
+        .map(|set| set.iter().map(|counts| counts.cycles).min().unwrap_or(0) as f64)
         .collect();
-    let noise = ranked
+    let noise = fewest
         .as_chunks::<2>()
         .0
         .iter()
@@ -356,37 +335,22 @@ struct Form {
 }
 
 impl Form {
-    /// The events per operation of the form `name`, over the operations of a short run: the
-    /// difference of rank [`RANK`], from the fewest, of the long run less the short run of each
-    /// repetition; under a protocol without pairs, the count of rank [`RANK`] of the long runs
-    /// less that of
-    /// the short runs. A cycle difference of zero or less is an [`Error::Flat`], and one under
+    /// The events per operation of the form `name`: the fewest that a long run counts less the
+    /// fewest that a short run counts, over the operations of a short run. Long runs whose fewest
+    /// cycles are no more than the short runs' are an [`Error::Flat`], and a difference under
     /// [`SIGNAL`] times `noise` an [`Error::Noisy`].
     fn events(&self, name: &str, noise: Option<f64>) -> Result<Events, Error> {
+        let fewest = |value: &dyn Fn(&[Counts; 2]) -> u64| -> Result<u64, Error> {
+            self.repetitions
+                .iter()
+                .map(value)
+                .min()
+                .ok_or_else(|| Error::missing("repetitions", name))
+        };
         let difference = |event: fn(&Counts) -> u64| -> Result<f64, Error> {
-            if self.repetitions.len() <= RANK {
-                return Err(Error::missing("repetitions", name));
-            }
-            let ranked = |mut values: Vec<f64>| {
-                let (_, value, _) = values.select_nth_unstable_by(RANK, f64::total_cmp);
-                *value
-            };
-            let count = |run: usize| {
-                self.repetitions
-                    .iter()
-                    .map(|counts| event(&counts[run]) as f64)
-                    .collect::<Vec<_>>()
-            };
-            Ok(if PROTOCOL.paired {
-                ranked(
-                    self.repetitions
-                        .iter()
-                        .map(|[short, long]| event(long) as f64 - event(short) as f64)
-                        .collect(),
-                )
-            } else {
-                ranked(count(1)) - ranked(count(0))
-            })
+            let long = fewest(&|[_, long]| event(long))?;
+            let short = fewest(&|[short, _]| event(short))?;
+            Ok(long as f64 - short as f64)
         };
         let operations = self.run.operations();
         let per = |event| Ok::<f64, Error>(difference(event)? / operations as f64);
@@ -406,10 +370,8 @@ impl Form {
                     .collect();
                 values.sort_unstable();
                 format!(
-                    "fewest {}, rank {} {}, median {}, most {}",
+                    "fewest {}, median {}, most {}",
                     values[0],
-                    RANK + 1,
-                    values[RANK],
                     values[values.len() / 2],
                     values[values.len() - 1]
                 )
@@ -513,28 +475,16 @@ fn ran(id: &str, runs: usize, count: usize) -> Result<(), Error> {
 /// One form of a case: the code that each case compiles. The rest of a sweep reaches it through
 /// `dyn`, so it compiles once.
 trait Trial {
-    /// Runs the form in the shape `run` on fresh inputs that `rng` draws, outside the counted
-    /// region; returns the number of runs.
-    fn warm(&self, rng: &mut Rng, run: Run) -> usize;
-
-    /// Runs the form in the shape `run` on fresh inputs that `rng` draws, counted by `counters`;
-    /// returns the number of runs and the counts.
+    /// Runs the form in the shape `run` on fresh inputs that `rng` draws, counted by `counters`,
+    /// right after an uncounted run in the shape `warm` on other fresh inputs; returns the number
+    /// of uncounted and counted runs and the counts.
     fn counted(
         &self,
         rng: &mut Rng,
         run: Run,
+        warm: Run,
         counters: &mut Counters,
-    ) -> Result<(usize, Counts), Error>;
-
-    /// Runs the form in the shape `run` on fresh inputs, then in its long shape, counted by
-    /// `counters` back to back: both runs draw their inputs first. Returns the number of runs and
-    /// the counts of each.
-    fn pair(
-        &self,
-        rng: &mut Rng,
-        run: Run,
-        counters: &mut Counters,
-    ) -> Result<[(usize, Counts); 2], Error>;
+    ) -> Result<([usize; 2], Counts), Error>;
 }
 
 /// A form of a case: `region` runs a batch of the inputs that `inputs` draws.
@@ -551,49 +501,38 @@ impl<I, F: Fn(&[I]) -> usize> Region<'_, I, F> {
 }
 
 impl<I, F: Fn(&[I]) -> usize> Trial for Region<'_, I, F> {
-    fn warm(&self, rng: &mut Rng, run: Run) -> usize {
-        let batch = self.inputs.draw(rng, run.sets);
-        touch(&batch);
-        self.passes(&batch, run.passes)
-    }
-
+    /// The uncounted run follows both draws, so the tables and the code of the form are as warm
+    /// for every counted run. A GF(2¹⁶) inverse by a 128 KiB table takes 1.7 cycles; when the
+    /// uncounted run came before the draws, they evicted more of that table before a long run than
+    /// before a short one, and the long runs counted no more cycles.
     fn counted(
         &self,
         rng: &mut Rng,
         run: Run,
+        warm: Run,
         counters: &mut Counters,
-    ) -> Result<(usize, Counts), Error> {
+    ) -> Result<([usize; 2], Counts), Error> {
+        let warming = self.inputs.draw(rng, warm.sets);
         let batch = self.inputs.draw(rng, run.sets);
+        let warmed = self.passes(&warming, warm.passes);
         touch(&batch);
-        counters.count(&mut || self.passes(&batch, run.passes))
-    }
-
-    fn pair(
-        &self,
-        rng: &mut Rng,
-        run: Run,
-        counters: &mut Counters,
-    ) -> Result<[(usize, Counts); 2], Error> {
-        let short = self.inputs.draw(rng, run.sets);
-        let long = self.inputs.draw(rng, run.long().sets);
-        touch(&long);
-        touch(&short);
-        Ok([
-            counters.count(&mut || self.passes(&short, run.passes))?,
-            counters.count(&mut || self.passes(&long, run.passes))?,
-        ])
+        let (runs, counts) = counters.count(&mut || self.passes(&batch, run.passes))?;
+        Ok(([warmed, runs], counts))
     }
 }
 
 impl<O, K> Measuring<'_, O, K> {
-    /// Runs `trial` in the shape `run` on fresh inputs, uncounted.
-    fn warm(&mut self, trial: &dyn Trial, run: Run, id: &str) -> Result<(), Error> {
-        ran(id, trial.warm(&mut self.rng, run), run.operations())
-    }
-
-    /// The counts of `trial` in the shape `run` on fresh inputs.
-    fn counted(&mut self, trial: &dyn Trial, run: Run, id: &str) -> Result<Counts, Error> {
-        let (runs, counts) = trial.counted(&mut self.rng, run, self.counters)?;
+    /// The counts of `trial` in the shape `run` on fresh inputs, right after an uncounted run in
+    /// the shape `warm` on others.
+    fn counted(
+        &mut self,
+        trial: &dyn Trial,
+        run: Run,
+        warm: Run,
+        id: &str,
+    ) -> Result<Counts, Error> {
+        let ([warmed, runs], counts) = trial.counted(&mut self.rng, run, warm, self.counters)?;
+        ran(id, warmed, warm.operations())?;
         ran(id, runs, run.operations())?;
         Ok(counts)
     }
@@ -608,14 +547,13 @@ impl<O, K> Measuring<'_, O, K> {
             passes: 1,
         };
         loop {
-            self.warm(trial, run, id)?;
             let mut fewest = Counts {
                 cycles: u64::MAX,
                 instructions: u64::MAX,
                 branch_misses: u64::MAX,
             };
             for _ in 0..PROTOCOL.sizing {
-                let counts = self.counted(trial, run, id)?;
+                let counts = self.counted(trial, run, run, id)?;
                 fewest = Counts {
                     cycles: fewest.cycles.min(counts.cycles),
                     instructions: fewest.instructions.min(counts.instructions),
@@ -636,16 +574,13 @@ impl<O, K> Measuring<'_, O, K> {
         }
     }
 
-    /// Runs one repetition of a form through `trial`: a run of the shape `run` uncounted, then a
-    /// run of that shape and one of its long shape counted back to back, each run on fresh
-    /// inputs.
+    /// Runs one repetition of a form through `trial`: a run of the shape `run` and one of its
+    /// long shape counted, each on fresh inputs right after an uncounted run of the shape `run`.
     fn repetition(&mut self, trial: &dyn Trial, run: Run, id: &str) -> Result<[Counts; 2], Error> {
-        self.warm(trial, run, id)?;
-        let [(short_runs, short), (long_runs, long)] =
-            trial.pair(&mut self.rng, run, self.counters)?;
-        ran(id, short_runs, run.operations())?;
-        ran(id, long_runs, run.long().operations())?;
-        Ok([short, long])
+        Ok([
+            self.counted(trial, run, run, id)?,
+            self.counted(trial, run.long(), run, id)?,
+        ])
     }
 
     /// The index of the case `id` in this pass, which pass 0 took note of.

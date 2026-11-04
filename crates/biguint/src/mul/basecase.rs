@@ -1,9 +1,11 @@
 //! The quadratic product under every multiplication: one row per limb of the shorter operand.
 //!
-//! A row of up to [`GROUPED_ROW`] limbs runs two carry chains: it adds each product's low half to
-//! the high half before it, then adds a group of [`ROW_GROUP`] such limbs into the output from
-//! registers. A product cut below its full length drops the products past its end. Longer rows
-//! run loops of multiply-accumulate steps.
+//! Operands of up to [`MAC_ROWS`] limbs run each row as one chain of multiply-accumulate steps:
+//! the 256-bit wrapping product took 12.4 cycles this way against 14.0 in groups, and 12.4
+//! against 16.0 in constant time. A row of up to [`GROUPED_ROW`] limbs runs two carry chains: it
+//! adds each product's low half to the high half before it, then adds a group of [`ROW_GROUP`]
+//! such limbs into the output from registers. A product cut below its full length drops the
+//! products past its end. Longer rows run loops of multiply-accumulate steps.
 //!
 //! [`product`] and [`square`] take their lengths as types and run one copy of each row and each
 //! limb ([`each`]), so the limbs of a product stay in registers. [`basecase`] takes slices,
@@ -25,12 +27,61 @@ pub(crate) fn product<A: ArrayLength, B: ArrayLength>(
     a: &GenericArray<u64, A>,
     b: &GenericArray<u64, B>,
 ) {
-    if A::USIZE > GROUPED_ROW || B::USIZE > GROUPED_ROW {
+    if A::USIZE <= MAC_ROWS && B::USIZE <= MAC_ROWS {
+        mac_rows(out, a, b);
+    } else if A::USIZE > GROUPED_ROW || B::USIZE > GROUPED_ROW {
         basecase(out, a, b);
     } else if A::USIZE >= B::USIZE {
         rows::<A, B>(out, a, b);
     } else {
         rows::<B, A>(out, b, a);
+    }
+}
+
+/// The longest operands whose rows run one chain of multiply-accumulate steps each.
+const MAC_ROWS: usize = 4;
+
+/// Writes `a * b mod 2^(64 * out.len())` to `out`: one row per limb of `b`, each a chain of
+/// multiply-accumulate steps into `out`.
+///
+/// Each step reads its multiplier from `b`. A multiplier read once per row took the 256-bit
+/// product 5 moves into the multiplication's implicit register where 3 do, and the 512-bit full
+/// product 15 where 4 do.
+#[inline(always)]
+fn mac_rows(out: &mut [u64], a: &[u64], b: &[u64]) {
+    for slot in out.iter_mut() {
+        *slot = 0;
+    }
+    for index in 0..b.len() {
+        let (_, window) = split_mut(out, index);
+        let len = a.len().min(window.len());
+        // A full row ends in a fresh limb above its products. A cut row's last product lands on
+        // the window's top limb, which takes its low half.
+        let full = window.len() > len;
+        let chain = if full { len } else { len.saturating_sub(1) };
+        let (row, rest) = split_mut(window, chain);
+        let mut carry = 0;
+        for (&limb, slot) in a.iter().zip(row.iter_mut()) {
+            if let Some(&multiplier) = b.get(index) {
+                let sum = u128::from(limb) * u128::from(multiplier)
+                    + u128::from(carry)
+                    + u128::from(*slot);
+                *slot = sum as u64;
+                carry = (sum >> 64) as u64;
+            }
+        }
+        if full {
+            if let Some(slot) = rest.first_mut() {
+                *slot = carry;
+            }
+        } else if let (Some(slot), Some(&limb), Some(&multiplier)) =
+            (rest.first_mut(), a.get(chain), b.get(index))
+        {
+            *slot = limb
+                .wrapping_mul(multiplier)
+                .wrapping_add(*slot)
+                .wrapping_add(carry);
+        }
     }
 }
 

@@ -84,7 +84,8 @@ assert_eq!(two.invert().get().double(), Fp::ONE);
 
 `nonzero` discloses whether the value is zero, and `sqrt` whether a root exists. The time of
 `pow` depends on its public exponent. A wrapped integer operand takes time that depends on its width
-alone.
+alone. `from_u64` takes the same time for every word, so `ConstantTime::new(Fp::from_u64(k))` wraps a
+secret `k`.
 
 ```rust
 use prime_field::standard::secp256k1::Base as Fq;

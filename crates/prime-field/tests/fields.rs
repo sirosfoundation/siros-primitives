@@ -276,12 +276,33 @@ fn check<M: Modulus>(rng: &mut Rng) {
         Fp::<M>::from_le_bytes(&M::MODULUS.to_le_bytes()),
         Err(NotCanonical)
     );
-    let word = rng.next_u64();
-    assert_eq!(
-        value(Fp::<M>::from_u64(word)),
-        BigUint::from(word) % &p,
-        "from_u64"
-    );
+    // The words at the edges of the folds of a Mersenne-31 reduction: multiples of `2^31 - 1`
+    // and of `2^31`, and the top of the range.
+    for word in [
+        0,
+        1,
+        0x7fff_ffff,
+        0xffff_fffe,
+        0x3fff_ffff_0000_0001,
+        1 << 31,
+        1 << 62,
+        u64::MAX - 1,
+        u64::MAX,
+        rng.next_u64(),
+    ] {
+        let expected = BigUint::from(word) % &p;
+        assert_eq!(
+            value(Fp::<M>::from_u64(word)),
+            expected,
+            "from_u64 of {word}"
+        );
+        assert_eq!(value(Fp::<M>::from(word)), expected, "From<u64> of {word}");
+        assert_eq!(
+            value(Fp::<M>::ONE * Uint::<biguint::typenum::U64>::from_u64(word)),
+            expected,
+            "1 * {word}"
+        );
+    }
     assert_eq!(value(Fp::<M>::ONE), BigUint::from(1u8));
     assert_eq!(value(Fp::<M>::ZERO), BigUint::ZERO);
 }

@@ -164,9 +164,9 @@ pub struct Overhead {
     pub cycles: f64,
     /// The median instructions of an empty count.
     pub instructions: f64,
-    /// The noise of the fixed cost of a count in a figure: the largest difference of the counts
-    /// of rank [`RANK`](crate::RANK) of two sets of [`REPETITIONS`](crate::REPETITIONS) empty
-    /// counts, among four pairs of sets.
+    /// The noise of the fixed cost of a count in a figure: the largest difference of the fewest
+    /// counts of two sets of [`REPETITIONS`](crate::REPETITIONS) empty counts, among four pairs of
+    /// sets.
     pub noise: f64,
 }
 

@@ -228,8 +228,8 @@ impl Op {
     /// One operand set over the field of `modulus`, with its result:
     /// - add: `a` and `b` uniform;
     /// - mul: `a` and `b` uniform and nonzero, so that a chain of products never reaches zero;
-    /// - square, invert: `a` uniform and nonzero;
-    /// - sqrt: `a = r²` for `r` uniform and nonzero, whose square root is `r` alone.
+    /// - square, invert: `a` uniform, neither 0 nor 1, which these chains would never leave;
+    /// - sqrt: `a = r²` for `r` uniform, neither 0 nor 1, whose square root is `r` alone.
     fn sample(self, modulus: &Modulus, rng: &mut Rng) -> (Vec<Limbs>, Limbs) {
         match self.kind {
             Kind::Add => {
@@ -244,17 +244,17 @@ impl Op {
                 (vec![a, b], product)
             }
             Kind::Square => {
-                let a = modulus.nonzero(rng);
+                let a = modulus.above_one(rng);
                 let result = modulus.square(&a);
                 (vec![a], result)
             }
             Kind::Invert => {
-                let a = modulus.nonzero(rng);
+                let a = modulus.above_one(rng);
                 let result = modulus.inverse(&a);
                 (vec![a], result)
             }
             Kind::Sqrt => {
-                let root = modulus.nonzero(rng);
+                let root = modulus.above_one(rng);
                 (vec![modulus.square(&root)], root)
             }
         }
@@ -265,8 +265,8 @@ impl Op {
         match self.kind {
             Kind::Add => vec![modulus.uniform(rng), modulus.uniform(rng)],
             Kind::Mul => vec![modulus.nonzero(rng), modulus.nonzero(rng)],
-            Kind::Square | Kind::Invert => vec![modulus.nonzero(rng)],
-            Kind::Sqrt => vec![modulus.square(&modulus.nonzero(rng))],
+            Kind::Square | Kind::Invert => vec![modulus.above_one(rng)],
+            Kind::Sqrt => vec![modulus.square(&modulus.above_one(rng))],
         }
     }
 }

@@ -47,6 +47,18 @@ impl Modulus {
         }
     }
 
+    /// A uniform element other than 0 and 1: square, inverse and square root fix 1, so a chain of
+    /// one of them from 1 repeats the step of 1. A GF(2⁸) square chain from 1 took 19
+    /// instructions per step against 218.
+    pub fn above_one(&self, rng: &mut Rng) -> Limbs {
+        loop {
+            let value = self.nonzero(rng);
+            if value.iter().skip(1).any(|&limb| limb != 0) || value.first() != Some(&1) {
+                return value;
+            }
+        }
+    }
+
     /// `a * b`: `a << i` added for every set bit `i` of `b`, then reduced.
     pub fn mul(&self, a: &[u64], b: &[u64]) -> Limbs {
         let mut product = vec![0; a.len() + b.len()];

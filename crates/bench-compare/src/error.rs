@@ -152,8 +152,7 @@ pub enum Error {
         /// The operations it drew.
         count: usize,
     },
-    /// The difference of rank [`RANK`](crate::RANK) of a case's long runs less its short runs
-    /// counts no cycles.
+    /// The fewest cycles of a case's long runs are no more than the fewest of its short runs.
     #[error(
         "{case}: the runs of {} operations count no more cycles than the runs of {operations}",
         2 * operations
@@ -164,8 +163,8 @@ pub enum Error {
         /// The operations of a short run.
         operations: usize,
     },
-    /// The difference of rank [`RANK`](crate::RANK) of a WebAssembly case's long runs less its
-    /// short runs counts fewer cycles than 50 times the noise of the fixed cost of a count.
+    /// The fewest count of a WebAssembly case's long runs less the fewest of its short runs
+    /// counts fewer cycles than 50 times the noise of the fixed cost of a count.
     #[error(
         "{case}: the long runs count {cycles:.0} cycles more than the short runs, within 50 times \
          the noise of the cost of a count, {noise:.0}: other work ran on the counted threads. Short \
