@@ -59,9 +59,10 @@ onmessage = async (event) => {
       },
     });
     memory = instance.exports.memory;
-    call('/calibrate');
-    spin(500);
-    call('/calibrated');
+    do {
+      call('/calibrate');
+      spin(2000);
+    } while (call('/calibrated') === 'again');
     const status = instance.exports.main(0, 0);
     call('/done', String(status));
   } catch (error) {

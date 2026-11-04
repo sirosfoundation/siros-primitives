@@ -6,7 +6,7 @@
 //! the module's `begin` and `end` to the driver as synchronous requests while the measuring
 //! worker sleeps in `Atomics.wait`. The driver resets and enables the counters on `/begin` and
 //! reads them on `/end`. The module's other imports are synchronous requests of the measuring
-//! worker. Before the bench starts, the measuring worker spins for half a second: the thread
+//! worker. Before the bench starts, the measuring worker spins for two seconds: the thread
 //! whose CPU time grows the most meanwhile is the measuring thread, which the driver then pins to
 //! the measuring CPU alone.
 
@@ -45,9 +45,14 @@ const ISOLATION: [(&str, &str); 2] = [
 /// The longest that the driver waits for the next request of the page.
 const IDLE: Duration = Duration::from_secs(300);
 
-/// The fewest ticks of CPU time that the measuring thread spends while the worker spins for half a
-/// second: half of them at 100 ticks per second.
-const CALIBRATION_TICKS: u64 = 25;
+/// The fewest ticks of CPU time that the measuring thread spends while the worker spins for two
+/// seconds: a quarter of them at 100 ticks per second. The browser shares its CPU with the worker
+/// while it loads the page: the worker of Firefox got 17 of the 50 ticks of half a second.
+const CALIBRATION_TICKS: u64 = 50;
+
+/// The spins of the worker that may pass before one thread stands out.
+const CALIBRATIONS: usize = 5;
+
 /// Runs the bench `module` in `browser` at `executable` on `cpus`, counting `threads`; returns
 /// the lines that the bench sends.
 pub fn run(
@@ -93,6 +98,7 @@ pub fn run(
         measuring_cpu: cpus.measuring,
         browser: child,
         calibration: None,
+        calibrations: 0,
         counters: Vec::new(),
         lines: Vec::new(),
         failure: None,
@@ -147,6 +153,8 @@ struct Session<'a> {
     browser: Child,
     /// The CPU time of every thread of the browser when the worker started to spin.
     calibration: Option<Vec<Task>>,
+    /// The spins of the worker so far.
+    calibrations: usize,
     /// The counters of the counted threads, which the calibration opens.
     counters: Vec<Counters>,
     lines: Vec<String>,
@@ -219,8 +227,9 @@ impl Session<'_> {
                 (Reply::empty(), Asked::More)
             }
             (Method::Post, "/calibrated", _) => {
-                self.calibrated()?;
-                (Reply::empty(), Asked::More)
+                let found = self.calibrated()?;
+                let text = if found { "found" } else { "again" };
+                (Reply::of(text, "text/plain"), Asked::More)
             }
             (Method::Post, "/begin", _) => {
                 for counters in &mut self.counters {
@@ -288,8 +297,9 @@ impl Session<'_> {
     }
 
     /// Finds the measuring thread, the thread whose CPU time grew the most since `/calibrate`,
-    /// and opens the counters of the threads to count.
-    fn calibrated(&mut self) -> Result<(), Error> {
+    /// and opens the counters of the threads to count; returns whether one thread stood out. The
+    /// page spins again until one does, [`CALIBRATIONS`] times at most.
+    fn calibrated(&mut self) -> Result<bool, Error> {
         let before = self
             .calibration
             .take()
@@ -306,22 +316,25 @@ impl Session<'_> {
             })
             .collect();
         grown.sort_by(|a, b| b.0.cmp(&a.0));
+        self.calibrations += 1;
         let measuring = match grown.as_slice() {
             [(ticks, task), rest @ ..]
                 if *ticks >= CALIBRATION_TICKS
-                    && rest.first().is_none_or(|(other, _)| 3 * other < *ticks) =>
+                    && rest.first().is_none_or(|(other, _)| 2 * other < *ticks) =>
             {
                 *task
             }
+            _ if self.calibrations < CALIBRATIONS => return Ok(false),
             _ => {
                 return Err(Error::Browser {
                     reason: format!(
-                        "no single thread spent {CALIBRATION_TICKS} ticks while the worker spun: \
-                         the most grown {:?}",
+                        "no single thread spent {CALIBRATION_TICKS} ticks, twice as many as any \
+                         other, in {CALIBRATIONS} spins of the worker: the most grown in the \
+                         last {:?}",
                         grown
                             .iter()
                             .take(3)
-                            .map(|(ticks, task)| (task.tid, *ticks))
+                            .map(|(ticks, task)| (task.tid, task.name.as_str(), *ticks))
                             .collect::<Vec<_>>()
                     ),
                 });
@@ -340,7 +353,7 @@ impl Session<'_> {
             .into_iter()
             .map(Counters::observe)
             .collect::<Result<_, _>>()?;
-        Ok(())
+        Ok(true)
     }
 
     /// Kills every process of the browser and reaps it.
@@ -415,6 +428,8 @@ struct Task {
     pid: i32,
     tid: i32,
     ticks: u64,
+    /// The name of the thread.
+    name: String,
 }
 
 /// Every thread of the browser's processes, with its user-mode CPU time.
@@ -440,7 +455,16 @@ fn tasks() -> Result<Vec<Task>, Error> {
                 .and_then(|(_, rest)| rest.split_whitespace().nth(11))
                 .and_then(|field| field.parse::<u64>().ok())
                 .ok_or_else(|| Error::missing("utime", &path.display().to_string()))?;
-            tasks.push(Task { pid, tid, ticks });
+            let comm = entry.path().join("comm");
+            let Some(name) = gone(fs::read_to_string(&comm), &comm)? else {
+                continue;
+            };
+            tasks.push(Task {
+                pid,
+                tid,
+                ticks,
+                name: name.trim().to_owned(),
+            });
         }
     }
     Ok(tasks)
