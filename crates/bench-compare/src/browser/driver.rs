@@ -1,0 +1,497 @@
+//! The driver of a WebAssembly bench: it serves the module to a headless browser, finds the thread
+//! that runs it, and counts that thread with its perf_event group while the module runs.
+//!
+//! The driver pins itself, and with it the browser, to one CPU. The page starts two dedicated
+//! workers on shared memory: the measuring worker instantiates the module, and the helper passes
+//! the module's `begin` and `end` to the driver as synchronous requests while the measuring
+//! worker sleeps in `Atomics.wait`. The driver resets and enables the counters on `/begin` and
+//! reads them on `/end`. The module's other imports are synchronous requests of the measuring
+//! worker. Before the bench starts, the measuring worker spins for half a second: the thread
+//! whose CPU time grows the most meanwhile is the measuring thread, which the driver then pins to
+//! the measuring CPU alone.
+
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+
+use nix::sys::signal::{Signal, kill};
+use nix::sys::wait::waitpid;
+use nix::unistd::Pid;
+use tiny_http::{Header, Method, Request, Response, Server};
+
+use super::{Browser, Cpus, Threads};
+use crate::counters::{Counters, Counts, pin, pin_thread};
+use crate::error::Error;
+
+/// The page, which starts the two workers on the memory they share.
+const PAGE: &str = include_str!("page.html");
+
+/// The scripts of the page, by path.
+const SCRIPTS: [(&str, &str); 3] = [
+    ("/worker.js", include_str!("worker.js")),
+    ("/helper.js", include_str!("helper.js")),
+    ("/shared.js", include_str!("shared.js")),
+];
+
+/// The headers of every response: they isolate the page from other origins, which shared memory
+/// needs.
+const ISOLATION: [(&str, &str); 2] = [
+    ("Cross-Origin-Opener-Policy", "same-origin"),
+    ("Cross-Origin-Embedder-Policy", "require-corp"),
+];
+
+/// The longest that the driver waits for the next request of the page.
+const IDLE: Duration = Duration::from_secs(300);
+
+/// The fewest ticks of CPU time that the measuring thread spends while the worker spins for half a
+/// second: half of them at 100 ticks per second.
+const CALIBRATION_TICKS: u64 = 25;
+/// Runs the bench `module` in `browser` at `executable` on `cpus`, counting `threads`; returns
+/// the lines that the bench sends.
+pub fn run(
+    module: &[u8],
+    browser: &Browser,
+    executable: &Path,
+    cpus: Cpus,
+    threads: Threads,
+) -> Result<Vec<String>, Error> {
+    pin(cpus.browser)?;
+    nix::sys::prctl::set_child_subreaper(true).map_err(|source| Error::Browser {
+        reason: format!("becoming the subreaper of the browser: {source}"),
+    })?;
+    let server = Server::http("127.0.0.1:0").map_err(|source| Error::Browser {
+        reason: format!("serving the page: {source}"),
+    })?;
+    let port = server
+        .server_addr()
+        .to_ip()
+        .ok_or_else(|| Error::missing("port", "the page server"))?
+        .port();
+    let profile = Profile::create()?;
+    let log = profile.path.join("browser.log");
+    let output = fs::File::create(&log).map_err(|source| Error::io(&log, source))?;
+    let errors = output
+        .try_clone()
+        .map_err(|source| Error::io(&log, source))?;
+    let arguments = browser.arguments(&profile.path, &format!("http://127.0.0.1:{port}/"))?;
+    let child = Command::new(executable)
+        .args(&arguments)
+        .current_dir(&profile.path)
+        .stdin(Stdio::null())
+        .stdout(output)
+        .stderr(errors)
+        .spawn()
+        .map_err(|source| Error::Spawn {
+            command: executable.display().to_string(),
+            source,
+        })?;
+    let mut session = Session {
+        module,
+        threads,
+        measuring_cpu: cpus.measuring,
+        browser: child,
+        calibration: None,
+        counters: Vec::new(),
+        lines: Vec::new(),
+        failure: None,
+    };
+    let result = session.serve(&server);
+    let stopped = session.stop();
+    let lines = result.map_err(|error| with_log(error, &log))?;
+    stopped?;
+    profile.remove()?;
+    Ok(lines)
+}
+
+/// `error` with the last lines of the browser's log at `log`.
+fn with_log(error: Error, log: &Path) -> Error {
+    let Ok(text) = fs::read_to_string(log) else {
+        return error;
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    let tail = lines[lines.len().saturating_sub(20)..].join("\n");
+    Error::Browser {
+        reason: format!("{error}\nthe browser's log {}:\n{tail}", log.display()),
+    }
+}
+
+/// A fresh profile directory of the browser.
+struct Profile {
+    path: PathBuf,
+}
+
+impl Profile {
+    /// An empty directory in the temporary directory, named after this process.
+    fn create() -> Result<Self, Error> {
+        let path = std::env::temp_dir().join(format!("bench-compare-{}", std::process::id()));
+        if path.exists() {
+            fs::remove_dir_all(&path).map_err(|source| Error::io(&path, source))?;
+        }
+        fs::create_dir_all(&path).map_err(|source| Error::io(&path, source))?;
+        Ok(Self { path })
+    }
+
+    fn remove(self) -> Result<(), Error> {
+        fs::remove_dir_all(&self.path).map_err(|source| Error::io(&self.path, source))
+    }
+}
+
+/// One run of a bench in the browser.
+struct Session<'a> {
+    module: &'a [u8],
+    threads: Threads,
+    /// The CPU of the measuring thread, which the calibration pins there.
+    measuring_cpu: usize,
+    browser: Child,
+    /// The CPU time of every thread of the browser when the worker started to spin.
+    calibration: Option<Vec<Task>>,
+    /// The counters of the counted threads, which the calibration opens.
+    counters: Vec<Counters>,
+    lines: Vec<String>,
+    /// The reason for which the bench stopped, as it sent it.
+    failure: Option<String>,
+}
+
+/// What the page asks.
+enum Asked {
+    /// More requests follow.
+    More,
+    /// The bench returned its exit status.
+    Done(String),
+}
+
+impl Session<'_> {
+    /// Answers the page until the bench returns; returns its lines.
+    fn serve(&mut self, server: &Server) -> Result<Vec<String>, Error> {
+        let mut deadline = Instant::now() + IDLE;
+        loop {
+            if let Some(status) = self.browser.try_wait().map_err(|source| Error::Browser {
+                reason: format!("waiting for the browser: {source}"),
+            })? {
+                return Err(Error::Browser {
+                    reason: format!("the browser exited with {status} before the bench returned"),
+                });
+            }
+            let request = server
+                .recv_timeout(Duration::from_millis(500))
+                .map_err(|source| Error::Browser {
+                    reason: format!("receiving a request of the page: {source}"),
+                })?;
+            let Some(request) = request else {
+                if Instant::now() > deadline {
+                    return Err(Error::Browser {
+                        reason: format!("no request of the page for {} seconds", IDLE.as_secs()),
+                    });
+                }
+                continue;
+            };
+            deadline = Instant::now() + IDLE;
+            match self.answer(request)? {
+                Asked::More => {}
+                Asked::Done(status) => {
+                    return match (status.as_str(), self.failure.take()) {
+                        ("0", None) => Ok(core::mem::take(&mut self.lines)),
+                        (_, Some(reason)) => Err(Error::Bench { reason }),
+                        (status, None) => Err(Error::Bench {
+                            reason: format!("the bench returned {status}"),
+                        }),
+                    };
+                }
+            }
+        }
+    }
+
+    /// Answers one request of the page.
+    fn answer(&mut self, mut request: Request) -> Result<Asked, Error> {
+        let path = request.url().to_owned();
+        let body = io::read_to_string(request.as_reader()).map_err(|source| Error::Browser {
+            reason: format!("reading the request {path}: {source}"),
+        })?;
+        let script = SCRIPTS.iter().find(|(name, _)| *name == path);
+        let (reply, asked) = match (request.method(), path.as_str(), script) {
+            (Method::Get, "/", _) => (Reply::of(PAGE, "text/html"), Asked::More),
+            (Method::Get, "/bench.wasm", _) => (Reply::of(self.module, "application/wasm"), Asked::More),
+            (Method::Get, _, Some((_, source))) => (Reply::of(source, "text/javascript"), Asked::More),
+            (Method::Post, "/calibrate", _) => {
+                self.calibration = Some(tasks()?);
+                (Reply::empty(), Asked::More)
+            }
+            (Method::Post, "/calibrated", _) => {
+                self.calibrated()?;
+                (Reply::empty(), Asked::More)
+            }
+            (Method::Post, "/begin", _) => {
+                for counters in &mut self.counters {
+                    counters.begin()?;
+                }
+                (Reply::empty(), Asked::More)
+            }
+            (Method::Post, "/end", _) => {
+                let counts = self.end()?;
+                let text = format!(
+                    "{} {} {}",
+                    counts.cycles, counts.instructions, counts.branch_misses
+                );
+                (Reply::of(text, "text/plain"), Asked::More)
+            }
+            (Method::Post, "/emit", _) => {
+                self.lines.push(body);
+                (Reply::empty(), Asked::More)
+            }
+            (Method::Post, "/fail", _) => {
+                self.failure = Some(body);
+                (Reply::empty(), Asked::More)
+            }
+            (Method::Post, "/done", _) => (Reply::empty(), Asked::Done(body)),
+            (Method::Post, "/error", _) => {
+                let reason = match self.failure.take() {
+                    Some(failure) => format!("{failure}\n{body}"),
+                    None => body,
+                };
+                return Err(Error::Bench { reason });
+            }
+            _ => (
+                Reply {
+                    status: 404,
+                    ..Reply::empty()
+                },
+                Asked::More,
+            ),
+        };
+        request
+            .respond(reply.response()?)
+            .map_err(|source| Error::Browser {
+                reason: format!("answering the request {path}: {source}"),
+            })?;
+        Ok(asked)
+    }
+
+    /// The counts of every counted thread since `/begin`, summed.
+    fn end(&mut self) -> Result<Counts, Error> {
+        let mut sum = Counts {
+            cycles: 0,
+            instructions: 0,
+            branch_misses: 0,
+        };
+        if self.counters.is_empty() {
+            return Err(Error::missing("counted thread", "the browser"));
+        }
+        for counters in &mut self.counters {
+            let counts = counters.end()?;
+            sum.cycles += counts.cycles;
+            sum.instructions += counts.instructions;
+            sum.branch_misses += counts.branch_misses;
+        }
+        Ok(sum)
+    }
+
+    /// Finds the measuring thread, the thread whose CPU time grew the most since `/calibrate`,
+    /// and opens the counters of the threads to count.
+    fn calibrated(&mut self) -> Result<(), Error> {
+        let before = self
+            .calibration
+            .take()
+            .ok_or_else(|| Error::missing("/calibrate before /calibrated", "the page"))?;
+        let after = tasks()?;
+        let mut grown: Vec<(u64, &Task)> = after
+            .iter()
+            .map(|task| {
+                let earlier = before
+                    .iter()
+                    .find(|other| other.tid == task.tid)
+                    .map_or(0, |other| other.ticks);
+                (task.ticks.saturating_sub(earlier), task)
+            })
+            .collect();
+        grown.sort_by(|a, b| b.0.cmp(&a.0));
+        let measuring = match grown.as_slice() {
+            [(ticks, task), rest @ ..]
+                if *ticks >= CALIBRATION_TICKS
+                    && rest.first().is_none_or(|(other, _)| 3 * other < *ticks) =>
+            {
+                *task
+            }
+            _ => {
+                return Err(Error::Browser {
+                    reason: format!(
+                        "no single thread spent {CALIBRATION_TICKS} ticks while the worker spun: \
+                         the most grown {:?}",
+                        grown
+                            .iter()
+                            .take(3)
+                            .map(|(ticks, task)| (task.tid, *ticks))
+                            .collect::<Vec<_>>()
+                    ),
+                });
+            }
+        };
+        pin_thread(measuring.tid, self.measuring_cpu)?;
+        let counted: Vec<i32> = match self.threads {
+            Threads::Measuring => vec![measuring.tid],
+            Threads::Process => after
+                .iter()
+                .filter(|task| task.pid == measuring.pid)
+                .map(|task| task.tid)
+                .collect(),
+        };
+        self.counters = counted
+            .into_iter()
+            .map(Counters::observe)
+            .collect::<Result<_, _>>()?;
+        Ok(())
+    }
+
+    /// Kills every process of the browser and reaps it.
+    fn stop(&mut self) -> Result<(), Error> {
+        let failure = |source: nix::Error| Error::Browser {
+            reason: format!("stopping the browser: {source}"),
+        };
+        for pid in descendants()? {
+            match kill(Pid::from_raw(pid), Signal::SIGKILL) {
+                Ok(()) | Err(nix::Error::ESRCH) => {}
+                Err(source) => return Err(failure(source)),
+            }
+        }
+        #[expect(
+            unused_results,
+            reason = "the browser exits by the kill; its status tells nothing"
+        )]
+        self.browser.wait().map_err(|source| Error::Browser {
+            reason: format!("waiting for the browser: {source}"),
+        })?;
+        // The killed descendants that this process adopted as their subreaper, until none is left.
+        loop {
+            match waitpid(None, None) {
+                Ok(_) => {}
+                Err(nix::Error::ECHILD) => return Ok(()),
+                Err(source) => return Err(failure(source)),
+            }
+        }
+    }
+}
+
+/// A response of the driver.
+struct Reply {
+    status: u16,
+    content_type: &'static str,
+    body: Vec<u8>,
+}
+
+impl Reply {
+    /// A response of `body`, of `content_type`.
+    fn of(body: impl AsRef<[u8]>, content_type: &'static str) -> Self {
+        Self {
+            status: 200,
+            content_type,
+            body: body.as_ref().to_vec(),
+        }
+    }
+
+    /// An empty response.
+    fn empty() -> Self {
+        Self::of([], "text/plain")
+    }
+
+    /// The response, with the headers of its content type and of [`ISOLATION`].
+    fn response(self) -> Result<Response<io::Cursor<Vec<u8>>>, Error> {
+        let header = |name: &str, value: &str| {
+            Header::from_bytes(name, value)
+                .map_err(|()| Error::missing(&format!("header {name}: {value}"), "the page server"))
+        };
+        let mut response = Response::from_data(self.body)
+            .with_status_code(self.status)
+            .with_header(header("Content-Type", self.content_type)?);
+        for (name, value) in ISOLATION {
+            response = response.with_header(header(name, value)?);
+        }
+        Ok(response)
+    }
+}
+
+/// A thread of the browser and the CPU time it spent in user mode.
+struct Task {
+    pid: i32,
+    tid: i32,
+    ticks: u64,
+}
+
+/// Every thread of the browser's processes, with its user-mode CPU time.
+fn tasks() -> Result<Vec<Task>, Error> {
+    let mut tasks = Vec::new();
+    for pid in descendants()? {
+        let directory = PathBuf::from(format!("/proc/{pid}/task"));
+        let Some(entries) = gone(fs::read_dir(&directory), &directory)? else {
+            continue;
+        };
+        for entry in entries {
+            let entry = entry.map_err(|source| Error::io(&directory, source))?;
+            let Some(tid) = number(&entry.file_name()) else {
+                continue;
+            };
+            let path = entry.path().join("stat");
+            let Some(stat) = gone(fs::read_to_string(&path), &path)? else {
+                continue;
+            };
+            // `utime` is the 14th field; the name in parentheses, the 2nd, may hold spaces.
+            let ticks = stat
+                .rsplit_once(')')
+                .and_then(|(_, rest)| rest.split_whitespace().nth(11))
+                .and_then(|field| field.parse::<u64>().ok())
+                .ok_or_else(|| Error::missing("utime", &path.display().to_string()))?;
+            tasks.push(Task { pid, tid, ticks });
+        }
+    }
+    Ok(tasks)
+}
+
+/// Every process that descends from this one, the subreaper of the browser: the browser and every
+/// process it started, whatever exited between them.
+fn descendants() -> Result<Vec<i32>, Error> {
+    let root = nix::unistd::getpid().as_raw();
+    let proc = Path::new("/proc");
+    let mut parents = Vec::new();
+    for entry in fs::read_dir(proc).map_err(|source| Error::io(proc, source))? {
+        let entry = entry.map_err(|source| Error::io(proc, source))?;
+        let Some(pid) = number(&entry.file_name()) else {
+            continue;
+        };
+        let path = entry.path().join("stat");
+        let Some(stat) = gone(fs::read_to_string(&path), &path)? else {
+            continue;
+        };
+        let parent = stat
+            .rsplit_once(')')
+            .and_then(|(_, rest)| rest.split_whitespace().nth(1))
+            .and_then(|field| field.parse::<i32>().ok())
+            .ok_or_else(|| Error::missing("parent", &path.display().to_string()))?;
+        parents.push((pid, parent));
+    }
+    let mut found = vec![root];
+    let mut index = 0;
+    while let Some(&parent) = found.get(index) {
+        found.extend(
+            parents
+                .iter()
+                .filter(|(_, other)| *other == parent)
+                .map(|(pid, _)| *pid),
+        );
+        index += 1;
+    }
+    Ok(found.split_off(1))
+}
+
+/// The value of a read under `/proc`; `None` for a process or thread that exited meanwhile.
+fn gone<T>(result: io::Result<T>, path: &Path) -> Result<Option<T>, Error> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(source) => Err(Error::io(path, source)),
+    }
+}
+
+/// The number that names a directory under `/proc`.
+fn number(name: &std::ffi::OsStr) -> Option<i32> {
+    name.to_str().and_then(|name| name.parse().ok())
+}

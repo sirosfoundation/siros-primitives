@@ -8,7 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 
-use crate::count::{CPU, Window};
+use crate::count::CPU;
+use crate::window::Window;
 use crate::error::Error;
 use crate::record::{Cell, Key, Line, Measurement, Record, Sweep, Version};
 use crate::workspace::Sources;

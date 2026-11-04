@@ -1525,7 +1525,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             use p256::elliptic_curve::ops::{Invert, Reduce};
             type Scalar = p256::Scalar;
             let element = <Scalar as FromLimbs>::from_limbs;
-            let words = |limbs: &[u64]| p256::U256::from_words(array::<4>(limbs));
+            let words = |limbs: &[u64]| p256::U256::from_le_slice(&le_bytes(limbs));
             let reduce = <Scalar as Reduce<p256::U256>>::reduce;
             let read = <Scalar as ToLimbs>::to_limbs;
             let cells = word_ops(

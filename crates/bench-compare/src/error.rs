@@ -111,6 +111,18 @@ pub enum Error {
         /// The time counted.
         running: Duration,
     },
+    /// The browser of a WebAssembly bench, or its page, failed.
+    #[error("the browser: {reason}")]
+    Browser {
+        /// What failed.
+        reason: String,
+    },
+    /// A WebAssembly bench stopped.
+    #[error("the WebAssembly bench: {reason}")]
+    Bench {
+        /// The reason that it sent, or the error that its page caught.
+        reason: String,
+    },
     /// The target has no perf_event.
     #[error("measuring needs the perf_event counters of Linux")]
     NoPerfEvent,
@@ -200,6 +212,7 @@ impl Error {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn number(what: &str, text: &str, source: ParseIntError) -> Self {
         Self::Number {
             what: what.to_owned(),

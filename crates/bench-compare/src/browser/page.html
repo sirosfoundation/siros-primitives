@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>bench</title>
+<script>
+  'use strict';
+  try {
+    const shared = new SharedArrayBuffer(32);
+    new Worker('/helper.js').postMessage(shared);
+    new Worker('/worker.js').postMessage(shared);
+  } catch (error) {
+    fetch('/error', { method: 'POST', body: String(error && error.stack ? error.stack : error) });
+  }
+</script>

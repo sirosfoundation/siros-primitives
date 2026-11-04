@@ -1,5 +1,7 @@
 //! The bench executable: it checks every case of a [`Suite`], measures every case with the
-//! counters of one pinned CPU, and prints every cell as one JSON line, then the sweep.
+//! counters of one pinned CPU, and prints every cell as one JSON line, then the sweep. A
+//! WebAssembly bench sends its lines to the driver that runs it in a browser, which counts and
+//! adds the sweep.
 //!
 //! A sweep first checks every case and sizes its runs: `n` starts at 16 operations and doubles
 //! until a run of `n` operations, counted after an uncounted run of as many, takes [`TARGET`]
@@ -23,9 +25,7 @@
 //! whose `2n` runs count no more cycles than its `n` runs stops the sweep, and so does a chain
 //! step under [`FEWEST_STEP_CYCLES`].
 
-use std::fs;
 use std::mem::size_of;
-use std::path::Path;
 use std::process::ExitCode;
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
@@ -33,9 +33,9 @@ use crate::barrier::Ymm;
 use crate::barrier::{Barrier, Memory, touch};
 #[cfg(target_arch = "x86_64")]
 use crate::barrier::{Gpr, Xmm};
-use crate::counters::{Counters, Counts, pin};
+use crate::counters::{Counters, Counts};
 use crate::error::Error;
-use crate::record::{Cell, Class, Count, Events, Latency, Line, Load, Outcome, Sibling, Sweep};
+use crate::record::{Cell, Class, Count, Events, Latency, Line, Outcome};
 use crate::suite::{
     Call, CaseId, Chain, Function, Inputs, Rng, Suite, Visitor, run_batch, run_chain, visit,
 };
@@ -56,25 +56,36 @@ pub const TARGET: u64 = 1 << 20;
 pub const FEWEST_STEP_CYCLES: f64 = 0.75;
 
 /// The CPU of the measuring thread, unless `--cpu` names another.
-pub(crate) const CPU: usize = 15;
+pub const CPU: usize = 15;
 
 /// The seed of the operand sets of a sweep.
 const SEED: u64 = 0x5eed_0fc0_ffee;
 
-/// The most memory that the operand sets of a long run take.
-const FOOTPRINT: usize = 256 * 1024;
+/// The most memory that the operand sets of a long run take: 256 KiB, which the L2 cache holds.
+/// A count in a browser costs two requests to the driver, whose cycles vary by about 1,000
+/// between runs: the operand sets of a WebAssembly bench take up to 4 MiB, so a long run of the
+/// cheapest operation counts 100 times as many.
+const FOOTPRINT: usize = if cfg!(target_arch = "wasm32") {
+    4 * 1024 * 1024
+} else {
+    256 * 1024
+};
+
+/// The counted runs of each size that sizes a case, whose fewest cycles count: one natively. A
+/// count in a browser met an interruption of up to 800,000 cycles, which ended the sizing of a
+/// case at 16 operations.
+const SIZING: usize = if cfg!(target_arch = "wasm32") { 3 } else { 1 };
 
 /// The operations of the first sizing run, and the fewest of a short run.
 const FEWEST: usize = 16;
 
-/// The load average of the machine.
-const LOADAVG: &str = "/proc/loadavg";
-
-/// The time that each CPU spent in each state, in ticks.
-const STAT: &str = "/proc/stat";
+/// The empty counts of a WebAssembly bench before its sweep.
+#[cfg(target_arch = "wasm32")]
+const GLUE_COUNTS: usize = 1000;
 
 /// Runs the bench executable of `S`, named `name` in its messages, with the process arguments:
 /// `--cpu <cpu>` names the CPU of the measuring thread.
+#[cfg(not(target_arch = "wasm32"))]
 #[must_use]
 pub fn main<S: Suite>(name: &str) -> ExitCode {
     // `cargo bench` passes `--bench`.
@@ -105,15 +116,54 @@ pub fn main<S: Suite>(name: &str) -> ExitCode {
     }
 }
 
+/// Runs the WebAssembly bench of `S`, named `name` in its messages, in the page of the driver:
+/// it sends the line of every cell to the driver, or the reason for which it stops. A panic sends
+/// its message before the module traps.
+#[cfg(target_arch = "wasm32")]
+#[must_use]
+pub fn main<S: Suite>(name: &str) -> ExitCode {
+    std::panic::set_hook(Box::new(|info| crate::host::fail(&info.to_string())));
+    let measured = Counters::open().and_then(|mut counters| {
+        // The page's code of a count reaches the engine's optimizing tier before the sweep sizes
+        // the first case: its first count took 1.5 million cycles, its later ones 5,000.
+        for _ in 0..GLUE_COUNTS {
+            let (_, _) = counters.count(&mut || 0)?;
+        }
+        cells::<S>(&mut counters)
+    });
+    match measured {
+        Ok(lines) => {
+            for line in lines {
+                crate::host::emit(&line);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            crate::host::fail(&format!("{name}: {error}"));
+            ExitCode::FAILURE
+        }
+    }
+}
+
 /// Checks and measures every case on `cpu`; returns the line of every cell, in the order of
 /// [`visit`], then the line of the sweep.
+#[cfg(not(target_arch = "wasm32"))]
 fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
-    pin(cpu)?;
+    crate::counters::pin(cpu)?;
     let mut counters = Counters::open()?;
-    let window = Window::open(cpu)?;
+    let window = crate::window::Window::open(cpu)?;
+    let mut lines = cells::<S>(&mut counters)?;
+    let line = Line::<S::Key>::Sweep(window.close()?);
+    lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
+    Ok(lines)
+}
+
+/// Checks and measures every case with `counters`; returns the line of every cell, in the order
+/// of [`visit`].
+fn cells<S: Suite>(counters: &mut Counters) -> Result<Vec<String>, Error> {
     // Pass 0 checks and sizes the cases; pass `r` runs repetition `r`.
     let mut measuring = Measuring {
-        counters: &mut counters,
+        counters,
         pass: 0,
         rng: Rng(SEED),
         cells: Vec::new(),
@@ -131,7 +181,6 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
             return Err(error);
         }
     }
-    let sweep = window.close()?;
     let Measuring { cells, cases, .. } = measuring;
     let mut lines = Vec::with_capacity(cells.len() + 1);
     for (id, call) in &cells {
@@ -154,134 +203,7 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
         });
         lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
     }
-    let line = Line::<S::Key>::Sweep(sweep);
-    lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
     Ok(lines)
-}
-
-/// The span of a sweep on one CPU: the load at its start, and the ticks of the CPU's SMT siblings.
-pub(crate) struct Window {
-    cpu: usize,
-    before: f64,
-    siblings: Vec<(usize, Ticks)>,
-}
-
-impl Window {
-    /// Starts the span of a sweep on `cpu`.
-    pub(crate) fn open(cpu: usize) -> Result<Self, Error> {
-        let siblings = siblings(cpu)?
-            .into_iter()
-            .map(|sibling| Ok((sibling, ticks(sibling)?)))
-            .collect::<Result<Vec<_>, Error>>()?;
-        Ok(Self {
-            cpu,
-            before: load()?,
-            siblings,
-        })
-    }
-
-    /// Ends the span: the sweep with the load around it and the busy share of each sibling.
-    pub(crate) fn close(self) -> Result<Sweep, Error> {
-        let after = load()?;
-        let siblings = self
-            .siblings
-            .into_iter()
-            .map(|(sibling, before)| {
-                Ok(Sibling {
-                    cpu: sibling,
-                    busy: ticks(sibling)?.busy_since(&before, sibling)?,
-                })
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        Ok(Sweep {
-            cpu: self.cpu,
-            load: Load {
-                before: self.before,
-                after,
-            },
-            siblings,
-        })
-    }
-}
-
-/// The 1-minute load average.
-fn load() -> Result<f64, Error> {
-    let path = Path::new(LOADAVG);
-    let text = fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
-    let field = text
-        .split_whitespace()
-        .next()
-        .ok_or_else(|| Error::missing("load average", LOADAVG))?;
-    field.parse::<f64>().map_err(|source| Error::Load {
-        text: field.to_owned(),
-        source,
-    })
-}
-
-/// The SMT siblings of `cpu`, which share its core.
-fn siblings(cpu: usize) -> Result<Vec<usize>, Error> {
-    let path = format!("/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list");
-    let text = fs::read_to_string(&path).map_err(|source| Error::io(Path::new(&path), source))?;
-    let mut siblings = Vec::new();
-    // A list such as `15,31` or `14-15`.
-    for item in text.trim().split(',') {
-        let (first, last) = item.split_once('-').unwrap_or((item, item));
-        let parse = |text: &str| {
-            text.parse::<usize>()
-                .map_err(|source| Error::number("CPU", text, source))
-        };
-        siblings.extend((parse(first)?..=parse(last)?).filter(|sibling| *sibling != cpu));
-    }
-    Ok(siblings)
-}
-
-/// The ticks of one CPU in `/proc/stat`.
-struct Ticks {
-    busy: u64,
-    total: u64,
-}
-
-/// The ticks of `cpu` so far.
-fn ticks(cpu: usize) -> Result<Ticks, Error> {
-    let path = Path::new(STAT);
-    let text = fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
-    let name = format!("cpu{cpu}");
-    let fields = text
-        .lines()
-        .find_map(|line| {
-            let mut words = line.split_whitespace();
-            (words.next() == Some(name.as_str())).then(|| words.collect::<Vec<_>>())
-        })
-        .ok_or_else(|| Error::missing(&name, STAT))?;
-    let numbers = fields
-        .iter()
-        .map(|field| {
-            field
-                .parse::<u64>()
-                .map_err(|source| Error::number(&name, field, source))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    // user, nice, system, idle, iowait, irq, softirq, steal; guest time is part of user time.
-    let [user, nice, system, idle, iowait, irq, softirq, steal, ..] = numbers.as_slice() else {
-        return Err(Error::missing("eight states", &name));
-    };
-    let busy = user + nice + system + irq + softirq + steal;
-    Ok(Ticks {
-        busy,
-        total: busy + idle + iowait,
-    })
-}
-
-impl Ticks {
-    /// The busy share of `cpu` since `before`.
-    fn busy_since(&self, before: &Self, cpu: usize) -> Result<f64, Error> {
-        let missing = || Error::missing("ticks during the sweep", &format!("CPU {cpu}"));
-        let busy = self.busy.checked_sub(before.busy).ok_or_else(missing)?;
-        match self.total.checked_sub(before.total) {
-            None | Some(0) => Err(missing()),
-            Some(total) => Ok(busy as f64 / total as f64),
-        }
-    }
 }
 
 /// The most operations of a short run of a case whose operand sets are `I`: as many as fill
@@ -490,14 +412,17 @@ impl<O, K> Measuring<'_, O, K> {
     }
 
     /// The form of a case that `trial` runs, with the operations of its short run: 16, doubled
-    /// until a counted run after an uncounted run of as many operations counts [`TARGET`] cycles,
-    /// or until `cap`.
+    /// until the fewest cycles of [`SIZING`] counted runs after an uncounted run of as many
+    /// operations reach [`TARGET`], or until `cap`.
     fn size(&mut self, trial: &dyn Trial, cap: usize, id: &str) -> Result<Form, Error> {
         let mut operations = FEWEST;
         loop {
             self.warm(trial, operations, id)?;
-            let counts = self.counted(trial, operations, id)?;
-            if counts.cycles >= TARGET || operations >= cap {
+            let mut cycles = u64::MAX;
+            for _ in 0..SIZING {
+                cycles = cycles.min(self.counted(trial, operations, id)?.cycles);
+            }
+            if cycles >= TARGET || operations >= cap {
                 return Ok(Form {
                     operations,
                     repetitions: Vec::new(),
@@ -674,6 +599,8 @@ impl<O, K> Measuring<'_, O, K> {
         }
         #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
         self.chain::<I, R, Ymm>(index, inputs, run, name)?;
+        #[cfg(target_arch = "wasm32")]
+        self.chain::<I, R, crate::barrier::Locals>(index, inputs, run, name)?;
         self.chain::<I, R, Memory>(index, inputs, run, name)?;
         if self.cases[index].chains.is_empty() {
             return Err(Error::missing(

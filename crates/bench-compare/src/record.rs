@@ -85,6 +85,8 @@ pub enum Class {
     Ymm,
     /// One place on the stack, for a value of more than 64 bytes.
     Memory,
+    /// The locals of a WebAssembly build, with a copy in memory after each step.
+    Locals,
 }
 
 impl fmt::Display for Class {
@@ -94,6 +96,7 @@ impl fmt::Display for Class {
             Self::Xmm => "xmm registers",
             Self::Ymm => "ymm registers",
             Self::Memory => "memory",
+            Self::Locals => "WebAssembly locals",
         })
     }
 }
