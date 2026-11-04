@@ -203,7 +203,12 @@ fn long<L: ArrayLength, W: ArrayLength, M: Bits>(
     top: Top,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) -> Uint<M> {
-    Invariant::new(divisor, len).remainder::<W, M>(dividend, top, quotient)
+    Invariant::with(
+        divisor,
+        len,
+        #[inline(always)]
+        |invariant| invariant.remainder::<W, M>(dividend, top, quotient),
+    )
 }
 
 /// A divisor prepared for division: shifted left until the top bit of its top significant limb is
@@ -235,30 +240,49 @@ impl<L: ArrayLength> Invariant<L> {
     #[cfg_attr(debug_assertions, inline(never))]
     #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn new(divisor: &GenericArray<u64, L>, len: usize) -> Self {
+        Self::with(
+            divisor,
+            len,
+            #[inline(always)]
+            |invariant| invariant,
+        )
+    }
+
+    /// `f` of the divisor that [`Self::new`] prepares. Each variant and each shift passes to its
+    /// own call of `f`, where the compiler knows them: a division that prepares its divisor for
+    /// itself keeps none of it in memory.
+    #[inline(always)]
+    fn with<R>(divisor: &GenericArray<u64, L>, len: usize, f: impl FnOnce(Self) -> R) -> R {
         let top = divisor.get(len.wrapping_sub(1)).copied().unwrap_or(0);
         if top.leading_zeros() == 0 {
-            Self::prepare(divisor, len, top, 0)
+            Self::prepare(divisor, len, top, 0, f)
         } else {
-            Self::prepare(divisor, len, top, top.leading_zeros())
+            Self::prepare(divisor, len, top, top.leading_zeros(), f)
         }
     }
 
-    /// [`Self::new`] for the top significant limb `top` and its leading zeros `shift`.
+    /// [`Self::with`] for the top significant limb `top` and its leading zeros `shift`.
     #[inline(always)]
-    fn prepare(divisor: &GenericArray<u64, L>, len: usize, top: u64, shift: u32) -> Self {
+    fn prepare<R>(
+        divisor: &GenericArray<u64, L>,
+        len: usize,
+        top: u64,
+        shift: u32,
+        f: impl FnOnce(Self) -> R,
+    ) -> R {
         let limb = |index: usize| divisor.get(index).copied().unwrap_or(0);
         let next = limb(len.wrapping_sub(2));
         // The bits shifted out of the limb below the top one fill the top one.
         let high = NormalizedLimb::top_set(funnel_left(top, next, shift));
         match len {
-            1 => Self::Limb {
+            1 => f(Self::Limb {
                 divisor: Reciprocal::new(high),
                 shift,
-            },
-            2 => Self::TwoLimbs {
+            }),
+            2 => f(Self::TwoLimbs {
                 divisor: Reciprocal3By2::new(high, next << shift),
                 shift,
-            },
+            }),
             _ => {
                 let mut invariant = Self::Limbs {
                     normalized: GenericArray::default(),
@@ -273,7 +297,7 @@ impl<L: ArrayLength> Invariant<L> {
                 if let Self::Limbs { normalized, .. } = &mut invariant {
                     shl_bits_into(normalized, divisor, shift);
                 }
-                invariant
+                f(invariant)
             }
         }
     }
