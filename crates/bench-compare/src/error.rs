@@ -164,6 +164,21 @@ pub enum Error {
         /// The operations of a short run.
         operations: usize,
     },
+    /// The difference of rank [`RANK`](crate::RANK) of a WebAssembly case's long runs less its
+    /// short runs counts fewer cycles than 50 times the noise of a difference of two empty counts:
+    /// the measuring CPU ran other work between the counts.
+    #[error(
+        "{case}: the long runs count {cycles:.0} cycles more than the short runs, within 50 times \
+         the noise of two empty counts, {noise:.0}: the measuring CPU is busy"
+    )]
+    Noisy {
+        /// The case and its form.
+        case: String,
+        /// The difference.
+        cycles: f64,
+        /// The noise of a difference of two empty counts.
+        noise: f64,
+    },
     /// The bench of a build lacks a feature that the build enables.
     #[error("the bench of {package} was built without its feature {feature}")]
     Unbuilt {

@@ -34,8 +34,8 @@ pub use count::{CPU, FEWEST_STEP_CYCLES, RANK, REPETITIONS, TARGET, main};
 pub use document::{LOAD, Layout, Operation, markdown_table, report, sentence};
 pub use error::Error;
 pub use record::{
-    Cell, Class, Count, Engine, Events, Key, Latency, Line, Load, Measurement, Outcome, Record,
-    Sibling, Sweep, Version,
+    Cell, Class, Count, Engine, Events, Key, Latency, Line, Load, Measurement, Outcome, Overhead,
+    Record, Sibling, Sweep, Version,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use run::{

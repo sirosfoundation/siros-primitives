@@ -143,14 +143,30 @@ pub struct Sweep {
     pub siblings: Vec<Sibling>,
 }
 
-/// A line that the bench prints: every cell, then the sweep.
+/// A line that the bench prints: every cell, then the sweep. A WebAssembly bench sends the cost
+/// of a count first, and its driver adds the sweep.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Line<K> {
+    /// The cost of a count of a WebAssembly bench.
+    Overhead(Overhead),
     /// A cell.
     Cell(Cell<K>),
     /// The sweep.
     Sweep(Sweep),
+}
+
+/// The cost of a count of a WebAssembly bench, from empty counts before its sweep: the requests
+/// to the driver and the wake-up of the measuring thread.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct Overhead {
+    /// The median cycles of an empty count.
+    pub cycles: f64,
+    /// The median instructions of an empty count.
+    pub instructions: f64,
+    /// The noise of a difference of two empty counts: the larger magnitude of its differences of
+    /// rank [`RANK`](crate::RANK) from either end, among [`REPETITIONS`](crate::REPETITIONS).
+    pub noise: f64,
 }
 
 /// A crate and the version that `Cargo.lock` resolves.
@@ -209,6 +225,9 @@ pub struct Measurement<K> {
     pub target_features: Vec<String>,
     /// The browser that ran a WebAssembly build; `None` for a native build.
     pub browser: Option<Engine>,
+    /// The cost of a count in each bench of a WebAssembly build, in the order of the benches.
+    #[serde(default)]
+    pub overheads: Vec<Overhead>,
     /// The sweep that measured the build.
     pub sweep: Sweep,
     /// Every cell of the comparison.

@@ -415,7 +415,9 @@ const WEBASSEMBLY: &[&str] = &[
     "A second worker carries the start and the end of each count to the driver while the \
      measuring worker sleeps. The cost of a count cancels in the difference of two runs.",
     "The browser's flags compile every function with its optimizing tier when the module loads.",
-    "The operand sets of a long run take up to 4 MiB, against 256 KiB natively.",
+    "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count a \
+     million cycles. A case whose difference of two runs counts under 50 times the noise of two \
+     empty counts stops the sweep.",
     "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \
      whichever is faster.",
 ];
@@ -471,6 +473,7 @@ fn setup<K>(record: &Record<K>, heading: &str) -> Vec<String> {
                 label("Target features", build),
                 format!("`{}`", build.target_features.join("`, `")),
             ]);
+            rows.push(vec![label("Cost of a count", build), overheads(build)]);
         }
     }
     for build in &record.builds {
@@ -481,6 +484,26 @@ fn setup<K>(record: &Record<K>, heading: &str) -> Vec<String> {
     lines.extend(markdown_table(&[String::new(), String::new()], &rows, "ll"));
     lines.push(String::new());
     lines
+}
+
+/// The cost of an empty count in the benches of `build`, from the fewest to the most of them.
+fn overheads<K>(build: &Measurement<K>) -> String {
+    let range = |part: fn(&crate::record::Overhead) -> f64| {
+        let values: Vec<f64> = build.overheads.iter().map(part).collect();
+        let least = values.iter().copied().fold(f64::INFINITY, f64::min);
+        let most = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        if value(least) == value(most) {
+            value(least)
+        } else {
+            format!("{} to {}", value(least), value(most))
+        }
+    };
+    format!(
+        "{} cycles and {} instructions; the noise of a difference of two counts, {} cycles",
+        range(|overhead| overhead.cycles),
+        range(|overhead| overhead.instructions),
+        range(|overhead| overhead.noise)
+    )
 }
 
 /// The features that the builds enable beside the default ones of the measured package.

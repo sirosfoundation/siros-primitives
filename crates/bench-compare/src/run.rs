@@ -14,7 +14,7 @@ use crate::browser::{
 };
 use crate::count::CPU;
 use crate::error::Error;
-use crate::record::{Cell, Engine, Key, Line, Measurement, Record, Sweep, Version};
+use crate::record::{Cell, Engine, Key, Line, Measurement, Overhead, Record, Sweep, Version};
 use crate::window::Window;
 use crate::workspace::Sources;
 
@@ -292,14 +292,15 @@ pub fn bench<K: Key>(
                     settings: browser.settings(),
                 }),
             };
-            let (cells, sweep) = cells(paths, measured, build, &options)?;
+            let counted = cells(paths, measured, build, &options)?;
             Ok(Measurement {
                 name: build.name.to_owned(),
                 rustflags: build.rustflags.to_owned(),
                 target_features,
                 browser,
-                sweep,
-                cells,
+                overheads: counted.overheads,
+                sweep: counted.sweep,
+                cells: counted.cells,
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -348,7 +349,7 @@ fn cells<K: Key>(
     measured: &Measured,
     build: &Build,
     options: &Options,
-) -> Result<(Vec<Cell<K>>, Sweep), Error> {
+) -> Result<Counted<K>, Error> {
     let features = measured.features.join(",");
     let mut args = vec!["bench", "--locked", "-p", measured.package];
     if !features.is_empty() {
@@ -397,6 +398,12 @@ fn cells<K: Key>(
             match serde_json::from_str(line).map_err(Error::Cells)? {
                 Line::Cell(cell) => cells.push(cell),
                 Line::Sweep(sweep) => sweeps.push(sweep),
+                Line::Overhead(_) => {
+                    return Err(Error::missing(
+                        "cells and a sweep, where it sent the cost of a count",
+                        &format!("the lines of the bench {bench}"),
+                    ));
+                }
             }
         }
         match <[Sweep; 1]>::try_from(sweeps) {
@@ -418,7 +425,11 @@ fn cells<K: Key>(
             }
         }
     }
-    Ok((cells, window.close()?))
+    Ok(Counted {
+        cells,
+        sweep: window.close()?,
+        overheads: Vec::new(),
+    })
 }
 
 /// One JSON message of a cargo build: the fields that [`check_features`] reads.
@@ -514,24 +525,47 @@ fn browser_cells<K: Key>(
     executable: &Path,
     cpus: Cpus,
     modules: &[PathBuf],
-) -> Result<(Vec<Cell<K>>, Sweep), Error> {
+) -> Result<Counted<K>, Error> {
     let window = Window::open(cpus.measuring)?;
     let mut cells = Vec::new();
+    let mut overheads = Vec::with_capacity(modules.len());
     for path in modules {
         let module = fs::read(path).map_err(|source| Error::io(path, source))?;
+        let mut overhead = None;
         for line in run_in_browser(&module, browser, executable, cpus, Threads::Measuring)? {
             match serde_json::from_str(&line).map_err(Error::Cells)? {
-                Line::Cell(cell) => cells.push(cell),
-                Line::Sweep(_) => {
+                Line::Overhead(cost) if overhead.is_none() => overhead = Some(cost),
+                Line::Cell(cell) if overhead.is_some() => cells.push(cell),
+                Line::Overhead(_) | Line::Cell(_) | Line::Sweep(_) => {
                     return Err(Error::missing(
-                        "cells alone, where it sent a sweep",
-                        &format!("the WebAssembly bench {}", path.display()),
+                        "the cost of a count, then cells",
+                        &format!("the lines of the WebAssembly bench {}", path.display()),
                     ));
                 }
             }
         }
+        overheads.push(overhead.ok_or_else(|| {
+            Error::missing(
+                "cost of a count",
+                &format!("the lines of the WebAssembly bench {}", path.display()),
+            )
+        })?);
     }
-    Ok((cells, window.close()?))
+    Ok(Counted {
+        cells,
+        sweep: window.close()?,
+        overheads,
+    })
+}
+
+/// What the benches of one build counted.
+struct Counted<K> {
+    /// Every cell of the comparison.
+    cells: Vec<Cell<K>>,
+    /// The sweep that spans the benches.
+    sweep: Sweep,
+    /// The cost of a count in each WebAssembly bench; none natively.
+    overheads: Vec<Overhead>,
 }
 
 /// The standard output of `cargo` with `args` in the workspace at `root`, which must succeed. The

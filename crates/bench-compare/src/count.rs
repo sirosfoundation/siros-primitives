@@ -35,6 +35,8 @@ use crate::barrier::{Barrier, Memory, touch};
 use crate::barrier::{Gpr, Xmm};
 use crate::counters::{Counters, Counts};
 use crate::error::Error;
+#[cfg(target_arch = "wasm32")]
+use crate::record::Overhead;
 use crate::record::{Cell, Class, Count, Events, Latency, Line, Outcome};
 use crate::suite::{
     Call, CaseId, Chain, Function, Inputs, Rng, Suite, Visitor, run_batch, run_chain, visit,
@@ -61,20 +63,25 @@ pub const CPU: usize = 15;
 /// The seed of the operand sets of a sweep.
 const SEED: u64 = 0x5eed_0fc0_ffee;
 
-/// The most memory that the operand sets of a long run take: 256 KiB, which the L2 cache holds.
-/// A count in a browser costs two requests to the driver, whose cycles vary by about 1,000
-/// between runs: the operand sets of a WebAssembly bench take up to 4 MiB, so a long run of the
-/// cheapest operation counts 100 times as many.
-const FOOTPRINT: usize = if cfg!(target_arch = "wasm32") {
-    4 * 1024 * 1024
-} else {
-    256 * 1024
-};
+/// The most memory that the operand sets of a long run take.
+const FOOTPRINT: usize = 256 * 1024;
+
+/// Whether a run passes several times over its operand sets once they fill [`FOOTPRINT`], until
+/// it takes [`TARGET`] cycles: in a WebAssembly bench. A count in a browser costs two requests to
+/// the driver, whose cycles varied by 4,000 to 8,000 between counts on a loaded machine, against
+/// the 8,192 cycles of a long run of 8,192 one-cycle `add`s. Passes keep the operand sets in the
+/// L2 cache, as natively.
+const PASSES: bool = cfg!(target_arch = "wasm32");
 
 /// The counted runs of each size that sizes a case, whose fewest cycles count: one natively. A
 /// count in a browser met an interruption of up to 800,000 cycles, which ended the sizing of a
 /// case at 16 operations.
 const SIZING: usize = if cfg!(target_arch = "wasm32") { 3 } else { 1 };
+
+/// The fewest times the noise of a difference of two empty counts that a difference of a case
+/// counts, where the counts reach the counters through requests: its figure then moves by at most
+/// 2% with the cost of a count.
+const SIGNAL: f64 = 50.0;
 
 /// The operations of the first sizing run, and the fewest of a short run.
 const FEWEST: usize = 16;
@@ -124,12 +131,11 @@ pub fn main<S: Suite>(name: &str) -> ExitCode {
 pub fn main<S: Suite>(name: &str) -> ExitCode {
     std::panic::set_hook(Box::new(|info| crate::host::fail(&info.to_string())));
     let measured = Counters::open().and_then(|mut counters| {
-        // The page's code of a count reaches the engine's optimizing tier before the sweep sizes
-        // the first case: its first count took 1.5 million cycles, its later ones 5,000.
-        for _ in 0..GLUE_COUNTS {
-            let (_, _) = counters.count(&mut || 0)?;
-        }
-        cells::<S>(&mut counters)
+        let overhead = overhead(&mut counters)?;
+        let line = Line::<S::Key>::Overhead(overhead);
+        let mut lines = vec![serde_json::to_string(&line).map_err(Error::Cells)?];
+        lines.extend(cells::<S>(&mut counters, Some(overhead.noise))?);
+        Ok(lines)
     });
     match measured {
         Ok(lines) => {
@@ -145,6 +151,39 @@ pub fn main<S: Suite>(name: &str) -> ExitCode {
     }
 }
 
+/// The cost of a count of an empty region in the page, from the last `2 REPETITIONS` of
+/// [`GLUE_COUNTS`] counts. The earlier counts bring the page's code of a count to the engine's
+/// optimizing tier: its first count took 1.5 million cycles, its later ones 5,000.
+#[cfg(target_arch = "wasm32")]
+fn overhead(counters: &mut Counters) -> Result<Overhead, Error> {
+    let mut counts = Vec::with_capacity(GLUE_COUNTS);
+    for _ in 0..GLUE_COUNTS {
+        let (runs, counted) = counters.count(&mut || 0)?;
+        ran("an empty count", runs, 0)?;
+        counts.push(counted);
+    }
+    let last = &counts[GLUE_COUNTS - 2 * REPETITIONS..];
+    let median = |event: fn(&Counts) -> u64| {
+        let mut values: Vec<u64> = last.iter().map(event).collect();
+        let (_, median, _) = values.select_nth_unstable(REPETITIONS);
+        *median as f64
+    };
+    let mut differences: Vec<f64> = last
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|[first, second]| second.cycles as f64 - first.cycles as f64)
+        .collect();
+    differences.sort_by(f64::total_cmp);
+    Ok(Overhead {
+        cycles: median(|counts| counts.cycles),
+        instructions: median(|counts| counts.instructions),
+        noise: differences[RANK]
+            .abs()
+            .max(differences[REPETITIONS - 1 - RANK].abs()),
+    })
+}
+
 /// Checks and measures every case on `cpu`; returns the line of every cell, in the order of
 /// [`visit`], then the line of the sweep.
 #[cfg(not(target_arch = "wasm32"))]
@@ -152,15 +191,16 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
     crate::counters::pin(cpu)?;
     let mut counters = Counters::open()?;
     let window = crate::window::Window::open(cpu)?;
-    let mut lines = cells::<S>(&mut counters)?;
+    let mut lines = cells::<S>(&mut counters, None)?;
     let line = Line::<S::Key>::Sweep(window.close()?);
     lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
     Ok(lines)
 }
 
 /// Checks and measures every case with `counters`; returns the line of every cell, in the order
-/// of [`visit`].
-fn cells<S: Suite>(counters: &mut Counters) -> Result<Vec<String>, Error> {
+/// of [`visit`]. `noise` is the noise of a difference of two counts where the counts reach the
+/// counters through requests; such a difference counts at least [`SIGNAL`] times as many cycles.
+fn cells<S: Suite>(counters: &mut Counters, noise: Option<f64>) -> Result<Vec<String>, Error> {
     // Pass 0 checks and sizes the cases; pass `r` runs repetition `r`.
     let mut measuring = Measuring {
         counters,
@@ -191,7 +231,7 @@ fn cells<S: Suite>(counters: &mut Counters) -> Result<Vec<String>, Error> {
                     .iter()
                     .find(|case| case.id == name)
                     .ok_or_else(|| Error::missing(&name, "the measured cases"))?;
-                Outcome::Counted(case.count(function)?)
+                Outcome::Counted(case.count(function, noise)?)
             }
             Call::Absent(reason) => Outcome::Absent((*reason).to_owned()),
         };
@@ -206,16 +246,39 @@ fn cells<S: Suite>(counters: &mut Counters) -> Result<Vec<String>, Error> {
     Ok(lines)
 }
 
-/// The most operations of a short run of a case whose operand sets are `I`: as many as fill
+/// The most operand sets of a short run of a case whose operand sets are `I`: as many as fill
 /// [`FOOTPRINT`] with the operand sets of a long run, and at least [`FEWEST`].
 fn cap<I>() -> usize {
     (FOOTPRINT / (2 * size_of::<I>().max(1))).max(FEWEST)
 }
 
+/// The shape of a short run: `passes` passes over `sets` fresh operand sets. A long run passes as
+/// many times over twice as many sets.
+#[derive(Clone, Copy, Debug)]
+struct Run {
+    sets: usize,
+    passes: usize,
+}
+
+impl Run {
+    /// The operations of the run.
+    const fn operations(self) -> usize {
+        self.sets * self.passes
+    }
+
+    /// The long run of this short run.
+    const fn long(self) -> Self {
+        Self {
+            sets: 2 * self.sets,
+            passes: self.passes,
+        }
+    }
+}
+
 /// The counted runs of one form of a case.
 struct Form {
-    /// The operations of a short run.
-    operations: usize,
+    /// The shape of a short run.
+    run: Run,
     /// The counts of the short run and of the long run of every repetition.
     repetitions: Vec<[Counts; 2]>,
 }
@@ -223,9 +286,10 @@ struct Form {
 impl Form {
     /// The events per operation of the form `name`: the difference of rank [`RANK`], from the
     /// fewest, of the long run less the short run of each repetition, over the operations of a
-    /// short run. A cycle difference of zero or less is an [`Error::Flat`].
-    fn events(&self, name: &str) -> Result<Events, Error> {
-        let per = |event: fn(&Counts) -> u64| -> Result<f64, Error> {
+    /// short run. A cycle difference of zero or less is an [`Error::Flat`], and one under
+    /// [`SIGNAL`] times `noise` an [`Error::Noisy`].
+    fn events(&self, name: &str, noise: Option<f64>) -> Result<Events, Error> {
+        let difference = |event: fn(&Counts) -> u64| -> Result<f64, Error> {
             let mut differences: Vec<f64> = self
                 .repetitions
                 .iter()
@@ -235,17 +299,27 @@ impl Form {
                 return Err(Error::missing("repetitions", name));
             }
             let (_, difference, _) = differences.select_nth_unstable_by(RANK, f64::total_cmp);
-            Ok(*difference / self.operations as f64)
+            Ok(*difference)
         };
-        let cycles = per(|counts| counts.cycles)?;
+        let operations = self.run.operations();
+        let per = |event| Ok::<f64, Error>(difference(event)? / operations as f64);
+        let cycles = difference(|counts| counts.cycles)?;
         if cycles <= 0.0 {
             return Err(Error::Flat {
                 case: name.to_owned(),
-                operations: self.operations,
+                operations,
             });
         }
+        if let Some(noise) = noise.filter(|noise| cycles < SIGNAL * noise) {
+            return Err(Error::Noisy {
+                case: name.to_owned(),
+                cycles,
+                noise,
+            });
+        }
+        let cycles = cycles / operations as f64;
         Ok(Events {
-            operations: self.operations,
+            operations,
             cycles,
             instructions: per(|counts| counts.instructions)?,
             branch_misses: per(|counts| counts.branch_misses)?,
@@ -272,13 +346,13 @@ impl Case {
     /// The cell of the case, which runs `function`: its latency is its chain form with the fewest
     /// cycles per step. A chain step under [`FEWEST_STEP_CYCLES`], in any form, is an
     /// [`Error::Reassociated`].
-    fn count(&self, function: &Function) -> Result<Count, Error> {
+    fn count(&self, function: &Function, noise: Option<f64>) -> Result<Count, Error> {
         let latencies = self
             .chains
             .iter()
             .map(|chain| {
                 let name = format!("{} chain in {}", self.id, chain.class);
-                let events = chain.form.events(&name)?;
+                let events = chain.form.events(&name, noise)?;
                 if events.cycles < FEWEST_STEP_CYCLES {
                     return Err(Error::Reassociated {
                         case: name,
@@ -294,7 +368,7 @@ impl Case {
         Ok(Count {
             function: function.name.to_owned(),
             deviation: function.deviation.map(str::to_owned),
-            batch: self.batch.events(&self.id)?,
+            batch: self.batch.events(&self.id, noise)?,
             chain: latencies
                 .into_iter()
                 .min_by(|a, b| a.events.cycles.total_cmp(&b.events.cycles)),
@@ -334,25 +408,26 @@ fn ran(id: &str, runs: usize, count: usize) -> Result<(), Error> {
 /// One form of a case: the code that each case compiles. The rest of a sweep reaches it through
 /// `dyn`, so it compiles once.
 trait Trial {
-    /// Runs the form on `count` fresh inputs that `rng` draws, outside the counted region; returns
-    /// the number of runs.
-    fn warm(&self, rng: &mut Rng, count: usize) -> usize;
+    /// Runs the form in the shape `run` on fresh inputs that `rng` draws, outside the counted
+    /// region; returns the number of runs.
+    fn warm(&self, rng: &mut Rng, run: Run) -> usize;
 
-    /// Runs the form on `count` fresh inputs that `rng` draws, counted by `counters`; returns the
-    /// number of runs and the counts.
+    /// Runs the form in the shape `run` on fresh inputs that `rng` draws, counted by `counters`;
+    /// returns the number of runs and the counts.
     fn counted(
         &self,
         rng: &mut Rng,
-        count: usize,
+        run: Run,
         counters: &mut Counters,
     ) -> Result<(usize, Counts), Error>;
 
-    /// Runs the form on `count` fresh inputs, then on `2 count`, counted by `counters` back to
-    /// back: both runs draw their inputs first. Returns the number of runs and the counts of each.
+    /// Runs the form in the shape `run` on fresh inputs, then in its long shape, counted by
+    /// `counters` back to back: both runs draw their inputs first. Returns the number of runs and
+    /// the counts of each.
     fn pair(
         &self,
         rng: &mut Rng,
-        count: usize,
+        run: Run,
         counters: &mut Counters,
     ) -> Result<[(usize, Counts); 2], Error>;
 }
@@ -363,88 +438,99 @@ struct Region<'a, I, F> {
     region: F,
 }
 
+impl<I, F: Fn(&[I]) -> usize> Region<'_, I, F> {
+    /// Runs `region` `passes` times over `batch`; returns the number of runs.
+    fn passes(&self, batch: &[I], passes: usize) -> usize {
+        (0..passes).map(|_| (self.region)(batch)).sum()
+    }
+}
+
 impl<I, F: Fn(&[I]) -> usize> Trial for Region<'_, I, F> {
-    fn warm(&self, rng: &mut Rng, count: usize) -> usize {
-        let batch = self.inputs.draw(rng, count);
+    fn warm(&self, rng: &mut Rng, run: Run) -> usize {
+        let batch = self.inputs.draw(rng, run.sets);
         touch(&batch);
-        (self.region)(&batch)
+        self.passes(&batch, run.passes)
     }
 
     fn counted(
         &self,
         rng: &mut Rng,
-        count: usize,
+        run: Run,
         counters: &mut Counters,
     ) -> Result<(usize, Counts), Error> {
-        let batch = self.inputs.draw(rng, count);
+        let batch = self.inputs.draw(rng, run.sets);
         touch(&batch);
-        counters.count(&mut || (self.region)(&batch))
+        counters.count(&mut || self.passes(&batch, run.passes))
     }
 
     fn pair(
         &self,
         rng: &mut Rng,
-        count: usize,
+        run: Run,
         counters: &mut Counters,
     ) -> Result<[(usize, Counts); 2], Error> {
-        let short = self.inputs.draw(rng, count);
-        let long = self.inputs.draw(rng, 2 * count);
+        let short = self.inputs.draw(rng, run.sets);
+        let long = self.inputs.draw(rng, run.long().sets);
         touch(&long);
         touch(&short);
         Ok([
-            counters.count(&mut || (self.region)(&short))?,
-            counters.count(&mut || (self.region)(&long))?,
+            counters.count(&mut || self.passes(&short, run.passes))?,
+            counters.count(&mut || self.passes(&long, run.passes))?,
         ])
     }
 }
 
 impl<O, K> Measuring<'_, O, K> {
-    /// Runs `trial` on `count` fresh inputs, uncounted.
-    fn warm(&mut self, trial: &dyn Trial, count: usize, id: &str) -> Result<(), Error> {
-        ran(id, trial.warm(&mut self.rng, count), count)
+    /// Runs `trial` in the shape `run` on fresh inputs, uncounted.
+    fn warm(&mut self, trial: &dyn Trial, run: Run, id: &str) -> Result<(), Error> {
+        ran(id, trial.warm(&mut self.rng, run), run.operations())
     }
 
-    /// The counts of `trial` on `count` fresh inputs.
-    fn counted(&mut self, trial: &dyn Trial, count: usize, id: &str) -> Result<Counts, Error> {
-        let (runs, counts) = trial.counted(&mut self.rng, count, self.counters)?;
-        ran(id, runs, count)?;
+    /// The counts of `trial` in the shape `run` on fresh inputs.
+    fn counted(&mut self, trial: &dyn Trial, run: Run, id: &str) -> Result<Counts, Error> {
+        let (runs, counts) = trial.counted(&mut self.rng, run, self.counters)?;
+        ran(id, runs, run.operations())?;
         Ok(counts)
     }
 
-    /// The form of a case that `trial` runs, with the operations of its short run: 16, doubled
-    /// until the fewest cycles of [`SIZING`] counted runs after an uncounted run of as many
-    /// operations reach [`TARGET`], or until `cap`.
+    /// The form of a case that `trial` runs, with the shape of its short run: one pass over 16
+    /// operand sets, doubled until the fewest cycles of [`SIZING`] counted runs after an uncounted
+    /// run of the same shape reach [`TARGET`], or until `cap` sets. A WebAssembly bench then
+    /// doubles the passes over `cap` sets until the run reaches [`TARGET`].
     fn size(&mut self, trial: &dyn Trial, cap: usize, id: &str) -> Result<Form, Error> {
-        let mut operations = FEWEST;
+        let mut run = Run {
+            sets: FEWEST,
+            passes: 1,
+        };
         loop {
-            self.warm(trial, operations, id)?;
+            self.warm(trial, run, id)?;
             let mut cycles = u64::MAX;
             for _ in 0..SIZING {
-                cycles = cycles.min(self.counted(trial, operations, id)?.cycles);
+                cycles = cycles.min(self.counted(trial, run, id)?.cycles);
             }
-            if cycles >= TARGET || operations >= cap {
+            if cycles >= TARGET || (run.sets >= cap && !PASSES) {
                 return Ok(Form {
-                    operations,
+                    run,
                     repetitions: Vec::new(),
                 });
             }
-            operations = (2 * operations).min(cap);
+            if run.sets < cap {
+                run.sets = (2 * run.sets).min(cap);
+            } else {
+                run.passes *= 2;
+            }
         }
     }
 
-    /// Runs one repetition of a form through `trial`: its operations uncounted, then its
-    /// operations and twice as many counted back to back, each run on fresh inputs.
-    fn repetition(
-        &mut self,
-        trial: &dyn Trial,
-        operations: usize,
-        id: &str,
-    ) -> Result<[Counts; 2], Error> {
-        self.warm(trial, operations, id)?;
+    /// Runs one repetition of a form through `trial`: a run of the shape `run` uncounted, then a
+    /// run of that shape and one of its long shape counted back to back, each run on fresh
+    /// inputs.
+    fn repetition(&mut self, trial: &dyn Trial, run: Run, id: &str) -> Result<[Counts; 2], Error> {
+        self.warm(trial, run, id)?;
         let [(short_runs, short), (long_runs, long)] =
-            trial.pair(&mut self.rng, operations, self.counters)?;
-        ran(id, short_runs, operations)?;
-        ran(id, long_runs, 2 * operations)?;
+            trial.pair(&mut self.rng, run, self.counters)?;
+        ran(id, short_runs, run.operations())?;
+        ran(id, long_runs, run.long().operations())?;
         Ok([short, long])
     }
 
@@ -482,8 +568,8 @@ impl<O, K> Measuring<'_, O, K> {
             return Ok(());
         }
         let index = self.case(&id)?;
-        let operations = self.cases[index].batch.operations;
-        let counts = self.repetition(trial, operations, &id)?;
+        let run = self.cases[index].batch.run;
+        let counts = self.repetition(trial, run, &id)?;
         self.cases[index].batch.repetitions.push(counts);
         Ok(())
     }
@@ -515,13 +601,13 @@ impl<O, K> Measuring<'_, O, K> {
             return Ok(());
         }
         let missing = || Error::missing(&format!("chain in {class}"), id);
-        let operations = self.cases[index]
+        let run = self.cases[index]
             .chains
             .iter()
             .find(|chain| chain.class == class)
-            .map(|chain| chain.form.operations)
+            .map(|chain| chain.form.run)
             .ok_or_else(missing)?;
-        let counts = self.repetition(trial, operations, id)?;
+        let counts = self.repetition(trial, run, id)?;
         self.cases[index]
             .chains
             .iter_mut()
