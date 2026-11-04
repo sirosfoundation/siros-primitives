@@ -8,7 +8,7 @@ use core::ops::{
 };
 
 use biguint::generic_array::{ArrayLength, GenericArray};
-use biguint::typenum::{B0, B1, IsLessOrEqual, LeEq, Quot, Sum, U1, U2, U127, U128, Unsigned};
+use biguint::typenum::{B0, B1, IsLess, Le, Quot, Sum, U1, U127, U128, U256, Unsigned};
 use biguint::{Bits, OutOfRange, Uint};
 use const_default::ConstDefault;
 
@@ -132,7 +132,7 @@ where
     /// `ceil(N / 128)`.
     const LANES: usize;
 
-    /// The kernel of [`Poly::widening_mul`]: `B1` up to two registers, `B0` above.
+    /// The kernel of [`Poly::widening_mul`]: `B1` below 256 bits, `B0` from 256.
     #[doc(hidden)]
     type Pairs: PairKernel;
 }
@@ -143,14 +143,14 @@ where
     Sum<N, U127>: Div<U128>,
     Quot<Sum<N, U127>, U128>: ArrayLength,
     <Quot<Sum<N, U127>, U128> as ArrayLength>::ArrayType<Lane<U128>>: Copy + ConstDefault,
-    Quot<Sum<N, U127>, U128>: IsLessOrEqual<U2>,
-    LeEq<Quot<Sum<N, U127>, U128>, U2>: PairKernel,
+    N: IsLess<U256>,
+    Le<N, U256>: PairKernel,
 {
     type Lanes = Quot<Sum<N, U127>, U128>;
 
     const LANES: usize = <Quot<Sum<N, U127>, U128> as Unsigned>::USIZE;
 
-    type Pairs = LeEq<Quot<Sum<N, U127>, U128>, U2>;
+    type Pairs = Le<N, U256>;
 }
 
 /// A polynomial over GF(2) of degree below `N`: bit `i` is the coefficient of `x^i`.
@@ -563,7 +563,8 @@ impl<N: Width> Poly<N> {
         <N::Pairs as PairKernel>::widening_mul(self, rhs)
     }
 
-    /// [`Self::widening_mul`] of factors of at most two registers each: one copy of [`Self::add_pair`] per pair.
+    /// [`Self::widening_mul`] of factors of fewer than 256 bits each: one copy of
+    /// [`Self::add_pair`] per pair.
     /// The copies keep the operand in memory in a register: runs of closures over the pairs
     /// put narrowed loads (`vpbroadcastq`) of it on the chained GF(2^233) product, 4 cycles of
     /// latency.
@@ -630,7 +631,8 @@ impl<N: Width> Poly<N> {
         even
     }
 
-    /// [`Self::widening_mul`] by rows of [`each_lane`], for a factor of more than two registers.
+    /// [`Self::widening_mul`] by rows of [`each_lane`], for a factor of 256 bits or more: the
+    /// GF(2^256) square measured 1 cycle more with the pairs.
     #[inline(always)]
     fn mul_by_rows<M>(self, rhs: Poly<M>) -> Poly<Sum<N, M>>
     where
@@ -917,7 +919,7 @@ pub trait PairKernel {
         M: Width,
         Sum<N, M>: Width;
 
-    /// `a * b` for `a` of at most two registers and `b` of this kernel's width class.
+    /// `a * b` for `a` of fewer than 256 bits and `b` of this kernel's width class.
     fn widening_mul_by<N, M>(a: Poly<N>, b: Poly<M>) -> Poly<Sum<N, M>>
     where
         N: Width + Add<M>,
@@ -925,7 +927,7 @@ pub trait PairKernel {
         Sum<N, M>: Width;
 }
 
-/// A factor of more than two registers: rows of registers.
+/// A factor of 256 bits or more: rows of registers.
 impl PairKernel for B0 {
     #[inline(always)]
     fn widening_mul<N, M>(a: Poly<N>, b: Poly<M>) -> Poly<Sum<N, M>>
@@ -948,7 +950,7 @@ impl PairKernel for B0 {
     }
 }
 
-/// A factor of at most two registers: the pairs when the other factor has at most two as well.
+/// A factor of fewer than 256 bits: the pairs when the other factor has fewer as well.
 impl PairKernel for B1 {
     #[inline(always)]
     fn widening_mul<N, M>(a: Poly<N>, b: Poly<M>) -> Poly<Sum<N, M>>
