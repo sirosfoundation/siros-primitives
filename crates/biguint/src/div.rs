@@ -27,7 +27,7 @@ use crate::kernel::{
 };
 use crate::mul::WideningMul;
 use crate::nonzero::{NonZeroUint, significant_len};
-use crate::recursion::Halvings;
+use crate::recursion::{Halvings, Len, Limbs};
 use crate::stream::{LimbSource, ShlBits, ZeroExtended, funnel_left, funnel_right};
 use crate::uint::Uint;
 use reciprocal::{NormalizedLimb, Reciprocal, Reciprocal3By2, join};
@@ -338,18 +338,20 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
             dividend.len()
         }
     };
-    let (part, _) = split_mut(&mut window, span);
-    if len == L::USIZE {
-        // A divisor that fills its limbs passes its length as a constant, so the compiler unrolls
-        // the division as it does the multiplication.
-        if Shape::<W, L>::DIVIDE_AND_CONQUER {
-            divide_and_conquer::<M>(part, normalized.as_slice(), leading, quotient);
-        } else {
-            divide_by_limbs::<true>(part, normalized.as_slice(), leading, quotient);
-        }
+    if len == L::USIZE && Shape::<W, L>::DIVIDE_AND_CONQUER {
+        // The whole window, whose length lays out the blocks at compile time. Under `Top::Below`
+        // its top limb is zero: one more quotient limb, zero.
+        divide_and_conquer::<M, Limbs<W>, L>(&mut window, normalized, leading, quotient);
     } else {
-        let (significant, _) = split(normalized, len);
-        divide_by_limbs::<false>(part, significant, leading, quotient);
+        let (part, _) = split_mut(&mut window, span);
+        if len == L::USIZE {
+            // A divisor that fills its limbs passes its length as a constant, so the compiler
+            // unrolls the division as it does the multiplication.
+            divide_by_limbs::<true>(part, normalized.as_slice(), leading, quotient);
+        } else {
+            let (significant, _) = split(normalized, len);
+            divide_by_limbs::<false>(part, significant, leading, quotient);
+        }
     }
     let mut remainder = GenericArray::<u64, M::Limbs>::default();
     if shift == 0 {
@@ -360,17 +362,17 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
     Uint::from_generic_limbs(remainder)
 }
 
-/// [`dc::divide_window`] with its scratch for a remainder of `M` bits. The
-/// scratch takes stack only while the division runs.
+/// [`dc::divide_window`] of a `Span`-limb window by an `L`-limb divisor, with its scratch for a
+/// remainder of `M` bits. The scratch takes stack only while the division runs.
 #[inline]
-fn divide_and_conquer<M: Bits>(
+fn divide_and_conquer<M: Bits, Span: Len, L: ArrayLength>(
     window: &mut [u64],
-    divisor: &[u64],
+    divisor: &GenericArray<u64, L>,
     leading: Reciprocal3By2,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) {
     let mut scratch = GenericArray::<u64, M::DivisionScratch>::default();
-    dc::divide_window::<Halvings>(window, divisor, leading, quotient, &mut scratch);
+    dc::divide_window::<Halvings, Span, Limbs<L>>(window, divisor, leading, quotient, &mut scratch);
 }
 
 /// The dividend shifted left by `shift` in a window of `W` limbs: the bits shifted out of its top

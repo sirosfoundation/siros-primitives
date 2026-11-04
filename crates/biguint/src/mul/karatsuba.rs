@@ -7,7 +7,10 @@ use crate::kernel::{
     add_assign, add_flipped, add_limb, add_limb_masked, add_to, compare, fits, mask_of,
     negate_masked, split, split_mut, sub_assign, sub_into, sub_limb, sub_limb_masked,
 };
-use crate::recursion::{Depth, product_scratch};
+use crate::recursion::{
+    Depth, HalfDown, HalfUp, Len, basecase_of_slices, exact, halves_equal, prefix_mut,
+    product_scratch,
+};
 use crate::stream::{LimbSource, LimbStream, Op2CarryIter, SubOp, ZeroExtended};
 
 use super::basecase;
@@ -15,8 +18,9 @@ use super::basecase;
 /// Operands shorter than this many limbs multiply by the quadratic product.
 pub(crate) const THRESHOLD: usize = 16;
 
-/// Writes `a * b` to `out[..2n]` for `a` and `b` of `n` limbs, with the sub-products at depth
-/// `D`. `scratch` holds `product_scratch(n, D::LEVELS + 1)` limbs.
+/// Writes `a * b` to `out[..2n]` for `a` and `b` of `n = L` limbs, with the sub-products at depth
+/// `D`. `scratch` holds `product_scratch(n, D::LEVELS + 1)` limbs; other lengths run the
+/// quadratic product.
 ///
 /// With `a = a0 + a1 * β^h` and `b = b0 + b1 * β^h`, `h = ceil(n / 2)`, the product is
 /// `v0 + (v0 + vinf - vm1) * β^h + vinf * β^2h` for `v0 = a0 * b0`, `vinf = a1 * b1` and
@@ -24,14 +28,34 @@ pub(crate) const THRESHOLD: usize = 16;
 ///
 /// `MASKED` takes the signs of the differences and the carries under masks: no branch and no
 /// memory address depends on the operands.
-#[inline]
-pub(crate) fn karatsuba<D: Depth, const MASKED: bool>(
+#[inline(never)]
+pub(crate) fn karatsuba<D: Depth, L: Len, const MASKED: bool>(
     out: &mut [u64],
     a: &[u64],
     b: &[u64],
     scratch: &mut [u64],
 ) {
-    let half = a.len() - a.len() / 2;
+    karatsuba_inlined::<D, L, MASKED>(out, a, b, scratch);
+}
+
+/// [`karatsuba`] inlined into its caller.
+#[inline(always)]
+pub(crate) fn karatsuba_inlined<D: Depth, L: Len, const MASKED: bool>(
+    out: &mut [u64],
+    a: &[u64],
+    b: &[u64],
+    scratch: &mut [u64],
+) {
+    let (Some(a), Some(b)) = (exact(a, L::LEN), exact(b, L::LEN)) else {
+        return basecase_of_slices(out, a, b);
+    };
+    let (Some(out), Some(scratch)) = (
+        prefix_mut(out, 2 * L::LEN),
+        prefix_mut(scratch, product_scratch(L::LEN, D::LEVELS + 1)),
+    ) else {
+        return basecase_of_slices(out, a, b);
+    };
+    let half = HalfUp::<L>::LEN;
     let (a_low, a_high) = split(a, half);
     let (b_low, b_high) = split(b, half);
     let (difference_product, scratch) = split_mut(scratch, 2 * half);
@@ -41,13 +65,22 @@ pub(crate) fn karatsuba<D: Depth, const MASKED: bool>(
         let (a_difference, b_difference) = split_mut(lower, half);
         let negative = abs_difference::<MASKED>(a_difference, a_low, a_high)
             ^ abs_difference::<MASKED>(b_difference, b_low, b_high);
-        D::product_with::<MASKED>(difference_product, a_difference, b_difference, scratch);
+        D::product_with::<HalfUp<L>, MASKED>(
+            difference_product,
+            a_difference,
+            b_difference,
+            scratch,
+        );
         negative
     };
     {
         let (lower, upper) = split_mut(out, 2 * half);
-        D::product_with::<MASKED>(upper, a_high, b_high, scratch);
-        D::product_with::<MASKED>(lower, a_low, b_low, scratch);
+        if halves_equal::<L>() {
+            D::product_with::<HalfUp<L>, MASKED>(upper, a_high, b_high, scratch);
+        } else {
+            D::product_with::<HalfDown<L>, MASKED>(upper, a_high, b_high, scratch);
+        }
+        D::product_with::<HalfUp<L>, MASKED>(lower, a_low, b_low, scratch);
     }
     interpolate::<MASKED>(out, difference_product, negative, half);
 }
@@ -130,13 +163,13 @@ pub(crate) const fn blocks_scratch(len: usize, levels: usize) -> usize {
     2 * len + product_scratch(len, levels)
 }
 
-/// Writes `long * short` to `out[..long.len() + short.len()]` for `long.len() >= short.len()`:
-/// products of `short` with the blocks of `long` that are as long as `short`, added at their
-/// offsets, then the shorter last block by the quadratic product. Without `blocks_scratch` limbs of
-/// `scratch`, the whole product runs as the quadratic product.
+/// Writes `long * short` to `out[..long.len() + short.len()]` for `long.len() >= short.len()`,
+/// `short` of `Short` limbs: products of `short` with the blocks of `long` that are as long as
+/// `short`, added at their offsets, then the shorter last block by the quadratic product. Without
+/// `blocks_scratch` limbs of `scratch`, the whole product runs as the quadratic product.
 /// `MASKED` as for [`karatsuba`].
 #[inline(always)]
-pub(crate) fn blocks<D: Depth, const MASKED: bool>(
+pub(crate) fn blocks<D: Depth, Short: Len, const MASKED: bool>(
     out: &mut [u64],
     long: &[u64],
     short: &[u64],
@@ -156,7 +189,7 @@ pub(crate) fn blocks<D: Depth, const MASKED: bool>(
     let mut rest = long;
     while rest.len() >= len {
         let (block, tail) = split(rest, len);
-        D::product_with::<MASKED>(block_product, block, short, scratch);
+        D::product_with::<Short, MASKED>(block_product, block, short, scratch);
         add_block::<MASKED>(out, block_product, offset, len);
         offset += len;
         rest = tail;

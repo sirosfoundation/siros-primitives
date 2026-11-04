@@ -3,39 +3,67 @@
 //! half and two products of half the length, which Karatsuba computes below the schoolbook's
 //! quadratic cost.
 
+use core::marker::PhantomData;
+
 use super::reciprocal::Reciprocal3By2;
 use super::{QuotientSink, divide_by_limbs};
 use crate::kernel::{add_assign, add_mul_row, split, split_mut, sub_assign, sub_limb};
 use crate::mul::basecase;
 use crate::mul::karatsuba::{self, blocks, blocks_scratch};
-use crate::recursion::{Depth, divide_scratch};
+use crate::recursion::{
+    Depth, Difference, HalfDown, HalfUp, Len, divide_scratch, exact, exact_mut, prefix_mut,
+    schoolbook_of_slices,
+};
 
 /// Divisors shorter than this many limbs divide by schoolbook.
 pub(crate) const THRESHOLD: usize = 24;
 
-/// [`Depth::divide`] by halves: the upper quotient half from the upper half of the numerator and
-/// the divisor's upper half, corrected by the product with the divisor's lower half, then the
-/// lower quotient half the same way.
-#[inline]
-pub(crate) fn divide_halves<D: Depth>(
+/// [`Depth::divide`] by halves for a divisor of `L` limbs: the upper quotient half from the upper
+/// half of the numerator and the divisor's upper half, corrected by the product with the
+/// divisor's lower half, then the lower quotient half the same way. Other lengths divide by
+/// schoolbook.
+#[inline(never)]
+pub(crate) fn divide_halves<D: Depth, L: Len>(
     numerator: &mut [u64],
     divisor: &[u64],
     quotient: &mut [u64],
     leading: Reciprocal3By2,
     scratch: &mut [u64],
 ) -> u64 {
-    let len = divisor.len();
-    let lower = len / 2;
-    let upper = len - lower;
+    divide_halves_inlined::<D, L>(numerator, divisor, quotient, leading, scratch)
+}
+
+/// [`divide_halves`] inlined into its caller.
+#[inline(always)]
+pub(crate) fn divide_halves_inlined<D: Depth, L: Len>(
+    numerator: &mut [u64],
+    divisor: &[u64],
+    quotient: &mut [u64],
+    leading: Reciprocal3By2,
+    scratch: &mut [u64],
+) -> u64 {
+    let (Some(numerator), Some(divisor), Some(quotient)) = (
+        exact_mut(numerator, 2 * L::LEN),
+        exact(divisor, L::LEN),
+        exact_mut(quotient, L::LEN),
+    ) else {
+        return schoolbook_of_slices(numerator, divisor, quotient, leading);
+    };
+    let Some(scratch) = prefix_mut(scratch, divide_scratch(L::LEN, D::LEVELS + 1)) else {
+        return schoolbook_of_slices(numerator, divisor, quotient, leading);
+    };
+    let len = L::LEN;
+    let lower = HalfDown::<L>::LEN;
+    let upper = HalfUp::<L>::LEN;
     let (product, scratch) = split_mut(scratch, len);
     let (quotient_low, quotient_high) = split_mut(quotient, lower);
 
     let (divisor_low, divisor_high) = split(divisor, lower);
     let top = {
         let (_, part) = split_mut(numerator, 2 * lower);
-        D::divide(part, divisor_high, quotient_high, leading, scratch)
+        D::divide::<HalfUp<L>>(part, divisor_high, quotient_high, leading, scratch)
     };
-    near_product::<D>(product, quotient_high, divisor_low, scratch);
+    near_product::<D, HalfDown<L>>(product, quotient_high, divisor_low, scratch);
     let top = {
         let (_, window) = split_mut(numerator, lower);
         let (window, _) = split_mut(window, len);
@@ -46,9 +74,9 @@ pub(crate) fn divide_halves<D: Depth>(
     let low_top = {
         let (_, part) = split_mut(numerator, upper);
         let (part, _) = split_mut(part, 2 * lower);
-        D::divide(part, divisor_top, quotient_low, leading, scratch)
+        D::divide::<HalfDown<L>>(part, divisor_top, quotient_low, leading, scratch)
     };
-    near_product::<D>(product, divisor_bottom, quotient_low, scratch);
+    near_product::<D, HalfDown<L>>(product, divisor_bottom, quotient_low, scratch);
     let (window, _) = split_mut(numerator, len);
     let low_top = settle(window, product, divisor, low_top, lower, quotient_low);
     // The corrections bring the lower half below `2^(64 * lower)`.
@@ -60,11 +88,17 @@ pub(crate) fn divide_halves<D: Depth>(
 #[inline(always)]
 fn lower_half_fits(_top: u64) {}
 
-/// Writes `long * short` to `out` for `long` as long as `short` or one limb longer.
+/// Writes `long * short` to `out` for `short` of `Short` limbs and `long` as long or one limb
+/// longer.
 #[inline(always)]
-fn near_product<D: Depth>(out: &mut [u64], long: &[u64], short: &[u64], scratch: &mut [u64]) {
+fn near_product<D: Depth, Short: Len>(
+    out: &mut [u64],
+    long: &[u64],
+    short: &[u64],
+    scratch: &mut [u64],
+) {
     let (body, extra) = split(long, short.len());
-    D::product(out, body, short, scratch);
+    D::product::<Short>(out, body, short, scratch);
     if let Some(&top) = extra.first() {
         let (_, window) = split_mut(out, short.len());
         let (row, above) = split_mut(window, short.len());
@@ -108,34 +142,51 @@ const fn window_scratch(len: usize, levels: usize) -> usize {
     len + divide_scratch(len, levels)
 }
 
-/// Leaves `window mod divisor` in the low `divisor.len()` limbs of `window` and zeros above them,
-/// and gives the quotient limbs to `quotient`: blocks of `divisor.len()` quotient limbs from the
-/// top, the first block shorter when the quotient length is not a multiple. The top
-/// `divisor.len()` limbs of `window` are below `divisor`.
-#[inline]
-pub(super) fn divide_window<D: Depth>(
+/// The quotient limbs of the first block of a `W`-limb window divided by an `L`-limb divisor:
+/// the window's quotient limbs modulo `L`, or `L` when `L` divides them.
+pub(crate) struct FirstBlock<W, L>(PhantomData<(W, L)>);
+
+impl<W: Len, L: Len> Len for FirstBlock<W, L> {
+    const LEN: usize = {
+        let total = W::LEN.saturating_sub(L::LEN);
+        if total == 0 {
+            0
+        } else {
+            total - (total - 1) / L::LEN * L::LEN
+        }
+    };
+}
+
+/// Leaves `window mod divisor` in the low `L` limbs of the `W`-limb `window` and zeros above
+/// them, and gives the quotient limbs to `quotient`: blocks of `L` quotient limbs from the top,
+/// the first block shorter when the quotient length is not a multiple. The top `L` limbs of
+/// `window` are below the `L`-limb `divisor`. Other lengths divide by schoolbook.
+#[inline(always)]
+pub(super) fn divide_window<D: Depth, W: Len, L: Len>(
     window: &mut [u64],
     divisor: &[u64],
     leading: Reciprocal3By2,
     quotient: &mut (impl QuotientSink + ?Sized),
     scratch: &mut [u64],
 ) {
-    let len = divisor.len();
-    if scratch.len() < window_scratch(len, D::LEVELS) {
-        divide_by_limbs::<false>(window, divisor, leading, quotient);
-        return;
-    }
-    let total = window.len().saturating_sub(len);
+    let (Some(window), Some(divisor), Some(scratch)) = (
+        exact_mut(window, W::LEN),
+        exact(divisor, L::LEN),
+        prefix_mut(scratch, window_scratch(L::LEN, D::LEVELS)),
+    ) else {
+        return divide_by_limbs::<false>(window, divisor, leading, quotient);
+    };
+    let len = L::LEN;
+    let total = W::LEN.saturating_sub(len);
     if total == 0 {
         return;
     }
     let (block_quotient, scratch) = split_mut(scratch, len);
-    let first = total - (total - 1) / len * len;
+    let first = FirstBlock::<W, L>::LEN;
     let mut position = total - first;
-    divide_block::<D>(
+    divide_block::<D, L, FirstBlock<W, L>>(
         window,
         position,
-        first,
         divisor,
         block_quotient,
         leading,
@@ -144,15 +195,7 @@ pub(super) fn divide_window<D: Depth>(
     emit(quotient, position, split(block_quotient, first).0);
     while position >= len {
         position -= len;
-        divide_block::<D>(
-            window,
-            position,
-            len,
-            divisor,
-            block_quotient,
-            leading,
-            scratch,
-        );
+        divide_block::<D, L, L>(window, position, divisor, block_quotient, leading, scratch);
         emit(quotient, position, block_quotient);
     }
 }
@@ -165,24 +208,24 @@ fn emit(quotient: &mut (impl QuotientSink + ?Sized), position: usize, limbs: &[u
     }
 }
 
-/// Divides the `count + divisor.len()` limbs of `window` from limb `position` by `divisor`, their
-/// top `divisor.len()` limbs below it: `count` quotient limbs into `block_quotient`.
+/// Divides the `Count + L` limbs of `window` from limb `position` by the `L`-limb `divisor`,
+/// their top `L` limbs below it: `Count` quotient limbs into `block_quotient`.
 #[inline(always)]
-fn divide_block<D: Depth>(
+fn divide_block<D: Depth, L: Len, Count: Len>(
     window: &mut [u64],
     position: usize,
-    count: usize,
     divisor: &[u64],
     block_quotient: &mut [u64],
     leading: Reciprocal3By2,
     scratch: &mut [u64],
 ) {
-    let len = divisor.len();
+    let len = L::LEN;
+    let count = Count::LEN;
     let (_, part) = split_mut(window, position);
     let (part, _) = split_mut(part, count + len);
     let (quotient, _) = split_mut(block_quotient, count);
     if count == len {
-        quotient_fits(D::divide(part, divisor, quotient, leading, scratch));
+        quotient_fits(D::divide::<L>(part, divisor, quotient, leading, scratch));
     } else if count >= THRESHOLD && scratch.len() >= partial_scratch(len, count, D::LEVELS) {
         // The top `2 * count` limbs by the divisor's top `count` limbs, then the correction by
         // the product with the divisor's other limbs.
@@ -190,9 +233,9 @@ fn divide_block<D: Depth>(
         let (product, scratch) = split_mut(scratch, len);
         let top = {
             let (_, top_part) = split_mut(part, len - count);
-            D::divide(top_part, divisor_top, quotient, leading, scratch)
+            D::divide::<Count>(top_part, divisor_top, quotient, leading, scratch)
         };
-        any_product::<D>(product, quotient, divisor_low, scratch);
+        any_product::<D, Count, Difference<L, Count>>(product, quotient, divisor_low, scratch);
         let (window, _) = split_mut(part, len);
         quotient_fits(settle(window, product, divisor, top, count, quotient));
     } else {
@@ -223,15 +266,21 @@ const fn partial_scratch(len: usize, count: usize, levels: usize) -> usize {
     }
 }
 
-/// Writes `a * b` to `out[..a.len() + b.len()]` for operands of any lengths.
+/// Writes `a * b` to `out[..A + B]` for `a` of `A` and `b` of `B` limbs.
 #[inline(always)]
-fn any_product<D: Depth>(out: &mut [u64], a: &[u64], b: &[u64], scratch: &mut [u64]) {
-    let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
-    if short.len() < karatsuba::THRESHOLD {
-        basecase(out, long, short);
-    } else if long.len() == short.len() {
-        D::product(out, long, short, scratch);
+fn any_product<D: Depth, A: Len, B: Len>(
+    out: &mut [u64],
+    a: &[u64],
+    b: &[u64],
+    scratch: &mut [u64],
+) {
+    if A::LEN.min(B::LEN) < karatsuba::THRESHOLD {
+        basecase(out, a, b);
+    } else if A::LEN == B::LEN {
+        D::product::<A>(out, a, b, scratch);
+    } else if A::LEN > B::LEN {
+        blocks::<D, B, false>(out, a, b, scratch);
     } else {
-        blocks::<D, false>(out, long, short, scratch);
+        blocks::<D, A, false>(out, b, a, scratch);
     }
 }

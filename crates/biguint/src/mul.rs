@@ -16,7 +16,7 @@ use generic_array::{ArrayLength, GenericArray};
 use typenum::Sum;
 
 use crate::bits::Bits;
-use crate::recursion::{Depth, Halvings};
+use crate::recursion::{Depth, Halvings, Limbs};
 use crate::uint::Uint;
 use karatsuba::{THRESHOLD, blocks};
 
@@ -135,12 +135,24 @@ pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength, const MASKED
     a: &GenericArray<u64, A>,
     b: &GenericArray<u64, B>,
 ) -> GenericArray<u64, P::Limbs> {
+    if Shape::<A, B, P::Limbs>::KARATSUBA {
+        return karatsuba_full::<P, A, B, MASKED>(a, b);
+    }
     let mut product = GenericArray::<u64, P::Limbs>::default();
-    if !Shape::<A, B, P::Limbs>::KARATSUBA {
-        basecase::product(&mut product, a, b);
-    } else if A::USIZE == B::USIZE {
+    basecase::product(&mut product, a, b);
+    product
+}
+
+/// [`full_product`] by [`karatsuba_product`]: a call that owns the product and its scratch.
+#[inline]
+fn karatsuba_full<P: Bits, A: ArrayLength, B: ArrayLength, const MASKED: bool>(
+    a: &GenericArray<u64, A>,
+    b: &GenericArray<u64, B>,
+) -> GenericArray<u64, P::Limbs> {
+    let mut product = GenericArray::<u64, P::Limbs>::default();
+    if A::USIZE == B::USIZE {
         // The difference products need about seven eighths of the product's limbs.
-        karatsuba_into::<P, MASKED>(
+        karatsuba_into::<P, A, B, MASKED>(
             &mut product,
             a,
             b,
@@ -148,7 +160,7 @@ pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength, const MASKED
         );
     } else {
         // The block product and its difference products.
-        karatsuba_into::<P, MASKED>(
+        karatsuba_into::<P, A, B, MASKED>(
             &mut product,
             a,
             b,
@@ -160,18 +172,18 @@ pub(crate) fn full_product<P: Bits, A: ArrayLength, B: ArrayLength, const MASKED
 
 /// `a * b` into `product`, the `P::LIMBS` limbs of the width `P`, by [`karatsuba_product`].
 #[inline(always)]
-fn karatsuba_into<P: Bits, const MASKED: bool>(
+fn karatsuba_into<P: Bits, A: ArrayLength, B: ArrayLength, const MASKED: bool>(
     product: &mut [u64],
     a: &[u64],
     b: &[u64],
     scratch: &mut [u64],
 ) {
     if P::LIMBS >= a.len() + b.len() {
-        karatsuba_product::<MASKED>(product, a, b, scratch);
+        karatsuba_product::<A, B, MASKED>(product, a, b, scratch);
     } else {
         // The top limb of the full product is zero; it needs a place to land.
         let mut wide = GenericArray::<u64, P::Window>::default();
-        karatsuba_product::<MASKED>(&mut wide, a, b, scratch);
+        karatsuba_product::<A, B, MASKED>(&mut wide, a, b, scratch);
         for (slot, &limb) in product.iter_mut().zip(wide.iter()) {
             *slot = limb;
         }
@@ -184,28 +196,40 @@ pub(crate) fn truncated_product<N: Bits, B: ArrayLength, const MASKED: bool>(
     a: &GenericArray<u64, N::Limbs>,
     b: &GenericArray<u64, B>,
 ) -> GenericArray<u64, N::Limbs> {
-    let mut product = GenericArray::<u64, N::Limbs>::default();
     if Shape::<N::Limbs, B, N::Limbs>::TRUNCATED_SPLIT {
-        let mut scratch = GenericArray::<u64, N::TruncatedScratch>::default();
-        Halvings::truncated_with::<MASKED>(&mut product, a, b, &mut scratch);
-    } else {
-        basecase::product(&mut product, a, b);
+        return split_truncated::<N, MASKED>(a, b);
     }
+    let mut product = GenericArray::<u64, N::Limbs>::default();
+    basecase::product(&mut product, a, b);
     product
 }
 
-/// `a * b` into `product`, both operands at least [`THRESHOLD`] limbs long.
+/// [`truncated_product`] of two `N`-bit operands by divide and conquer: a call that owns the
+/// product and its scratch.
+#[inline]
+fn split_truncated<N: Bits, const MASKED: bool>(
+    a: &[u64],
+    b: &[u64],
+) -> GenericArray<u64, N::Limbs> {
+    let mut product = GenericArray::<u64, N::Limbs>::default();
+    let mut scratch = GenericArray::<u64, N::TruncatedScratch>::default();
+    Halvings::entry_truncated::<Limbs<N::Limbs>, MASKED>(&mut product, a, b, &mut scratch);
+    product
+}
+
+/// `a * b` into `product`, `a` of `A` and `b` of `B` limbs, both at least [`THRESHOLD`].
 #[inline(always)]
-fn karatsuba_product<const MASKED: bool>(
+fn karatsuba_product<A: ArrayLength, B: ArrayLength, const MASKED: bool>(
     product: &mut [u64],
     a: &[u64],
     b: &[u64],
     scratch: &mut [u64],
 ) {
-    let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
-    if long.len() == short.len() {
-        Halvings::product_with::<MASKED>(product, long, short, scratch);
+    if A::USIZE == B::USIZE {
+        Halvings::entry_product::<Limbs<A>, MASKED>(product, a, b, scratch);
+    } else if A::USIZE > B::USIZE {
+        blocks::<Halvings, Limbs<B>, MASKED>(product, a, b, scratch);
     } else {
-        blocks::<Halvings, MASKED>(product, long, short, scratch);
+        blocks::<Halvings, Limbs<A>, MASKED>(product, b, a, scratch);
     }
 }

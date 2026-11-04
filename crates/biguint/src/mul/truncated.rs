@@ -2,8 +2,12 @@
 //! `mpn_dc_mullo_n`): the full product of the low parts and the truncated cross products of the
 //! high parts, which split again.
 
+use core::marker::PhantomData;
+
 use crate::kernel::{add_assign, split, split_mut};
-use crate::recursion::{Depth, product_scratch};
+use crate::recursion::{
+    Depth, Len, basecase_of_slices, exact, exact_mut, prefix_mut, product_scratch,
+};
 
 use super::basecase::truncate_carry;
 
@@ -57,32 +61,67 @@ pub(crate) const fn scratch_len(len: usize, levels: usize) -> usize {
     if below > longest { below } else { longest }
 }
 
-/// Writes `a * b mod 2^(64 * n)` to `out`, all three `n` limbs long: with `a = a0 + a1 β^m` and
-/// `b = b0 + b1 β^m`, the low `n` limbs of the full product `a0 * b0` at depth `F`, plus `a1 * b0`
-/// and `a0 * b1` modulo `β^(n - m)` at depth `C`, added at limb `m`. `scratch` holds
-/// [`scratch_len`] limbs for the levels of `F`. `MASKED` as for [`Depth::product_with`].
-#[inline]
-pub(crate) fn split_product<F: Depth, C: Depth, const MASKED: bool>(
+/// Writes `a * b mod 2^(64 * n)` to `out`, all three `n = L` limbs long: with `a = a0 + a1 β^m`
+/// and `b = b0 + b1 β^m`, the low `n` limbs of the full product `a0 * b0` at depth `F`, plus
+/// `a1 * b0` and `a0 * b1` modulo `β^(n - m)` at depth `C`, added at limb `m`. `scratch` holds
+/// [`scratch_len`] limbs for the levels of `F`; other lengths run the quadratic product. `MASKED`
+/// as for [`Depth::product_with`].
+#[inline(never)]
+pub(crate) fn split_product<F: Depth, C: Depth, L: Len, const MASKED: bool>(
     out: &mut [u64],
     a: &[u64],
     b: &[u64],
     scratch: &mut [u64],
 ) {
-    let high = high_part(out.len());
-    let low = out.len() - high;
+    split_product_inlined::<F, C, L, MASKED>(out, a, b, scratch);
+}
+
+/// [`split_product`] inlined into its caller.
+#[inline(always)]
+pub(crate) fn split_product_inlined<F: Depth, C: Depth, L: Len, const MASKED: bool>(
+    out: &mut [u64],
+    a: &[u64],
+    b: &[u64],
+    scratch: &mut [u64],
+) {
+    let (Some(a), Some(b)) = (exact(a, L::LEN), exact(b, L::LEN)) else {
+        return basecase_of_slices(out, a, b);
+    };
+    let (Some(out), Some(scratch)) = (
+        exact_mut(out, L::LEN),
+        prefix_mut(scratch, scratch_len(L::LEN, F::LEVELS)),
+    ) else {
+        return basecase_of_slices(out, a, b);
+    };
+    let high = High::<L>::LEN;
+    let low = Low::<L>::LEN;
     let (a0, a1) = split(a, low);
     let (b0, b1) = split(b, low);
     {
         let (full, scratch) = split_mut(scratch, 2 * low);
-        F::product_with::<MASKED>(full, a0, b0, scratch);
+        F::product_with::<Low<L>, MASKED>(full, a0, b0, scratch);
         for (slot, &limb) in out.iter_mut().zip(full.iter()) {
             *slot = limb;
         }
     }
     let (cross, scratch) = split_mut(scratch, high);
     let (_, top) = split_mut(out, low);
-    C::truncated_with::<MASKED>(cross, a1, split(b0, high).0, scratch);
+    C::truncated_with::<High<L>, MASKED>(cross, a1, split(b0, high).0, scratch);
     truncate_carry(add_assign(top, cross));
-    C::truncated_with::<MASKED>(cross, b1, split(a0, high).0, scratch);
+    C::truncated_with::<High<L>, MASKED>(cross, b1, split(a0, high).0, scratch);
     truncate_carry(add_assign(top, cross));
+}
+
+/// The high part of a split of `P` limbs, [`high_part`].
+pub(crate) struct High<P>(PhantomData<P>);
+
+impl<P: Len> Len for High<P> {
+    const LEN: usize = high_part(P::LEN);
+}
+
+/// The low part of a split of `P` limbs, below [`High`].
+pub(crate) struct Low<P>(PhantomData<P>);
+
+impl<P: Len> Len for Low<P> {
+    const LEN: usize = P::LEN - high_part(P::LEN);
 }
