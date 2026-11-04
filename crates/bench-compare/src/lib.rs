@@ -15,7 +15,7 @@ pub use barrier::Ymm;
 pub use barrier::{Barrier, Memory};
 #[cfg(target_arch = "x86_64")]
 pub use barrier::{Gpr, Xmm};
-pub use count::{FEWEST_STEP_CYCLES, REPETITIONS, TARGET, main};
+pub use count::{FEWEST_STEP_CYCLES, RANK, REPETITIONS, TARGET, main};
 pub use document::{LOAD, Layout, Operation, markdown_table, report, sentence};
 pub use error::Error;
 pub use record::{

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::fs;
 
-use crate::count::REPETITIONS;
+use crate::count::{RANK, REPETITIONS};
 use crate::error::Error;
 use crate::record::{Cell, Count, Key, Measurement, Outcome, Record, Sweep};
 use crate::run::Paths;
@@ -453,8 +453,9 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
          faster."
             .to_owned(),
         format!(
-            "- Each figure: over {REPETITIONS} repetitions, the fewest cycles of 2n operations \
-             less the fewest of n, over n."
+            "- Each figure: the cycles of 2n operations less those of n, over n, of rank {} from \
+             the fewest among {REPETITIONS} repetitions that count both runs back to back.",
+            RANK + 1
         ),
     ];
     if record.builds.iter().any(|build| loaded(&build.sweep)) {

@@ -136,7 +136,8 @@ pub enum Error {
         /// The operations it drew.
         count: usize,
     },
-    /// The fewest cycles of a case's long runs are no more than the fewest of its short runs.
+    /// The difference of rank [`RANK`](crate::RANK) of a case's long runs less its short runs
+    /// counts no cycles.
     #[error(
         "{case}: the runs of {} operations count no more cycles than the runs of {operations}",
         2 * operations

@@ -6,16 +6,20 @@
 //! cycles, or until the operand sets of a run of `2n` would outgrow 256 KiB. It then
 //! runs [`REPETITIONS`] repetitions of every case, interleaved: repetition `r` of every case runs
 //! before repetition `r + 1` of any case. A repetition of a case draws fresh operand sets for
-//! every run, outside the counted region; it runs `n` operations uncounted, then counts a run of
-//! `n` operations and a run of `2n` through [`run_batch`]. A case with a chain form does the same
-//! through [`run_chain`] once per [`Barrier`] that holds its result, each with its own `n`. The
-//! figure per operation of an event is the fewest that a `2n` run counts less the fewest that an
-//! `n` run counts, divided by `n`: the fixed cost of a run cancels. A disturbance only adds
-//! counts, so the fewest of each length is its undisturbed run (Chen and Revels, "Robust
-//! benchmarking in noisy environments", 2016). A run shares its core with the sibling hardware
-//! thread: a one-`add` chain step took 1 cycle while the sibling idled and 2 while it ran, and a
-//! median of paired differences fell to 0.06 cycles where the two runs of a pair met different
-//! siblings. The latency of a case is its chain with the fewest cycles. A case
+//! every run, outside the counted region; it runs `n` operations uncounted, then draws the
+//! operand sets of a run of `n` operations and of a run of `2n`, and counts both runs back to back
+//! through [`run_batch`]. A case with a chain form does the same through [`run_chain`] once per
+//! [`Barrier`] that holds its result, each with its own `n`. The figure per operation of an event
+//! is the difference of the `2n` count less the `n` count of rank [`RANK`] among the repetitions,
+//! from the fewest, divided by `n`: the fixed cost of a run cancels. A run shares its core with
+//! the sibling hardware thread, which only adds counts: a one-`add` chain step took 1 cycle while
+//! the sibling idled and 2 while it ran. Two runs counted back to back mostly meet the same
+//! sibling, so a low difference is a pair that met an idle one (Chen and Revels, "Robust
+//! benchmarking in noisy environments", 2016, for the minimum). The rank passes over a few pairs
+//! whose runs met different siblings, the case where a median of differences fell to 0.06 cycles
+//! per step, and over a few long runs whose operands ran a fast path: a GF(2⁸) square chain that
+//! started at 1 took 19 instructions per step against 218. The latency of a case is its chain
+//! with the fewest cycles. A case
 //! whose `2n` runs count no more cycles than its `n` runs stops the sweep, and so does a chain
 //! step under [`FEWEST_STEP_CYCLES`].
 
@@ -38,6 +42,10 @@ use crate::suite::{
 
 /// The counted repetitions of every case.
 pub const REPETITIONS: usize = 31;
+
+/// The rank, from the fewest, of the repetition whose difference a figure takes: the fourth of
+/// 31. It passes over three pairs that the sibling thread or a fast path disturbed.
+pub const RANK: usize = REPETITIONS / 8;
 
 /// The cycles that a short run takes at least, unless its operations reach their cap.
 pub const TARGET: u64 = 1 << 20;
@@ -291,22 +299,21 @@ struct Form {
 }
 
 impl Form {
-    /// The events per operation of the form `name`: the fewest that a long run counts less the
-    /// fewest that a short run counts, over the operations of a short run. Long runs whose fewest
-    /// cycles are no more than the short runs' are an [`Error::Flat`].
+    /// The events per operation of the form `name`: the difference of rank [`RANK`], from the
+    /// fewest, of the long run less the short run of each repetition, over the operations of a
+    /// short run. A cycle difference of zero or less is an [`Error::Flat`].
     fn events(&self, name: &str) -> Result<Events, Error> {
-        let fewest = |value: &dyn Fn(&[Counts; 2]) -> u64| -> Result<u64, Error> {
-            self.repetitions
-                .iter()
-                .map(value)
-                .min()
-                .ok_or_else(|| Error::missing("repetitions", name))
-        };
         let per = |event: fn(&Counts) -> u64| -> Result<f64, Error> {
-            let long = fewest(&|[_, long]| event(long))?;
-            let short = fewest(&|[short, _]| event(short))?;
-            let difference = long as f64 - short as f64;
-            Ok(difference / self.operations as f64)
+            let mut differences: Vec<f64> = self
+                .repetitions
+                .iter()
+                .map(|[short, long]| event(long) as f64 - event(short) as f64)
+                .collect();
+            if differences.len() <= RANK {
+                return Err(Error::missing("repetitions", name));
+            }
+            let (_, difference, _) = differences.select_nth_unstable_by(RANK, f64::total_cmp);
+            Ok(*difference / self.operations as f64)
         };
         let cycles = per(|counts| counts.cycles)?;
         if cycles <= 0.0 {
@@ -417,6 +424,15 @@ trait Trial {
         count: usize,
         counters: &mut Counters,
     ) -> Result<(usize, Counts), Error>;
+
+    /// Runs the form on `count` fresh inputs, then on `2 count`, counted by `counters` back to
+    /// back: both runs draw their inputs first. Returns the number of runs and the counts of each.
+    fn pair(
+        &self,
+        rng: &mut Rng,
+        count: usize,
+        counters: &mut Counters,
+    ) -> Result<[(usize, Counts); 2], Error>;
 }
 
 /// A form of a case: `region` runs a batch of the inputs that `inputs` draws.
@@ -441,6 +457,22 @@ impl<I, F: Fn(&[I]) -> usize> Trial for Region<'_, I, F> {
         let batch = self.inputs.draw(rng, count);
         touch(&batch);
         counters.count(&mut || (self.region)(&batch))
+    }
+
+    fn pair(
+        &self,
+        rng: &mut Rng,
+        count: usize,
+        counters: &mut Counters,
+    ) -> Result<[(usize, Counts); 2], Error> {
+        let short = self.inputs.draw(rng, count);
+        let long = self.inputs.draw(rng, 2 * count);
+        touch(&long);
+        touch(&short);
+        Ok([
+            counters.count(&mut || (self.region)(&short))?,
+            counters.count(&mut || (self.region)(&long))?,
+        ])
     }
 }
 
@@ -476,7 +508,7 @@ impl<O, K> Measuring<'_, O, K> {
     }
 
     /// Runs one repetition of a form through `trial`: its operations uncounted, then its
-    /// operations and twice as many counted, each run on fresh inputs.
+    /// operations and twice as many counted back to back, each run on fresh inputs.
     fn repetition(
         &mut self,
         trial: &dyn Trial,
@@ -484,10 +516,11 @@ impl<O, K> Measuring<'_, O, K> {
         id: &str,
     ) -> Result<[Counts; 2], Error> {
         self.warm(trial, operations, id)?;
-        Ok([
-            self.counted(trial, operations, id)?,
-            self.counted(trial, 2 * operations, id)?,
-        ])
+        let [(short_runs, short), (long_runs, long)] =
+            trial.pair(&mut self.rng, operations, self.counters)?;
+        ran(id, short_runs, operations)?;
+        ran(id, long_runs, 2 * operations)?;
+        Ok([short, long])
     }
 
     /// The index of the case `id` in this pass, which pass 0 took note of.
