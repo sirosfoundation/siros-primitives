@@ -100,6 +100,7 @@ macro_rules! division_steps {
         /// `(quotient + 1, remainder - divisor)`.
         #[inline(always)]
         fn one_more(quotient: $word, remainder: $word, divisor: $word) -> ($word, $word) {
+            crate::limb::rare();
             (quotient + 1, remainder - divisor)
         }
 
@@ -185,6 +186,7 @@ macro_rules! division_steps {
             remainder: $double,
             divisor: $double,
         ) -> ($word, $double) {
+            crate::limb::rare();
             (quotient + 1, remainder - divisor)
         }
     };

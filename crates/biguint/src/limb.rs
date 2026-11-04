@@ -12,6 +12,13 @@ pub(crate) const fn mask_below(a: u64, b: u64) -> u64 {
     ((a as u128).wrapping_sub(b as u128) >> 64) as u64
 }
 
+/// Marks the path that calls it as rare, which LLVM then branches around. A rare correction without
+/// it became conditional moves that every division step ran: 8 of the 64 instructions per quotient
+/// limb of a 256-bit modular product.
+#[cold]
+#[inline(always)]
+pub(crate) const fn rare() {}
+
 /// Add-with-carry on a `u64` limb.
 pub(crate) trait CarryingAdd: Sized {
     /// `self + rhs + carry` as `(sum mod 2^64, carry_out)`, with carries in `{0, 1}`.
