@@ -83,6 +83,9 @@ pub enum Error {
     /// A line of the bench is no cell.
     #[error("the bench: {0}")]
     Cells(serde_json::Error),
+    /// The output of `cargo metadata` is no workspace description.
+    #[error("the output of cargo metadata: {0}")]
+    Metadata(serde_json::Error),
     /// A line of a cargo build with `--message-format=json` is no message.
     #[error("the messages of cargo: {0}")]
     Messages(serde_json::Error),

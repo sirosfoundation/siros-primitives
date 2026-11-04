@@ -22,18 +22,6 @@ impl fmt::Display for Field {
 const MEASURED: Measured = Measured {
     package: "prime-field",
     benches: &["sums", "products", "integers", "divisions"],
-    sources: "crates/prime-field/src",
-    pathspecs: &[
-        "Cargo.toml",
-        "Cargo.lock",
-        "rust-toolchain.toml",
-        "crates/biguint/src",
-        "crates/biguint/Cargo.toml",
-        "crates/prime-field",
-        "crates/bench-compare",
-        ":(exclude)crates/prime-field/BENCHMARKS.md",
-        ":(exclude)crates/prime-field/benchmarks",
-    ],
     versions: &[
         "ark-ff",
         "crypto-bigint",

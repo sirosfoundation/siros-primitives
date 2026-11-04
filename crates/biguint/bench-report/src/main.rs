@@ -18,20 +18,10 @@ impl fmt::Display for Width {
     }
 }
 
-/// The files that the measured executable is built from, as git pathspecs.
+/// What the bench measures.
 const MEASURED: Measured = Measured {
     package: "biguint",
     benches: &["add", "mul", "division", "mulmod", "add_mod", "sub_mod"],
-    sources: "crates/biguint/src",
-    pathspecs: &[
-        "Cargo.toml",
-        "Cargo.lock",
-        "rust-toolchain.toml",
-        "crates/biguint",
-        "crates/bench-compare",
-        ":(exclude)crates/biguint/BENCHMARKS.md",
-        ":(exclude)crates/biguint/benchmarks",
-    ],
     versions: &["ruint", "crypto-bigint", "bnum", "uint", "num-bigint"],
     features: &[],
     // It strips the lookup tables of `biguint`.

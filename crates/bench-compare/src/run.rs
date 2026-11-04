@@ -11,6 +11,7 @@ use serde::Deserialize;
 use crate::count::{CPU, Window};
 use crate::error::Error;
 use crate::record::{Cell, Key, Line, Measurement, Record, Sweep, Version};
+use crate::workspace::Sources;
 
 /// A build of the bench.
 pub struct Build {
@@ -79,10 +80,6 @@ pub struct Measured {
     /// The bench targets, which measure disjoint operations, in measurement order. Each compiles
     /// one part of the comparison, so the targets build in parallel.
     pub benches: &'static [&'static str],
-    /// The sources of the measured library, whose last commit the record names.
-    pub sources: &'static str,
-    /// The files that the measured executable is built from, as git pathspecs.
-    pub pathspecs: &'static [&'static str],
     /// The crates whose versions the record keeps.
     pub versions: &'static [&'static str],
     /// The features of the package that every build enables beside its default ones.
@@ -165,7 +162,12 @@ pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Re
             .args(["--print", "target-cpus"])
             .current_dir(&paths.root),
     )?;
-    let status_lines = git(paths, &["status", "--porcelain", "--"], measured.pathspecs)?;
+    let sources = Sources::of(paths, measured.package)?;
+    let status_lines = git(
+        paths,
+        &["status", "--porcelain", "--"],
+        &sources.executable(),
+    )?;
     let profile = bench_profile(paths)?;
     let builds = measured
         .builds
@@ -187,8 +189,8 @@ pub fn bench<K: Key>(paths: &Paths, measured: &Measured, options: Options) -> Re
         head: git(paths, &["rev-parse", "HEAD"], &[])?,
         library_commit: git(
             paths,
-            &["log", "-1", "--format=%H", "--", measured.sources],
-            &[],
+            &["log", "-1", "--format=%H", "--"],
+            &sources.library(),
         )?,
         dirty: !status_lines.is_empty(),
         rustc: rustc

@@ -8,6 +8,7 @@ mod error;
 mod record;
 mod run;
 mod suite;
+mod workspace;
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 pub use barrier::Ymm;

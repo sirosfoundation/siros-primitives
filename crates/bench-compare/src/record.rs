@@ -166,7 +166,8 @@ pub struct Record<K> {
     pub date: String,
     /// The commit that ran the bench.
     pub head: String,
-    /// The last commit that changed the measured library's sources.
+    /// The last commit that changed the code of the measured library or of a workspace package it
+    /// is built from.
     pub library_commit: String,
     /// Whether the measured files differed from `head`.
     pub dirty: bool,

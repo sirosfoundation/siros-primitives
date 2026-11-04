@@ -93,7 +93,12 @@ fn main() -> std::process::ExitCode {
 ```
 
 Its report tool runs `cargo run -p <tool> -- bench`, which builds, runs and records the bench in
-`benchmarks/record.json`, and `cargo run -p <tool> -- report`, which writes `BENCHMARKS.md`:
+`benchmarks/record.json`, and `cargo run -p <tool> -- report`, which writes `BENCHMARKS.md`.
+
+The header names the last commit of the library code: the `src`, `Cargo.toml` and `build.rs` of
+the package and of every workspace package it is built from, as `cargo metadata` resolves them.
+The record marks the run dirty when those files, the root manifests or the package's `benches`
+differ from `HEAD`. A report tool:
 
 ```rust,no_run
 use bench_compare::{Layout, Measured, NATIVE, Operation, Paths, sentence};
@@ -101,8 +106,6 @@ use bench_compare::{Layout, Measured, NATIVE, Operation, Paths, sentence};
 const MEASURED: Measured = Measured {
     package: "biguint",
     benches: &["add", "mul"],
-    sources: "crates/biguint/src",
-    pathspecs: &["Cargo.toml", "Cargo.lock", "crates/biguint", "crates/bench-compare"],
     versions: &["ruint"],
     features: &[],
     forbidden: &["not-precomputed"],

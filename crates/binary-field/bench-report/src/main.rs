@@ -22,20 +22,6 @@ impl fmt::Display for Field {
 const MEASURED: Measured = Measured {
     package: "binary-field",
     benches: &["add", "products"],
-    sources: "crates/binary-field/src",
-    pathspecs: &[
-        "Cargo.toml",
-        "Cargo.lock",
-        "rust-toolchain.toml",
-        "crates/biguint/src",
-        "crates/biguint/Cargo.toml",
-        "crates/clmul/src",
-        "crates/clmul/Cargo.toml",
-        "crates/binary-field",
-        "crates/bench-compare",
-        ":(exclude)crates/binary-field/BENCHMARKS.md",
-        ":(exclude)crates/binary-field/benchmarks",
-    ],
     versions: &[
         "gf256",
         "galois_field_2pm",
