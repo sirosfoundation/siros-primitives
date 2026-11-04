@@ -128,7 +128,7 @@ cargo run --release -p bench-compare --bin bench-browser -- \
   arithmetic add `--wasm-wide-arithmetic` to V8's flags and
   `javascript.options.wasm_wide_arithmetic` to Firefox's preferences.
 - A run passes over its operand sets, of up to 256 KiB as natively, as many times as it takes to
-  count a million cycles, and sizing takes the fewest of three counts.
+  count a million cycles, and sizing takes the fewest of nine counts.
 - A figure is the difference of the counts of rank 4 of each run length: the requests of a count
   part the two runs of a repetition, so they meet the sibling thread in different states.
 - Each bench first counts 1,000 empty regions: a case whose difference counts under 50 times the

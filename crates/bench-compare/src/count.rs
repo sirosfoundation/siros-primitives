@@ -75,8 +75,10 @@ const PASSES: bool = cfg!(target_arch = "wasm32");
 
 /// The counted runs of each size that sizes a case, whose fewest cycles count: one natively. A
 /// count in a browser met an interruption of up to 800,000 cycles, which ended the sizing of a
-/// case at 16 operations.
-const SIZING: usize = if cfg!(target_arch = "wasm32") { 3 } else { 1 };
+/// case at 16 operations; at a load of 25, the median run of a GF(2⁸) product counted twice as
+/// many cycles as the fewest, and three runs of each size ended its sizing at a sixth of
+/// [`TARGET`].
+const SIZING: usize = if cfg!(target_arch = "wasm32") { 9 } else { 1 };
 
 /// Whether a figure takes the difference of the two runs of each repetition, which run back to
 /// back and mostly meet the same sibling thread: natively. In a browser, the two requests of a
