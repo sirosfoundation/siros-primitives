@@ -60,6 +60,20 @@ impl<M: Modulus> Shape<M> {
         if k.len() <= 1 && Self::LIMBS == 1 {
             return Self::represent_residue(Self::one_limb(Self::word1::<CT>(limb(k, 0))));
         }
+        if Self::LIMBS > 1 && k.len() > 1 && k.len() <= Self::LIMBS {
+            // `k < 2^(64 L) <= p 2^64` reduces by one quotient step; a Montgomery product by
+            // `R^2` then encodes it.
+            let mut high = M::Width::ZERO;
+            unroll!(j in 1, Self::LIMBS => {
+                set(high.as_mut_slice(), j.wrapping_sub(1), limb(k, j));
+            });
+            let residue = Self::reduce_wide::<CT>((limb(k, 0), high));
+            return if Self::MONTGOMERY {
+                Self::mul::<CT>(&residue, &Self::R2)
+            } else {
+                residue
+            };
+        }
         Self::scale::<CT>(&Self::ONE, k)
     }
 
