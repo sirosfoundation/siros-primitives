@@ -332,10 +332,28 @@ impl Form {
             });
         }
         if let Some(noise) = noise.filter(|noise| cycles < SIGNAL * noise) {
+            let spread = |run: usize| {
+                let mut values: Vec<u64> = self
+                    .repetitions
+                    .iter()
+                    .map(|counts| counts[run].cycles)
+                    .collect();
+                values.sort_unstable();
+                format!(
+                    "fewest {}, rank {} {}, median {}, most {}",
+                    values[0],
+                    RANK + 1,
+                    values[RANK],
+                    values[values.len() / 2],
+                    values[values.len() - 1]
+                )
+            };
             return Err(Error::Noisy {
                 case: name.to_owned(),
                 cycles,
                 noise,
+                short: spread(0),
+                long: spread(1),
             });
         }
         let cycles = cycles / operations as f64;
