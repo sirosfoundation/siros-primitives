@@ -34,7 +34,7 @@ impl<M: Modulus> Fp<M> {
             );
         };
         if CT {
-            return self.mul_with::<true>(Self::inverse_of::<true>(k));
+            return self.mul_with::<true>(Self::inverse_of::<true>(Self::element_of::<true>(k)));
         }
         let word = match k {
             [low, high @ ..] if high.iter().all(|&limb| limb == 0) => {
@@ -44,26 +44,35 @@ impl<M: Modulus> Fp<M> {
         };
         match word {
             Some(word) => self.divide_word(word),
-            None => self.mul_with::<false>(Self::inverse_of::<false>(k)),
+            None => self.mul_with::<false>(Self::inverse_of::<false>(Self::element_of::<false>(k))),
         }
     }
 
-    /// The inverse of the element of the nonzero integer `k < p` of at most `L` limbs, in constant
-    /// time when `CT` holds. `k` is its own residue: its representation takes no reduction. The
-    /// inverse is a call, one per field and timing.
-    #[inline(never)]
-    fn inverse_of<const CT: bool>(k: &[u64]) -> Self {
+    /// The element of the nonzero integer `k < p`, in constant time when `CT` holds. A `k` of one
+    /// limb takes the one-limb representation of an integer; a wider `k` is its own residue and
+    /// takes no reduction.
+    #[inline(always)]
+    fn element_of<const CT: bool>(k: &[u64]) -> Self {
+        if k.len() <= 1 {
+            return Self::integer_with::<CT>(k);
+        }
         let mut residue = M::Width::ZERO;
         residue
             .iter_mut()
             .zip(k)
             .for_each(|(slot, &limb)| *slot = limb);
         // A nonzero residue is its own plain representation: a Mersenne field needs no zero test.
-        let element = Self::from_limbs(if Shape::<M>::MONTGOMERY {
+        Self::from_limbs(if Shape::<M>::MONTGOMERY {
             Shape::<M>::mul::<CT>(&residue, &Shape::<M>::R2)
         } else {
             residue
-        });
+        })
+    }
+
+    /// The inverse of the nonzero `element`, in constant time when `CT` holds: a call, one per
+    /// field and timing.
+    #[inline(never)]
+    fn inverse_of<const CT: bool>(element: Self) -> Self {
         if CT {
             biguint::Field::ct_invert_nonzero(element)
         } else {
