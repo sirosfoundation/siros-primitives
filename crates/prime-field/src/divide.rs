@@ -58,7 +58,12 @@ impl<M: Modulus> Fp<M> {
             .iter_mut()
             .zip(k)
             .for_each(|(slot, &limb)| *slot = limb);
-        let element = Self::from_limbs(Shape::<M>::representation_of(&residue));
+        // A nonzero residue is its own plain representation: a Mersenne field needs no zero test.
+        let element = Self::from_limbs(if Shape::<M>::MONTGOMERY {
+            Shape::<M>::mul::<CT>(&residue, &Shape::<M>::R2)
+        } else {
+            residue
+        });
         if CT {
             biguint::Field::ct_invert_nonzero(element)
         } else {
