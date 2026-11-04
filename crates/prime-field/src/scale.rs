@@ -59,7 +59,14 @@ impl<M: Modulus> Shape<M> {
             return out;
         }
         if k.len() <= 1 && Self::LIMBS == 1 {
-            return Self::represent_residue(Self::one_limb(Self::word1::<CT>(limb(k, 0))));
+            // A Mersenne word converts by the compiler's division by the constant: 3.2 cycles over
+            // Mersenne-31, against 3.7 by the folds of a residue inside a product or a sum.
+            let residue = if Self::MERSENNE {
+                limb(k, 0) % Self::P0
+            } else {
+                Self::word1::<CT>(limb(k, 0))
+            };
+            return Self::represent_residue(Self::one_limb(residue));
         }
         if Self::LIMBS > 1 && k.len() > 1 && k.len() <= Self::LIMBS {
             // `k < 2^(64 L) <= p 2^64` reduces by one quotient step; a Montgomery product by
@@ -83,13 +90,13 @@ impl<M: Modulus> Shape<M> {
         Self::scale::<CT>(&Self::ONE, k)
     }
 
-    /// The residue of the integer `k` on one limb, below `p`: `k mod p` by its chunks on a
-    /// Mersenne modulus; `R k mod p` by one Montgomery step of `k R^2`, or on Goldilocks by its
+    /// The residue of the integer `k` on one limb: `k mod p` in `[0, p]` by folds on a Mersenne
+    /// modulus; below `p`, `R k mod p` by one Montgomery step of `k R^2`, or on Goldilocks by its
     /// fold; `k mod p` for other plain residues by one quotient step.
     #[inline(always)]
     fn word1<const CT: bool>(k: u64) -> u64 {
-        if Self::MERSENNE_CHUNKED {
-            Self::mersenne_chunks(u128::from(k))
+        if Self::MERSENNE {
+            Self::mersenne_word(k)
         } else if Self::MONTGOMERY && !Self::SHIFT_REDC {
             // `k R^2 < p 2^64` reduces by one Montgomery step to `k R mod p`.
             Self::redc1::<CT>(u128::from(k) * u128::from(limb(&Self::R2, 0)))

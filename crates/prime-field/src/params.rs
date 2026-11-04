@@ -257,6 +257,23 @@ impl<M: Modulus> Shape<M> {
         value
     }
 
+    /// `value mod p` in `[0, p]` for [`Self::MERSENNE`]: folds of the bits at and above `BITS`,
+    /// which keep a nonzero value nonzero. In a sum or a product with Mersenne-31 they took 1.1
+    /// to 1.5 cycles less than three chunk sums, two folds and a subtraction.
+    #[inline(always)]
+    pub(crate) const fn mersenne_word(value: u64) -> u64 {
+        let mut folded = value;
+        let mut count = 0;
+        while count < Self::WORD_FOLDS {
+            folded = (folded & Self::P0) + (folded >> Self::BITS);
+            count += 1;
+        }
+        folded
+    }
+
+    /// The folds of [`Self::mersenne_word`] that bring every `u64` to at most `p = 2^BITS - 1`.
+    const WORD_FOLDS: usize = mersenne_word_folds(Self::BITS);
+
     /// The representation of the integer `value < p`.
     #[inline(always)]
     pub(crate) const fn encode(value: &[u64]) -> Limbs<M> {
@@ -563,6 +580,26 @@ pub(crate) const fn folds_from(bits: usize, deficit: u64, high: Option<u128>) ->
         });
     }
     MAX_FOLDS + 1
+}
+
+/// The folds `x -> (x & p) + (x >> bits)` that bring every `u64` to at most `p = 2^bits - 1`,
+/// for `bits < 64`. A fold of the values up to `bound` reaches at most `p` plus the high part
+/// less one, or the low and high parts of `bound` itself.
+const fn mersenne_word_folds(bits: usize) -> usize {
+    if bits == 0 || bits >= 64 {
+        return 0;
+    }
+    let p = (1u64 << bits) - 1;
+    let mut bound = u64::MAX;
+    let mut count = 0;
+    while bound > p {
+        let high = bound >> bits;
+        let below = p + (high - 1);
+        let own = (bound & p) + high;
+        bound = if below > own { below } else { own };
+        count += 1;
+    }
+    count
 }
 
 /// The prime bases of the Miller–Rabin test that decide every 64-bit number.
