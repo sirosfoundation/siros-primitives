@@ -32,7 +32,7 @@ mod linux {
     use std::path::Path;
 
     use bench_compare::{
-        Browser, CHROME, CHROME_WIDE, CPU, Cpus, Error, FIREFOX, FIREFOX_WIDE, Line, Pref, Threads,
+        Browser, CHROME, CHROME_WIDE, CPU, Cpus, Error, FIREFOX, FIREFOX_WIDE, Line, Threads,
         Window, run_in_browser,
     };
 
@@ -40,12 +40,6 @@ mod linux {
     const USAGE: &str = "usage: bench-browser <module.wasm> (--chrome | --firefox) <executable> \
                          [--cpu <cpu>] [--browser-cpu <cpu>] [--build baseline | wide] \
                          [--tiering optimizing | default] [--threads measuring | process]";
-
-    /// The preference of Firefox that enables wide arithmetic.
-    const WIDE_PREF: Pref = Pref {
-        name: "javascript.options.wasm_wide_arithmetic",
-        value: "true",
-    };
 
     /// What one run measures.
     struct Arguments<'a> {
@@ -61,7 +55,8 @@ mod linux {
 
     impl Arguments<'_> {
         /// The browser with the settings of the build: the settings of the standard builds,
-        /// which compile every function with the optimizing tier, or the engine's default tiers.
+        /// which compile every function with the optimizing tier, or the browser's defaults with
+        /// the one flag that V8 needs for wide arithmetic.
         fn browser(&self) -> Browser {
             match (self.firefox, self.wide, self.optimizing) {
                 (false, false, true) => CHROME,
@@ -72,10 +67,8 @@ mod linux {
                 (false, true, false) => Browser::Chrome {
                     js_flags: &["--wasm-wide-arithmetic"],
                 },
-                (true, false, false) => Browser::Firefox { prefs: &[] },
-                (true, true, false) => Browser::Firefox {
-                    prefs: &[WIDE_PREF],
-                },
+                // Firefox enables wide arithmetic by default from version 155.
+                (true, false | true, false) => Browser::Firefox { prefs: &[] },
             }
         }
     }

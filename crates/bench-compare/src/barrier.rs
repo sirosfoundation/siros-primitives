@@ -7,8 +7,9 @@
 //! each register filled by one word of `x`, and can only add moves between classes: a chain runs
 //! once per class that holds its value, and the faster run counts. [`Memory`] keeps `x` in one
 //! place on the stack, whose address a block takes after each step: one store and one load per
-//! word and step. Off x86-64, every chain runs through [`Memory`] and `core::hint::black_box`
-//! does the hiding.
+//! word and step. Off x86-64, `core::hint::black_box` does the hiding, and every chain runs
+//! through [`Memory`]; a WebAssembly chain also runs through `Locals`, which keeps `x` in locals
+//! and stores a copy of it after each step.
 #![expect(
     unsafe_code,
     reason = "a barrier is inline assembly, and `touch` reads padding bytes"
@@ -25,13 +26,13 @@ use crate::suite::Chain;
 /// The most bytes that the general-purpose registers hold: eight words of 8 bytes.
 const GPR_BYTES: usize = 64;
 
-#[cfg(target_arch = "x86_64")]
 /// The bytes of one `xmm` register. A value of more bytes is the smallest that the `ymm`
 /// registers hold.
+#[cfg(target_arch = "x86_64")]
 const XMM_WORD: usize = 16;
 
-#[cfg(target_arch = "x86_64")]
 /// The most bytes that the `xmm` registers hold: eight words of 16 bytes.
+#[cfg(target_arch = "x86_64")]
 const XMM_BYTES: usize = 128;
 
 /// The most bytes that the `ymm` registers hold: eight words of 32 bytes.
