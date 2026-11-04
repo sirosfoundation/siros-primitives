@@ -144,7 +144,7 @@ impl<M: Modulus> Shape<M> {
 
     /// Runs `body` on each limb index of an element, as [`Self::each`] runs indices.
     #[inline(always)]
-    fn each_limb(body: impl FnMut(usize)) {
+    pub(crate) fn each_limb(body: impl FnMut(usize)) {
         Self::each::<<M::Width as Bits>::Limbs>(body);
     }
 
@@ -156,7 +156,7 @@ impl<M: Modulus> Shape<M> {
 
     /// [`Self::each_limb`] over the `L + 1` limbs of a partly folded product.
     #[inline(always)]
-    fn each_extended(body: impl FnMut(usize)) {
+    pub(crate) fn each_extended(body: impl FnMut(usize)) {
         Self::each::<<M::Width as Width>::Extended>(body);
     }
 

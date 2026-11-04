@@ -24,8 +24,8 @@
 
 use crate::field::Modulus;
 use crate::kernel::{add_mod, below, fits, limb, set, shifted_limb, sub};
+use crate::limb::{mac, sbb, select};
 use crate::params::{ExtendedLimbs, Limbs, Shape, folds_from};
-use crate::unrolled::{mac, sbb, select, unroll};
 use crate::width::Width;
 
 impl<M: Modulus> Shape<M> {
@@ -52,9 +52,10 @@ impl<M: Modulus> Shape<M> {
         if !Self::MONTGOMERY && 64 * k.len() < Self::BITS {
             // `k < 2^(64 len) < p` is its own plain residue.
             let mut out = M::Width::ZERO;
-            unroll!(j in 0, Self::LIMBS => {
-                set(out.as_mut_slice(), j, limb(k, j));
-            });
+            Self::each_limb(
+                #[inline(always)]
+                |j| set(out.as_mut_slice(), j, limb(k, j)),
+            );
             return out;
         }
         if k.len() <= 1 && Self::LIMBS == 1 {
@@ -64,9 +65,14 @@ impl<M: Modulus> Shape<M> {
             // `k < 2^(64 L) <= p 2^64` reduces by one quotient step; a Montgomery product by
             // `R^2` then encodes it.
             let mut high = M::Width::ZERO;
-            unroll!(j in 1, Self::LIMBS => {
-                set(high.as_mut_slice(), j.wrapping_sub(1), limb(k, j));
-            });
+            Self::each_limb(
+                #[inline(always)]
+                |j| {
+                    if j > 0 {
+                        set(high.as_mut_slice(), j - 1, limb(k, j));
+                    }
+                },
+            );
             let residue = Self::reduce_wide::<CT>((limb(k, 0), high));
             return if Self::MONTGOMERY {
                 Self::mul::<CT>(&residue, &Self::R2)
@@ -116,15 +122,18 @@ impl<M: Modulus> Shape<M> {
         let mut high = M::Width::ZERO;
         let mut low = 0;
         let mut carry = 0;
-        unroll!(j in 0, Self::LIMBS => {
-            let (product, next) = mac(limb(a, j), v, carry, 0);
-            if j == 0 {
-                low = product;
-            } else {
-                set(high.as_mut_slice(), j - 1, product);
-            }
-            carry = next;
-        });
+        Self::each_limb(
+            #[inline(always)]
+            |j| {
+                let (product, next) = mac(limb(a, j), v, carry, 0);
+                if j == 0 {
+                    low = product;
+                } else {
+                    set(high.as_mut_slice(), j - 1, product);
+                }
+                carry = next;
+            },
+        );
         set(high.as_mut_slice(), Self::LIMBS - 1, carry);
         (low, high)
     }
@@ -258,9 +267,10 @@ impl<M: Modulus> Shape<M> {
         // the `L + 1` limbs of the value.
         let (y0, y1) = if Self::BITS >= 64 {
             let mut limbs = M::Width::EXTENDED_ZERO;
-            unroll!(j in 0, Self::LIMBS + 1 => {
-                set(limbs.as_mut_slice(), j, value(j));
-            });
+            Self::each_extended(
+                #[inline(always)]
+                |j| set(limbs.as_mut_slice(), j, value(j)),
+            );
             let shift = Self::BITS - 64;
             (
                 shifted_limb(limbs.as_slice(), shift, 0),
@@ -275,13 +285,16 @@ impl<M: Modulus> Shape<M> {
         let mut out = M::Width::ZERO;
         let mut carry = 0;
         let mut borrow = 0;
-        unroll!(j in 0, Self::LIMBS => {
-            let (product, next) = mac(q, limb(Self::P.as_slice(), j), carry, 0);
-            let (difference, borrow_out) = sbb(borrow, value(j), product);
-            set(out.as_mut_slice(), j, difference);
-            carry = next;
-            borrow = borrow_out;
-        });
+        Self::each_limb(
+            #[inline(always)]
+            |j| {
+                let (product, next) = mac(q, limb(Self::P.as_slice(), j), carry, 0);
+                let (difference, borrow_out) = sbb(borrow, value(j), product);
+                set(out.as_mut_slice(), j, difference);
+                carry = next;
+                borrow = borrow_out;
+            },
+        );
         let top = if Self::SPARE {
             0
         } else {
@@ -314,26 +327,28 @@ impl<M: Modulus> Shape<M> {
     fn fold_wide<const CT: bool>(low: u64, high: &Limbs<M>) -> Limbs<M> {
         let mut value = M::Width::EXTENDED_ZERO;
         set(value.as_mut_slice(), 0, low);
-        unroll!(j in 0, Self::LIMBS => {
-            set(value.as_mut_slice(), j + 1, limb(high, j));
-        });
+        Self::each_limb(
+            #[inline(always)]
+            |j| set(value.as_mut_slice(), j + 1, limb(high, j)),
+        );
         let mut folded = M::Width::EXTENDED_ZERO;
-        unroll!(step in 0, Self::SCALE_FOLDS => {
+        for step in 0..Self::SCALE_FOLDS {
             if step.is_multiple_of(2) {
                 Self::fold_once(&mut folded, Self::LIMBS + 1, value.as_slice());
             } else {
                 Self::fold_once(&mut value, Self::LIMBS + 1, folded.as_slice());
             }
-        });
+        }
         let result: &ExtendedLimbs<M> = if Self::SCALE_FOLDS % 2 == 1 {
             &folded
         } else {
             &value
         };
         let mut out = M::Width::ZERO;
-        unroll!(j in 0, Self::LIMBS => {
-            set(out.as_mut_slice(), j, limb(result, j));
-        });
+        Self::each_limb(
+            #[inline(always)]
+            |j| set(out.as_mut_slice(), j, limb(result, j)),
+        );
         let top = limb(result, Self::LIMBS) as u8;
         if CT {
             Self::reduce_select(out, top)
@@ -386,12 +401,12 @@ impl<M: Modulus> Shape<M> {
     #[inline(always)]
     fn mersenne_chunks(value: u128) -> u64 {
         let mut sum = 0u64;
-        unroll!(chunk in 0, Self::CHUNKS => {
+        for chunk in 0..Self::CHUNKS {
             sum += (value >> (chunk * Self::BITS)) as u64 & Self::P0;
-        });
-        unroll!(_fold in 0, Self::CHUNK_FOLDS + 1 => {
+        }
+        for _ in 0..=Self::CHUNK_FOLDS {
             sum = (sum & Self::P0) + (sum >> Self::BITS);
-        });
+        }
         let (reduced, below_p) = sum.overflowing_sub(Self::P0);
         select(below_p, sum, reduced)
     }
