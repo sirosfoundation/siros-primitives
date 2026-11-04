@@ -128,7 +128,8 @@ impl Browser {
         match self {
             Self::Chrome { js_flags } => Ok(vec![
                 "--headless".to_owned(),
-                // The sandbox makes the renderer untraceable.
+                // Without it, Chrome 156 stops with "No usable sandbox" where AppArmor forbids
+                // unprivileged user namespaces, as Ubuntu 24.04 does.
                 "--no-sandbox".to_owned(),
                 format!("--user-data-dir={}", profile.display()),
                 "--no-first-run".to_owned(),

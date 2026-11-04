@@ -131,21 +131,25 @@ fn drive(
     };
     let result = session.serve(&server);
     let stopped = session.stop();
-    let lines = result.map_err(|error| with_log(error, &log))?;
+    let result = result.map_err(|error| with_log(error, &log));
+    let removed = profile.remove();
+    let lines = result?;
     stopped?;
-    profile.remove()?;
+    removed?;
     Ok(lines)
 }
 
 /// `error` with the last lines of the browser's log at `log`.
 fn with_log(error: Error, log: &Path) -> Error {
-    let Ok(text) = fs::read_to_string(log) else {
-        return error;
+    let tail = match fs::read_to_string(log) {
+        Ok(text) => {
+            let lines: Vec<&str> = text.lines().collect();
+            lines[lines.len().saturating_sub(20)..].join("\n")
+        }
+        Err(source) => format!("unreadable: {source}"),
     };
-    let lines: Vec<&str> = text.lines().collect();
-    let tail = lines[lines.len().saturating_sub(20)..].join("\n");
     Error::Browser {
-        reason: format!("{error}\nthe browser's log {}:\n{tail}", log.display()),
+        reason: format!("{error}\nthe last lines of the browser's log:\n{tail}"),
     }
 }
 

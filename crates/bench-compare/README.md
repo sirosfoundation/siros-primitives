@@ -121,7 +121,8 @@ cargo run --release -p bench-compare --bin bench-browser -- \
   the measuring worker sleeps in `Atomics.wait`: a count costs the measuring thread about 5,000
   instructions, which cancel in the difference of two runs. Shared memory needs the
   cross-origin-isolation headers, which the driver sends.
-- Chrome runs with `--no-sandbox` and `--js-flags=--no-liftoff`, Firefox with
+- Chrome runs with `--no-sandbox`, which a system that forbids unprivileged user namespaces needs,
+  and `--js-flags=--no-liftoff`; Firefox runs with
   `javascript.options.wasm_baselinejit` off: every function compiles with the optimizing tier when
   the module loads. The builds with wide arithmetic add `--wasm-wide-arithmetic` to V8's flags and
   `javascript.options.wasm_wide_arithmetic` to Firefox's preferences.
