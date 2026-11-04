@@ -283,7 +283,6 @@ pub fn bench<K: Key>(
     let measurements = builds
         .iter()
         .map(|build| {
-            let target_features = target_features(paths, build)?;
             let browser = match build.runner {
                 Runner::Native => None,
                 Runner::Browser(browser) => Some(Engine {
@@ -296,7 +295,7 @@ pub fn bench<K: Key>(
             Ok(Measurement {
                 name: build.name.to_owned(),
                 rustflags: build.rustflags.to_owned(),
-                target_features,
+                target_features: counted.target_features,
                 browser,
                 overheads: counted.overheads,
                 sweep: counted.sweep,
@@ -379,6 +378,7 @@ fn cells<K: Key>(
         };
         return browser_cells(&browser, options.executable(&browser)?, cpus, &executables);
     }
+    let target_features = target_features(paths, build)?;
     let window = Window::open(cpu_number)?;
     let mut cells = Vec::new();
     for bench in measured.benches {
@@ -429,6 +429,7 @@ fn cells<K: Key>(
         cells,
         sweep: window.close()?,
         overheads: Vec::new(),
+        target_features,
     })
 }
 
@@ -526,13 +527,32 @@ fn browser_cells<K: Key>(
     cpus: Cpus,
     modules: &[PathBuf],
 ) -> Result<Counted<K>, Error> {
+    let modules = modules
+        .iter()
+        .map(|path| {
+            let module = fs::read(path).map_err(|source| Error::io(path, source))?;
+            let features = module_features(&module, path)?;
+            Ok((path, module, features))
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    let target_features = match modules.as_slice() {
+        [(_, _, features), rest @ ..] => {
+            if let Some((path, _, _)) = rest.iter().find(|(_, _, other)| other != features) {
+                return Err(Error::missing(
+                    &format!("the target features of the first module, {features:?}"),
+                    &path.display().to_string(),
+                ));
+            }
+            features.clone()
+        }
+        [] => return Err(Error::missing("bench module", "the build")),
+    };
     let window = Window::open(cpus.measuring)?;
     let mut cells = Vec::new();
     let mut overheads = Vec::with_capacity(modules.len());
-    for path in modules {
-        let module = fs::read(path).map_err(|source| Error::io(path, source))?;
+    for (path, module, _) in &modules {
         let mut overhead = None;
-        for line in run_in_browser(&module, browser, executable, cpus, Threads::Measuring)? {
+        for line in run_in_browser(module, browser, executable, cpus, Threads::Measuring)? {
             match serde_json::from_str(&line).map_err(Error::Cells)? {
                 Line::Overhead(cost) if overhead.is_none() => overhead = Some(cost),
                 Line::Cell(cell) if overhead.is_some() => cells.push(cell),
@@ -555,6 +575,7 @@ fn browser_cells<K: Key>(
         cells,
         sweep: window.close()?,
         overheads,
+        target_features,
     })
 }
 
@@ -566,6 +587,9 @@ struct Counted<K> {
     sweep: Sweep,
     /// The cost of a count in each WebAssembly bench; none natively.
     overheads: Vec<Overhead>,
+    /// The target features of the build: of `rustc --print cfg` natively, of the modules in a
+    /// browser.
+    target_features: Vec<String>,
 }
 
 /// The standard output of `cargo` with `args` in the workspace at `root`, which must succeed. The
@@ -587,17 +611,12 @@ pub fn cargo(
     )
 }
 
-/// The target features that `rustc --print cfg` reports under the flags and the target of
-/// `build`. A native build without AVX2 is a [`Error::NoAvx2`].
+/// The target features that `rustc --print cfg` reports under the flags of the native `build`. A
+/// build without AVX2 is a [`Error::NoAvx2`].
 fn target_features(paths: &Paths, build: &Build) -> Result<Vec<String>, Error> {
-    let target: &[&str] = match build.runner {
-        Runner::Native => &[],
-        Runner::Browser(_) => &["--target", WASM_TARGET],
-    };
     let text = output(
         Command::new("rustc")
             .args(["--print", "cfg"])
-            .args(target)
             .args(build.rustflags.split_whitespace())
             .current_dir(&paths.root),
     )?;
@@ -607,12 +626,73 @@ fn target_features(paths: &Paths, build: &Build) -> Result<Vec<String>, Error> {
         .filter_map(|rest| rest.strip_suffix('"'))
         .map(str::to_owned)
         .collect();
-    match build.runner {
-        Runner::Native if !features.iter().any(|feature| feature == "avx2") => Err(Error::NoAvx2 {
+    if features.iter().any(|feature| feature == "avx2") {
+        Ok(features)
+    } else {
+        Err(Error::NoAvx2 {
             rustflags: build.rustflags.to_owned(),
-        }),
-        Runner::Native | Runner::Browser(_) => Ok(features),
+        })
     }
+}
+
+/// The features that the WebAssembly `module` at `path` uses: its `target_features` section,
+/// which the linker writes. `rustc --print cfg` leaves out the features that rustc keeps
+/// unstable, wide arithmetic among them.
+fn module_features(module: &[u8], path: &Path) -> Result<Vec<String>, Error> {
+    let origin = path.display().to_string();
+    let malformed = |what: &str| Error::missing(what, &origin);
+    let mut rest = module
+        .strip_prefix(b"\0asm\x01\0\0\0")
+        .ok_or_else(|| malformed("WebAssembly header"))?;
+    while let Some((&id, after)) = rest.split_first() {
+        let (size, after) = leb128(after).ok_or_else(|| malformed("section size"))?;
+        let (payload, after) = after
+            .split_at_checked(size)
+            .ok_or_else(|| malformed("section of its size"))?;
+        rest = after;
+        // A custom section, of id 0, starts with its name.
+        let named = (id == 0)
+            .then(|| leb128(payload))
+            .flatten()
+            .and_then(|(length, name)| name.split_at_checked(length));
+        let Some((b"target_features", mut entries)) = named else {
+            continue;
+        };
+        let (count, after) = leb128(entries).ok_or_else(|| malformed("feature count"))?;
+        entries = after;
+        let mut features = Vec::with_capacity(count);
+        for _ in 0..count {
+            let (&prefix, after) = entries
+                .split_first()
+                .ok_or_else(|| malformed("feature prefix"))?;
+            let (length, after) = leb128(after).ok_or_else(|| malformed("feature length"))?;
+            let (name, after) = after
+                .split_at_checked(length)
+                .ok_or_else(|| malformed("feature name"))?;
+            entries = after;
+            let name = str::from_utf8(name)
+                .map_err(|error| malformed(&format!("UTF-8 feature name: {error}")))?;
+            // `+` marks a feature that the module uses.
+            if prefix == b'+' {
+                features.push(name.to_owned());
+            }
+        }
+        features.sort_unstable();
+        return Ok(features);
+    }
+    Err(malformed("target_features section"))
+}
+
+/// The unsigned LEB128 number at the start of `bytes`, and the bytes after it.
+fn leb128(bytes: &[u8]) -> Option<(usize, &[u8])> {
+    let mut value = 0_usize;
+    for (index, &byte) in bytes.iter().enumerate().take(5) {
+        value |= usize::from(byte & 0x7f) << (7 * index);
+        if byte & 0x80 == 0 {
+            return Some((value, &bytes[index + 1..]));
+        }
+    }
+    None
 }
 
 /// The `key = value` lines of the `[profile.bench]` section of the workspace's `Cargo.toml`. A
