@@ -5,7 +5,9 @@
 //! scale alike, `(x R) k = (x k) R`, so `r k mod p` is the representation of `x k`, and
 //! `1 k mod p` (or `R k mod p`) the representation of `k`.
 //!
-//! The product runs by Horner's rule over the limbs of `k` from the top: each step multiplies `r`
+//! On one limb, `k` of one limb becomes its residue first, off the path of `r`, and the product
+//! of two elements follows. Elsewhere the product runs by Horner's rule over the limbs of `k`
+//! from the top: each step multiplies `r`
 //! by one limb into `L + 1` limbs and reduces that value, below `p 2^64`, by one quotient limb.
 //! The reduction depends on the form of `p`:
 //!
@@ -32,7 +34,10 @@ impl<M: Modulus> Shape<M> {
     /// the top of `k`.
     #[inline(always)]
     pub(crate) fn scale<const CT: bool>(a: &Limbs<M>, k: &[u64]) -> Limbs<M> {
-        let residue = if k.len() <= 1 {
+        let residue = if k.len() <= 1 && Self::LIMBS == 1 {
+            // The residue of `k`, off the path of `a`, then the product of two elements.
+            Self::one_limb(Self::mul1::<CT>(limb(a, 0), Self::word1::<CT>(limb(k, 0))))
+        } else if k.len() <= 1 {
             Self::reduce_wide::<CT>(Self::row(a, limb(k, 0)))
         } else {
             Self::horner::<CT>(a, k)
@@ -52,7 +57,21 @@ impl<M: Modulus> Shape<M> {
             });
             return out;
         }
+        if k.len() <= 1 && Self::LIMBS == 1 {
+            return Self::represent_residue(Self::one_limb(Self::word1::<CT>(limb(k, 0))));
+        }
         Self::scale::<CT>(&Self::ONE, k)
+    }
+
+    /// The residue of the integer `k` on one limb, below `p`: `k mod p` by its chunks on a
+    /// Mersenne modulus, else `R k mod p`, or `k mod p` for plain residues, by one quotient step.
+    #[inline(always)]
+    fn word1<const CT: bool>(k: u64) -> u64 {
+        if Self::MERSENNE_CHUNKED {
+            Self::mersenne_chunks(u128::from(k))
+        } else {
+            limb(&Self::reduce_wide::<CT>(Self::row(&Self::ONE, k)), 0)
+        }
     }
 
     /// [`Self::scale`] for `k` of several limbs, as a residue below `p`.

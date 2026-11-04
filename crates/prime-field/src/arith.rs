@@ -198,7 +198,7 @@ impl<M: Modulus> Shape<M> {
 
     /// `a * b` on one limb.
     #[inline(always)]
-    fn mul1<const CT: bool>(a: u64, b: u64) -> u64 {
+    pub(crate) fn mul1<const CT: bool>(a: u64, b: u64) -> u64 {
         if Self::MERSENNE {
             // `x = high 2^BITS + low` with `2^BITS = 1`: `high + low`, at least `1` since the
             // factors are, and below `2^(BITS + 1) - 2`.
