@@ -580,7 +580,8 @@ impl<M: Modulus> Shape<M> {
     /// fold into its additions: a P-256 product takes 25% more with two.
     pub(crate) const TWO_CHAINS: bool = Self::LIMBS > 4;
 
-    /// The full product `a b` in `2 L` limbs, by rows of one limb of `b`.
+    /// The full product `a b` in `2 L` limbs, by rows of one limb of `b` on two chains and of `a`
+    /// on one.
     #[inline(always)]
     fn product(a: &[u64], b: &[u64]) -> WideLimbs<M> {
         let mut wide = M::Width::WIDE_ZERO;
@@ -600,13 +601,16 @@ impl<M: Modulus> Shape<M> {
                 },
             );
         } else {
+            // Rows of one limb of `a`: in a chain `x = x y` the multiplier stays in a register
+            // and the limbs of `y` enter `mulx` from memory. Rows of `b` measured 2 cycles more
+            // per P-256 product, and 4 more per chained secp256k1 product.
             let mut carry = 0;
             Self::each_pair(
                 #[inline(always)]
                 |i, j| {
-                    let multiplier = limb(b, i);
+                    let multiplier = limb(a, i);
                     let (low, high) =
-                        mac(limb(a, j), multiplier, limb(wide.as_slice(), i + j), carry);
+                        mac(limb(b, j), multiplier, limb(wide.as_slice(), i + j), carry);
                     set(wide.as_mut_slice(), i + j, low);
                     carry = high;
                     if j + 1 == Self::LIMBS {
