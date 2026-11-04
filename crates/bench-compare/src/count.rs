@@ -135,9 +135,9 @@ impl Length {
     }
 }
 
-/// The fewest times the noise of a difference of two empty counts that a difference of a case
-/// counts, where the counts reach the counters through requests: its figure then moves by at most
-/// 2% with the cost of a count.
+/// The fewest times the noise of the fixed cost of a count that a difference of a case counts,
+/// where the counts reach the counters through requests: its figure then moves by at most 2%
+/// with that cost.
 const SIGNAL: f64 = 50.0;
 
 /// The operations of the first sizing run, and the fewest of a short run.
@@ -146,6 +146,11 @@ const FEWEST: usize = 16;
 /// The empty counts of a WebAssembly bench before its sweep.
 #[cfg(target_arch = "wasm32")]
 const GLUE_COUNTS: usize = 1000;
+
+/// The sets of [`REPETITIONS`] empty counts whose counts of rank [`RANK`] give the noise of a
+/// figure, in pairs.
+#[cfg(target_arch = "wasm32")]
+const NOISE_SETS: usize = 8;
 
 /// Runs the bench executable of `S`, named `name` in its messages, with the process arguments:
 /// `--cpu <cpu>` names the CPU of the measuring thread.
@@ -208,9 +213,9 @@ pub fn main<S: Suite>(name: &str) -> ExitCode {
     }
 }
 
-/// The cost of a count of an empty region in the page, from the last `2 REPETITIONS` of
-/// [`GLUE_COUNTS`] counts. The earlier counts bring the page's code of a count to the engine's
-/// optimizing tier: its first count took 1.5 million cycles, its later ones 5,000.
+/// The cost of a count of an empty region in the page, from the last [`NOISE_SETS`] sets of
+/// [`REPETITIONS`] of [`GLUE_COUNTS`] counts. The earlier counts bring the page's code of a count
+/// to the engine's optimizing tier: its first count took 1.5 million cycles, its later ones 5,000.
 #[cfg(target_arch = "wasm32")]
 fn overhead(counters: &mut Counters) -> Result<Overhead, Error> {
     let mut counts = Vec::with_capacity(GLUE_COUNTS);
@@ -219,25 +224,35 @@ fn overhead(counters: &mut Counters) -> Result<Overhead, Error> {
         ran("an empty count", runs, 0)?;
         counts.push(counted);
     }
-    let last = &counts[GLUE_COUNTS - 2 * REPETITIONS..];
+    let last = &counts[GLUE_COUNTS - NOISE_SETS * REPETITIONS..];
     let median = |event: fn(&Counts) -> u64| {
         let mut values: Vec<u64> = last.iter().map(event).collect();
-        let (_, median, _) = values.select_nth_unstable(REPETITIONS);
+        let middle = values.len() / 2;
+        let (_, median, _) = values.select_nth_unstable(middle);
         *median as f64
     };
-    let mut differences: Vec<f64> = last
+    // A figure takes the counts of rank `RANK` of two sets of runs; the fixed cost of a count
+    // moves it by the difference of the counts of that rank of two sets of empty counts.
+    let ranked: Vec<f64> = last
+        .as_chunks::<REPETITIONS>()
+        .0
+        .iter()
+        .map(|set| {
+            let mut cycles: Vec<u64> = set.iter().map(|counts| counts.cycles).collect();
+            let (_, ranked, _) = cycles.select_nth_unstable(RANK);
+            *ranked as f64
+        })
+        .collect();
+    let noise = ranked
         .as_chunks::<2>()
         .0
         .iter()
-        .map(|[first, second]| second.cycles as f64 - first.cycles as f64)
-        .collect();
-    differences.sort_by(f64::total_cmp);
+        .map(|[first, second]| (second - first).abs())
+        .fold(0.0, f64::max);
     Ok(Overhead {
         cycles: median(|counts| counts.cycles),
         instructions: median(|counts| counts.instructions),
-        noise: differences[RANK]
-            .abs()
-            .max(differences[REPETITIONS - 1 - RANK].abs()),
+        noise,
     })
 }
 
@@ -255,7 +270,7 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
 }
 
 /// Checks and measures every case with `counters`; returns the line of every cell, in the order
-/// of [`visit`]. `noise` is the noise of a difference of two counts where the counts reach the
+/// of [`visit`]. `noise` is the noise of the fixed cost of a count where the counts reach the
 /// counters through requests; such a difference counts at least [`SIGNAL`] times as many cycles.
 fn cells<S: Suite>(counters: &mut Counters, noise: Option<f64>) -> Result<Vec<String>, Error> {
     // Pass 0 checks and sizes the cases; pass `r` runs repetition `r`.

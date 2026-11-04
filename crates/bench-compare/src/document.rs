@@ -418,8 +418,8 @@ const WEBASSEMBLY: &[&str] = &[
     "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count 4 \
      million instructions.",
     "Each figure: the counts of rank 4 from the fewest among 31 of each run length, 2n \
-     operations less n, over n. A case whose difference counts under 50 times the noise of two \
-     empty counts stops the sweep.",
+     operations less n, over n. A case whose difference counts under 50 times the noise of the \
+     fixed cost of a count stops the sweep.",
     "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \
      whichever is faster.",
 ];
@@ -501,7 +501,7 @@ fn overheads<K>(build: &Measurement<K>) -> String {
         }
     };
     format!(
-        "{} cycles and {} instructions; the noise of a difference of two counts, {} cycles",
+        "{} cycles and {} instructions; its noise in a figure, {} cycles",
         range(|overhead| overhead.cycles),
         range(|overhead| overhead.instructions),
         range(|overhead| overhead.noise)

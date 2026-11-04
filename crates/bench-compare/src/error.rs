@@ -165,10 +165,10 @@ pub enum Error {
         operations: usize,
     },
     /// The difference of rank [`RANK`](crate::RANK) of a WebAssembly case's long runs less its
-    /// short runs counts fewer cycles than 50 times the noise of a difference of two empty counts.
+    /// short runs counts fewer cycles than 50 times the noise of the fixed cost of a count.
     #[error(
         "{case}: the long runs count {cycles:.0} cycles more than the short runs, within 50 times \
-         the noise of two empty counts, {noise:.0}: other work ran on the counted threads. Short \
+         the noise of the cost of a count, {noise:.0}: other work ran on the counted threads. Short \
          runs: {short}; long runs: {long}"
     )]
     Noisy {
@@ -176,7 +176,7 @@ pub enum Error {
         case: String,
         /// The difference.
         cycles: f64,
-        /// The noise of a difference of two empty counts.
+        /// The noise of the fixed cost of a count.
         noise: f64,
         /// The spread of the cycles of the short runs.
         short: String,

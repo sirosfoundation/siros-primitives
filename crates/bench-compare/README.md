@@ -133,7 +133,8 @@ cargo run --release -p bench-compare --bin bench-browser -- \
 - A figure is the difference of the counts of rank 4 of each run length: the requests of a count
   part the two runs of a repetition, so they meet the sibling thread in different states.
 - Each bench first counts 1,000 empty regions: a case whose difference counts under 50 times the
-  noise of two empty counts stops the sweep.
+  noise of the fixed cost of a count stops the sweep: the difference of the counts of rank 4 of two
+  sets of 31 empty counts, the largest of four pairs.
 - A chain holds `x` in WebAssembly locals and stores a copy after each step, which keeps every
   intermediate `x`; it also runs with `x` in memory, and the faster counts.
 - The driver needs to trace the browser: it starts the browser itself and adopts its orphans as
