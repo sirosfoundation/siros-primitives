@@ -27,6 +27,7 @@ mod params;
 mod scale;
 mod sqrt;
 pub mod standard;
+mod unrolled;
 mod width;
 
 /// The integers that elements convert from and to.

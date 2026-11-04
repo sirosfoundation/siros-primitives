@@ -19,6 +19,7 @@ use crate::field::Modulus;
 use crate::kernel::{equal, fits, is_zero, limb, low_limb, set, shifted_limb};
 use crate::limb::{adc, mac, sbb, select};
 use crate::params::{ExtendedLimbs, Limbs, Shape, WideLimbs};
+use crate::unrolled::unroll;
 use crate::width::Width;
 
 impl<M: Modulus> Shape<M> {
@@ -580,46 +581,32 @@ impl<M: Modulus> Shape<M> {
     /// fold into its additions: a P-256 product takes 25% more with two.
     pub(crate) const TWO_CHAINS: bool = Self::LIMBS > 4;
 
-    /// The full product `a b` in `2 L` limbs, by rows of one limb of `b` on two chains and of `a`
-    /// on one.
+    /// The full product `a b` in `2 L` limbs, by rows of one limb of `b`.
     #[inline(always)]
     fn product(a: &[u64], b: &[u64]) -> WideLimbs<M> {
         let mut wide = M::Width::WIDE_ZERO;
-        // Limb `i + L` is zero before row `i`, and the row's sum fits through it.
-        if Self::TWO_CHAINS {
-            Self::each_limb(
-                #[inline(always)]
-                |i| {
-                    let multiplier = limb(b, i);
-                    let product = u128::from(limb(a, 0)) * u128::from(multiplier);
-                    let (low, first) = adc(0, limb(wide.as_slice(), i), product as u64);
-                    set(wide.as_mut_slice(), i, low);
-                    let (top, carries) =
-                        Self::add_row(wide.as_mut_slice(), i, multiplier, a, first, 0);
-                    set(wide.as_mut_slice(), i + Self::LIMBS, top);
-                    fits(carries);
-                },
-            );
-        } else {
-            // Rows of one limb of `a`: in a chain `x = x y` the multiplier stays in a register
-            // and the limbs of `y` enter `mulx` from memory. Rows of `b` measured 2 cycles more
-            // per P-256 product, and 4 more per chained secp256k1 product.
-            let mut carry = 0;
-            Self::each_pair(
-                #[inline(always)]
-                |i, j| {
-                    let multiplier = limb(a, i);
+        unroll!(i in 0, Self::LIMBS => {
+            let multiplier = limb(b, i);
+            if Self::TWO_CHAINS {
+                let product = u128::from(limb(a, 0)) * u128::from(multiplier);
+                let (low, first) = adc(0, limb(wide.as_slice(), i), product as u64);
+                set(wide.as_mut_slice(), i, low);
+                // Limb `i + L` is zero before the row, and the row's sum fits through it.
+                let (top, carries) =
+                    Self::add_row(wide.as_mut_slice(), i, multiplier, a, first, 0);
+                set(wide.as_mut_slice(), i + Self::LIMBS, top);
+                fits(carries);
+            } else {
+                let mut carry = 0;
+                unroll!(j in 0, Self::LIMBS => {
                     let (low, high) =
-                        mac(limb(b, j), multiplier, limb(wide.as_slice(), i + j), carry);
+                        mac(limb(a, j), multiplier, limb(wide.as_slice(), i + j), carry);
                     set(wide.as_mut_slice(), i + j, low);
                     carry = high;
-                    if j + 1 == Self::LIMBS {
-                        set(wide.as_mut_slice(), i + Self::LIMBS, carry);
-                        carry = 0;
-                    }
-                },
-            );
-        }
+                });
+                set(wide.as_mut_slice(), i + Self::LIMBS, carry);
+            }
+        });
         wide
     }
 
@@ -636,34 +623,24 @@ impl<M: Modulus> Shape<M> {
             ((u128::from(x) * u128::from(limb(v, 0))) >> 64) as u64,
         );
         let mut carry = first;
-        Self::each_limb(
-            #[inline(always)]
-            |j| {
-                if j >= 1 {
-                    let product = u128::from(x) * u128::from(limb(v, j));
-                    let (sum, carry_out) = adc(carry, limb(acc, at + j), product as u64);
-                    set(acc, at + j, sum);
-                    set(highs.as_mut_slice(), j, (product >> 64) as u64);
-                    carry = carry_out;
-                }
-            },
-        );
+        unroll!(j in 1, Self::LIMBS => {
+            let product = u128::from(x) * u128::from(limb(v, j));
+            let (sum, carry_out) = adc(carry, limb(acc, at + j), product as u64);
+            set(acc, at + j, sum);
+            set(highs.as_mut_slice(), j, (product >> 64) as u64);
+            carry = carry_out;
+        });
         let (top, low_carry) = adc(carry, limb(acc, at + Self::LIMBS), top);
         let mut carry = 0;
-        Self::each_limb(
-            #[inline(always)]
-            |j| {
-                if j >= 1 {
-                    let (sum, carry_out) = adc(
-                        carry,
-                        limb(acc, at + j),
-                        limb(highs.as_slice(), j.wrapping_sub(1)),
-                    );
-                    set(acc, at + j, sum);
-                    carry = carry_out;
-                }
-            },
-        );
+        unroll!(j in 1, Self::LIMBS => {
+            let (sum, carry_out) = adc(
+                carry,
+                limb(acc, at + j),
+                limb(highs.as_slice(), j.wrapping_sub(1)),
+            );
+            set(acc, at + j, sum);
+            carry = carry_out;
+        });
         let (top, high_carry) = adc(carry, top, limb(highs.as_slice(), Self::LIMBS - 1));
         (top, u64::from(low_carry) + u64::from(high_carry))
     }
@@ -825,47 +802,31 @@ impl<M: Modulus> Shape<M> {
         }
         let mut out = M::Width::ZERO;
         let mut top = 0u64;
-        Self::each_limb(
-            #[inline(always)]
-            |i| {
-                let multiplier = limb(b, i);
-                let mut carry = 0;
-                Self::each_limb(
-                    #[inline(always)]
-                    |j| {
-                        let (low, high) =
-                            mac(limb(a, j), multiplier, limb(out.as_slice(), j), carry);
-                        set(out.as_mut_slice(), j, low);
-                        carry = high;
-                    },
-                );
-                let (row_top, above) = adc(0, top, carry);
-                let m = limb(out.as_slice(), 0).wrapping_mul(Self::INV);
-                let (_, mut carry) = mac(m, Self::P0, limb(out.as_slice(), 0), 0);
-                Self::each_limb(
-                    #[inline(always)]
-                    |j| {
-                        if j >= 1 {
-                            let (low, high) = mac(
-                                m,
-                                limb(Self::P.as_slice(), j),
-                                limb(out.as_slice(), j),
-                                carry,
-                            );
-                            set(out.as_mut_slice(), j.wrapping_sub(1), low);
-                            carry = high;
-                        }
-                    },
-                );
-                let (sum, carry_out) = adc(0, row_top, carry);
-                set(out.as_mut_slice(), Self::LIMBS - 1, sum);
-                top = if Self::SPARE {
-                    0
-                } else {
-                    u64::from(above) + u64::from(carry_out)
-                };
-            },
-        );
+        unroll!(i in 0, Self::LIMBS => {
+            let multiplier = limb(b, i);
+            let mut carry = 0;
+            unroll!(j in 0, Self::LIMBS => {
+                let (low, high) = mac(limb(a, j), multiplier, limb(out.as_slice(), j), carry);
+                set(out.as_mut_slice(), j, low);
+                carry = high;
+            });
+            let (row_top, above) = adc(0, top, carry);
+            let m = limb(out.as_slice(), 0).wrapping_mul(Self::INV);
+            let (_, mut carry) = mac(m, Self::P0, limb(out.as_slice(), 0), 0);
+            unroll!(j in 1, Self::LIMBS => {
+                let (low, high) =
+                    mac(m, limb(Self::P.as_slice(), j), limb(out.as_slice(), j), carry);
+                set(out.as_mut_slice(), j.wrapping_sub(1), low);
+                carry = high;
+            });
+            let (sum, carry_out) = adc(0, row_top, carry);
+            set(out.as_mut_slice(), Self::LIMBS - 1, sum);
+            top = if Self::SPARE {
+                0
+            } else {
+                u64::from(above) + u64::from(carry_out)
+            };
+        });
         Self::reduce_final::<CT>(out, top as u8)
     }
 
@@ -874,36 +835,26 @@ impl<M: Modulus> Shape<M> {
     fn montgomery_reduce_two_chains<const CT: bool>(mut wide: WideLimbs<M>) -> Limbs<M> {
         // The carries out of a row's top limb, which the next row adds one limb up.
         let mut above = 0u64;
-        Self::each_limb(
-            #[inline(always)]
-            |i| {
-                let low = limb(wide.as_slice(), i);
-                let m = low.wrapping_mul(Self::INV);
-                // `low` plus the low half of `m p0` is a multiple of `2^64`: it carries unless `low`
-                // is zero.
-                let (top, carries) = Self::add_row(
-                    wide.as_mut_slice(),
-                    i,
-                    m,
-                    Self::P.as_slice(),
-                    u8::from(low != 0),
-                    above,
-                );
-                set(wide.as_mut_slice(), i + Self::LIMBS, top);
-                above = carries;
-            },
-        );
+        unroll!(i in 0, Self::LIMBS => {
+            let low = limb(wide.as_slice(), i);
+            let m = low.wrapping_mul(Self::INV);
+            // `low` plus the low half of `m p0` is a multiple of `2^64`: it carries unless `low`
+            // is zero.
+            let (top, carries) = Self::add_row(
+                wide.as_mut_slice(),
+                i,
+                m,
+                Self::P.as_slice(),
+                u8::from(low != 0),
+                above,
+            );
+            set(wide.as_mut_slice(), i + Self::LIMBS, top);
+            above = carries;
+        });
         let mut out = M::Width::ZERO;
-        Self::each_limb(
-            #[inline(always)]
-            |j| {
-                set(
-                    out.as_mut_slice(),
-                    j,
-                    limb(wide.as_slice(), j + Self::LIMBS),
-                );
-            },
-        );
+        unroll!(j in 0, Self::LIMBS => {
+            set(out.as_mut_slice(), j, limb(wide.as_slice(), j + Self::LIMBS));
+        });
         Self::reduce_final::<CT>(out, if Self::SPARE { 0 } else { above as u8 })
     }
 
@@ -912,51 +863,39 @@ impl<M: Modulus> Shape<M> {
     fn montgomery_interleaved_two_chains<const CT: bool>(a: &[u64], b: &[u64]) -> Limbs<M> {
         // The accumulator, `acc[..L]`, and the limb above it, `acc[L]`.
         let mut acc = M::Width::EXTENDED_ZERO;
-        Self::each_limb(
-            #[inline(always)]
-            |i| {
-                let multiplier = limb(b, i);
-                let product = u128::from(limb(a, 0)) * u128::from(multiplier);
-                let (low, first) = adc(0, limb(acc.as_slice(), 0), product as u64);
-                set(acc.as_mut_slice(), 0, low);
-                let (row_top, above) =
-                    Self::add_row(acc.as_mut_slice(), 0, multiplier, a, first, 0);
-                set(acc.as_mut_slice(), Self::LIMBS, row_top);
-                let low = limb(acc.as_slice(), 0);
-                let m = low.wrapping_mul(Self::INV);
-                let (row_top, carries) = Self::add_row(
-                    acc.as_mut_slice(),
-                    0,
-                    m,
-                    Self::P.as_slice(),
-                    u8::from(low != 0),
-                    0,
-                );
-                // The low limb is now zero: the accumulator shifts down one limb.
-                Self::each_limb(
-                    #[inline(always)]
-                    |j| {
-                        if j + 1 < Self::LIMBS {
-                            let next = limb(acc.as_slice(), j + 1);
-                            set(acc.as_mut_slice(), j, next);
-                        }
-                    },
-                );
-                set(acc.as_mut_slice(), Self::LIMBS - 1, row_top);
-                set(
-                    acc.as_mut_slice(),
-                    Self::LIMBS,
-                    if Self::SPARE { 0 } else { above + carries },
-                );
-            },
-        );
+        unroll!(i in 0, Self::LIMBS => {
+            let multiplier = limb(b, i);
+            let product = u128::from(limb(a, 0)) * u128::from(multiplier);
+            let (low, first) = adc(0, limb(acc.as_slice(), 0), product as u64);
+            set(acc.as_mut_slice(), 0, low);
+            let (row_top, above) = Self::add_row(acc.as_mut_slice(), 0, multiplier, a, first, 0);
+            set(acc.as_mut_slice(), Self::LIMBS, row_top);
+            let low = limb(acc.as_slice(), 0);
+            let m = low.wrapping_mul(Self::INV);
+            let (row_top, carries) = Self::add_row(
+                acc.as_mut_slice(),
+                0,
+                m,
+                Self::P.as_slice(),
+                u8::from(low != 0),
+                0,
+            );
+            // The low limb is now zero: the accumulator shifts down one limb.
+            unroll!(j in 0, Self::LIMBS - 1 => {
+                let next = limb(acc.as_slice(), j + 1);
+                set(acc.as_mut_slice(), j, next);
+            });
+            set(acc.as_mut_slice(), Self::LIMBS - 1, row_top);
+            set(
+                acc.as_mut_slice(),
+                Self::LIMBS,
+                if Self::SPARE { 0 } else { above + carries },
+            );
+        });
         let mut out = M::Width::ZERO;
-        Self::each_limb(
-            #[inline(always)]
-            |j| {
-                set(out.as_mut_slice(), j, limb(acc.as_slice(), j));
-            },
-        );
+        unroll!(j in 0, Self::LIMBS => {
+            set(out.as_mut_slice(), j, limb(acc.as_slice(), j));
+        });
         Self::reduce_final::<CT>(out, limb(acc.as_slice(), Self::LIMBS) as u8)
     }
 
@@ -983,12 +922,9 @@ impl<M: Modulus> Shape<M> {
             &second
         };
         let mut out = M::Width::ZERO;
-        Self::each_limb(
-            #[inline(always)]
-            |j| {
-                set(out.as_mut_slice(), j, limb(folded.as_slice(), j));
-            },
-        );
+        unroll!(j in 0, Self::LIMBS => {
+            set(out.as_mut_slice(), j, limb(folded.as_slice(), j));
+        });
         Self::reduce_final::<CT>(out, limb(folded.as_slice(), Self::LIMBS) as u8)
     }
 
@@ -999,37 +935,27 @@ impl<M: Modulus> Shape<M> {
         let deficit = Self::DEFICIT_VALUE;
         if deficit == 1 {
             let mut carry = 0;
-            Self::each_extended(
-                #[inline(always)]
-                |j| {
-                    if j < len {
-                        let (sum, carry_out) = adc(
-                            carry,
-                            shifted_limb(value, Self::BITS, j),
-                            low_limb(value, Self::BITS, j),
-                        );
-                        set(out.as_mut_slice(), j, sum);
-                        carry = carry_out;
-                    }
-                },
-            );
+            unroll!(j in 0, len => {
+                let (sum, carry_out) = adc(
+                    carry,
+                    shifted_limb(value, Self::BITS, j),
+                    low_limb(value, Self::BITS, j),
+                );
+                set(out.as_mut_slice(), j, sum);
+                carry = carry_out;
+            });
             return;
         }
         let mut carry = 0;
-        Self::each_extended(
-            #[inline(always)]
-            |j| {
-                if j < len {
-                    let (sum, high) = mac(
-                        shifted_limb(value, Self::BITS, j),
-                        deficit,
-                        low_limb(value, Self::BITS, j),
-                        carry,
-                    );
-                    set(out.as_mut_slice(), j, sum);
-                    carry = high;
-                }
-            },
-        );
+        unroll!(j in 0, len => {
+            let (sum, high) = mac(
+                shifted_limb(value, Self::BITS, j),
+                deficit,
+                low_limb(value, Self::BITS, j),
+                carry,
+            );
+            set(out.as_mut_slice(), j, sum);
+            carry = high;
+        });
     }
 }
