@@ -342,7 +342,7 @@ impl<M: Modulus> Shape<M> {
 
     /// The Montgomery product `a b / 2^64 mod p` on one limb.
     #[inline(always)]
-    fn montgomery1<const CT: bool>(a: u64, b: u64) -> u64 {
+    pub(crate) fn montgomery1<const CT: bool>(a: u64, b: u64) -> u64 {
         if Self::PRODUCT_FITS_LIMB {
             // `x + m p = 0 mod 2^64` with `x < 2^64`: the low limbs carry exactly when `x` is
             // not zero, and the result `(m p >> 64) + carry` is at most `p`. It equals `p` only

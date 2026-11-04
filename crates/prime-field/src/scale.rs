@@ -91,13 +91,16 @@ impl<M: Modulus> Shape<M> {
     }
 
     /// The residue of the integer `k` on one limb: `k mod p` in `[0, p]` by folds on a Mersenne
-    /// modulus; below `p`, `R k mod p` by one Montgomery step of `k R^2`, or on Goldilocks by its
-    /// fold; `k mod p` for other plain residues by one quotient step.
+    /// modulus; below `p`, `R k mod p` by one Montgomery step of `k R^2`, of shifts on Goldilocks,
+    /// and `k mod p` for other plain residues by one quotient step.
     #[inline(always)]
     fn word1<const CT: bool>(k: u64) -> u64 {
         if Self::MERSENNE {
             Self::mersenne_word(k)
-        } else if Self::MONTGOMERY && !Self::SHIFT_REDC {
+        } else if Self::SHIFT_REDC {
+            // `k R^2 < p 2^64` reduces by one Montgomery step to `k R mod p`, of shifts.
+            Self::montgomery1::<CT>(k, limb(&Self::R2, 0))
+        } else if Self::MONTGOMERY {
             // `k R^2 < p 2^64` reduces by one Montgomery step to `k R mod p`.
             Self::redc1::<CT>(u128::from(k) * u128::from(limb(&Self::R2, 0)))
         } else {
