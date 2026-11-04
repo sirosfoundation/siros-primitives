@@ -908,11 +908,14 @@ fn ours<M: Modulus, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             #[inline(always)]
             |&(a, k)| a - k,
         )
-        .absent(constant(Kind::FromU64), PUBLIC_INTEGER)
+        .case(
+            ct(kind::FromU64),
+            "ConstantTime::new(from_u64)",
+            one::<u64>,
+            #[inline(always)]
+            |&k| ConstantTime::new(Fp::<M>::from_u64(k)),
+        )
 }
-
-/// The reason for an absent constant-time conversion of a `u64`, which is a public operand.
-const PUBLIC_INTEGER: &str = "a u64 is public: From<u64> takes time that depends on it";
 
 // ---------------------------------------------------------------------------------------------
 // ark-ff
