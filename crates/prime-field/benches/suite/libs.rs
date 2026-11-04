@@ -2175,6 +2175,10 @@ const fn runtime_limbs(words: usize) -> usize {
     words * runtime_algebra::LIMBS_PER_U64
 }
 
+/// The most limbs of an element that the Montgomery product of `runtime-algebra`'s
+/// `FpGenericField` takes: it asserts as much.
+const RUNTIME_PRODUCT_LIMBS: usize = 16;
+
 /// The limbs of a `runtime-algebra` accumulator of elements of `words` 64-bit words.
 const fn accumulator(words: usize) -> usize {
     2 * runtime_limbs(words) + 1
@@ -2242,6 +2246,9 @@ fn runtime_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
                 cells,
             )
         }
+        "P-521 base" if runtime_limbs(9) > RUNTIME_PRODUCT_LIMBS => cells.none(
+            "on a 32-bit target P-521 takes 18 limbs, over the 16 of runtime-algebra's product",
+        ),
         "P-521 base" => {
             runtime::<9, _, V>(
                 FpGenericField::<9, { runtime_limbs(9) }, { accumulator(9) }>::new_generic(
