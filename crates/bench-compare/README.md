@@ -137,8 +137,9 @@ fn main() -> std::process::ExitCode {
 
 ## Protocol
 
-- A figure is the median over 31 repetitions of (cycles of 2n operations − cycles of n) / n,
-  after nanoBench (Abel and Reineke, ISPASS 2020).
+- A figure is (fewest cycles of 2n operations − fewest cycles of n) / n over 31 repetitions,
+  after nanoBench (Abel and Reineke, ISPASS 2020). A busy sibling hardware thread doubled a
+  one-`add` chain step: the fewest of each length is the run that met an idle sibling.
 - Latency runs the chain `x = op(x, y)` with `x` held in registers between steps. Every case first
   matches the accepted results. The bench pins itself to CPU 15.
 - A sweep stops on multiplexed counters, on long runs that count no more cycles than short runs,

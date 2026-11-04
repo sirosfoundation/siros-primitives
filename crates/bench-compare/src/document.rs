@@ -453,8 +453,8 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
          faster."
             .to_owned(),
         format!(
-            "- Each figure: the median over {REPETITIONS} repetitions of the cycles of 2n \
-             operations less those of n, over n."
+            "- Each figure: over {REPETITIONS} repetitions, the fewest cycles of 2n operations \
+             less the fewest of n, over n."
         ),
     ];
     if record.builds.iter().any(|build| loaded(&build.sweep)) {

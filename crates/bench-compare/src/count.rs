@@ -9,9 +9,13 @@
 //! every run, outside the counted region; it runs `n` operations uncounted, then counts a run of
 //! `n` operations and a run of `2n` through [`run_batch`]. A case with a chain form does the same
 //! through [`run_chain`] once per [`Barrier`] that holds its result, each with its own `n`. The
-//! figure per operation of an event is the median, over the repetitions, of the `2n` count less
-//! the `n` count, divided by `n`: the fixed cost of a run cancels, and each difference pairs two
-//! runs taken back to back. The latency of a case is its chain with the fewest cycles. A case
+//! figure per operation of an event is the fewest that a `2n` run counts less the fewest that an
+//! `n` run counts, divided by `n`: the fixed cost of a run cancels. A disturbance only adds
+//! counts, so the fewest of each length is its undisturbed run (Chen and Revels, "Robust
+//! benchmarking in noisy environments", 2016). A run shares its core with the sibling hardware
+//! thread: a one-`add` chain step took 1 cycle while the sibling idled and 2 while it ran, and a
+//! median of paired differences fell to 0.06 cycles where the two runs of a pair met different
+//! siblings. The latency of a case is its chain with the fewest cycles. A case
 //! whose `2n` runs count no more cycles than its `n` runs stops the sweep, and so does a chain
 //! step under [`FEWEST_STEP_CYCLES`].
 
@@ -286,30 +290,26 @@ struct Form {
     repetitions: Vec<[Counts; 2]>,
 }
 
-/// The median of `values`, which it sorts.
-fn median(values: &mut [f64]) -> Option<f64> {
-    values.sort_unstable_by(f64::total_cmp);
-    values.get(values.len() / 2).copied()
-}
-
 impl Form {
-    /// The events per operation of the form `name`: the median, over the repetitions, of the long
-    /// run less the short run, over the operations of a short run. Long runs that count no more
-    /// cycles than short runs, by their medians or by the median of their differences, are an
-    /// [`Error::Flat`].
+    /// The events per operation of the form `name`: the fewest that a long run counts less the
+    /// fewest that a short run counts, over the operations of a short run. Long runs whose fewest
+    /// cycles are no more than the short runs' are an [`Error::Flat`].
     fn events(&self, name: &str) -> Result<Events, Error> {
-        let median_of = |value: &dyn Fn(&[Counts; 2]) -> f64| -> Result<f64, Error> {
-            let mut values: Vec<f64> = self.repetitions.iter().map(value).collect();
-            median(&mut values).ok_or_else(|| Error::missing("repetitions", name))
+        let fewest = |value: &dyn Fn(&[Counts; 2]) -> u64| -> Result<u64, Error> {
+            self.repetitions
+                .iter()
+                .map(value)
+                .min()
+                .ok_or_else(|| Error::missing("repetitions", name))
         };
         let per = |event: fn(&Counts) -> u64| -> Result<f64, Error> {
-            let difference = median_of(&|[short, long]| event(long) as f64 - event(short) as f64)?;
+            let long = fewest(&|[_, long]| event(long))?;
+            let short = fewest(&|[short, _]| event(short))?;
+            let difference = long as f64 - short as f64;
             Ok(difference / self.operations as f64)
         };
-        let short = median_of(&|[short, _]| short.cycles as f64)?;
-        let long = median_of(&|[_, long]| long.cycles as f64)?;
         let cycles = per(|counts| counts.cycles)?;
-        if long <= short || cycles <= 0.0 {
+        if cycles <= 0.0 {
             return Err(Error::Flat {
                 case: name.to_owned(),
                 operations: self.operations,
