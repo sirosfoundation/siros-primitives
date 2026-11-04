@@ -10,7 +10,9 @@ use std::process::ExitCode;
 use bench_compare::run_batch;
 use biguint::generic_array::GenericArray;
 use biguint::generic_array::sequence::GenericSequence;
-use biguint::typenum::{Sum, U64, U256, U521, U1024, U4096};
+use biguint::typenum::{
+    IsLess, Sum, True, U30, U63, U64, U253, U255, U256, U380, U520, U521, U1024, U4096,
+};
 use biguint::{Bits, ConstantTime, NonZero, NonZeroUint, Uint};
 use binary_field::{Aes, B233, B571, Gcm, Gf2, Poly16, Poly64, Poly256, Polynomial, Pow};
 use prime_field::standard::{
@@ -26,6 +28,7 @@ pub(crate) fn main() -> ExitCode {
     let operations = INTEGERS
         .iter()
         .chain(&PRIME_FIELDS)
+        .chain(&DIVISIONS)
         .chain(&BINARY_FIELDS)
         .try_fold(0, |operations, check| {
             Ok::<_, Failure>(operations + check()?)
@@ -81,6 +84,28 @@ const PRIME_FIELDS: [Check; 10] = [
     prime::<Tom256Base>,
     prime::<Bls12381Base>,
     prime::<P521Base>,
+];
+
+/// The divisions of the fields of the comparison benches of `prime-field`: by a `k` of 64 bits
+/// where the field is wider, and by a `k` of one bit less than `p`.
+const DIVISIONS: [Check; 17] = [
+    division::<Mersenne31, U30>,
+    division::<BabyBear, U30>,
+    division::<Goldilocks, U63>,
+    division::<Bn254Scalar, U64>,
+    division::<Bn254Scalar, U253>,
+    division::<Secp256k1Base, U64>,
+    division::<Secp256k1Base, U255>,
+    division::<P256Base, U64>,
+    division::<P256Base, U255>,
+    division::<P256Scalar, U64>,
+    division::<P256Scalar, U255>,
+    division::<Tom256Base, U64>,
+    division::<Tom256Base, U255>,
+    division::<Bls12381Base, U64>,
+    division::<Bls12381Base, U380>,
+    division::<P521Base, U64>,
+    division::<P521Base, U520>,
 ];
 
 /// The fields of the comparison benches of `binary-field`.
@@ -246,6 +271,25 @@ fn integer_operands<M: Modulus, K: Bits>(a: Fp<M>) -> Result<usize, Failure> {
         + assigned(|target, k| *target += k)
         + assigned(|target, k| *target -= k)
         + assigned(|target, k| *target *= k))
+}
+
+/// Runs `/` and `/=` of `ConstantTime<Fp<M>>` by a wrapped nonzero `Uint<K>`.
+fn division<M: Modulus, K>() -> Result<usize, Failure>
+where
+    K: Bits + IsLess<M::Width, Output = True>,
+{
+    let k = NonZero::new(spread::<K>(B)).ok_or(Failure::ZeroOperand)?;
+    let mut pair = [(
+        ConstantTime::new(Fp::<M>::from_u64(A)),
+        ConstantTime::new(k),
+    )];
+    classify(&mut pair)?;
+    Ok(run_batch(&pair, |&(a, k)| a / k)
+        + run_batch(&pair, |&(a, k)| {
+            let mut target = a;
+            target /= k;
+            target
+        }))
 }
 
 /// Runs every operation of `ConstantTime<Gf2<P>>`: the operators between two wrapped values and

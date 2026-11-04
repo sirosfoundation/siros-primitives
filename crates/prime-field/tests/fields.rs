@@ -3,8 +3,10 @@
 //! representation: below 2^64, Mersenne, pseudo-Mersenne, Montgomery with and without a spare
 //! bit, `p = 1 mod 4` and `p = 3 mod 4`, one and nine limbs.
 
-use biguint::typenum::{U7, U127, U256};
-use biguint::{Bits, NonZero, Uint};
+use biguint::typenum::{
+    IsLess, True, U7, U30, U63, U64, U126, U127, U128, U253, U255, U256, U380, U520,
+};
+use biguint::{Bits, NonZero, NonZeroUint, Uint};
 use num_bigint::BigUint;
 use prime_field::standard::{
     BabyBear, Bls12381Base, Bn254Scalar, Goldilocks, Mersenne31, P256Base, P256Scalar, P521Base,
@@ -483,8 +485,105 @@ fn check_integers<M: Modulus>(rng: &mut Rng) {
     }
 }
 
+/// `x / k` through `Fp`, the assigning form, and `ConstantTime` with `k` wrapped and its
+/// assigning form.
+fn division_results<M: Modulus, K>(x: Fp<M>, k: NonZeroUint<K>) -> [Fp<M>; 4]
+where
+    K: Bits + IsLess<M::Width, Output = True>,
+{
+    let (s, t) = (ConstantTime::new(x), ConstantTime::new(k));
+    let (mut quotient, mut wrapped) = (x, s);
+    quotient /= k;
+    wrapped /= t;
+    [x / k, quotient, (s / t).reveal(), wrapped.reveal()]
+}
+
+/// The division of the field of `M` by `k` of `K` bits against `biguint`'s `mul_mod` by the
+/// inverse `k^(p - 2) mod p`, which `biguint`'s `pow` computes: `k` at the edges of 32, 64 and
+/// `K` bits, and random of 32, 64 and `K` bits.
+fn check_division<M: Modulus, K>(rng: &mut Rng)
+where
+    K: Bits + IsLess<M::Width, Output = True>,
+{
+    let p = big(M::MODULUS.as_limbs());
+    let bits = K::BITS;
+    let oracle = NonZero::new(uint::<Oracle>(&p)).expect("a nonzero modulus");
+    let field = biguint::Modulus::new(M::MODULUS).expect("a nonzero modulus");
+    let exponent = uint::<M::Width>(&(&p - 2u8));
+    let top = (BigUint::from(1u8) << bits) - 1u8;
+    let mut ks: Vec<BigUint> = [1u64, 2, 3, u32::MAX.into(), 1 << 32, u64::MAX]
+        .map(BigUint::from)
+        .into_iter()
+        .chain([BigUint::from(1u8) << 64, (BigUint::from(1u8) << 64) + 1u8])
+        .chain([top.clone(), &top - 1u8, (&top >> 1) + 1u8])
+        .collect();
+    for width in [32, 64, bits] {
+        ks.extend((0..4).map(|_| random_bits(rng, width.min(bits))));
+    }
+    ks.retain(|k| k.bits() <= bits as u64 && *k != BigUint::ZERO);
+    let xs = [BigUint::ZERO, BigUint::from(1u8), &p - 1u8, rng.below(&p)];
+    for k in &ks {
+        let inverse = field.scope(|ring| ring.reduce(uint::<K>(k)).pow(exponent).get());
+        let divisor = NonZero::new(uint::<K>(k)).expect("a nonzero divisor");
+        for a in &xs {
+            let expected = big(uint::<Oracle>(a)
+                .mul_mod(inverse.resize::<Oracle>(), oracle)
+                .as_limbs());
+            agree::<M>(
+                "div",
+                a,
+                k,
+                &expected,
+                &division_results(element::<M>(a), divisor),
+            );
+        }
+    }
+}
+
+/// A sweep over one field.
+type Check = fn(&mut Rng);
+
+/// Each modulus that fills its width, with the widths of its divisors: 64 and 128 bits where
+/// they fit, and one bit short of the width.
+const DIVISIONS: [(&str, Check); 21] = [
+    ("Mersenne31 / U30", check_division::<Mersenne31, U30>),
+    ("BabyBear / U30", check_division::<BabyBear, U30>),
+    ("Goldilocks / U63", check_division::<Goldilocks, U63>),
+    ("Mersenne127 / U64", check_division::<Mersenne127, U64>),
+    ("Mersenne127 / U126", check_division::<Mersenne127, U126>),
+    ("Bn254Scalar / U64", check_division::<Bn254Scalar, U64>),
+    ("Bn254Scalar / U128", check_division::<Bn254Scalar, U128>),
+    ("Bn254Scalar / U253", check_division::<Bn254Scalar, U253>),
+    ("Secp256k1Base / U64", check_division::<Secp256k1Base, U64>),
+    (
+        "Secp256k1Base / U255",
+        check_division::<Secp256k1Base, U255>,
+    ),
+    (
+        "Secp256k1Scalar / U64",
+        check_division::<Secp256k1Scalar, U64>,
+    ),
+    (
+        "Secp256k1Scalar / U255",
+        check_division::<Secp256k1Scalar, U255>,
+    ),
+    ("P256Base / U64", check_division::<P256Base, U64>),
+    ("P256Base / U128", check_division::<P256Base, U128>),
+    ("P256Base / U255", check_division::<P256Base, U255>),
+    ("P256Scalar / U255", check_division::<P256Scalar, U255>),
+    ("Tom256Base / U64", check_division::<Tom256Base, U64>),
+    ("Tom256Base / U255", check_division::<Tom256Base, U255>),
+    ("Bls12381Base / U64", check_division::<Bls12381Base, U64>),
+    ("Bls12381Base / U380", check_division::<Bls12381Base, U380>),
+    ("P521Base / U520", check_division::<P521Base, U520>),
+];
+
 #[test]
 fn integer_operands_match_biguint() {
+    for (name, check) in DIVISIONS {
+        eprintln!("{name}");
+        check(&mut Rng(name.len() as u64));
+    }
     let sweep = |name: &str, p: &BigUint, sweep: &dyn Fn(&mut Rng)| {
         let mut rng = Rng(p.bits() + 1);
         eprintln!("{name}");

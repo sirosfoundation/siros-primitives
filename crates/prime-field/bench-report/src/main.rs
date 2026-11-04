@@ -21,7 +21,7 @@ impl fmt::Display for Field {
 
 const MEASURED: Measured = Measured {
     package: "prime-field",
-    benches: &["sums", "products", "integers"],
+    benches: &["sums", "products", "integers", "divisions"],
     sources: "crates/prime-field/src",
     pathspecs: &[
         "Cargo.toml",
@@ -81,6 +81,12 @@ const LAYOUT: Layout<'static, Field> = Layout {
             "a − k, k of the bit length of p",
         ),
         Operation::new("from_u64_vartime", "from_u64", "k mod p, k of 64 bits"),
+        Operation::new("div_u64_vartime", "div_u64", "a / k, k of 64 bits"),
+        Operation::new(
+            "div_uint_vartime",
+            "div_uint",
+            "a / k, k of one bit less than p",
+        ),
         Operation::constant_time("add_ct", "add", "a + b"),
         Operation::constant_time("sub_ct", "sub", "a − b"),
         Operation::constant_time("mul_ct", "mul", "a × b"),
@@ -94,6 +100,8 @@ const LAYOUT: Layout<'static, Field> = Layout {
         Operation::constant_time("sub_u64_ct", "sub_u64", "a − k, k of 64 bits"),
         Operation::constant_time("sub_uint_ct", "sub_uint", "a − k, k of the bit length of p"),
         Operation::constant_time("from_u64_ct", "from_u64", "k mod p, k of 64 bits"),
+        Operation::constant_time("div_u64_ct", "div_u64", "a / k, k of 64 bits"),
+        Operation::constant_time("div_uint_ct", "div_uint", "a / k, k of one bit less than p"),
     ],
     row_header: "Field",
     rows_phrase: |fields| format!("over {}", sentence(fields)),
@@ -103,6 +111,10 @@ const LAYOUT: Layout<'static, Field> = Layout {
         "Integer operands `k`: uniform of exactly 64 bits, or of exactly the bit length of `p`, which \
          may reach `p`. A crate without an operation on an integer runs its own conversion of `k` \
          and then its operation on two elements.",
+        "Divisors `k`: nonzero, uniform of exactly 64 bits over the fields of more than 64 bits, or \
+         of exactly one bit less than `p`. A crate without a division by an integer runs its own \
+         conversion of `k`, its inverse and a product; `prime-field × invert` is that composition \
+         in `prime-field`.",
         "Every result matches `num-bigint` before it is measured.",
         "`prime-field` runs `Fp` in the tables without a label and `ConstantTime` in the \
          constant-time tables.",

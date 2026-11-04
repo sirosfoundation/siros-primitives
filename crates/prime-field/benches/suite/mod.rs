@@ -195,6 +195,10 @@ pub enum Kind {
     SubUint,
     /// The element `k mod p` of an integer `k` of 64 bits.
     FromU64,
+    /// `a / k` for a nonzero integer `k` of 64 bits, over a field of more than 64 bits.
+    DivU64,
+    /// `a / k` for a nonzero integer `k` of one bit less than `p`.
+    DivUint,
 }
 
 /// The timing class of a function, read from its source.
@@ -208,7 +212,7 @@ pub enum Timing {
 
 impl Op {
     /// Every operation, in measurement order: each kind in variable time, then in constant time.
-    pub const ALL: [Self; 26] = {
+    pub const ALL: [Self; 30] = {
         let kinds = [
             Kind::Add,
             Kind::Sub,
@@ -223,11 +227,13 @@ impl Op {
             Kind::SubU64,
             Kind::SubUint,
             Kind::FromU64,
+            Kind::DivU64,
+            Kind::DivUint,
         ];
         let mut all = [Self {
             kind: Kind::Add,
             timing: Timing::Variable,
-        }; 26];
+        }; 30];
         let mut index = 0;
         while index < kinds.len() {
             all[2 * index] = Self {
@@ -274,7 +280,9 @@ impl Kind {
                     | Self::AddUint
                     | Self::SubU64
                     | Self::SubUint
-                    | Self::FromU64 => &x * &y % p,
+                    | Self::FromU64
+                    | Self::DivU64
+                    | Self::DivUint => &x * &y % p,
                 };
                 (vec![a, b], vec![result])
             }
@@ -300,7 +308,9 @@ impl Kind {
                             | Self::Sqrt
                             | Self::MulU64
                             | Self::MulUint
-                            | Self::FromU64 => &x * &k % p,
+                            | Self::FromU64
+                            | Self::DivU64
+                            | Self::DivUint => &x * &k % p,
                         }
                     }
                     [k] => big(k) % p,
@@ -322,6 +332,14 @@ impl Kind {
                 let r = big(&nonzero(rng));
                 let a = &r * &r % p;
                 (vec![limbs(&a, modulus.len())], vec![p - &r, r])
+            }
+            Self::DivU64 | Self::DivUint => {
+                let operands = self.operands(p, modulus, rng);
+                let result = match operands.as_slice() {
+                    [a, k] => big(a) * big(k).modpow(&(p - 2u8), p) % p,
+                    _ => panic!("{} operands of {self:?}", operands.len()),
+                };
+                (operands, vec![result])
             }
         }
     }
@@ -349,6 +367,11 @@ impl Kind {
                 rng.exact(modulus.len(), p.bits() as usize),
             ],
             Self::FromU64 => vec![rng.exact(1, 64)],
+            Self::DivU64 => vec![rng.below(modulus), rng.exact(1, 64)],
+            Self::DivUint => vec![
+                rng.below(modulus),
+                rng.exact(modulus.len(), p.bits() as usize - 1),
+            ],
         }
     }
 }
@@ -394,7 +417,7 @@ pub mod kind {
 
     kinds!(
         Add, Sub, Mul, Square, Invert, Sqrt, MulU64, MulUint, AddU64, AddUint, SubU64, SubUint,
-        FromU64
+        FromU64, DivU64, DivUint
     );
 }
 
@@ -456,6 +479,8 @@ impl fmt::Display for Op {
             Kind::SubU64 => "sub_u64",
             Kind::SubUint => "sub_uint",
             Kind::FromU64 => "from_u64",
+            Kind::DivU64 => "div_u64",
+            Kind::DivUint => "div_uint",
         };
         let timing = match self.timing {
             Timing::Variable => "vartime",

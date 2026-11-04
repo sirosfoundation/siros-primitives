@@ -57,5 +57,9 @@ harness = false
 name = "integers"
 harness = false
 
+[[bench]]
+name = "divisions"
+harness = false
+
 [lints]
 workspace = true

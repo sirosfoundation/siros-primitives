@@ -18,6 +18,7 @@
 mod arith;
 mod chain;
 mod ct;
+mod divide;
 mod field;
 mod invert;
 mod kernel;

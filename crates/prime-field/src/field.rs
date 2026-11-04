@@ -1,10 +1,11 @@
 use core::fmt;
 use core::hash::{Hash, Hasher};
 use core::iter::{Product, Sum};
-use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use biguint::generic_array::GenericArray;
-use biguint::{Bits, OutOfRange, Uint};
+use biguint::typenum::{IsLess, True};
+use biguint::{Bits, NonZeroUint, OutOfRange, Uint};
 
 use crate::kernel::{bit, bit_len, equal, limb};
 use crate::params::{Limbs, Shape};
@@ -539,6 +540,62 @@ impl<M: Modulus, K: Bits> MulAssign<Uint<K>> for Fp<M> {
     #[inline(always)]
     fn mul_assign(&mut self, rhs: Uint<K>) {
         *self = *self * rhs;
+    }
+}
+
+/// `self / k` for a nonzero integer `k` of fewer bits than the width, over a modulus that fills
+/// its width. The time grows with the limbs of `k` above its low limb: a `k` below `2^64` takes
+/// its inverse by the extended Euclidean algorithm on machine words.
+///
+/// A `k` as wide as the width fails to compile:
+///
+/// ```compile_fail,E0271
+/// use biguint::typenum::U256;
+/// use biguint::{NonZero, Uint};
+/// use prime_field::standard::P256Base;
+/// use prime_field::Fp;
+///
+/// let k = NonZero::new(Uint::<U256>::from_u64(3)).expect("nonzero");
+/// let _quotient = Fp::<P256Base>::ONE / k;
+/// ```
+///
+/// So does a modulus whose bit length falls short of its width:
+///
+/// ```compile_fail,E0080
+/// use biguint::typenum::{U4, U8};
+/// use biguint::{NonZero, Uint};
+/// use prime_field::{Fp, Modulus};
+///
+/// #[derive(Clone, Copy)]
+/// struct Seven;
+///
+/// impl Modulus for Seven {
+///     type Width = U8;
+///     const MODULUS: Uint<U8> = Uint::from_limbs([7]);
+/// }
+///
+/// let k = NonZero::new(Uint::<U4>::from_u64(3)).expect("nonzero");
+/// let _quotient = Fp::<Seven>::ONE / k;
+/// ```
+impl<M: Modulus, K> Div<NonZeroUint<K>> for Fp<M>
+where
+    K: Bits + IsLess<M::Width, Output = True>,
+{
+    type Output = Self;
+
+    #[inline(always)]
+    fn div(self, rhs: NonZeroUint<K>) -> Self {
+        self.divide_with::<false>(rhs.get().as_limbs())
+    }
+}
+
+impl<M: Modulus, K> DivAssign<NonZeroUint<K>> for Fp<M>
+where
+    K: Bits + IsLess<M::Width, Output = True>,
+{
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: NonZeroUint<K>) {
+        *self = *self / rhs;
     }
 }
 

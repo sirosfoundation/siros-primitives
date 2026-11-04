@@ -3,9 +3,10 @@
 
 use core::ops::{Add, Mul, Sub};
 
-use biguint::{Bits, NonZero, Uint};
+use biguint::typenum::{IsLess, True};
+use biguint::{Bits, NonZero, NonZeroUint, Uint};
 use constant_time::{
-    ConstantTime, CtAdd, CtMul, CtNeg, CtNonZero, CtPow, CtSqrt, CtSquare, CtSub, Public,
+    ConstantTime, CtAdd, CtDiv, CtMul, CtNeg, CtNonZero, CtPow, CtSqrt, CtSquare, CtSub, Public,
 };
 
 use crate::field::{Fp, Modulus};
@@ -69,6 +70,20 @@ impl<M: Modulus, K: Bits> CtMul<Uint<K>> for Fp<M> {
     #[inline(always)]
     fn ct_mul(self, rhs: Uint<K>) -> Self {
         self.scale_with::<true>(rhs.as_limbs())
+    }
+}
+
+/// `self / k` for a nonzero integer `k` of fewer bits than the width, over a modulus that fills
+/// its width: the constant-time inverse of the element of `k`, then the product.
+impl<M: Modulus, K> CtDiv<NonZeroUint<K>> for Fp<M>
+where
+    K: Bits + IsLess<M::Width, Output = True>,
+{
+    type Output = Self;
+
+    #[inline(always)]
+    fn ct_div(self, rhs: NonZeroUint<K>) -> Self {
+        self.divide_with::<true>(rhs.get().as_limbs())
     }
 }
 

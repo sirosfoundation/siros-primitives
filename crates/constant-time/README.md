@@ -57,7 +57,8 @@ assert_eq!(sum.reveal().0, 88);
 | `+ - * & \| ^` and their assigning forms | `CtAdd`, `CtSub`, `CtMul`, `CtBitAnd`, `CtBitOr`, `CtBitXor` |
 | unary `-`, `!` | `CtNeg`, `CtNot` |
 | `<<`, `>>` | `CtShl`, `CtShr` |
-| `/`, `%`, `div_rem` | `CtDivRem` |
+| `/`, `%`, `div_rem` by a public divisor | `CtDivRem` |
+| `/` and `/=` by a `ConstantTime` divisor | `CtDiv` |
 | `square`, `pow`, `invert`, `sqrt` | `CtSquare`, `CtPow`, `CtInvert`, `CtSqrt` |
 | `double` | `CtAdd` |
 | `add_mod`, `sub_mod`, `neg_mod`, `mul_mod` | `CtAddMod`, `CtSubMod`, `CtNegMod`, `CtMulMod` |

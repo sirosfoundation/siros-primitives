@@ -4,8 +4,8 @@
 #![doc(test(attr(forbid(unsafe_code))))]
 
 use core::ops::{
-    Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, Mul,
-    MulAssign, Neg, Not, Rem, Shl, ShlAssign, Shr, ShrAssign, Sub, SubAssign,
+    Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Div, DivAssign,
+    Mul, MulAssign, Neg, Not, Rem, Shl, ShlAssign, Shr, ShrAssign, Sub, SubAssign,
 };
 
 /// A value whose operations run in constant time over it: no branch and no memory address depends
@@ -217,6 +217,11 @@ binary_trait!(
     /// `self * rhs`.
     CtMul,
     ct_mul
+);
+binary_trait!(
+    /// `self / rhs`.
+    CtDiv,
+    ct_div
 );
 binary_trait!(
     /// `self & rhs`.
@@ -480,12 +485,29 @@ impl<T: CtShr<A> + Copy, A> ShrAssign<A> for ConstantTime<T> {
 }
 
 /// `self / divisor` for a public divisor.
-impl<T: CtDivRem<D>, D> Div<D> for ConstantTime<T> {
+impl<T: CtDivRem<D>, D: Public> Div<D> for ConstantTime<T> {
     type Output = Self;
 
     #[inline(always)]
     fn div(self, divisor: D) -> Self {
         Self(self.0.ct_div_rem(divisor).0)
+    }
+}
+
+/// `self / divisor` for a wrapped divisor.
+impl<T: CtDiv<U>, U> Div<ConstantTime<U>> for ConstantTime<T> {
+    type Output = ConstantTime<T::Output>;
+
+    #[inline(always)]
+    fn div(self, divisor: ConstantTime<U>) -> ConstantTime<T::Output> {
+        ConstantTime(self.0.ct_div(divisor.0))
+    }
+}
+
+impl<T: CtDiv<U, Output = T> + Copy, U> DivAssign<ConstantTime<U>> for ConstantTime<T> {
+    #[inline(always)]
+    fn div_assign(&mut self, divisor: ConstantTime<U>) {
+        self.0 = self.0.ct_div(divisor.0);
     }
 }
 

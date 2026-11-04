@@ -19,6 +19,10 @@ panics.
   integer `k` of any width and value, reduced modulo `p`. The product takes one limb product and
   one quotient step per limb of `k`, from its top nonzero limb; a small `k` costs a fraction of
   a product of two elements. `From<u64>` takes the same path.
+- Division: `Fp / NonZeroUint<K>` and `/=` take a nonzero `k` of fewer bits than the width, over a
+  modulus that fills its width; a wider `k`, or a modulus short of its width, fails to compile. A `k`
+  below `2^64` takes its inverse by the extended Euclidean algorithm on machine words; a wider `k`
+  takes the inverse of its element.
 - `const_add`, `const_sub`, `const_neg`, `const_double`, `const_mul` and `const_square` compute in
   const contexts.
 - Conversions: `from_u64`, `from_uint` and `to_uint`, and little- and big-endian bytes. A value at
@@ -38,6 +42,7 @@ use prime_field::NonZero;
 let x = Fq::from_u64(7);
 assert_eq!(x * Uint::<U64>::from_u64(3), x + x + x);
 assert_eq!(x - Uint::<U64>::from_u64(7), Fq::ZERO);
+assert_eq!(x / NonZero::new(Uint::<U64>::from_u64(7)).ok_or("zero")?, Fq::ONE);
 let y = NonZero::new(x).ok_or("zero")?.invert().get();
 assert_eq!(x * y, Fq::ONE);
 assert_eq!(Fq::from_u64(4).sqrt().map(|r| r.square()), Some(Fq::from_u64(4)));

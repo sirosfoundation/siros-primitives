@@ -150,7 +150,7 @@ impl<M: Modulus> Fp<M> {
 /// `a^-1 mod p` by the extended Euclidean algorithm, for `0 < a < p`. A modulus below `2^32`
 /// divides 32-bit limbs.
 #[inline(always)]
-fn euclid(a: u64, p: u64) -> u64 {
+pub(crate) fn euclid(a: u64, p: u64) -> u64 {
     if p >> 32 == 0 {
         u64::from(euclid32(a as u32, p as u32))
     } else {
