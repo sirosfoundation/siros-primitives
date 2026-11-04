@@ -64,11 +64,15 @@ impl<M: Modulus> Shape<M> {
     }
 
     /// The residue of the integer `k` on one limb, below `p`: `k mod p` by its chunks on a
-    /// Mersenne modulus, else `R k mod p`, or `k mod p` for plain residues, by one quotient step.
+    /// Mersenne modulus; `R k mod p` by one Montgomery step of `k R^2`, or on Goldilocks by its
+    /// fold; `k mod p` for other plain residues by one quotient step.
     #[inline(always)]
     fn word1<const CT: bool>(k: u64) -> u64 {
         if Self::MERSENNE_CHUNKED {
             Self::mersenne_chunks(u128::from(k))
+        } else if Self::MONTGOMERY && !Self::SHIFT_REDC {
+            // `k R^2 < p 2^64` reduces by one Montgomery step to `k R mod p`.
+            Self::redc1::<CT>(u128::from(k) * u128::from(limb(&Self::R2, 0)))
         } else {
             limb(&Self::reduce_wide::<CT>(Self::row(&Self::ONE, k)), 0)
         }

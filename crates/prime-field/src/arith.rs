@@ -264,13 +264,18 @@ impl<M: Modulus> Shape<M> {
             let (result, borrow) = sbb(0, high, quotient);
             select(borrow != 0, result.wrapping_add(Self::P0), result)
         } else {
-            let product = u128::from(a) * u128::from(b);
-            let (low, high) = (product as u64, (product >> 64) as u64);
-            let m = low.wrapping_mul(Self::INV);
-            let reduction = ((u128::from(m) * u128::from(Self::P0)) >> 64) as u64;
-            let (result, carry) = adc(u8::from(low != 0), high, reduction);
-            Self::reduce1::<CT>(result, carry)
+            Self::redc1::<CT>(u128::from(a) * u128::from(b))
         }
+    }
+
+    /// Montgomery reduction `value / 2^64 mod p` of `value < p 2^64` on one limb.
+    #[inline(always)]
+    pub(crate) fn redc1<const CT: bool>(value: u128) -> u64 {
+        let (low, high) = (value as u64, (value >> 64) as u64);
+        let m = low.wrapping_mul(Self::INV);
+        let reduction = ((u128::from(m) * u128::from(Self::P0)) >> 64) as u64;
+        let (result, carry) = adc(u8::from(low != 0), high, reduction);
+        Self::reduce1::<CT>(result, carry)
     }
 
     /// One limb with `p^-1 = 1 + 2^32 mod 2^64`, that is `p = 2^64 - 2^32 + 1`: the Montgomery
