@@ -8,7 +8,7 @@ use core::ops::{
 };
 
 use biguint::generic_array::{ArrayLength, GenericArray};
-use biguint::typenum::{Quot, Sum, U1, U127, U128, Unsigned};
+use biguint::typenum::{B0, B1, IsLessOrEqual, LeEq, Quot, Sum, U1, U2, U127, U128, Unsigned};
 use biguint::{Bits, OutOfRange, Uint};
 use const_default::ConstDefault;
 
@@ -131,6 +131,10 @@ where
 
     /// `ceil(N / 128)`.
     const LANES: usize;
+
+    /// The kernel of [`Poly::widening_mul`]: `B1` up to two registers, `B0` above.
+    #[doc(hidden)]
+    type Pairs: PairKernel;
 }
 
 impl<N> Width for N
@@ -139,10 +143,14 @@ where
     Sum<N, U127>: Div<U128>,
     Quot<Sum<N, U127>, U128>: ArrayLength,
     <Quot<Sum<N, U127>, U128> as ArrayLength>::ArrayType<Lane<U128>>: Copy + ConstDefault,
+    Quot<Sum<N, U127>, U128>: IsLessOrEqual<U2>,
+    LeEq<Quot<Sum<N, U127>, U128>, U2>: PairKernel,
 {
     type Lanes = Quot<Sum<N, U127>, U128>;
 
     const LANES: usize = <Quot<Sum<N, U127>, U128> as Unsigned>::USIZE;
+
+    type Pairs = LeEq<Quot<Sum<N, U127>, U128>, U2>;
 }
 
 /// A polynomial over GF(2) of degree below `N`: bit `i` is the coefficient of `x^i`.
@@ -190,6 +198,32 @@ fn each_lane<N: Width>(mut body: impl FnMut(usize)) {
             body(3);
         }
     }
+}
+
+/// Runs `$body` with `($i, $j)` bound to each pair below `$pairs` of register indices in rows of
+/// `$columns`. Optimized builds get one copy per pair below 8 and a loop beyond; debug builds get
+/// the loop alone.
+macro_rules! each_pair {
+    (($i:ident, $j:ident) < ($pairs:expr, $columns:expr) => $body:block) => {{
+        let (pairs, columns): (usize, usize) = ($pairs, $columns);
+        #[cfg(not(debug_assertions))]
+        each_pair!(@ $i, $j, pairs, columns, 8, $body; 0 1 2 3 4 5 6 7);
+        #[cfg(debug_assertions)]
+        each_pair!(@ $i, $j, pairs, columns, 0, $body;);
+    }};
+    (@ $i:ident, $j:ident, $pairs:ident, $columns:ident, $from:literal, $body:block;
+     $($k:literal)*) => {
+        $(
+            if $k < $pairs {
+                let ($i, $j) = ($k / $columns, $k % $columns);
+                $body
+            }
+        )*
+        for pair in $from..$pairs {
+            let ($i, $j) = (pair / $columns, pair % $columns);
+            $body
+        }
+    };
 }
 
 /// The bits of word `word` that lie below `bits`.
@@ -518,9 +552,87 @@ impl<N: Width> Poly<N> {
 
     /// The whole product `self * rhs`, in `N + M` bits. Two-word registers multiply by
     /// Karatsuba's three word products; the registers combine by the schoolbook.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     pub fn widening_mul<M>(self, rhs: Poly<M>) -> Poly<Sum<N, M>>
+    where
+        N: Add<M>,
+        M: Width,
+        Sum<N, M>: Width,
+    {
+        <N::Pairs as PairKernel>::widening_mul(self, rhs)
+    }
+
+    /// [`Self::widening_mul`] of factors of at most two registers each: one copy of [`Self::add_pair`] per pair.
+    /// The copies keep the operand in memory in a register: runs of closures over the pairs
+    /// put narrowed loads (`vpbroadcastq`) of it on the chained GF(2^233) product, 4 cycles of
+    /// latency.
+    #[inline]
+    fn mul_by_pairs<M>(self, rhs: Poly<M>) -> Poly<Sum<N, M>>
+    where
+        N: Add<M>,
+        M: Width,
+        Sum<N, M>: Width,
+    {
+        let (mut even, mut odd) = (Poly::<Sum<N, M>>::ZERO, Poly::<Sum<N, M>>::ZERO);
+        let (pairs, columns) = (N::LANES * M::LANES, M::LANES);
+        each_pair!((i, j) < (pairs, columns) => {
+            self.add_pair(rhs, i, j, &mut even, &mut odd);
+        });
+        Self::carry_odd(even, odd)
+    }
+
+    /// Adds the product of register `i` of `self` and register `j` of `rhs`: the products whose
+    /// weight is an even number of words to `even`, the others, at `x^(64 (2 k + 1))`, to `odd`.
+    #[inline(always)]
+    fn add_pair<M, S>(self, rhs: Poly<M>, i: usize, j: usize, even: &mut Poly<S>, odd: &mut Poly<S>)
+    where
+        M: Width,
+        S: Width,
+    {
+        let (a_words, b_words) = (N::LIMBS, M::LIMBS);
+        let (a, b) = (self.lane(i), rhs.lane(j));
+        let (a_full, b_full) = (2 * i + 1 < a_words, 2 * j + 1 < b_words);
+        if a_full && b_full {
+            let [low, middle, high] = karatsuba(a, b);
+            even.add_to(i + j, low);
+            even.add_to(i + j + 1, high);
+            odd.add_to(i + j, middle);
+        } else {
+            let bits = |width: usize, word: usize| word_bits(width, word);
+            let (a_low, b_low) = (bits(N::BITS, 2 * i), bits(M::BITS, 2 * j));
+            even.add_to(i + j, word_product(a, 0, a_low, b, 0, b_low));
+            if a_full {
+                let a_high = bits(N::BITS, 2 * i + 1);
+                odd.add_to(i + j, word_product(a, 1, a_high, b, 0, b_low));
+            } else if b_full {
+                let b_high = bits(M::BITS, 2 * j + 1);
+                odd.add_to(i + j, word_product(a, 0, a_low, b, 1, b_high));
+            }
+        }
+    }
+
+    /// `even + odd x^64`: each register of `odd` shifts up by one word into `even`.
+    #[inline(always)]
+    fn carry_odd<S: Width>(mut even: Poly<S>, odd: Poly<S>) -> Poly<S> {
+        each_lane::<S>(
+            #[inline(always)]
+            |k| {
+                let value = backend::xor(backend::up(odd.lane(k)), even.lane(k));
+                let carried = if k == 0 {
+                    value
+                } else {
+                    backend::xor(value, backend::down(odd.lane(k - 1)))
+                };
+                even.set(k, carried);
+            },
+        );
+        even
+    }
+
+    /// [`Self::widening_mul`] by rows of [`each_lane`], for a factor of more than two registers.
+    #[inline(always)]
+    fn mul_by_rows<M>(self, rhs: Poly<M>) -> Poly<Sum<N, M>>
     where
         N: Add<M>,
         M: Width,
@@ -791,5 +903,70 @@ impl<N: Width> Shr<usize> for Poly<N> {
     #[inline]
     fn shr(self, bits: usize) -> Self {
         self.shifted_right(bits)
+    }
+}
+
+/// The kernel of [`Poly::widening_mul`] for a factor whose `Width::Pairs` it is: the type picks
+/// the form at compile time, so each product's function holds its form alone.
+#[doc(hidden)]
+pub trait PairKernel {
+    /// `a * b` for `a` of this kernel's width class.
+    fn widening_mul<N, M>(a: Poly<N>, b: Poly<M>) -> Poly<Sum<N, M>>
+    where
+        N: Width + Add<M>,
+        M: Width,
+        Sum<N, M>: Width;
+
+    /// `a * b` for `a` of at most two registers and `b` of this kernel's width class.
+    fn widening_mul_by<N, M>(a: Poly<N>, b: Poly<M>) -> Poly<Sum<N, M>>
+    where
+        N: Width + Add<M>,
+        M: Width,
+        Sum<N, M>: Width;
+}
+
+/// A factor of more than two registers: rows of registers.
+impl PairKernel for B0 {
+    #[inline(always)]
+    fn widening_mul<N, M>(a: Poly<N>, b: Poly<M>) -> Poly<Sum<N, M>>
+    where
+        N: Width + Add<M>,
+        M: Width,
+        Sum<N, M>: Width,
+    {
+        a.mul_by_rows(b)
+    }
+
+    #[inline(always)]
+    fn widening_mul_by<N, M>(a: Poly<N>, b: Poly<M>) -> Poly<Sum<N, M>>
+    where
+        N: Width + Add<M>,
+        M: Width,
+        Sum<N, M>: Width,
+    {
+        a.mul_by_rows(b)
+    }
+}
+
+/// A factor of at most two registers: the pairs when the other factor has at most two as well.
+impl PairKernel for B1 {
+    #[inline(always)]
+    fn widening_mul<N, M>(a: Poly<N>, b: Poly<M>) -> Poly<Sum<N, M>>
+    where
+        N: Width + Add<M>,
+        M: Width,
+        Sum<N, M>: Width,
+    {
+        <M::Pairs as PairKernel>::widening_mul_by(a, b)
+    }
+
+    #[inline(always)]
+    fn widening_mul_by<N, M>(a: Poly<N>, b: Poly<M>) -> Poly<Sum<N, M>>
+    where
+        N: Width + Add<M>,
+        M: Width,
+        Sum<N, M>: Width,
+    {
+        a.mul_by_pairs(b)
     }
 }
