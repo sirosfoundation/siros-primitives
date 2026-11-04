@@ -6,9 +6,10 @@
 //! cycles, or until the operand sets of a run of `2n` would outgrow 256 KiB. It then
 //! runs [`REPETITIONS`] repetitions of every case, interleaved: repetition `r` of every case runs
 //! before repetition `r + 1` of any case. A repetition of a case draws fresh operand sets for
-//! every run, outside the counted region; it runs `n` operations uncounted, then counts a run of
-//! `n` operations and a run of `2n` through [`run_batch`]. A case with a chain form does the same
-//! through [`run_chain`] once per [`Barrier`] that holds its result, each with its own `n`. The
+//! every run, outside the counted region, and counts a run of `n` operations and a run of `2n`
+//! through [`run_batch`], each right after an uncounted run of `n` operations. A case with a
+//! chain form does the same through [`run_chain`] once per [`Barrier`] that holds its result,
+//! each with its own `n`. The
 //! figure per operation of an event is the fewest that a `2n` run counts less the fewest that an
 //! `n` run counts, divided by `n`: the fixed cost of a run cancels. A disturbance only adds
 //! counts, so the fewest of each length is its undisturbed run (Chen and Revels, "Robust
@@ -405,18 +406,16 @@ fn ran(id: &str, runs: usize, count: usize) -> Result<(), Error> {
 /// One form of a case: the code that each case compiles. The rest of a sweep reaches it through
 /// `dyn`, so it compiles once.
 trait Trial {
-    /// Runs the form on `count` fresh inputs that `rng` draws, outside the counted region; returns
-    /// the number of runs.
-    fn warm(&self, rng: &mut Rng, count: usize) -> usize;
-
-    /// Runs the form on `count` fresh inputs that `rng` draws, counted by `counters`; returns the
-    /// number of runs and the counts.
+    /// Runs the form on `count` fresh inputs that `rng` draws, counted by `counters`, right after
+    /// an uncounted run on `warm` other fresh inputs; returns the number of uncounted and counted
+    /// runs and the counts.
     fn counted(
         &self,
         rng: &mut Rng,
         count: usize,
+        warm: usize,
         counters: &mut Counters,
-    ) -> Result<(usize, Counts), Error>;
+    ) -> Result<([usize; 2], Counts), Error>;
 }
 
 /// A form of a case: `region` runs a batch of the inputs that `inputs` draws.
@@ -426,33 +425,38 @@ struct Region<'a, I, F> {
 }
 
 impl<I, F: Fn(&[I]) -> usize> Trial for Region<'_, I, F> {
-    fn warm(&self, rng: &mut Rng, count: usize) -> usize {
-        let batch = self.inputs.draw(rng, count);
-        touch(&batch);
-        (self.region)(&batch)
-    }
-
+    /// The uncounted run follows both draws, so the tables and the code of the form are as warm
+    /// for every counted run. A GF(2¹⁶) inverse by a 128 KiB table takes 1.7 cycles; when the
+    /// uncounted run came before the draws, they evicted more of that table before a long run than
+    /// before a short one, and the long runs counted no more cycles.
     fn counted(
         &self,
         rng: &mut Rng,
         count: usize,
+        warm: usize,
         counters: &mut Counters,
-    ) -> Result<(usize, Counts), Error> {
+    ) -> Result<([usize; 2], Counts), Error> {
+        let warming = self.inputs.draw(rng, warm);
         let batch = self.inputs.draw(rng, count);
+        let warmed = (self.region)(&warming);
         touch(&batch);
-        counters.count(&mut || (self.region)(&batch))
+        let (runs, counts) = counters.count(&mut || (self.region)(&batch))?;
+        Ok(([warmed, runs], counts))
     }
 }
 
 impl<O, K> Measuring<'_, O, K> {
-    /// Runs `trial` on `count` fresh inputs, uncounted.
-    fn warm(&mut self, trial: &dyn Trial, count: usize, id: &str) -> Result<(), Error> {
-        ran(id, trial.warm(&mut self.rng, count), count)
-    }
-
-    /// The counts of `trial` on `count` fresh inputs.
-    fn counted(&mut self, trial: &dyn Trial, count: usize, id: &str) -> Result<Counts, Error> {
-        let (runs, counts) = trial.counted(&mut self.rng, count, self.counters)?;
+    /// The counts of `trial` on `count` fresh inputs, right after an uncounted run on `warm`
+    /// others.
+    fn counted(
+        &mut self,
+        trial: &dyn Trial,
+        count: usize,
+        warm: usize,
+        id: &str,
+    ) -> Result<Counts, Error> {
+        let ([warmed, runs], counts) = trial.counted(&mut self.rng, count, warm, self.counters)?;
+        ran(id, warmed, warm)?;
         ran(id, runs, count)?;
         Ok(counts)
     }
@@ -463,8 +467,7 @@ impl<O, K> Measuring<'_, O, K> {
     fn size(&mut self, trial: &dyn Trial, cap: usize, id: &str) -> Result<Form, Error> {
         let mut operations = FEWEST;
         loop {
-            self.warm(trial, operations, id)?;
-            let counts = self.counted(trial, operations, id)?;
+            let counts = self.counted(trial, operations, operations, id)?;
             if counts.cycles >= TARGET || operations >= cap {
                 return Ok(Form {
                     operations,
@@ -475,18 +478,17 @@ impl<O, K> Measuring<'_, O, K> {
         }
     }
 
-    /// Runs one repetition of a form through `trial`: its operations uncounted, then its
-    /// operations and twice as many counted, each run on fresh inputs.
+    /// Runs one repetition of a form through `trial`: its operations and twice as many counted,
+    /// each run on fresh inputs right after an uncounted run of its operations.
     fn repetition(
         &mut self,
         trial: &dyn Trial,
         operations: usize,
         id: &str,
     ) -> Result<[Counts; 2], Error> {
-        self.warm(trial, operations, id)?;
         Ok([
-            self.counted(trial, operations, id)?,
-            self.counted(trial, 2 * operations, id)?,
+            self.counted(trial, operations, operations, id)?,
+            self.counted(trial, 2 * operations, operations, id)?,
         ])
     }
 
