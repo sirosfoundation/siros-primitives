@@ -14,6 +14,9 @@ pub const LOAD: f64 = 2.0;
 /// A crate's figure on a row is odd above this many times its figure on a row of more bits.
 const ODD: f64 = 1.1;
 
+/// The subject trails a row from this many cycles above the row's fewest.
+const TRAIL: f64 = 0.5;
+
 /// An operation of a comparison, as the document names it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Operation<'a> {
@@ -81,6 +84,8 @@ pub struct Layout<'a, K> {
 
 /// Writes the document from `record`, and prints to the terminal every odd cell: a crate's figure
 /// on a row that exceeds its figure on a row of more bits, in the same table, by more than 10%.
+/// Then it prints every trailing cell: a figure of the subject [`TRAIL`] cycles or more above the
+/// fewest figure of its row and part among the functions that keep the row's definition.
 pub fn report<K: Key>(
     paths: &Paths,
     layout: &Layout<'_, K>,
@@ -124,6 +129,19 @@ pub fn report<K: Key>(
         100.0 * (ODD - 1.0)
     );
     for cell in odd {
+        println!("{cell}");
+    }
+    let trailing: Vec<String> = tables
+        .iter()
+        .flat_map(|(build, table)| trailing_cells(layout, table, build))
+        .collect();
+    println!(
+        "{}: {} trailing cells, where `{}` is {TRAIL} cycles or more above the fewest figure",
+        path.display(),
+        trailing.len(),
+        layout.subject
+    );
+    for cell in trailing {
         println!("{cell}");
     }
     Ok(())
@@ -293,6 +311,52 @@ fn odd_cells<K: Key>(
                             ));
                         }
                     }
+                }
+            }
+        }
+    }
+    lines
+}
+
+/// The trailing cells of `table` in `build`, one line each: a figure of the subject, as the table
+/// shows it, [`TRAIL`] cycles or more above the fewest figure of its row and part among the
+/// figures without a deviation.
+fn trailing_cells<K: Key>(
+    layout: &Layout<'_, K>,
+    table: &Table<'_, K>,
+    build: &Measurement<K>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    for operation in &table.ops {
+        let title = title(operation, build);
+        for key in &table.keys {
+            let Some(ours) = table.figure(operation, key, layout.subject) else {
+                continue;
+            };
+            for (part, name) in ["throughput", "latency"].into_iter().enumerate() {
+                let Some(own) = parts(ours.count)[part].map(shown) else {
+                    continue;
+                };
+                let best = table
+                    .crates
+                    .iter()
+                    .filter_map(|library| {
+                        table
+                            .figure(operation, key, library)
+                            .filter(|figure| figure.count.deviation.is_none())
+                            .and_then(|figure| parts(figure.count)[part])
+                            .map(|figure| (shown(figure), *library))
+                    })
+                    .reduce(|least, other| if other.0 < least.0 { other } else { least });
+                if let Some((fewest, library)) = best
+                    && own - fewest >= TRAIL
+                {
+                    lines.push(format!(
+                        "{title} | {} | {name} {} against {library} {}",
+                        (layout.rows_phrase)(core::slice::from_ref(key)),
+                        value(own),
+                        value(fewest)
+                    ));
                 }
             }
         }
