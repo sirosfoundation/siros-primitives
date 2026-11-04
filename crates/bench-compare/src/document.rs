@@ -415,8 +415,8 @@ const WEBASSEMBLY: &[&str] = &[
     "A second worker carries the start and the end of each count to the driver while the \
      measuring worker sleeps.",
     "The browser's flags compile every function with its optimizing tier when the module loads.",
-    "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count a \
-     million cycles.",
+    "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count 4 \
+     million instructions.",
     "Each figure: the counts of rank 4 from the fewest among 31 of each run length, 2n \
      operations less n, over n. A case whose difference counts under 50 times the noise of two \
      empty counts stops the sweep.",

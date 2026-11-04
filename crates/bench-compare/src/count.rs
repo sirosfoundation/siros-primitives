@@ -49,7 +49,7 @@ pub const REPETITIONS: usize = 31;
 /// 31. It passes over three pairs that the sibling thread or a fast path disturbed.
 pub const RANK: usize = REPETITIONS / 8;
 
-/// The cycles that a short run takes at least, unless its operations reach their cap.
+/// The cycles that a native short run takes at least, unless its operations reach their cap.
 pub const TARGET: u64 = 1 << 20;
 
 /// The fewest cycles that a chain step may count. A step of one instruction takes one cycle, and
@@ -66,26 +66,74 @@ const SEED: u64 = 0x5eed_0fc0_ffee;
 /// The most memory that the operand sets of a long run take.
 const FOOTPRINT: usize = 256 * 1024;
 
-/// Whether a run passes several times over its operand sets once they fill [`FOOTPRINT`], until
-/// it takes [`TARGET`] cycles: in a WebAssembly bench. A count in a browser costs two requests to
-/// the driver, whose cycles varied by 4,000 to 8,000 between counts on a loaded machine, against
-/// the 8,192 cycles of a long run of 8,192 one-cycle `add`s. Passes keep the operand sets in the
-/// L2 cache, as natively.
-const PASSES: bool = cfg!(target_arch = "wasm32");
+/// How a sweep sizes its runs and takes its figures.
+struct Protocol {
+    /// Whether a run passes several times over its operand sets once they fill [`FOOTPRINT`],
+    /// until it is long enough.
+    passes: bool,
+    /// The counted runs of each size that sizes a case, whose fewest count.
+    sizing: usize,
+    /// The count from which a run is long enough.
+    long: Length,
+    /// Whether a figure takes the difference of the two runs of each repetition; otherwise the
+    /// difference of the counts of rank [`RANK`] of each run length.
+    paired: bool,
+}
 
-/// The counted runs of each size that sizes a case, whose fewest cycles count: one natively. A
-/// count in a browser met an interruption of up to 800,000 cycles, which ended the sizing of a
-/// case at 16 operations; at a load of 25, the median run of a GF(2⁸) product counted twice as
-/// many cycles as the fewest, and three runs of each size ended its sizing at a sixth of
-/// [`TARGET`].
-const SIZING: usize = if cfg!(target_arch = "wasm32") { 9 } else { 1 };
+/// The count from which a run is long enough.
+#[derive(Clone, Copy)]
+enum Length {
+    /// Core cycles.
+    Cycles(u64),
+    /// Retired instructions, whatever the cycles that other work adds.
+    Instructions(u64),
+}
 
-/// Whether a figure takes the difference of the two runs of each repetition, which run back to
-/// back and mostly meet the same sibling thread: natively. In a browser, the two requests of a
-/// count part the runs, and a busy sibling slowed a one-`add` chain step to 1.7 cycles in either
-/// run alone: the difference of rank 4 gave 0.54 cycles per step, and the difference of the
-/// counts of rank 4 of each length 1.01.
-const PAIRED: bool = !cfg!(target_arch = "wasm32");
+/// The native protocol: one pass over the operand sets, sized until a run takes [`TARGET`]
+/// cycles, and paired differences: the two runs of a repetition run back to back and mostly meet
+/// the same sibling thread.
+const NATIVE_PROTOCOL: Protocol = Protocol {
+    passes: false,
+    sizing: 1,
+    long: Length::Cycles(TARGET),
+    paired: true,
+};
+
+/// The protocol of a WebAssembly bench.
+///
+/// A count in a browser costs two requests to the driver, whose cycles varied by 4,000 to 8,000
+/// between counts on a loaded machine, against the 8,192 cycles of a long run of 8,192
+/// one-cycle `add`s: a run passes over its operand sets, which stay in the L2 cache as natively,
+/// until it counts 4 million instructions, a million cycles at 4 instructions per cycle. Cycles
+/// sized it badly: at a load of 65 a sizing run of a GF(2⁶⁴) add chain counted 2.3 times the
+/// cycles of the runs that followed, and the fewest of nine such runs ended the sizing early.
+///
+/// The requests of a count part the two runs of a repetition: a busy sibling slowed a one-`add`
+/// chain step to 1.7 cycles in either run alone, the difference of rank 4 gave 0.54 cycles per
+/// step, and the difference of the counts of rank 4 of each length 1.01.
+const WASM_PROTOCOL: Protocol = Protocol {
+    passes: true,
+    sizing: 3,
+    long: Length::Instructions(4 << 20),
+    paired: false,
+};
+
+/// The protocol of this build.
+const PROTOCOL: Protocol = if cfg!(target_arch = "wasm32") {
+    WASM_PROTOCOL
+} else {
+    NATIVE_PROTOCOL
+};
+
+impl Length {
+    /// Whether the fewest of a run's counts reach this length.
+    const fn reached(self, fewest: &Counts) -> bool {
+        match self {
+            Self::Cycles(cycles) => fewest.cycles >= cycles,
+            Self::Instructions(instructions) => fewest.instructions >= instructions,
+        }
+    }
+}
 
 /// The fewest times the noise of a difference of two empty counts that a difference of a case
 /// counts, where the counts reach the counters through requests: its figure then moves by at most
@@ -295,7 +343,8 @@ struct Form {
 impl Form {
     /// The events per operation of the form `name`, over the operations of a short run: the
     /// difference of rank [`RANK`], from the fewest, of the long run less the short run of each
-    /// repetition; without [`PAIRED`], the count of rank [`RANK`] of the long runs less that of
+    /// repetition; under a protocol without pairs, the count of rank [`RANK`] of the long runs
+    /// less that of
     /// the short runs. A cycle difference of zero or less is an [`Error::Flat`], and one under
     /// [`SIGNAL`] times `noise` an [`Error::Noisy`].
     fn events(&self, name: &str, noise: Option<f64>) -> Result<Events, Error> {
@@ -313,7 +362,7 @@ impl Form {
                     .map(|counts| event(&counts[run]) as f64)
                     .collect::<Vec<_>>()
             };
-            Ok(if PAIRED {
+            Ok(if PROTOCOL.paired {
                 ranked(
                     self.repetitions
                         .iter()
@@ -535,9 +584,9 @@ impl<O, K> Measuring<'_, O, K> {
     }
 
     /// The form of a case that `trial` runs, with the shape of its short run: one pass over 16
-    /// operand sets, doubled until the fewest cycles of [`SIZING`] counted runs after an uncounted
-    /// run of the same shape reach [`TARGET`], or until `cap` sets. A WebAssembly bench then
-    /// doubles the passes over `cap` sets until the run reaches [`TARGET`].
+    /// operand sets, doubled until the fewest counts of the protocol's sizing runs, each after an
+    /// uncounted run of the same shape, reach its length, or until `cap` sets. A protocol with
+    /// passes then doubles the passes over `cap` sets until the run reaches that length.
     fn size(&mut self, trial: &dyn Trial, cap: usize, id: &str) -> Result<Form, Error> {
         let mut run = Run {
             sets: FEWEST,
@@ -545,11 +594,20 @@ impl<O, K> Measuring<'_, O, K> {
         };
         loop {
             self.warm(trial, run, id)?;
-            let mut cycles = u64::MAX;
-            for _ in 0..SIZING {
-                cycles = cycles.min(self.counted(trial, run, id)?.cycles);
+            let mut fewest = Counts {
+                cycles: u64::MAX,
+                instructions: u64::MAX,
+                branch_misses: u64::MAX,
+            };
+            for _ in 0..PROTOCOL.sizing {
+                let counts = self.counted(trial, run, id)?;
+                fewest = Counts {
+                    cycles: fewest.cycles.min(counts.cycles),
+                    instructions: fewest.instructions.min(counts.instructions),
+                    branch_misses: fewest.branch_misses.min(counts.branch_misses),
+                };
             }
-            if cycles >= TARGET || (run.sets >= cap && !PASSES) {
+            if PROTOCOL.long.reached(&fewest) || (run.sets >= cap && !PROTOCOL.passes) {
                 return Ok(Form {
                     run,
                     repetitions: Vec::new(),
