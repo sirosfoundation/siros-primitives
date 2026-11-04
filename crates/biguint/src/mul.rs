@@ -16,7 +16,7 @@ use generic_array::{ArrayLength, GenericArray};
 use typenum::Sum;
 
 use crate::bits::Bits;
-use crate::recursion::{Depth, Halvings, Limbs};
+use crate::recursion::{Depth, Halvings, Width};
 use crate::uint::Uint;
 use karatsuba::{THRESHOLD, blocks};
 
@@ -213,7 +213,7 @@ fn split_truncated<N: Bits, const MASKED: bool>(
 ) -> GenericArray<u64, N::Limbs> {
     let mut product = GenericArray::<u64, N::Limbs>::default();
     let mut scratch = GenericArray::<u64, N::TruncatedScratch>::default();
-    Halvings::entry_truncated::<Limbs<N::Limbs>, MASKED>(&mut product, a, b, &mut scratch);
+    Halvings::entry_truncated::<Width<N::Limbs>, MASKED>(&mut product, a, b, &mut scratch);
     product
 }
 
@@ -226,10 +226,10 @@ fn karatsuba_product<A: ArrayLength, B: ArrayLength, const MASKED: bool>(
     scratch: &mut [u64],
 ) {
     if A::USIZE == B::USIZE {
-        Halvings::entry_product::<Limbs<A>, MASKED>(product, a, b, scratch);
+        Halvings::entry_product::<Width<A>, MASKED>(product, a, b, scratch);
     } else if A::USIZE > B::USIZE {
-        blocks::<Halvings, Limbs<B>, MASKED>(product, a, b, scratch);
+        blocks::<Halvings, Width<B>, MASKED>(product, a, b, scratch);
     } else {
-        blocks::<Halvings, Limbs<A>, MASKED>(product, b, a, scratch);
+        blocks::<Halvings, Width<A>, MASKED>(product, b, a, scratch);
     }
 }

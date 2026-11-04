@@ -18,7 +18,7 @@ use crate::div::DiscardQuotient;
 use crate::kernel::{mask_equal, select_masked, split, split_mut};
 use crate::modular::sum_mod_masked;
 use crate::mul::{basecase, karatsuba};
-use crate::recursion::{Depth, Halvings, Limbs};
+use crate::recursion::{Depth, Halvings, Width};
 use crate::stream::TwosComplement;
 use crate::uint::Uint;
 
@@ -84,7 +84,7 @@ where
         } else {
             let (product, _) = split_mut(&mut t, 2 * N::LIMBS);
             let mut scratch = GenericArray::<u64, N::ProductScratch>::default();
-            Halvings::entry_product::<Limbs<N::Limbs>, true>(
+            Halvings::entry_product::<Width<N::Limbs>, true>(
                 product,
                 &a.limbs,
                 &b.limbs,
@@ -105,7 +105,7 @@ where
                 basecase::square(square, &a.limbs);
             } else {
                 let mut scratch = GenericArray::<u64, N::ProductScratch>::default();
-                Halvings::entry_product::<Limbs<N::Limbs>, true>(
+                Halvings::entry_product::<Width<N::Limbs>, true>(
                     square,
                     &a.limbs,
                     &a.limbs,

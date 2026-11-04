@@ -27,7 +27,7 @@ use crate::kernel::{
 };
 use crate::mul::WideningMul;
 use crate::nonzero::{NonZeroUint, significant_len};
-use crate::recursion::{Halvings, Len, Limbs};
+use crate::recursion::{Halvings, Len, Width};
 use crate::stream::{LimbSource, ShlBits, ZeroExtended, funnel_left, funnel_right};
 use crate::uint::Uint;
 use reciprocal::{NormalizedLimb, Reciprocal, Reciprocal3By2, join};
@@ -341,7 +341,7 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
     if len == L::USIZE && Shape::<W, L>::DIVIDE_AND_CONQUER {
         // The whole window, whose length lays out the blocks at compile time. Under `Top::Below`
         // its top limb is zero: one more quotient limb, zero.
-        divide_and_conquer::<M, Limbs<W>, L>(&mut window, normalized, leading, quotient);
+        divide_and_conquer::<M, Width<W>, L>(&mut window, normalized, leading, quotient);
     } else {
         let (part, _) = split_mut(&mut window, span);
         if len == L::USIZE {
@@ -372,7 +372,7 @@ fn divide_and_conquer<M: Bits, Span: Len, L: ArrayLength>(
     quotient: &mut (impl QuotientSink + ?Sized),
 ) {
     let mut scratch = GenericArray::<u64, M::DivisionScratch>::default();
-    dc::divide_window::<Halvings, Span, Limbs<L>>(window, divisor, leading, quotient, &mut scratch);
+    dc::divide_window::<Halvings, Span, Width<L>>(window, divisor, leading, quotient, &mut scratch);
 }
 
 /// The dividend shifted left by `shift` in a window of `W` limbs: the bits shifted out of its top

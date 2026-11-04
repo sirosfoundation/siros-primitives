@@ -42,19 +42,19 @@ pub(crate) fn divide_halves_inlined<D: Depth, L: Len>(
     leading: Reciprocal3By2,
     scratch: &mut [u64],
 ) -> u64 {
+    let len = L::of(divisor.len());
     let (Some(numerator), Some(divisor), Some(quotient)) = (
-        exact_mut(numerator, 2 * L::LEN),
-        exact(divisor, L::LEN),
-        exact_mut(quotient, L::LEN),
+        exact_mut(numerator, 2 * len),
+        exact(divisor, len),
+        exact_mut(quotient, len),
     ) else {
         return schoolbook_of_slices(numerator, divisor, quotient, leading);
     };
-    let Some(scratch) = prefix_mut(scratch, divide_scratch(L::LEN, D::LEVELS + 1)) else {
+    let Some(scratch) = prefix_mut(scratch, divide_scratch(len, D::LEVELS + 1)) else {
         return schoolbook_of_slices(numerator, divisor, quotient, leading);
     };
-    let len = L::LEN;
-    let lower = HalfDown::<L>::LEN;
-    let upper = HalfUp::<L>::LEN;
+    let lower = len / 2;
+    let upper = len - lower;
     let (product, scratch) = split_mut(scratch, len);
     let (quotient_low, quotient_high) = split_mut(quotient, lower);
 
@@ -147,14 +147,20 @@ const fn window_scratch(len: usize, levels: usize) -> usize {
 pub(crate) struct FirstBlock<W, L>(PhantomData<(W, L)>);
 
 impl<W: Len, L: Len> Len for FirstBlock<W, L> {
-    const LEN: usize = {
-        let total = W::LEN.saturating_sub(L::LEN);
-        if total == 0 {
-            0
-        } else {
-            total - (total - 1) / L::LEN * L::LEN
-        }
-    };
+    const LEN: usize = first_block(W::LEN, L::LEN);
+    const ERASED: bool = W::ERASED || L::ERASED;
+}
+
+/// The quotient limbs of the first block of a `window`-limb window divided by a `len`-limb
+/// divisor, as for [`FirstBlock`].
+#[inline(always)]
+const fn first_block(window: usize, len: usize) -> usize {
+    let total = window.saturating_sub(len);
+    if total == 0 {
+        0
+    } else {
+        total - (total - 1) / len * len
+    }
 }
 
 /// Leaves `window mod divisor` in the low `L` limbs of the `W`-limb `window` and zeros above
@@ -169,24 +175,25 @@ pub(super) fn divide_window<D: Depth, W: Len, L: Len>(
     quotient: &mut (impl QuotientSink + ?Sized),
     scratch: &mut [u64],
 ) {
+    let (width, len) = (W::of(window.len()), L::of(divisor.len()));
     let (Some(window), Some(divisor), Some(scratch)) = (
-        exact_mut(window, W::LEN),
-        exact(divisor, L::LEN),
-        prefix_mut(scratch, window_scratch(L::LEN, D::LEVELS)),
+        exact_mut(window, width),
+        exact(divisor, len),
+        prefix_mut(scratch, window_scratch(len, D::LEVELS)),
     ) else {
         return divide_by_limbs::<false>(window, divisor, leading, quotient);
     };
-    let len = L::LEN;
-    let total = W::LEN.saturating_sub(len);
+    let total = width.saturating_sub(len);
     if total == 0 {
         return;
     }
     let (block_quotient, scratch) = split_mut(scratch, len);
-    let first = FirstBlock::<W, L>::LEN;
+    let first = FirstBlock::<W, L>::of(first_block(width, len));
     let mut position = total - first;
     divide_block::<D, L, FirstBlock<W, L>>(
         window,
         position,
+        first,
         divisor,
         block_quotient,
         leading,
@@ -195,7 +202,15 @@ pub(super) fn divide_window<D: Depth, W: Len, L: Len>(
     emit(quotient, position, split(block_quotient, first).0);
     while position >= len {
         position -= len;
-        divide_block::<D, L, L>(window, position, divisor, block_quotient, leading, scratch);
+        divide_block::<D, L, L>(
+            window,
+            position,
+            len,
+            divisor,
+            block_quotient,
+            leading,
+            scratch,
+        );
         emit(quotient, position, block_quotient);
     }
 }
@@ -209,18 +224,20 @@ fn emit(quotient: &mut (impl QuotientSink + ?Sized), position: usize, limbs: &[u
 }
 
 /// Divides the `Count + L` limbs of `window` from limb `position` by the `L`-limb `divisor`,
-/// their top `L` limbs below it: `Count` quotient limbs into `block_quotient`.
+/// their top `L` limbs below it: `Count` quotient limbs into `block_quotient`. `count` gives an
+/// erased `Count`.
 #[inline(always)]
 fn divide_block<D: Depth, L: Len, Count: Len>(
     window: &mut [u64],
     position: usize,
+    count: usize,
     divisor: &[u64],
     block_quotient: &mut [u64],
     leading: Reciprocal3By2,
     scratch: &mut [u64],
 ) {
-    let len = L::LEN;
-    let count = Count::LEN;
+    let len = L::of(divisor.len());
+    let count = Count::of(count);
     let (_, part) = split_mut(window, position);
     let (part, _) = split_mut(part, count + len);
     let (quotient, _) = split_mut(block_quotient, count);
@@ -274,11 +291,12 @@ fn any_product<D: Depth, A: Len, B: Len>(
     b: &[u64],
     scratch: &mut [u64],
 ) {
-    if A::LEN.min(B::LEN) < karatsuba::THRESHOLD {
+    let (m, k) = (A::of(a.len()), B::of(b.len()));
+    if m.min(k) < karatsuba::THRESHOLD {
         basecase(out, a, b);
-    } else if A::LEN == B::LEN {
+    } else if m == k {
         D::product::<A>(out, a, b, scratch);
-    } else if A::LEN > B::LEN {
+    } else if m > k {
         blocks::<D, B, false>(out, a, b, scratch);
     } else {
         blocks::<D, A, false>(out, b, a, scratch);

@@ -26,7 +26,7 @@ use crate::kernel::split_mut;
 use crate::modular::sum_mod;
 use crate::mul::{basecase, karatsuba};
 use crate::nonzero::{NonZeroUint, significant_len};
-use crate::recursion::{Depth, Halvings, Limbs};
+use crate::recursion::{Depth, Halvings, Width};
 use crate::stream::TwosComplement;
 use crate::uint::Uint;
 use barrett::Barrett;
@@ -240,7 +240,7 @@ impl<'id, N: Bits> Ring<'id, N> {
         } else {
             let (product, _) = split_mut(&mut t, 2 * N::LIMBS);
             let mut scratch = GenericArray::<u64, N::ProductScratch>::default();
-            Halvings::entry_product::<Limbs<N::Limbs>, false>(
+            Halvings::entry_product::<Width<N::Limbs>, false>(
                 product,
                 &a.limbs,
                 &b.limbs,
@@ -260,7 +260,7 @@ impl<'id, N: Bits> Ring<'id, N> {
                 basecase::square(square, &a.limbs);
             } else {
                 let mut scratch = GenericArray::<u64, N::ProductScratch>::default();
-                Halvings::entry_product::<Limbs<N::Limbs>, false>(
+                Halvings::entry_product::<Width<N::Limbs>, false>(
                     square,
                     &a.limbs,
                     &a.limbs,

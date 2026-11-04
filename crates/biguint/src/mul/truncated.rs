@@ -84,17 +84,18 @@ pub(crate) fn split_product_inlined<F: Depth, C: Depth, L: Len, const MASKED: bo
     b: &[u64],
     scratch: &mut [u64],
 ) {
-    let (Some(a), Some(b)) = (exact(a, L::LEN), exact(b, L::LEN)) else {
+    let n = L::of(out.len());
+    let (Some(a), Some(b)) = (exact(a, n), exact(b, n)) else {
         return basecase_of_slices(out, a, b);
     };
     let (Some(out), Some(scratch)) = (
-        exact_mut(out, L::LEN),
-        prefix_mut(scratch, scratch_len(L::LEN, F::LEVELS)),
+        exact_mut(out, n),
+        prefix_mut(scratch, scratch_len(n, F::LEVELS)),
     ) else {
         return basecase_of_slices(out, a, b);
     };
-    let high = High::<L>::LEN;
-    let low = Low::<L>::LEN;
+    let high = high_part(n);
+    let low = n - high;
     let (a0, a1) = split(a, low);
     let (b0, b1) = split(b, low);
     {
@@ -117,6 +118,7 @@ pub(crate) struct High<P>(PhantomData<P>);
 
 impl<P: Len> Len for High<P> {
     const LEN: usize = high_part(P::LEN);
+    const ERASED: bool = P::ERASED;
 }
 
 /// The low part of a split of `P` limbs, below [`High`].
@@ -124,4 +126,5 @@ pub(crate) struct Low<P>(PhantomData<P>);
 
 impl<P: Len> Len for Low<P> {
     const LEN: usize = P::LEN - high_part(P::LEN);
+    const ERASED: bool = P::ERASED;
 }

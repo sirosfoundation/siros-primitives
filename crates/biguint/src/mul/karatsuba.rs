@@ -8,8 +8,7 @@ use crate::kernel::{
     negate_masked, split, split_mut, sub_assign, sub_into, sub_limb, sub_limb_masked,
 };
 use crate::recursion::{
-    Depth, HalfDown, HalfUp, Len, basecase_of_slices, exact, halves_equal, prefix_mut,
-    product_scratch,
+    Depth, HalfDown, HalfUp, Len, basecase_of_slices, exact, prefix_mut, product_scratch,
 };
 use crate::stream::{LimbSource, LimbStream, Op2CarryIter, SubOp, ZeroExtended};
 
@@ -46,16 +45,17 @@ pub(crate) fn karatsuba_inlined<D: Depth, L: Len, const MASKED: bool>(
     b: &[u64],
     scratch: &mut [u64],
 ) {
-    let (Some(a), Some(b)) = (exact(a, L::LEN), exact(b, L::LEN)) else {
+    let n = L::of(a.len());
+    let (Some(a), Some(b)) = (exact(a, n), exact(b, n)) else {
         return basecase_of_slices(out, a, b);
     };
     let (Some(out), Some(scratch)) = (
-        prefix_mut(out, 2 * L::LEN),
-        prefix_mut(scratch, product_scratch(L::LEN, D::LEVELS + 1)),
+        prefix_mut(out, 2 * n),
+        prefix_mut(scratch, product_scratch(n, D::LEVELS + 1)),
     ) else {
         return basecase_of_slices(out, a, b);
     };
-    let half = HalfUp::<L>::LEN;
+    let half = n - n / 2;
     let (a_low, a_high) = split(a, half);
     let (b_low, b_high) = split(b, half);
     let (difference_product, scratch) = split_mut(scratch, 2 * half);
@@ -75,7 +75,8 @@ pub(crate) fn karatsuba_inlined<D: Depth, L: Len, const MASKED: bool>(
     };
     {
         let (lower, upper) = split_mut(out, 2 * half);
-        if halves_equal::<L>() {
+        // Equal halves run one function.
+        if L::ERASED || n.is_multiple_of(2) {
             D::product_with::<HalfUp<L>, MASKED>(upper, a_high, b_high, scratch);
         } else {
             D::product_with::<HalfDown<L>, MASKED>(upper, a_high, b_high, scratch);

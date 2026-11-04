@@ -15,7 +15,8 @@
 //!
 //! A level function takes slices and checks once that they hold its lengths, which makes those
 //! lengths known to the compiler. Slices of other lengths run the basecase of their run-time
-//! lengths.
+//! lengths. Builds with debug assertions erase the lengths ([`Width`]): their levels read the
+//! lengths of their slices, and every level below the first is a call.
 
 use core::marker::PhantomData;
 
@@ -28,17 +29,57 @@ use crate::mul::basecase;
 use crate::mul::karatsuba;
 use crate::mul::truncated;
 
-/// A limb count fixed at compile time.
+/// A limb count fixed at compile time, or erased to the run-time length of the slice that holds
+/// it.
 pub(crate) trait Len {
-    /// The limbs.
+    /// The limbs of a fixed length.
     const LEN: usize;
+    /// Whether the length is erased.
+    const ERASED: bool;
+
+    /// The limbs of a slice of `actual` limbs that holds this length: `actual` when the length
+    /// is erased, [`Self::LEN`] otherwise.
+    #[inline(always)]
+    fn of(actual: usize) -> usize {
+        if Self::ERASED { actual } else { Self::LEN }
+    }
+}
+
+/// The length type of an `A`-limb operand: [`Limbs<A>`]. Builds with debug assertions erase it,
+/// so that one function per depth serves every width and their code stays small.
+pub(crate) type Width<A> = <A as WidthOf>::Len;
+
+/// Maps a `typenum` length to its [`Width`].
+pub(crate) trait WidthOf {
+    /// The length type.
+    type Len: Len;
+}
+
+impl<A: Unsigned> WidthOf for A {
+    #[cfg(not(debug_assertions))]
+    type Len = Limbs<A>;
+    #[cfg(debug_assertions)]
+    type Len = Erased;
 }
 
 /// The limbs that the `typenum` length `A` counts.
+#[cfg(not(debug_assertions))]
 pub(crate) struct Limbs<A>(PhantomData<A>);
 
+#[cfg(not(debug_assertions))]
 impl<A: Unsigned> Len for Limbs<A> {
     const LEN: usize = A::USIZE;
+    const ERASED: bool = false;
+}
+
+/// A length that the slice holding it carries.
+#[cfg(debug_assertions)]
+pub(crate) struct Erased;
+
+#[cfg(debug_assertions)]
+impl Len for Erased {
+    const LEN: usize = 0;
+    const ERASED: bool = true;
 }
 
 /// The larger half of `P`: `ceil(P / 2)`.
@@ -46,6 +87,7 @@ pub(crate) struct HalfUp<P>(PhantomData<P>);
 
 impl<P: Len> Len for HalfUp<P> {
     const LEN: usize = P::LEN - P::LEN / 2;
+    const ERASED: bool = P::ERASED;
 }
 
 /// The smaller half of `P`: `floor(P / 2)`.
@@ -53,6 +95,7 @@ pub(crate) struct HalfDown<P>(PhantomData<P>);
 
 impl<P: Len> Len for HalfDown<P> {
     const LEN: usize = P::LEN / 2;
+    const ERASED: bool = P::ERASED;
 }
 
 /// `P - Q`, or zero when `Q` is longer.
@@ -60,12 +103,7 @@ pub(crate) struct Difference<P, Q>(PhantomData<(P, Q)>);
 
 impl<P: Len, Q: Len> Len for Difference<P, Q> {
     const LEN: usize = P::LEN.saturating_sub(Q::LEN);
-}
-
-/// Whether `P` splits into two equal halves, which then run one function.
-#[inline(always)]
-pub(crate) const fn halves_equal<P: Len>() -> bool {
-    P::LEN.is_multiple_of(2)
+    const ERASED: bool = P::ERASED || Q::ERASED;
 }
 
 /// `slice` when it holds exactly `len` limbs.
@@ -250,9 +288,9 @@ impl<D: Depth> Depth for Level<D> {
         b: &[u64],
         scratch: &mut [u64],
     ) {
-        if L::LEN >= karatsuba::THRESHOLD && scratch.len() >= product_scratch(L::LEN, Self::LEVELS)
-        {
-            if D::LEVELS == 0 || HalfUp::<L>::LEN < karatsuba::THRESHOLD {
+        let n = L::of(a.len());
+        if n >= karatsuba::THRESHOLD && scratch.len() >= product_scratch(n, Self::LEVELS) {
+            if !L::ERASED && (D::LEVELS == 0 || n - n / 2 < karatsuba::THRESHOLD) {
                 // A step over basecases inlines into its caller.
                 karatsuba::karatsuba_inlined::<D, L, MASKED>(out, a, b, scratch);
             } else {
@@ -270,9 +308,8 @@ impl<D: Depth> Depth for Level<D> {
         b: &[u64],
         scratch: &mut [u64],
     ) {
-        if !truncated::quadratic(L::LEN)
-            && scratch.len() >= truncated::scratch_len(L::LEN, Self::LEVELS)
-        {
+        let n = L::of(out.len());
+        if !truncated::quadratic(n) && scratch.len() >= truncated::scratch_len(n, Self::LEVELS) {
             truncated::split_product::<Self, D, L, MASKED>(out, a, b, scratch);
         } else {
             basecase(out, a, b);
@@ -286,8 +323,8 @@ impl<D: Depth> Depth for Level<D> {
         b: &[u64],
         scratch: &mut [u64],
     ) {
-        if L::LEN >= karatsuba::THRESHOLD && scratch.len() >= product_scratch(L::LEN, Self::LEVELS)
-        {
+        let n = L::of(a.len());
+        if n >= karatsuba::THRESHOLD && scratch.len() >= product_scratch(n, Self::LEVELS) {
             karatsuba::karatsuba_inlined::<D, L, MASKED>(out, a, b, scratch);
         } else {
             basecase(out, a, b);
@@ -301,9 +338,8 @@ impl<D: Depth> Depth for Level<D> {
         b: &[u64],
         scratch: &mut [u64],
     ) {
-        if !truncated::quadratic(L::LEN)
-            && scratch.len() >= truncated::scratch_len(L::LEN, Self::LEVELS)
-        {
+        let n = L::of(out.len());
+        if !truncated::quadratic(n) && scratch.len() >= truncated::scratch_len(n, Self::LEVELS) {
             truncated::split_product_inlined::<Self, D, L, MASKED>(out, a, b, scratch);
         } else {
             basecase(out, a, b);
@@ -318,8 +354,9 @@ impl<D: Depth> Depth for Level<D> {
         leading: Reciprocal3By2,
         scratch: &mut [u64],
     ) -> u64 {
-        if L::LEN >= dc::THRESHOLD && scratch.len() >= divide_scratch(L::LEN, Self::LEVELS) {
-            if D::LEVELS == 0 || HalfUp::<L>::LEN < dc::THRESHOLD {
+        let n = L::of(divisor.len());
+        if n >= dc::THRESHOLD && scratch.len() >= divide_scratch(n, Self::LEVELS) {
+            if !L::ERASED && (D::LEVELS == 0 || n - n / 2 < dc::THRESHOLD) {
                 // A step over schoolbook divisions inlines into its caller.
                 dc::divide_halves_inlined::<D, L>(numerator, divisor, quotient, leading, scratch)
             } else {
