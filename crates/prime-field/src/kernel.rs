@@ -365,6 +365,28 @@ pub(crate) const fn cios(out: &mut [u64], a: &[u64], b: &[u64], p: &[u64], inv: 
     reduce_once(out, top, p);
 }
 
+/// One Montgomery step of `a k` for `a < p` and a word `k`: `out = a k / 2^64 mod p`, in
+/// constant time. `a k + m p` lies below `2 p 2^64`, so the step leaves a value below `2 p`, and
+/// one masked subtraction ends it.
+#[inline(always)]
+pub(crate) const fn montgomery_word(out: &mut [u64], a: &[u64], k: u64, p: &[u64], inv: u64) {
+    let len = out.len();
+    let (low, mut carry_a) = mul_add(limb(a, 0), k, 0, 0);
+    let m = low.wrapping_mul(inv);
+    let (_, mut carry_p) = mul_add(m, limb(p, 0), low, 0);
+    let mut j = 1;
+    while j < len {
+        let (product, next_a) = mul_add(limb(a, j), k, carry_a, 0);
+        let (sum, next_p) = mul_add(m, limb(p, j), product, carry_p);
+        set(out, j - 1, sum);
+        (carry_a, carry_p) = (next_a, next_p);
+        j += 1;
+    }
+    let (sum, top) = add_carry(carry_a, carry_p, 0);
+    set(out, len - 1, sum);
+    reduce_once(out, top, p);
+}
+
 /// Montgomery reduction of the `2 L`-limb `wide` by separated operand scanning: `out = wide /
 /// 2^(64 L) mod p` for `wide < p * 2^(64 L)`. `spare` as in [`cios`].
 #[inline(always)]

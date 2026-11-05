@@ -40,6 +40,16 @@ const LAYOUT: Layout<'static, Width> = Layout {
         Operation::new("mulmod", "mulmod", "a × b mod m"),
         Operation::new("add_mod", "add_mod", "a + b mod m"),
         Operation::new("sub_mod", "sub_mod", "a − b mod m"),
+        Operation::new(
+            "add_mod_reduced",
+            "add_mod, reduced operands",
+            "a + b mod m, a and b below m",
+        ),
+        Operation::new(
+            "sub_mod_reduced",
+            "sub_mod, reduced operands",
+            "a − b mod m, a and b below m",
+        ),
         Operation::constant_time("add_ct", "add", "a + b"),
         Operation::constant_time("mul_ct", "mul", "a × b"),
         Operation::constant_time("div_ct", "div", "a / b"),
@@ -47,6 +57,16 @@ const LAYOUT: Layout<'static, Width> = Layout {
         Operation::constant_time("mulmod_ct", "mulmod", "a × b mod m"),
         Operation::constant_time("add_mod_ct", "add_mod", "a + b mod m"),
         Operation::constant_time("sub_mod_ct", "sub_mod", "a − b mod m"),
+        Operation::constant_time(
+            "add_mod_reduced_ct",
+            "add_mod, reduced operands",
+            "a + b mod m, a and b below m",
+        ),
+        Operation::constant_time(
+            "sub_mod_reduced_ct",
+            "sub_mod, reduced operands",
+            "a − b mod m, a and b below m",
+        ),
     ],
     row_header: "Bits",
     rows_phrase: |widths| format!("at {} bits", sentence(widths)),
@@ -59,6 +79,12 @@ const LAYOUT: Layout<'static, Width> = Layout {
          to 1024 bits, variable for the rest.",
         "A constant-time table compares `ConstantTime<Uint>` with every function whose time the \
          width fixes; divisors and moduli are public.",
+        "add_mod and sub_mod take operands of any value. A `*` there marks a function with an \
+         unchecked precondition, operands below the modulus, which gives a wrong result for \
+         other inputs: those cells compare against an unchecked precondition.",
+        "The rows of reduced operands take the one modulus of the width. `biguint` runs \
+         `Residue` and `ConstantTimeResidue` of a ring that `Modulus::scope` prepares outside \
+         the measured loop: the type holds each operand below the modulus, with no check.",
     ],
     wasm_native: "",
 };

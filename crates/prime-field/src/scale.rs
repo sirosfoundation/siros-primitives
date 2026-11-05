@@ -24,8 +24,9 @@
 
 use crate::field::Modulus;
 use crate::kernel::{add_mod, below, fits, limb, set, shifted_limb, sub, widening_mul};
-use crate::limb::{mac, sbb, select};
+use crate::limb::{adc, mac, sbb, select};
 use crate::params::{ExtendedLimbs, Limbs, Shape, folds_from};
+use crate::unrolled::unroll;
 use crate::width::Width;
 
 impl<M: Modulus> Shape<M> {
@@ -50,10 +51,33 @@ impl<M: Modulus> Shape<M> {
         Self::represent_residue(residue)
     }
 
+    /// The Montgomery form of the word `k` in constant time: the Montgomery step of
+    /// [`Self::encode_word`] by the run-time kernels.
+    #[inline(always)]
+    fn word_ct(k: u64) -> Limbs<M> {
+        let mut out = M::Width::ZERO;
+        let factor = Self::R_WORD;
+        let (low, mut carry_k) = mac(limb(factor.as_slice(), 0), k, 0, 0);
+        let m = low.wrapping_mul(Self::INV);
+        let (_, mut carry_p) = mac(m, Self::P0, low, 0);
+        unroll!(j in 1, Self::LIMBS => {
+            let (product, next_k) = mac(limb(factor.as_slice(), j), k, carry_k, 0);
+            let (sum, next_p) = mac(m, limb(Self::P.as_slice(), j), product, carry_p);
+            set(out.as_mut_slice(), j.wrapping_sub(1), sum);
+            (carry_k, carry_p) = (next_k, next_p);
+        });
+        let (sum, top) = adc(0, carry_k, carry_p);
+        set(out.as_mut_slice(), Self::LIMBS - 1, sum);
+        Self::reduce_select(out, top)
+    }
+
     /// The representation of the integer `k`: `R k mod p`, or `k mod p` for a field of plain
     /// residues.
     #[inline(always)]
     pub(crate) fn integer<const CT: bool>(k: &[u64]) -> Limbs<M> {
+        if CT && k.len() <= 1 && Self::MONTGOMERY && !Self::SHIFT_ENCODE {
+            return Self::word_ct(limb(k, 0));
+        }
         if !Self::MONTGOMERY && 64 * k.len() < Self::BITS {
             // `k < 2^(64 len) < p` is its own plain residue.
             let mut out = M::Width::ZERO;

@@ -168,7 +168,10 @@ impl<N: Bits> Divisor for Uint<N> {
 
     #[inline(always)]
     fn load(stored: N::NonZeroLimbs) -> Self {
-        Self::from_generic_limbs(stored.limbs())
+        // `stored` holds the limbs of an `N`-bit value: they need no mask.
+        Self {
+            limbs: stored.limbs(),
+        }
     }
 }
 
