@@ -169,17 +169,16 @@ impl<N: Bits, E: Bits> CtPow<ConstantTime<Uint<E>>> for Uint<N> {
 }
 
 /// `(self + rhs) mod modulus`, for operands of any value.
-///
-/// Natively, a modulus that reduces by one subtraction takes `a + b ≡ a - (m - b)`: `b` reduces,
-/// `m - b` lies in `(0, m]`, and [`difference_mod`] corrects. That is one masked reduction where
-/// the sum of both reduced operands takes three: at 2048 bits, 300 cycles per operation on Zen 3
-/// against 380 to 640, and fewer at every width. WebAssembly, unmeasured in this form, reduces both
-/// operands and corrects their sum.
 impl<N: Bits> CtAddMod<NonZeroUint<N>> for Uint<N> {
     #[inline(always)]
     fn ct_add_mod(self, rhs: Self, modulus: NonZeroUint<N>) -> Self {
         let modulus = modulus.get();
         let reduction = Reduction::new(&modulus);
+        // Natively, a modulus that reduces by one subtraction takes `a + b ≡ a - (m - b)`: `b`
+        // reduces, `m - b` lies in `(0, m]`, and `difference_mod` corrects. That is one masked
+        // reduction where the sum of both reduced operands takes three: at 2048 bits, 300 cycles
+        // per operation on Zen 3 against 380 to 640, and fewer at every width. WebAssembly,
+        // unmeasured in this form, reduces both operands and corrects their sum.
         if cfg!(not(target_arch = "wasm32"))
             && let Reduction::Subtract(subtracted) = reduction
         {
