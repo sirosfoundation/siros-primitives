@@ -21,8 +21,17 @@ pub struct NonZero<T: Divisor>(pub(crate) T::Stored);
 /// An `N`-bit integer that is not zero.
 pub type NonZeroUint<N> = NonZero<Uint<N>>;
 
-/// A type whose nonzero values [`NonZero`] holds, with their storage.
-pub trait Divisor: Zero + Copy {
+/// The sealing of [`Divisor`]: the crates of this workspace implement [`seal::Sealed`] for the
+/// types whose nonzero values [`NonZero`] holds.
+#[doc(hidden)]
+pub mod seal {
+    /// A type of this workspace whose nonzero values [`NonZero`](crate::NonZero) holds.
+    pub trait Sealed {}
+}
+
+/// A type whose nonzero values [`NonZero`] holds, with their storage: `Uint`, and the field
+/// elements of `prime-field` and `binary-field`.
+pub trait Divisor: seal::Sealed + Zero + Copy {
     /// The storage of a nonzero value.
     type Stored: Copy;
 
@@ -146,6 +155,8 @@ fn wide(limbs: &[u64]) -> u128 {
     let high = limbs.get(1).copied().unwrap_or(0);
     (u128::from(high) << 64) | u128::from(low)
 }
+
+impl<N: Bits> seal::Sealed for Uint<N> {}
 
 impl<N: Bits> Divisor for Uint<N> {
     type Stored = N::NonZeroLimbs;
