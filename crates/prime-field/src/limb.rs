@@ -117,3 +117,81 @@ pub(crate) fn mac(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
 pub(crate) fn select<T>(condition: bool, a: T, b: T) -> T {
     core::hint::select_unpredictable(condition, a, b)
 }
+
+/// A word as the sum of at most three signed powers of two `±2^e`, `e <= 64`: its non-adjacent
+/// form, the signed-binary form of fewest terms (Reitwiesner, 1960).
+#[derive(Clone, Copy)]
+pub(crate) struct SignedPowers {
+    /// The terms from the lowest power up; the first `len` hold.
+    terms: [SignedPower; 3],
+    /// The terms that hold, at most three.
+    len: usize,
+}
+
+/// One term `±2^exponent` of [`SignedPowers`].
+#[derive(Clone, Copy)]
+struct SignedPower {
+    exponent: u32,
+    negative: bool,
+}
+
+impl SignedPowers {
+    /// The form of `value`, or `None` where it takes more than three terms.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "const evaluation, with the index checked against the length"
+    )]
+    pub(crate) const fn of(value: u64) -> Option<Self> {
+        let unused = SignedPower {
+            exponent: 0,
+            negative: false,
+        };
+        let mut form = Self {
+            terms: [unused; 3],
+            len: 0,
+        };
+        let mut rest = value as u128;
+        let mut exponent = 0;
+        while rest != 0 {
+            if rest & 1 == 1 {
+                // `rest = 3 mod 4` takes `-1`, which clears the next bit as well.
+                let negative = rest & 2 == 2;
+                if form.len == form.terms.len() {
+                    return None;
+                }
+                form.terms[form.len] = SignedPower { exponent, negative };
+                form.len += 1;
+                rest = if negative { rest + 1 } else { rest - 1 };
+            }
+            rest >>= 1;
+            exponent += 1;
+        }
+        Some(form)
+    }
+
+    /// The number of terms.
+    pub(crate) const fn terms(self) -> usize {
+        self.len
+    }
+
+    /// `m` times the word, as `(low, high)`, by shifts, additions and subtractions.
+    #[inline(always)]
+    pub(crate) fn mul(self, m: u64) -> (u64, u64) {
+        let (mut low, mut high) = (0, 0);
+        for term in self.terms.iter().take(self.len) {
+            let (term_low, term_high) = match term.exponent {
+                0 => (m, 0),
+                64 => (0, m),
+                exponent => (m << exponent, m >> (64 - exponent)),
+            };
+            if term.negative {
+                let (difference, borrow) = sbb(0, low, term_low);
+                (low, high) = (difference, sbb(borrow, high, term_high).0);
+            } else {
+                let (sum, carry) = adc(0, low, term_low);
+                (low, high) = (sum, adc(carry, high, term_high).0);
+            }
+        }
+        (low, high)
+    }
+}

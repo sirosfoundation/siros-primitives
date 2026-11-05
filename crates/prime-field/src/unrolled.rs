@@ -8,7 +8,6 @@
 //! cycles more on BN254, Tom-256 and P-521. Builds with debug assertions run the loop alone.
 
 /// The indices that [`unroll!`] copies; a loop runs the rest.
-#[cfg(not(debug_assertions))]
 pub(crate) const UNROLLED: usize = 9;
 
 /// Runs `$body` with `$i` bound to each index of `$start..$len`, in order.

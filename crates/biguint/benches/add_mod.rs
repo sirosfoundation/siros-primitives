@@ -6,7 +6,7 @@ mod suite;
 use std::process::ExitCode;
 
 /// The computations that this bench measures.
-const BASES: &[suite::Op] = &[suite::Op::AddMod];
+const BASES: &[suite::Op] = &[suite::Op::AddMod, suite::Op::AddModReduced];
 
 fn main() -> ExitCode {
     bench_compare::main::<suite::Biguint>("add_mod")

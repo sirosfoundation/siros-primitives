@@ -14,8 +14,8 @@ use crate::Modulus;
 use crate::chain::Program;
 use crate::kernel::{
     add, add_mod, below, bit, bit_len, cios, copy, equal, fits, fold, inv64, is_zero, jacobi, limb,
-    mul_wide, neg_mod, redc, reduce_once, set, shr, square_wide, sub, sub_mod, trailing_zeros,
-    truncate, truncate_mut, widening_mul,
+    montgomery_word, mul_wide, neg_mod, redc, reduce_once, set, shr, square_wide, sub, sub_mod,
+    trailing_zeros, truncate, truncate_mut, widening_mul,
 };
 use crate::width::Width;
 
@@ -298,6 +298,36 @@ impl<M: Modulus> Shape<M> {
     /// Montgomery form for `p = 2^64 - 2^32 + 1`: [`Self::encode`] takes one Montgomery step
     /// of shifts.
     pub(crate) const SHIFT_ENCODE: bool = Self::MONTGOMERY && Self::SHIFT_REDC;
+
+    /// `2^(64 (L + 1)) mod p`: one Montgomery step of a word times it leaves the word's Montgomery
+    /// form.
+    pub(crate) const R_WORD: Limbs<M> = Self::pow2_mod(64 * Self::LIMBS + 64);
+
+    /// The representation of the word `value`, in constant time: one Montgomery step of `value`
+    /// times [`Self::R_WORD`], one row of products against the `L` rows of [`Self::encode`];
+    /// `value mod p` on a one-limb field of plain residues; the word itself, below `p`, on a wider
+    /// one.
+    #[inline(always)]
+    pub(crate) const fn encode_word(value: u64) -> Limbs<M> {
+        if Self::SHIFT_ENCODE {
+            return Self::encode(&[value]);
+        }
+        if Self::MONTGOMERY {
+            let mut out = M::Width::ZERO;
+            montgomery_word(
+                out.as_mut_slice(),
+                Self::R_WORD.as_slice(),
+                value,
+                Self::P.as_slice(),
+                Self::INV,
+            );
+            return out;
+        }
+        if Self::LIMBS == 1 {
+            return Self::encode(&[value % Self::P0]);
+        }
+        Self::encode(&[value])
+    }
 
     /// The representation of the integer `value < p`, or of any one-limb `value` when
     /// [`Self::SHIFT_ENCODE`] holds.

@@ -49,11 +49,11 @@ impl<M: Modulus> Fp<M> {
     }
 
     /// The element of the nonzero integer `k < p`, in constant time when `CT` holds. A `k` of one
-    /// limb takes the one-limb representation of an integer; a wider `k` is its own residue and
-    /// takes no reduction.
+    /// limb below a wider element takes the one-limb representation of an integer; a `k` as wide
+    /// as the element is its own residue and takes no reduction.
     #[inline(always)]
     fn element_of<const CT: bool>(k: &[u64]) -> Self {
-        if k.len() <= 1 {
+        if k.len() <= 1 && Shape::<M>::LIMBS > 1 {
             return Self::integer_with::<CT>(k);
         }
         let mut residue = M::Width::ZERO;
