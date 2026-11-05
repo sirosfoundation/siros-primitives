@@ -147,10 +147,15 @@ pub(crate) fn top<N: Bits>(value: &Uint<N>) -> u64 {
     value.limbs.last().copied().unwrap_or(0)
 }
 
-/// Whether the variable-time sums branch on their correction. On WebAssembly the difference and the
-/// selects of every limb cost more than a branch: the 512-bit sum took Chrome 48 cycles with the
-/// branch against 65 with the selects.
-const BRANCHES: bool = cfg!(target_arch = "wasm32");
+/// Whether the variable-time sums of `limbs` limbs branch on their correction. On WebAssembly the
+/// difference and the selects of every limb cost more than a branch: the 512-bit sum took Chrome 48
+/// cycles with the branch against 65 with the selects. Without wide arithmetic at 32 limbs, the
+/// branch on the whole comparison mispredicts on half the sums of reduced operands, and the
+/// correction of the top limbs ([`subtract_when_above_in_place`]) took Firefox 268 cycles against
+/// 430 and Chrome 252 against 283.
+const fn branches(limbs: usize) -> bool {
+    cfg!(target_arch = "wasm32") && !(cfg!(not(wide_arithmetic)) && limbs == 32)
+}
 
 /// The second operand of [`sum_mod`], with the correction that brings the sum below the modulus.
 pub(crate) trait Addend: LimbSource {
@@ -175,7 +180,7 @@ impl Addend for ZeroExtended<'_> {
 
     #[inline(always)]
     fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]) {
-        if BRANCHES {
+        if branches(sum.len()) {
             if carry != 0 || compare(sum, modulus).is_ge() {
                 fits(sub_assign(sum, modulus));
             }
@@ -206,7 +211,7 @@ impl<S: LimbSource> Addend for TwosComplement<S> {
 
     #[inline(always)]
     fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]) {
-        if BRANCHES {
+        if branches(sum.len()) {
             if carry == 0 {
                 fits(add_assign(sum, modulus));
             }

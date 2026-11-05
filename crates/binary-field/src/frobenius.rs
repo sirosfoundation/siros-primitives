@@ -138,6 +138,13 @@ impl<P: Polynomial> Frobenius<P> {
         let degree = Plan::<P>::DEGREE;
         if degree <= 16 || degree > TABLE_DEGREE || clmul::HARDWARE {
             powers(chain, 0, degree, 0)
+        } else if degree > 128 {
+            // The powers of the nibble tables, whose images [`QuadImages`] computes once for both.
+            let mut plan = Self::POWERS;
+            if plan.window > 0 {
+                plan.window = 1;
+            }
+            plan
         } else {
             let used = Self::POWERS.tables * table_bytes(Self::POWERS.window, degree);
             match TIER {
@@ -430,8 +437,7 @@ impl<P: Polynomial, const T: usize> Table<P, T> {
     const QUAD_NIBBLES: &'static QuadNibbles = &quad_table(
         Self::QUAD && Self::WINDOW == 4,
         Plan::<P>::DEGREE,
-        Plan::<P>::TAPS,
-        Self::POWER,
+        QuadImages::<P, T>::IMAGES,
     );
 
     /// `x^(2^POWER)`: the images of the windows of `x`, summed.
@@ -459,6 +465,20 @@ impl<P: Polynomial, const T: usize> Table<P, T> {
             sum.into_poly().resize()
         }
     }
+}
+
+/// The images of the bits of an element under the tabulated power `T` of a field of three or four
+/// words, which [`Table`] and [`BitTable`] share: the two plans tabulate the same powers there.
+struct QuadImages<P, const T: usize>(PhantomData<P>);
+
+impl<P: Polynomial, const T: usize> QuadImages<P, T> {
+    /// The images; zero for the other fields and past the tabulated powers.
+    const IMAGES: &'static [[u64; 4]; 256] = &quad_images(
+        Plan::<P>::DEGREE > 128,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+        Table::<P, T>::POWER,
+    );
 }
 
 /// The table of the tabulated power `T` of [`Frobenius::CT_POWERS`]: the image of each bit of an
@@ -492,8 +512,7 @@ impl<P: Polynomial, const T: usize> BitTable<P, T> {
     /// Whether an image is four words.
     const QUAD: bool = Plan::<P>::DEGREE > 128;
     /// The images of the bits of a field of three or four words; zero for the other fields.
-    const QUAD_IMAGES: &'static [[u64; 4]; 256] =
-        &quad_images(Self::QUAD, Plan::<P>::DEGREE, Plan::<P>::TAPS, Self::POWER);
+    const QUAD_IMAGES: &'static [[u64; 4]; 256] = QuadImages::<P, T>::IMAGES;
 
     /// `x^(2^POWER)`: the sum of the images of the set bits of `x`, each under the mask of its
     /// bit, in four sums. No address and no branch depends on `x`.
@@ -767,74 +786,77 @@ const fn quad_images(used: bool, degree: usize, taps: &[usize], power: usize) ->
     images
 }
 
-/// The 64 shifts of `a` within a word, each on five words.
+/// The carry-less products of `a` and every byte, each on five words. Constant evaluation runs a
+/// product by them a byte of the multiplier at a time.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its array's length"
 )]
-const fn shifts(a: [u64; 4]) -> [[u64; 5]; 64] {
-    let mut shifted = [[0u64; 5]; 64];
-    let mut shift = 0;
-    while shift < 64 {
+const fn shifts(a: [u64; 4]) -> [[u64; 5]; 256] {
+    let mut multiples = [[0u64; 5]; 256];
+    let mut value: usize = 1;
+    while value < 256 {
+        // Each value is a smaller one plus its lowest bit.
+        let low = value & value.wrapping_neg();
+        let shift = low.trailing_zeros();
         let mut word = 0;
         while word < 5 {
-            let low = if word < 4 { a[word] << shift } else { 0 };
+            let shifted = if word < 4 { a[word] << shift } else { 0 };
             let carried = if word > 0 && shift > 0 {
                 a[word - 1] >> (64 - shift)
             } else {
                 0
             };
-            shifted[shift][word] = low | carried;
+            multiples[value][word] = multiples[value ^ low][word] ^ shifted ^ carried;
             word += 1;
         }
-        shift += 1;
+        value += 1;
     }
-    shifted
+    multiples
 }
 
 /// `a b mod x^degree + r` for `a` and `b` below `x^degree`, a degree from 129 to 256, with the
-/// [`shifts`] of `a`: the carry-less product by the set bits of `b`.
+/// [`shifts`] of `a`: the carry-less product by the bytes of `b`.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its array's length"
 )]
 const fn quad_mul_mod(
-    shifted: &[[u64; 5]; 64],
+    multiples: &[[u64; 5]; 256],
     b: [u64; 4],
     degree: usize,
     taps: &[usize],
 ) -> [u64; 4] {
     let mut product = [0u64; 8];
-    let mut word = 0;
-    while word < 4 {
-        let mut bit = 0;
-        while bit < 64 {
-            if (b[word] >> bit) & 1 == 1 {
-                let mut index = 0;
-                while index < 5 {
-                    product[word + index] ^= shifted[bit][index];
-                    index += 1;
-                }
+    let mut byte = 0;
+    while byte < 32 {
+        let multiple = &multiples[((b[byte / 8] >> (8 * (byte % 8))) & 0xFF) as usize];
+        let (word, shift) = (byte / 8, 8 * (byte % 8));
+        let mut index = 0;
+        while index < 5 {
+            product[word + index] ^= multiple[index] << shift;
+            // The top word of a multiple holds 7 bits, which a shift keeps within the word.
+            if shift > 0 && word + index + 1 < 8 {
+                product[word + index + 1] ^= multiple[index] >> (64 - shift);
             }
-            bit += 1;
+            index += 1;
         }
-        word += 1;
+        byte += 1;
     }
     quad_reduce(product, degree, taps)
 }
 
-/// The nibble table of a power in fields of three or four words, as `word_table`; zero unless
-/// `used`.
+/// The nibble table of the power whose bit `images` are given, in fields of three or four words, as
+/// `word_table`; zero unless `used`.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its array's length"
 )]
-const fn quad_table(used: bool, degree: usize, taps: &[usize], power: usize) -> QuadNibbles {
+const fn quad_table(used: bool, degree: usize, images: &[[u64; 4]; 256]) -> QuadNibbles {
     let mut table = [[[0u64; 4]; 16]; 64];
-    if !used || power == 0 {
+    if !used {
         return table;
     }
-    let images = quad_images(true, degree, taps, power);
     let mut position = 0;
     while position < 64 {
         let mut value: usize = 1;
@@ -924,16 +946,22 @@ const fn quad_reduce(value: [u64; 8], degree: usize, taps: &[usize]) -> [u64; 4]
 )]
 const fn shift_words(value: &[u64; 8], shift: isize) -> [u64; 8] {
     let mut out = [0u64; 8];
+    let amount = shift.unsigned_abs();
+    let (words, offset) = (amount / 64, (amount % 64) as u32);
     let mut index = 0;
     while index < 8 {
         // Bit `b` of `out` is bit `b + shift` of `value`.
-        let low = index as isize * 64 + shift;
-        let word = low.div_euclid(64);
-        let offset = low.rem_euclid(64) as u32;
+        let word = if shift >= 0 {
+            index as isize + words as isize
+        } else {
+            index as isize - words as isize
+        };
         out[index] = if offset == 0 {
             word_at(value, word)
-        } else {
+        } else if shift >= 0 {
             (word_at(value, word) >> offset) | (word_at(value, word + 1) << (64 - offset))
+        } else {
+            (word_at(value, word) << offset) | (word_at(value, word - 1) >> (64 - offset))
         };
         index += 1;
     }
