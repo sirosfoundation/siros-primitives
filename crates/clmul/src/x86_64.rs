@@ -46,6 +46,12 @@ pub(crate) const fn register(words: [u64; 2]) -> Register {
     unsafe { core::mem::transmute::<[u64; 2], Register>(words) }
 }
 
+/// `register`, whose bits at and above `bits` are zero: one vector register whatever the width.
+#[inline(always)]
+pub(crate) const fn narrow(register: Register, _bits: usize) -> Register {
+    register
+}
+
 /// The words `[low, high]` of `register`.
 #[inline(always)]
 pub(crate) const fn words(register: Register) -> [u64; 2] {

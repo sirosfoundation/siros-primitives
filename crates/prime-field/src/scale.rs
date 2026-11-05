@@ -23,7 +23,7 @@
 //!   is rare: the variable-time form branches on it.
 
 use crate::field::Modulus;
-use crate::kernel::{add_mod, below, fits, limb, set, shifted_limb, sub};
+use crate::kernel::{add_mod, below, fits, limb, set, shifted_limb, sub, widening_mul};
 use crate::limb::{mac, sbb, select};
 use crate::params::{ExtendedLimbs, Limbs, Shape, folds_from};
 use crate::width::Width;
@@ -102,7 +102,7 @@ impl<M: Modulus> Shape<M> {
             Self::montgomery1::<CT>(k, limb(&Self::R2, 0))
         } else if Self::MONTGOMERY {
             // `k R^2 < p 2^64` reduces by one Montgomery step to `k R mod p`.
-            Self::redc1::<CT>(u128::from(k) * u128::from(limb(&Self::R2, 0)))
+            Self::redc1::<CT>(widening_mul(k, limb(&Self::R2, 0)))
         } else {
             limb(&Self::reduce_wide::<CT>(Self::row(&Self::ONE, k)), 0)
         }
@@ -258,8 +258,8 @@ impl<M: Modulus> Shape<M> {
     #[inline(always)]
     fn quotient(y0: u64, y1: u64) -> u64 {
         let [m0, m1] = Self::RECIPROCAL;
-        let high = |a: u64, b: u64| (u128::from(a) * u128::from(b)) >> 64;
-        let sum = u128::from(y0) + u128::from(y1) * u128::from(m1) + high(y1, m0) + high(y0, m1);
+        let high = |a: u64, b: u64| widening_mul(a, b) >> 64;
+        let sum = u128::from(y0) + widening_mul(y1, m1) + high(y1, m0) + high(y0, m1);
         y1 + (sum >> 64) as u64
     }
 
@@ -322,7 +322,7 @@ impl<M: Modulus> Shape<M> {
     fn barrett1<const CT: bool>(value: u128) -> u64 {
         let y = value << (64 - Self::BITS);
         let q = Self::quotient(y as u64, (y >> 64) as u64);
-        let remainder = value - u128::from(q) * u128::from(Self::P0);
+        let remainder = value - widening_mul(q, Self::P0);
         Self::reduce1::<CT>(remainder as u64, (remainder >> 64) as u8)
     }
 

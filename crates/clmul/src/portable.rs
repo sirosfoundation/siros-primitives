@@ -2,7 +2,7 @@
 //! products come from the comb.
 
 pub(crate) use crate::comb::clmul64;
-use crate::{REDUCTION, to_limbs};
+use crate::to_limbs;
 
 /// A register: two 64-bit words, word 0 first.
 pub(crate) type Register = [u64; 2];
@@ -14,6 +14,13 @@ pub(crate) const ZERO: Register = [0, 0];
 #[inline(always)]
 pub(crate) const fn register(words: [u64; 2]) -> Register {
     words
+}
+
+/// `register`, whose bits at and above `bits` are zero, with a high word of a literal zero for
+/// `bits` up to 64: the operations on that word then fold away.
+#[inline(always)]
+pub(crate) const fn narrow(register: Register, bits: usize) -> Register {
+    if bits <= 64 { [register[0], 0] } else { register }
 }
 
 /// The words `[low, high]` of `register`.
@@ -81,9 +88,20 @@ pub(crate) fn map_nibbles(_: Register, images: [u64; 4], nibbles: Register) -> R
 }
 
 /// The carry-less product of word `i` of `a`, below `2^32`, and word `j` of `b`.
+#[cfg(not(target_arch = "wasm32"))]
 #[inline(always)]
 pub(crate) const fn clmul_narrow(a: Register, i: usize, b: Register, j: usize) -> Register {
     clmul(a, i, b, j)
+}
+
+/// The carry-less product of word `i` of `a`, below `2^32`, and word `j` of `b`: the products of
+/// the word of `a` and the two 32-bit halves of the word of `b`.
+#[cfg(target_arch = "wasm32")]
+#[inline(always)]
+pub(crate) const fn clmul_narrow(a: Register, i: usize, b: Register, j: usize) -> Register {
+    let x = if i == 0 { a[0] } else { a[1] };
+    let y = if j == 0 { b[0] } else { b[1] };
+    to_limbs(crate::comb::clmul64_narrow(x, y))
 }
 
 /// The squares of the two words of `a`, `(a0^2, a1^2)`: bit `i` of a word moves to bit `2 i`.
@@ -98,8 +116,16 @@ const fn spread_word(word: u64) -> Register {
     [spread_half(word as u32), spread_half((word >> 32) as u32)]
 }
 
+/// Bit `i` of `half` at bit `2 i`, from the products of its bit lanes.
+#[cfg(target_arch = "wasm32")]
+#[inline(always)]
+const fn spread_half(half: u32) -> u64 {
+    crate::comb::square32(half)
+}
+
 /// Bit `i` of `half` at bit `2 i`: each step moves the upper half of every block up by half the
 /// block (Warren, Hacker's Delight, 7-2).
+#[cfg(not(target_arch = "wasm32"))]
 #[inline(always)]
 const fn spread_half(half: u32) -> u64 {
     let mut x = half as u64;
@@ -142,8 +168,9 @@ impl Accumulator {
 }
 
 /// `low + high * x^64`, reduced: the part of `high` at and above `x^64` folds into its product with
-/// `x^7 + x^2 + x + 1`.
+/// `x^7 + x^2 + x + 1`, [`REDUCTION`](crate::REDUCTION), by shifts.
 #[inline(always)]
 fn reduce(low: u128, high: u128) -> u128 {
-    low ^ (high << 64) ^ clmul64((high >> 64) as u64, REDUCTION)
+    let top = high >> 64;
+    low ^ (high << 64) ^ top ^ (top << 1) ^ (top << 2) ^ (top << 7)
 }

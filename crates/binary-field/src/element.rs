@@ -23,7 +23,8 @@ pub type Bytes<P> = <<P as Polynomial>::Degree as Bits>::Bytes;
 ///
 /// The element is a polynomial of degree below `n`; bit `i` of its value is the coefficient of
 /// `x^i`. The field's plan picks its registers at compile time: a byte or a 16-bit word in a
-/// general register for degrees up to 16, and `clmul::Poly`'s vector registers above.
+/// general register for degrees up to 16 (64 on WebAssembly), and `clmul::Poly`'s vector registers
+/// above.
 ///
 /// The operations take the fastest algorithm of the plan, and their time may depend on the
 /// values: table lookups, and branches on zero. [`ConstantTime`](crate::ConstantTime) holds an

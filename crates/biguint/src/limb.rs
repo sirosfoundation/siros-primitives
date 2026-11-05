@@ -1,7 +1,8 @@
 //! Single-limb carry primitives: the carry chain under every multi-limb add and subtract.
 //!
-//! Builds that enable `adx` on `x86_64` use the `adc`/`sbb` intrinsics. Every other build uses
-//! two overflowing operations, which LLVM schedules better there.
+//! Builds that enable `adx` on `x86_64` use the `adc`/`sbb` intrinsics, and WebAssembly builds with
+//! wide arithmetic `i64.add128` and `i64.sub128`. Every other build uses two overflowing
+//! operations, which LLVM schedules better there.
 
 /// All ones when `a < b`, zero otherwise: the high limb of the two-limb difference. A correction
 /// that depends on the values applies such a mask: a branch on it mispredicts about once in two.
@@ -10,6 +11,48 @@
 #[inline(always)]
 pub(crate) const fn mask_below(a: u64, b: u64) -> u64 {
     ((a as u128).wrapping_sub(b as u128) >> 64) as u64
+}
+
+/// `a * b`, the full 128-bit product.
+///
+/// WebAssembly without wide arithmetic has no widening product, and LLVM calls `__multi3` for a
+/// `u128` one; four `i64.mul` of 32-bit halves take its place. On x86-64, LLVM does not fuse the
+/// split product back into one `mul`.
+#[inline(always)]
+pub(crate) const fn widening_mul(a: u64, b: u64) -> u128 {
+    let (low, high) = mul_add(a, b, 0, 0);
+    (low as u128) | ((high as u128) << 64)
+}
+
+/// `a * b + c + d` as `(low, high)`, which is at most `2^128 - 1`, as one `u128` expression: the
+/// form that LLVM schedules best in straight-line code, where it sees every step of an unrolled
+/// product at once.
+#[cfg(not(all(target_arch = "wasm32", not(wide_arithmetic))))]
+#[inline(always)]
+pub(crate) const fn mul_add(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
+    let wide = a as u128 * b as u128 + c as u128 + d as u128;
+    (wide as u64, (wide >> 64) as u64)
+}
+
+/// `a * b + c + d` as `(low, high)`, which is at most `2^128 - 1`.
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+#[inline(always)]
+pub(crate) const fn mul_add(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
+    mul_add_halves(a, b, c, d)
+}
+
+/// `a * b + c + d` as `(low, high)` from the four products of 32-bit halves, each partial sum below
+/// `2^64`: `(2^32 - 1)^2` plus two terms below `2^32`.
+#[cfg(any(test, all(target_arch = "wasm32", not(wide_arithmetic))))]
+#[inline(always)]
+const fn mul_add_halves(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
+    const HALF: u64 = 0xFFFF_FFFF;
+    let (a0, a1, b0, b1) = (a & HALF, a >> 32, b & HALF, b >> 32);
+    let low = a0 * b0 + (c & HALF) + (d & HALF);
+    let middle = a1 * b0 + (low >> 32) + (c >> 32);
+    let cross = a0 * b1 + (middle & HALF) + (d >> 32);
+    let high = a1 * b1 + (middle >> 32) + (cross >> 32);
+    ((cross << 32) | (low & HALF), high)
 }
 
 /// Marks the path that calls it as rare, which LLVM then branches around. A rare correction without
@@ -66,10 +109,35 @@ mod arch {
     }
 }
 
-#[cfg(not(all(target_arch = "x86_64", target_feature = "adx")))]
+#[cfg(not(any(all(target_arch = "x86_64", target_feature = "adx"), wide_arithmetic)))]
 use portable as arch;
 
-#[cfg(any(test, not(all(target_arch = "x86_64", target_feature = "adx"))))]
+#[cfg(wide_arithmetic)]
+use wide as arch;
+
+/// The carry chain of WebAssembly builds with wide arithmetic: one `u128` sum or difference,
+/// which runs as `i64.add128` or `i64.sub128`.
+#[cfg(wide_arithmetic)]
+mod wide {
+    #[inline(always)]
+    pub(super) fn add_carry(carry: u8, lhs: u64, rhs: u64) -> (u64, u8) {
+        let sum = u128::from(lhs) + u128::from(rhs) + u128::from(carry);
+        (sum as u64, (sum >> 64) as u8)
+    }
+
+    #[inline(always)]
+    pub(super) fn sub_borrow(borrow: u8, lhs: u64, rhs: u64) -> (u64, u8) {
+        let difference = u128::from(lhs)
+            .wrapping_sub(u128::from(rhs))
+            .wrapping_sub(u128::from(borrow));
+        (difference as u64, (difference >> 127) as u8)
+    }
+}
+
+#[cfg(any(
+    test,
+    not(any(all(target_arch = "x86_64", target_feature = "adx"), wide_arithmetic))
+))]
 mod portable {
     #[inline(always)]
     pub(super) fn add_carry(carry: u8, lhs: u64, rhs: u64) -> (u64, u8) {

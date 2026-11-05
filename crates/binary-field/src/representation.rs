@@ -1,13 +1,14 @@
 //! The registers of an element, which the plan chooses at compile time: a byte or a 16-bit word in
 //! a general register when the default operations index tables, one vector register up to 128 bits
-//! and `clmul::Poly` above when they run on carry-less products.
+//! and `clmul::Poly` above when they run on carry-less products. WebAssembly keeps elements of up to
+//! 64 bits in a general register.
 
 use core::fmt::Debug;
 use core::hash::Hash;
 
 use biguint::Uint;
 use clmul::{Lane, Poly, Width};
-use typenum::{B0, B1, IsLessOrEqual, LeEq, U1, U8, U16, U128};
+use typenum::{B0, B1, IsLessOrEqual, LeEq, U1, U8, U16, U64, U128};
 
 /// The registers of an element of a field of degree `N`, and the conversions that the kernels
 /// need. A conversion between a general register and `Poly` moves the value between register
@@ -97,7 +98,7 @@ macro_rules! word_storage {
     )*};
 }
 
-word_storage!(u8, u16);
+word_storage!(u8, u16, u64);
 
 impl<N: Width> Storage<N> for Poly<N> {
     const ZERO: Self = Poly::<N>::ZERO;
@@ -222,15 +223,27 @@ impl<Yes, No> Pick<Yes, No> for B0 {
 /// One vector register up to 128 bits, `Poly` above.
 type Vector<N> = <LeEq<N, U128> as Pick<Lane<N>, Poly<N>>>::Output;
 
-/// A byte up to degree 8, a 16-bit word up to degree 16, vector registers above.
-type Chosen<N> = <LeEq<N, U16> as Pick<<LeEq<N, U8> as Pick<u8, u16>>::Output, Vector<N>>>::Output;
+/// The registers above degree 16: a general register up to degree 64 on WebAssembly, whose lane of
+/// two words would carry a high word of zeros through every load, store and operation; vector
+/// registers elsewhere.
+#[cfg(target_arch = "wasm32")]
+type Registers<N> = <LeEq<N, U64> as Pick<u64, Vector<N>>>::Output;
+
+/// The registers above degree 16: vector registers.
+#[cfg(not(target_arch = "wasm32"))]
+type Registers<N> = Vector<N>;
+
+/// A byte up to degree 8, a 16-bit word up to degree 16, [`Registers`] above.
+type Chosen<N> =
+    <LeEq<N, U16> as Pick<<LeEq<N, U8> as Pick<u8, u16>>::Output, Registers<N>>>::Output;
 
 impl<N> Representation for N
 where
-    N: Width + IsLessOrEqual<U8> + IsLessOrEqual<U16> + IsLessOrEqual<U128>,
+    N: Width + IsLessOrEqual<U8> + IsLessOrEqual<U16> + IsLessOrEqual<U64> + IsLessOrEqual<U128>,
     LeEq<N, U8>: Pick<u8, u16>,
+    LeEq<N, U64>: Pick<u64, Vector<N>>,
     LeEq<N, U128>: Pick<Lane<N>, Poly<N>>,
-    LeEq<N, U16>: Pick<<LeEq<N, U8> as Pick<u8, u16>>::Output, Vector<N>>,
+    LeEq<N, U16>: Pick<<LeEq<N, U8> as Pick<u8, u16>>::Output, Registers<N>>,
     Chosen<N>: Storage<N>,
 {
     type Element = Chosen<N>;

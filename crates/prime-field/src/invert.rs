@@ -371,14 +371,31 @@ fn combination(masks: Masks, out: &mut [u64], f: i64, a: &[u64], g: i64, b: &[u6
     let mut carry: i128 = 0;
     for (index, slot) in out.iter_mut().enumerate() {
         let sum = carry
-            + i128::from(f) * i128::from(limb(a, index))
-            + i128::from(g) * i128::from(limb(b, index));
+            + signed_product(f, limb(a, index))
+            + signed_product(g, limb(b, index));
         *slot = sum as u64;
         carry = sum >> 64;
     }
     // The limbs of `a` and `b` were read as unsigned; their sign terms vanish modulo `2^(64
     // len)`, so the low limbs are right, and the sign is the top bit.
     masks.negative(out.last().map_or(0, |top| *top as i64))
+}
+
+/// `f a` for a signed `f` and an unsigned `a`.
+#[cfg(not(all(target_arch = "wasm32", not(wide_arithmetic))))]
+#[inline(always)]
+fn signed_product(f: i64, a: u64) -> i128 {
+    i128::from(f) * i128::from(a)
+}
+
+/// `f a` for a signed `f` and an unsigned `a`, from the unsigned product of the split
+/// [`widening_mul`](crate::kernel::widening_mul): a negative `f` reads as `f + 2^64`, which adds
+/// `a 2^64`.
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+#[inline(always)]
+fn signed_product(f: i64, a: u64) -> i128 {
+    let product = crate::kernel::widening_mul(f as u64, a) as i128;
+    product.wrapping_sub((i128::from(a) << 64) & i128::from(f >> 63))
 }
 
 /// `(f a + g b) / 2^62` in two's complement, the division exact.

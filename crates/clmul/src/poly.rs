@@ -407,7 +407,9 @@ impl<N: Width> Poly<N> {
     /// Register `index`, or zero above the top.
     #[inline(always)]
     fn lane(&self, index: usize) -> Register {
-        self.lanes.get(index).map_or(backend::ZERO, |lane| lane.0)
+        self.lanes.get(index).map_or(backend::ZERO, |lane| {
+            backend::narrow(lane.0, N::BITS.saturating_sub(128 * index))
+        })
     }
 
     /// Sets register `index`; above the top it does nothing.

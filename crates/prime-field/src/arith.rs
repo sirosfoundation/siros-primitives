@@ -16,7 +16,7 @@ use biguint::Bits;
 use typenum::Unsigned;
 
 use crate::field::Modulus;
-use crate::kernel::{equal, fits, is_zero, limb, low_limb, set, shifted_limb};
+use crate::kernel::{equal, fits, is_zero, limb, low_limb, set, shifted_limb, widening_mul};
 use crate::limb::{adc, mac, sbb, select};
 use crate::params::{ExtendedLimbs, Limbs, Shape, WideLimbs};
 use crate::unrolled::unroll;
@@ -311,7 +311,7 @@ impl<M: Modulus> Shape<M> {
                 let product = a * b;
                 (product & Self::P0, product >> Self::BITS)
             } else {
-                let product = u128::from(a) * u128::from(b);
+                let product = widening_mul(a, b);
                 (product as u64 & Self::P0, (product >> Self::BITS) as u64)
             };
             Self::mersenne_fold(low, high)
@@ -349,7 +349,7 @@ impl<M: Modulus> Shape<M> {
             // when `x` is a nonzero multiple of `p`, which a prime modulus rules out.
             let product = a * b;
             let m = product.wrapping_mul(Self::INV);
-            let high = ((u128::from(m) * u128::from(Self::P0)) >> 64) as u64;
+            let high = (widening_mul(m, Self::P0) >> 64) as u64;
             let result = high + u64::from(product != 0);
             if Self::PRIME_LIMB {
                 result
@@ -361,7 +361,7 @@ impl<M: Modulus> Shape<M> {
             // `(m p) >> 64 = m - (m >> 32) - e` for the carry `e` of that sum, as in winter-math's
             // `mont_red_cst`. `m >> 32` is the 32-bit sum of the halves of `low`, which does not
             // wait for `m`. The result `high - (m p >> 64)` lies in `(-p, p)`.
-            let product = u128::from(a) * u128::from(b);
+            let product = widening_mul(a, b);
             let (low, high) = (product as u64, (product >> 64) as u64);
             let (m, e) = adc(0, low, low << 32);
             let shifted = u64::from(((low >> 32) as u32).wrapping_add(low as u32));
@@ -369,7 +369,7 @@ impl<M: Modulus> Shape<M> {
             let (result, borrow) = sbb(0, high, quotient);
             select(borrow != 0, result.wrapping_add(Self::P0), result)
         } else {
-            Self::redc1::<CT>(u128::from(a) * u128::from(b))
+            Self::redc1::<CT>(widening_mul(a, b))
         }
     }
 
@@ -378,7 +378,7 @@ impl<M: Modulus> Shape<M> {
     pub(crate) fn redc1<const CT: bool>(value: u128) -> u64 {
         let (low, high) = (value as u64, (value >> 64) as u64);
         let m = low.wrapping_mul(Self::INV);
-        let reduction = ((u128::from(m) * u128::from(Self::P0)) >> 64) as u64;
+        let reduction = (widening_mul(m, Self::P0) >> 64) as u64;
         let (result, carry) = adc(u8::from(low != 0), high, reduction);
         Self::reduce1::<CT>(result, carry)
     }
@@ -588,7 +588,7 @@ impl<M: Modulus> Shape<M> {
         unroll!(i in 0, Self::LIMBS => {
             let multiplier = limb(b, i);
             if Self::TWO_CHAINS {
-                let product = u128::from(limb(a, 0)) * u128::from(multiplier);
+                let product = widening_mul(limb(a, 0), multiplier);
                 let (low, first) = adc(0, limb(wide.as_slice(), i), product as u64);
                 set(wide.as_mut_slice(), i, low);
                 // Limb `i + L` is zero before the row, and the row's sum fits through it.
@@ -620,11 +620,11 @@ impl<M: Modulus> Shape<M> {
         set(
             highs.as_mut_slice(),
             0,
-            ((u128::from(x) * u128::from(limb(v, 0))) >> 64) as u64,
+            (widening_mul(x, limb(v, 0)) >> 64) as u64,
         );
         let mut carry = first;
         unroll!(j in 1, Self::LIMBS => {
-            let product = u128::from(x) * u128::from(limb(v, j));
+            let product = widening_mul(x, limb(v, j));
             let (sum, carry_out) = adc(carry, limb(acc, at + j), product as u64);
             set(acc, at + j, sum);
             set(highs.as_mut_slice(), j, (product >> 64) as u64);
@@ -663,7 +663,7 @@ impl<M: Modulus> Shape<M> {
                             #[inline(always)]
                             |j| {
                                 if j > i {
-                                    let product = u128::from(limb(a, j)) * u128::from(multiplier);
+                                    let product = widening_mul(limb(a, j), multiplier);
                                     let (sum, carry_out) =
                                         adc(carry, limb(wide.as_slice(), i + j), product as u64);
                                     set(wide.as_mut_slice(), i + j, sum);
@@ -728,7 +728,7 @@ impl<M: Modulus> Shape<M> {
             #[inline(always)]
             |i| {
                 let value = limb(a, i);
-                let square = u128::from(value) * u128::from(value);
+                let square = widening_mul(value, value);
                 let (low, carry_low) = adc(carry, limb(wide.as_slice(), 2 * i), square as u64);
                 let (high, carry_high) = adc(
                     carry_low,
@@ -865,7 +865,7 @@ impl<M: Modulus> Shape<M> {
         let mut acc = M::Width::EXTENDED_ZERO;
         unroll!(i in 0, Self::LIMBS => {
             let multiplier = limb(b, i);
-            let product = u128::from(limb(a, 0)) * u128::from(multiplier);
+            let product = widening_mul(limb(a, 0), multiplier);
             let (low, first) = adc(0, limb(acc.as_slice(), 0), product as u64);
             set(acc.as_mut_slice(), 0, low);
             let (row_top, above) = Self::add_row(acc.as_mut_slice(), 0, multiplier, a, first, 0);

@@ -162,11 +162,17 @@ pub(crate) fn divide<W: ArrayLength, M: Bits>(
     long::<_, W, M>(dividend, limbs, significant_len(limbs), top, quotient)
 }
 
-/// Whether a dividend in a `W`-limb window and an `L`-limb divisor both fit in `u128`.
+/// Whether a dividend in a `W`-limb window and an `L`-limb divisor both fit in `u128`, or on
+/// WebAssembly in `u64`: its `u128` division is a call to compiler-rt's generic loop, slower than
+/// the reciprocal.
 struct Native<W, L>(core::marker::PhantomData<(W, L)>);
 
 impl<W: ArrayLength, L: ArrayLength> Native<W, L> {
-    const FITS: bool = W::USIZE <= 3 && L::USIZE <= 2;
+    const FITS: bool = if cfg!(target_arch = "wasm32") {
+        W::USIZE <= 2 && L::USIZE <= 1
+    } else {
+        W::USIZE <= 3 && L::USIZE <= 2
+    };
 }
 
 /// `dividend mod divisor` by `u128` division; the dividend has at most two limbs. One-limb

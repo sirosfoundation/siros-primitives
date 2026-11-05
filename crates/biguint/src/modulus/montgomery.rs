@@ -8,7 +8,7 @@ use crate::each::each;
 use crate::kernel::{
     add_mul_row, reduced, split, split_mut, subtract_when_above, subtract_when_above_masked,
 };
-use crate::limb::CarryingAdd;
+use crate::limb::{CarryingAdd, widening_mul};
 
 /// `-m^-1 mod 2^64` for an odd `m` whose low limb is `low`. Each Newton step
 /// `x <- x * (2 - m * x)` doubles the correct low bits; an odd `m` is its own inverse modulo 8.
@@ -119,7 +119,7 @@ fn add_row<L: ArrayLength>(row: &mut [u64], modulus: &GenericArray<u64, L>, q: u
         #[inline(always)]
         |index| {
             if let (Some(&limb), Some(slot)) = (modulus.get(index), products.get_mut(index)) {
-                let product = u128::from(limb) * u128::from(q);
+                let product = widening_mul(limb, q);
                 (*slot, carry) = (product as u64).add_carry(high, carry);
                 high = (product >> 64) as u64;
             }

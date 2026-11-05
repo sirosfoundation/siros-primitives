@@ -12,7 +12,11 @@ use super::{
 };
 
 mod byte {
-    division_steps!(u8, u16);
+    division_steps!(u8, u16, widening);
+
+    const fn widening(a: u8, b: u8) -> u16 {
+        a as u16 * b as u16
+    }
 }
 
 type U192 = ruint::Uint<192, 3>;

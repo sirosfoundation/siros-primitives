@@ -8,9 +8,10 @@
 //! over the word size, so the tests run the same code on 8-bit words, where every boundary case is
 //! reachable.
 
-/// Algorithms 4, 5 and 6 over the word `$word` (`β = 2^BITS`) and its double `$double`.
+/// Algorithms 4, 5 and 6 over the word `$word` (`β = 2^BITS`) and its double `$double`, whose
+/// products of two words `$widening` takes.
 macro_rules! division_steps {
-    ($word:ty, $double:ty) => {
+    ($word:ty, $double:ty, $widening:path) => {
         const BITS: u32 = <$word>::BITS;
 
         /// `high * β + low`.
@@ -35,7 +36,7 @@ macro_rules! division_steps {
             reciprocal: $word,
         ) -> ($word, $word) {
             let estimate =
-                <$double>::from(reciprocal) * <$double>::from(high_word) + join(high_word, low);
+                $widening(reciprocal, high_word) + join(high_word, low);
             let fraction = estimate as $word;
             let quotient = high(estimate).wrapping_add(1);
             let remainder = low.wrapping_sub(quotient.wrapping_mul(divisor));
@@ -60,7 +61,7 @@ macro_rules! division_steps {
             reciprocal: $word,
         ) -> ($word, $word) {
             let estimate =
-                <$double>::from(reciprocal) * <$double>::from(high_word) + join(high_word, low);
+                $widening(reciprocal, high_word) + join(high_word, low);
             let fraction = estimate as $word;
             let quotient = high(estimate).wrapping_add(1);
             let remainder = low.wrapping_sub(quotient.wrapping_mul(divisor));
@@ -126,7 +127,7 @@ macro_rules! division_steps {
                 .wrapping_sub(high_word & twice);
             // Fold the high word of `v * low` in: a carry out takes one from `v`, twice when the
             // two-word product reaches the divisor.
-            let cross = <$double>::from(reciprocal) * <$double>::from(low);
+            let cross = $widening(reciprocal, low);
             let (product, carry) = product.overflowing_add(high(cross));
             let twice = carry & (join(product, cross as $word) >= join(high_word, low));
             reciprocal
@@ -143,11 +144,11 @@ macro_rules! division_steps {
             divisor: $double,
             reciprocal: $word,
         ) -> ($word, $double) {
-            let estimate = <$double>::from(high(top)) * <$double>::from(reciprocal) + top;
+            let estimate = $widening(high(top), reciprocal) + top;
             let (quotient, fraction) = (high(estimate), estimate as $word);
             let remainder_high = (top as $word).wrapping_sub(quotient.wrapping_mul(high(divisor)));
             let remainder = join(remainder_high, low)
-                .wrapping_sub(<$double>::from(divisor as $word) * <$double>::from(quotient))
+                .wrapping_sub($widening(divisor as $word, quotient))
                 .wrapping_sub(divisor);
             let quotient = quotient.wrapping_add(1);
             // The candidate is one too large when the remainder's high word reaches the fraction.
@@ -193,7 +194,7 @@ macro_rules! division_steps {
 }
 
 mod limb {
-    division_steps!(u64, u128);
+    division_steps!(u64, u128, crate::limb::widening_mul);
 }
 
 pub(super) use limb::join;
@@ -368,7 +369,7 @@ const fn reciprocal_seeds() -> [u16; 256] {
 #[cfg(any(test, not(target_arch = "x86_64")))]
 #[inline(always)]
 fn high_product(a: u64, b: u64, c: u64) -> u64 {
-    ((u128::from(a) * u128::from(b) + u128::from(c)) >> 64) as u64
+    crate::limb::mul_add(a, b, c, 0).1
 }
 
 #[cfg(test)]

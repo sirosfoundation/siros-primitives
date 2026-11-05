@@ -1,7 +1,8 @@
-//! Both carry backends against `u128` arithmetic. The portable backend compiles here on every
-//! target, so an `adx` build also checks the code that other builds ship.
+//! Both carry backends and the split product against `u128` arithmetic. The portable backend and
+//! the split product compile here on every target, so this build also checks the code that other
+//! builds ship.
 
-use super::{arch, portable};
+use super::{arch, mul_add_halves, portable};
 
 const EDGES: [u64; 8] = [
     0,
@@ -42,6 +43,24 @@ fn carry_backends_match_wide_arithmetic() {
                         backend(carry, lhs, rhs),
                         reference(carry, lhs, rhs),
                         "{name}: {carry} {lhs:#x} {rhs:#x}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn split_product_matches_wide_arithmetic() {
+    for a in EDGES {
+        for b in EDGES {
+            for c in EDGES {
+                for d in EDGES {
+                    let wide = u128::from(a) * u128::from(b) + u128::from(c) + u128::from(d);
+                    assert_eq!(
+                        mul_add_halves(a, b, c, d),
+                        (wide as u64, (wide >> 64) as u64),
+                        "{a:#x} {b:#x} {c:#x} {d:#x}"
                     );
                 }
             }

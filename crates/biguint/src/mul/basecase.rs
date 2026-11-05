@@ -5,7 +5,8 @@
 //! against 16.0 in constant time. A row of up to [`GROUPED_ROW`] limbs runs two carry chains: it
 //! adds each product's low half to the high half before it, then adds a group of [`ROW_GROUP`]
 //! such limbs into the output from registers. A product cut below its full length drops the
-//! products past its end. Longer rows run loops of multiply-accumulate steps.
+//! products past its end. Longer rows run loops of multiply-accumulate steps, as every row does on
+//! WebAssembly.
 //!
 //! [`product`] and [`square`] take their lengths as types and run one copy of each row and each
 //! limb ([`each`]), so the limbs of a product stay in registers. [`basecase`] takes slices,
@@ -17,7 +18,7 @@ use typenum::{U16, Unsigned};
 
 use crate::each::each;
 use crate::kernel::{add_mul_row, mul_row, split, split_mut};
-use crate::limb::CarryingAdd;
+use crate::limb::{CarryingAdd, mul_add, widening_mul};
 
 /// Writes `a * b mod 2^(64 * out.len())` to `out`, at most `A + B` limbs: one copy per row and
 /// per group up to [`GROUPED_ROW`] limbs.
@@ -38,8 +39,15 @@ pub(crate) fn product<A: ArrayLength, B: ArrayLength>(
     }
 }
 
-/// The longest operands whose rows run one chain of multiply-accumulate steps each.
-const MAC_ROWS: usize = 4;
+/// The longest operands whose rows run one chain of multiply-accumulate steps each. On
+/// WebAssembly a step takes its additions into the product, where the second carry chain of a
+/// grouped row costs a comparison per carry: a 384-bit wrapping product took 464 instructions in
+/// chains against 857 in groups.
+const MAC_ROWS: usize = if cfg!(target_arch = "wasm32") {
+    GROUPED_ROW
+} else {
+    4
+};
 
 /// Writes `a * b mod 2^(64 * out.len())` to `out`: one row per limb of `b`, each a chain of
 /// multiply-accumulate steps into `out`.
@@ -63,11 +71,7 @@ fn mac_rows(out: &mut [u64], a: &[u64], b: &[u64]) {
         let mut carry = 0;
         for (&limb, slot) in a.iter().zip(row.iter_mut()) {
             if let Some(&multiplier) = b.get(index) {
-                let sum = u128::from(limb) * u128::from(multiplier)
-                    + u128::from(carry)
-                    + u128::from(*slot);
-                *slot = sum as u64;
-                carry = (sum >> 64) as u64;
+                (*slot, carry) = mul_add(limb, multiplier, carry, *slot);
             }
         }
         if full {
@@ -120,7 +124,11 @@ pub(crate) fn square<A: ArrayLength>(out: &mut [u64], a: &GenericArray<u64, A>) 
             {
                 let (_, above) = split(a, index + 1);
                 let (_, window) = split_mut(out, 2 * index + 1);
-                add_row::<A>(window, above, multiplier, index == 0);
+                if MAC_ROWS == GROUPED_ROW {
+                    add_row_chain(window, above, multiplier, index == 0);
+                } else {
+                    add_row::<A>(window, above, multiplier, index == 0);
+                }
             }
         },
     );
@@ -144,7 +152,7 @@ pub(crate) fn square<A: ArrayLength>(out: &mut [u64], a: &GenericArray<u64, A>) 
         |index| {
             if let (Some(&limb), Some(pair)) = (a.get(index), out.get_mut(2 * index..2 * index + 2))
             {
-                let square = u128::from(limb) * u128::from(limb);
+                let square = widening_mul(limb, limb);
                 for (slot, half) in pair.iter_mut().zip([square as u64, (square >> 64) as u64]) {
                     (*slot, carry) = slot.add_carry(half, carry);
                 }
@@ -165,7 +173,7 @@ pub(crate) fn basecase(out: &mut [u64], a: &[u64], b: &[u64]) {
     let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
     for (index, &multiplier) in short.iter().enumerate() {
         let (_, window) = split_mut(out, index);
-        if long.len().min(window.len()) > GROUPED_ROW {
+        if long.len().min(window.len()) > GROUPED_ROW || MAC_ROWS == GROUPED_ROW {
             add_row_chain(window, long, multiplier, index == 0);
         } else {
             // The length is a constant where the product is inlined: the copies past it fold.
@@ -204,7 +212,7 @@ fn add_row<Copies: Unsigned>(window: &mut [u64], long: &[u64], multiplier: u64, 
             }
             if let (Some(&limb), Some(slot)) = (long.get(index), group.get_mut(index % ROW_GROUP)) {
                 if full || index + 1 < len {
-                    let product = u128::from(limb) * u128::from(multiplier);
+                    let product = widening_mul(limb, multiplier);
                     (*slot, carry) = (product as u64).add_carry(high, carry);
                     high = (product >> 64) as u64;
                 } else {

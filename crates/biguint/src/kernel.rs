@@ -7,31 +7,32 @@
 use core::cmp::Ordering;
 use core::hint::{black_box, select_unpredictable};
 
-use crate::limb::{BorrowingSub, CarryingAdd, mask_below};
+use crate::limb::{BorrowingSub, CarryingAdd, mask_below, mul_add, widening_mul};
 use crate::stream::{
     LimbSource, LimbStream, Op2CarryIter, SubOp, ZeroExtended, for_each_slot, funnel_left,
     funnel_right,
 };
 
-/// `a * b + c + d` as `(low, high)`, as one `u128` expression: the form that LLVM schedules best in
-/// straight-line code, where it sees every step of an unrolled product at once.
-#[inline(always)]
-pub(crate) const fn mul_add(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
-    let wide = a as u128 * b as u128 + c as u128 + d as u128;
-    (wide as u64, (wide >> 64) as u64)
-}
-
 /// `a * b + c + d` as `(low, high)`, each addition an add-with-carry into the high limb: the form
 /// that LLVM keeps as two `adc` chains inside a loop, where it otherwise sums `c + d` first and
 /// saves that carry with `setb`.
+#[cfg(not(all(target_arch = "wasm32", not(wide_arithmetic))))]
 #[inline(always)]
 pub(crate) fn mul_add_chained(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
-    let product = a as u128 * b as u128;
+    let product = widening_mul(a, b);
     let (low, carry) = (product as u64).add_carry(d, 0);
     let (high, _) = ((product >> 64) as u64).add_carry(0, carry);
     let (low, carry) = low.add_carry(c, 0);
     let (high, _) = high.add_carry(0, carry);
     (low, high)
+}
+
+/// `a * b + c + d` as `(low, high)`: the split product of [`mul_add`] adds `c` and `d` without
+/// carries.
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+#[inline(always)]
+pub(crate) fn mul_add_chained(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
+    mul_add(a, b, c, d)
 }
 
 /// Writes `a * m` to the first `a.len()` limbs of `out` and returns the limb above them.
@@ -85,7 +86,7 @@ pub(crate) fn sub_mul_row_chains(out: &mut [u64], a: &[u64], m: u64) -> u64 {
     for (slots, limbs) in out.chunks_mut(CHAIN_GROUP).zip(a.chunks(CHAIN_GROUP)) {
         let mut row = [0u64; CHAIN_GROUP];
         for (product_slot, &limb) in row.iter_mut().zip(limbs) {
-            let product = u128::from(limb) * u128::from(m);
+            let product = widening_mul(limb, m);
             (*product_slot, carry) = (product as u64).add_carry(high, carry);
             high = (product >> 64) as u64;
         }

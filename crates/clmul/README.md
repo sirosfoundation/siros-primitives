@@ -76,6 +76,7 @@ The build's target features select the backend when the crate compiles.
 | `x86_64` | `pclmulqdq` | PCLMULQDQ | PCLMULQDQ |
 | `x86_64` | `pclmulqdq`, `ssse3` | PCLMULQDQ | Byte shuffle of a nibble table |
 | little-endian `aarch64` | `aes` | PMULL | PMULL |
+| `wasm32` | | Karatsuba over an integer comb of 32-bit words on `i64.mul` | Integer squares of bit lanes |
 | any other | | Integer comb on pairs of `u64` | Bit interleaving |
 
 ```sh

@@ -36,11 +36,44 @@ pub(crate) const fn set(limbs: &mut [u64], index: usize, value: u64) {
     }
 }
 
+/// `a * b`, the full 128-bit product.
+///
+/// WebAssembly without wide arithmetic has no widening product, and LLVM calls `__multi3` for a
+/// `u128` one; four `i64.mul` of 32-bit halves take its place. On x86-64, LLVM does not fuse the
+/// split product back into one `mul`.
+#[inline(always)]
+pub(crate) const fn widening_mul(a: u64, b: u64) -> u128 {
+    let (low, high) = mul_add(a, b, 0, 0);
+    (low as u128) | ((high as u128) << 64)
+}
+
 /// `a * b + c + d` as `(low, high)`; the sum is at most `2^128 - 1`.
+#[cfg(not(all(target_arch = "wasm32", not(wide_arithmetic))))]
 #[inline(always)]
 pub(crate) const fn mul_add(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
     let wide = a as u128 * b as u128 + c as u128 + d as u128;
     (wide as u64, (wide >> 64) as u64)
+}
+
+/// `a * b + c + d` as `(low, high)`; the sum is at most `2^128 - 1`.
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+#[inline(always)]
+pub(crate) const fn mul_add(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
+    mul_add_halves(a, b, c, d)
+}
+
+/// `a * b + c + d` as `(low, high)` from the four products of 32-bit halves, each partial sum below
+/// `2^64`: `(2^32 - 1)^2` plus two terms below `2^32`.
+#[cfg(any(test, all(target_arch = "wasm32", not(wide_arithmetic))))]
+#[inline(always)]
+const fn mul_add_halves(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
+    const HALF: u64 = 0xFFFF_FFFF;
+    let (a0, a1, b0, b1) = (a & HALF, a >> 32, b & HALF, b >> 32);
+    let low = a0 * b0 + (c & HALF) + (d & HALF);
+    let middle = a1 * b0 + (low >> 32) + (c >> 32);
+    let cross = a0 * b1 + (middle & HALF) + (d >> 32);
+    let high = a1 * b1 + (middle >> 32) + (cross >> 32);
+    ((cross << 32) | (low & HALF), high)
 }
 
 /// `a + b + carry` as `(sum, carry_out)`, with carries in `{0, 1}`.
@@ -534,4 +567,28 @@ pub(crate) const fn inv64(p: u64) -> u64 {
         step += 1;
     }
     inverse.wrapping_neg()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mul_add_halves;
+
+    /// The split product of WebAssembly builds against `u128` arithmetic, on every target.
+    #[test]
+    fn split_product_matches_wide_arithmetic() {
+        const EDGES: [u64; 7] = [0, 1, 2, u32::MAX as u64, 1 << 63, u64::MAX, 0xa5a5_a5a5_5a5a_5a5a];
+        for a in EDGES {
+            for b in EDGES {
+                for c in EDGES {
+                    for d in EDGES {
+                        let wide = u128::from(a) * u128::from(b) + u128::from(c) + u128::from(d);
+                        assert_eq!(
+                            mul_add_halves(a, b, c, d),
+                            (wide as u64, (wide >> 64) as u64)
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
