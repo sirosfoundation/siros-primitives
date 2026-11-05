@@ -134,6 +134,9 @@ impl<P: Polynomial> Frobenius<P> {
     /// [`Self::apply`] in constant time, with the tables of [`Self::CT_POWERS`].
     #[inline(always)]
     pub(crate) fn apply_ct(x: Poly<P::Degree>, step: usize, power: usize) -> Poly<P::Degree> {
+        if Self::CT_POWERS.window == 0 {
+            return Self::square(x, power);
+        }
         let mut x = x;
         let (counts, squarings) = Self::CT_POWERS.step(step, power);
         tables!(x, counts, BitTable);
