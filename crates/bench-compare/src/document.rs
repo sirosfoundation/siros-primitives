@@ -84,8 +84,8 @@ pub struct Layout<'a, K> {
 
 /// Writes the document from `record`, and prints to the terminal every odd cell: a crate's figure
 /// on a row that exceeds its figure on a row of more bits, in the same table, by more than 10%.
-/// Then it prints every trailing cell: a figure of the subject [`TRAIL`] cycles or more above the
-/// fewest figure of its row and part among the functions that keep the row's definition.
+/// Then it prints every trailing cell: a figure of the subject 0.5 cycles or more above the fewest
+/// figure of its row and part among the functions that keep the row's definition.
 pub fn report<K: Key>(
     paths: &Paths,
     layout: &Layout<'_, K>,
