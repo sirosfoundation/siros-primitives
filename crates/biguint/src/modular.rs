@@ -67,7 +67,8 @@ const SELECTED_LIMBS: usize = 4;
 /// which stays in registers. Longer operands would go through copies: there, `sum` inlines twice,
 /// once on the operands where they lie and once on their remainders. On Zen 3 the two copies of
 /// `sum` take 18% to 25% fewer cycles than the selects from 384 bits up, and the selects take as
-/// many or fewer up to 256 bits.
+/// many or fewer up to 256 bits. On WebAssembly up to [`SELECTED_LIMBS`] limbs, one call reduces
+/// both operands ([`remainders`]), or at one limb computes the whole sum ([`reduced_sum`]).
 #[inline(always)]
 fn below_modulus<N: Bits>(
     a: Uint<N>,
@@ -76,6 +77,20 @@ fn below_modulus<N: Bits>(
     sum: impl Fn(&Uint<N>, &Uint<N>, &Uint<N>) -> Uint<N>,
 ) -> Uint<N> {
     let m = &modulus.get();
+    if N::LIMBS == 1 && cfg!(target_arch = "wasm32") {
+        if below(&a, m) && below(&b, m) {
+            return sum(&a, &b, m);
+        }
+        return reduced_sum(a, b, modulus, sum);
+    }
+    if N::LIMBS <= SELECTED_LIMBS && cfg!(target_arch = "wasm32") {
+        let (a, b) = if below(&a, m) && below(&b, m) {
+            (a, b)
+        } else {
+            remainders(a, b, modulus)
+        };
+        return sum(&a, &b, m);
+    }
     if N::LIMBS <= SELECTED_LIMBS {
         let a = if below(&a, m) {
             a
@@ -93,6 +108,30 @@ fn below_modulus<N: Bits>(
     } else {
         sum(&remainder(a, modulus), &remainder(b, modulus), m)
     }
+}
+
+/// `sum(a mod modulus, b mod modulus, modulus)` as a call: the rare path of [`below_modulus`] on
+/// WebAssembly at one limb, whose result returns in a register. Inlined, the division's code joins
+/// the sum's and the browsers allocate the registers of the whole: the 64-bit modular sum took
+/// Chrome 11 cycles inlined against 6.1 as a call. Two calls that each return a remainder put both
+/// operands of the common path in memory: 5.0 cycles against 4.0 with this call.
+#[inline(never)]
+fn reduced_sum<N: Bits>(
+    a: Uint<N>,
+    b: Uint<N>,
+    modulus: NonZeroUint<N>,
+    sum: impl Fn(&Uint<N>, &Uint<N>, &Uint<N>) -> Uint<N>,
+) -> Uint<N> {
+    sum(&(a % modulus), &(b % modulus), &modulus.get())
+}
+
+/// `(a mod modulus, b mod modulus)` as one call: the rare path of [`below_modulus`] on WebAssembly
+/// from two limbs. The common path keeps its operands in locals: the 128-bit modular sum took
+/// Chrome 8.8 cycles against 12.2 with a call per operand. A call that returns the sum, as
+/// [`reduced_sum`] does, merges the results of both paths in memory.
+#[inline(never)]
+fn remainders<N: Bits>(a: Uint<N>, b: Uint<N>, modulus: NonZeroUint<N>) -> (Uint<N>, Uint<N>) {
+    (a % modulus, b % modulus)
 }
 
 /// Whether the top limb of `value` is below the top limb of `modulus`, which puts `value` below
@@ -210,11 +249,7 @@ pub(crate) fn sum_mod_masked<N: Bits, B: Addend>(
 /// `value mod modulus`, for an operand whose top limb reaches the modulus's.
 ///
 /// Natively, [`rare_call`] lays this path out of the loop, so that the operands below the modulus
-/// run without a taken branch.
-///
-/// On WebAssembly it is a call. Inlined, the division's code joins the sum's and the browsers
-/// allocate the registers of the whole: the 64-bit modular sum took Chrome 11 cycles inlined against
-/// 6.1 as a call.
+/// run without a taken branch. On WebAssembly it is a call, as [`reduced_sum`] is.
 #[cfg_attr(target_arch = "wasm32", inline(never))]
 #[cfg_attr(not(target_arch = "wasm32"), inline(always))]
 fn remainder<N: Bits>(value: Uint<N>, modulus: NonZeroUint<N>) -> Uint<N> {
