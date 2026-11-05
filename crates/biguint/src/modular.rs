@@ -4,8 +4,8 @@
 
 use crate::bits::Bits;
 use crate::kernel::{
-    add_unless_carry, add_unless_carry_masked, reduced, subtract_when_above_in_place,
-    subtract_when_above_masked,
+    add_assign, add_unless_carry, add_unless_carry_masked, compare, fits, reduced, sub_assign,
+    subtract_when_above_in_place, subtract_when_above_masked,
 };
 use crate::nonzero::NonZeroUint;
 use generic_array::GenericArray;
@@ -76,14 +76,33 @@ fn below_modulus<N: Bits>(
 ) -> Uint<N> {
     let m = modulus.as_ref();
     if N::LIMBS <= SELECTED_LIMBS {
-        let a = if below(&a, m) { a } else { a % modulus };
-        let b = if below(&b, m) { b } else { b % modulus };
+        let a = if below(&a, m) {
+            a
+        } else {
+            remainder(a, modulus)
+        };
+        let b = if below(&b, m) {
+            b
+        } else {
+            remainder(b, modulus)
+        };
         sum(&a, &b, m)
     } else if below(&a, m) && below(&b, m) {
         sum(&a, &b, m)
     } else {
-        sum(&(a % modulus), &(b % modulus), m)
+        sum(&remainder(a, modulus), &remainder(b, modulus), m)
     }
+}
+
+/// `value mod modulus`. On WebAssembly it is a call: inlined, the division's code joins the sum's,
+/// and the browsers allocate the registers of the whole: the 64-bit modular sum took Chrome 11
+/// cycles inlined against 6.1 as a call. Natively the remainder is a select of the inlined
+/// division, whose branch would mispredict on operands that are as often above the modulus as
+/// below it.
+#[cfg_attr(target_arch = "wasm32", inline(never))]
+#[cfg_attr(not(target_arch = "wasm32"), inline(always))]
+fn remainder<N: Bits>(value: Uint<N>, modulus: NonZeroUint<N>) -> Uint<N> {
+    value % modulus
 }
 
 /// Whether the top limb of `value` is below the top limb of `modulus`, which puts `value` below
@@ -98,6 +117,11 @@ fn below<N: Bits>(value: &Uint<N>, modulus: &Uint<N>) -> bool {
 pub(crate) fn top<N: Bits>(value: &Uint<N>) -> u64 {
     value.limbs.last().copied().unwrap_or(0)
 }
+
+/// Whether the variable-time sums branch on their correction. On WebAssembly the difference and the
+/// selects of every limb cost more than a branch: the 512-bit sum took Chrome 48 cycles with the
+/// branch against 65 with the selects.
+const BRANCHES: bool = cfg!(target_arch = "wasm32");
 
 /// The second operand of [`sum_mod`], with the correction that brings the sum below the modulus.
 pub(crate) trait Addend: LimbSource {
@@ -122,6 +146,12 @@ impl Addend for ZeroExtended<'_> {
 
     #[inline(always)]
     fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]) {
+        if BRANCHES {
+            if carry != 0 || compare(sum, modulus).is_ge() {
+                fits(sub_assign(sum, modulus));
+            }
+            return;
+        }
         reduced(subtract_when_above_in_place(sum, modulus, carry));
     }
 
@@ -147,6 +177,12 @@ impl<S: LimbSource> Addend for TwosComplement<S> {
 
     #[inline(always)]
     fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]) {
+        if BRANCHES {
+            if carry == 0 {
+                fits(add_assign(sum, modulus));
+            }
+            return;
+        }
         add_unless_carry(sum, modulus, carry);
     }
 
