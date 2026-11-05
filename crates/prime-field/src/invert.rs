@@ -99,14 +99,6 @@ impl<M: Modulus> Fp<M> {
     /// The inverse of a nonzero element.
     #[inline(always)]
     fn invert_with<const VARTIME: bool>(self) -> Self {
-        Self::invert_seeded::<VARTIME>(self.limbs(), &Shape::<M>::INVERSE_SEED)
-    }
-
-    /// `seed y^-1` for the nonzero residue `y` in the limbs `y`: the inverse of an element from
-    /// its representation and [`Shape::INVERSE_SEED`], or of a plain residue and
-    /// [`Shape::RESIDUE_SEED`].
-    #[inline(always)]
-    pub(crate) fn invert_seeded<const VARTIME: bool>(y: &[u64], seed: &Limbs<M>) -> Self {
         // `f = d y` and `g = e y` modulo `p` throughout, with `f` odd; `d` and `e` carry the
         // representation's seed, so that `d` ends as the representation of `±y^-1`.
         let mut f = M::Width::EXTENDED_ZERO;
@@ -117,10 +109,10 @@ impl<M: Modulus> Fp<M> {
         let mut g = M::Width::EXTENDED_ZERO;
         g.as_mut_slice()
             .iter_mut()
-            .zip(y)
+            .zip(self.limbs())
             .for_each(|(slot, &value)| *slot = value);
         let mut d = M::Width::ZERO;
-        let mut e = *seed;
+        let mut e = Shape::<M>::INVERSE_SEED;
         // `eta = -delta` of the variable-time steps from `delta = 1`, or `zeta = -(delta + 1/2)`
         // of the masked steps from `delta = 1/2`.
         let mut eta: i64 = -1;
@@ -529,10 +521,6 @@ impl<M: Modulus> Shape<M> {
     } else {
         Self::ONE
     };
-
-    /// The `e` that the inversion of a plain residue `y` starts from: `R` in Montgomery form, so
-    /// that the inverse comes out as the representation `y^-1 R` with no conversion of `y`.
-    pub(crate) const RESIDUE_SEED: Limbs<M> = if Self::MONTGOMERY { Self::R } else { Self::ONE };
 
     /// The division steps that bring `g` to zero from `delta = 1` (Bernstein and Yang, theorem
     /// 11.2), for `f = p` and `0 <= g < p`.

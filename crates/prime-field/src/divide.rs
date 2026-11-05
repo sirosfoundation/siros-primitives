@@ -9,8 +9,7 @@
 //! The steps from `(k, r)` end in `1 = ±(s k - t r)`, whence `k^-1 = ±(s + t q) mod p`, with
 //! `s + t q <= p / 2`. The element then scales by that integer. A wider `k` takes the safegcd
 //! inverse of its element. In constant time, every `k` takes the constant-time inverse of its
-//! element. A Montgomery field of several limbs inverts the plain residue `k` instead, with a seed
-//! that makes the result the representation of `k^-1`.
+//! element.
 
 use biguint::typenum::U64;
 use biguint::{Bits, NonZero, NonZeroUint, Uint};
@@ -35,7 +34,7 @@ impl<M: Modulus> Fp<M> {
             );
         };
         if CT {
-            return self.mul_with::<true>(Self::inverse_of_integer::<true>(k));
+            return self.mul_with::<true>(Self::inverse_of::<true>(Self::element_of::<true>(k)));
         }
         let word = match k {
             [low, high @ ..] if high.iter().all(|&limb| limb == 0) => {
@@ -45,25 +44,13 @@ impl<M: Modulus> Fp<M> {
         };
         match word {
             Some(word) => self.divide_word(word),
-            None => self.mul_with::<false>(Self::inverse_of_integer::<false>(k)),
+            None => self.mul_with::<false>(Self::inverse_of::<false>(Self::element_of::<false>(k))),
         }
     }
 
-    /// The inverse of the nonzero integer `k < p`, in constant time when `CT` holds. A Montgomery
-    /// field of several limbs inverts `k` as its plain residue, whose seed makes the result the
-    /// representation of `k^-1`; another field inverts the element of `k`.
-    #[inline(always)]
-    fn inverse_of_integer<const CT: bool>(k: &[u64]) -> Self {
-        if Shape::<M>::LIMBS > 1 && Shape::<M>::MONTGOMERY {
-            Self::inverse_of_residue::<CT>(k)
-        } else {
-            Self::inverse_of::<CT>(Self::element_of::<CT>(k))
-        }
-    }
-
-    /// The element of the nonzero integer `k < p` in a field of plain residues or of one limb, in
-    /// constant time when `CT` holds. A `k` of one limb takes the one-limb representation of an
-    /// integer; a wider `k` is its own residue and takes no reduction.
+    /// The element of the nonzero integer `k < p`, in constant time when `CT` holds. A `k` of one
+    /// limb takes the one-limb representation of an integer; a wider `k` is its own residue and
+    /// takes no reduction.
     #[inline(always)]
     fn element_of<const CT: bool>(k: &[u64]) -> Self {
         if k.len() <= 1 {
@@ -75,24 +62,11 @@ impl<M: Modulus> Fp<M> {
             .zip(k)
             .for_each(|(slot, &limb)| *slot = limb);
         // A nonzero residue is its own plain representation: a Mersenne field needs no zero test.
-        Self::from_limbs(residue)
-    }
-
-    /// `k^-1` from the plain residue `k` in a Montgomery field, in constant time when `CT` holds:
-    /// a call, one per field and timing.
-    #[inline(never)]
-    fn inverse_of_residue<const CT: bool>(k: &[u64]) -> Self {
-        let mut residue = M::Width::ZERO;
-        residue
-            .iter_mut()
-            .zip(k)
-            .for_each(|(slot, &limb)| *slot = limb);
-        let seed = &Shape::<M>::RESIDUE_SEED;
-        if CT {
-            Self::invert_seeded::<false>(&residue, seed)
+        Self::from_limbs(if Shape::<M>::MONTGOMERY {
+            Shape::<M>::mul::<CT>(&residue, &Shape::<M>::R2)
         } else {
-            Self::invert_seeded::<true>(&residue, seed)
-        }
+            residue
+        })
     }
 
     /// The inverse of the nonzero `element`, in constant time when `CT` holds: a call, one per
