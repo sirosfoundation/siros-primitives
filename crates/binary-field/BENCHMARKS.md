@@ -357,7 +357,7 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ## WebAssembly
 
-`binary-field` at commit `e939470` against `gf256`, `galois_field_2pm`, `g2p`, `reed-solomon-erasure`, `hekate-math`, `plonky3`, `runtime-algebra`, `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut`, built for `wasm32-unknown-unknown` and run in headless browsers, in cycles per operation, measured on 2026-11-05.
+`binary-field` at commit `e517319` against `gf256`, `galois_field_2pm`, `g2p`, `reed-solomon-erasure`, `hekate-math`, `plonky3`, `runtime-algebra`, `compile-algebra`, `core-algebra`, `polyval` and `galois_field_2pm lut`, built for `wasm32-unknown-unknown` and run in headless browsers, in cycles per operation, measured on 2026-11-05.
 
 - The bench module runs in a dedicated worker of the browser, on the measuring CPU. A driver counts that thread with perf_event, and holds the CPU while the thread sleeps.
 - A second worker carries the start and the end of each count to the driver while the measuring worker sleeps.
@@ -380,20 +380,20 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | RUSTFLAGS, in WebAssembly with wide arithmetic, Firefox | `-C codegen-units=1 -C target-feature=+wide-arithmetic` |
 | Browser, in WebAssembly, Chrome | Google Chrome for Testing 156.0.8078.4; `--js-flags=--no-liftoff` |
 | Target features, in WebAssembly, Chrome | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext` |
-| Cost of a count, in WebAssembly, Chrome | 3,927 to 4,477 cycles and 3,081 instructions; its noise in a figure, 79.0 to 134 cycles |
+| Cost of a count, in WebAssembly, Chrome | 9,286 to 9,512 cycles and 3,081 instructions; its noise in a figure, 1,125 to 1,845 cycles |
 | Browser, in WebAssembly with wide arithmetic, Chrome | Google Chrome for Testing 156.0.8078.4; `--js-flags=--no-liftoff --wasm-wide-arithmetic` |
 | Target features, in WebAssembly with wide arithmetic, Chrome | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext`, `wide-arithmetic` |
-| Cost of a count, in WebAssembly with wide arithmetic, Chrome | 4,166 to 4,220 cycles and 3,081 instructions; its noise in a figure, 74.0 to 108 cycles |
+| Cost of a count, in WebAssembly with wide arithmetic, Chrome | 5,933 to 7,198 cycles and 3,081 instructions; its noise in a figure, 78.0 to 339 cycles |
 | Browser, in WebAssembly, Firefox | Mozilla Firefox 158.0.1; `javascript.options.wasm_baselinejit=false`, `javascript.options.wasm_wide_arithmetic=false` |
 | Target features, in WebAssembly, Firefox | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext` |
-| Cost of a count, in WebAssembly, Firefox | 4,097 to 5,221 cycles and 1,885 instructions; its noise in a figure, 72.0 to 429 cycles |
+| Cost of a count, in WebAssembly, Firefox | 6,885 to 21,658 cycles and 1,885 instructions; its noise in a figure, 407 to 9,988 cycles |
 | Browser, in WebAssembly with wide arithmetic, Firefox | Mozilla Firefox 158.0.1; `javascript.options.wasm_baselinejit=false`, `javascript.options.wasm_wide_arithmetic=true` |
 | Target features, in WebAssembly with wide arithmetic, Firefox | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext`, `wide-arithmetic` |
-| Cost of a count, in WebAssembly with wide arithmetic, Firefox | 4,244 to 4,440 cycles and 1,885 instructions; its noise in a figure, 198 to 601 cycles |
-| Load, in WebAssembly, Chrome | CPU 12; 1-minute load 7.48 before, 12.14 after; its SMT sibling, CPU 28, 6% busy |
-| Load, in WebAssembly with wide arithmetic, Chrome | CPU 12; 1-minute load 18.28 before, 5.83 after; its SMT sibling, CPU 28, 2% busy |
-| Load, in WebAssembly, Firefox | CPU 12; 1-minute load 5.83 before, 3.58 after; its SMT sibling, CPU 28, 3% busy |
-| Load, in WebAssembly with wide arithmetic, Firefox | CPU 12; 1-minute load 3.58 before, 6.47 after; its SMT sibling, CPU 28, 1% busy |
+| Cost of a count, in WebAssembly with wide arithmetic, Firefox | 12,244 to 27,950 cycles and 1,885 instructions; its noise in a figure, 2,322 to 10,783 cycles |
+| Load, in WebAssembly, Chrome | CPU 12; 1-minute load 20.75 before, 26.52 after; its SMT sibling, CPU 28, 27% busy |
+| Load, in WebAssembly with wide arithmetic, Chrome | CPU 12; 1-minute load 26.16 before, 20.31 after; its SMT sibling, CPU 28, 44% busy |
+| Load, in WebAssembly, Firefox | CPU 12; 1-minute load 20.31 before, 21.34 after; its SMT sibling, CPU 28, 65% busy |
+| Load, in WebAssembly with wide arithmetic, Firefox | CPU 12; 1-minute load 21.34 before, 15.72 after; its SMT sibling, CPU 28, 29% busy |
 | Crates | gf256 0.3.1, galois_field_2pm 0.1.0, g2p 1.2.2, reed-solomon-erasure 6.0.0, hekate-math 0.12.1, p3-binary-field 0.9.0-rc.2, runtime-algebra 0.1.0, compile-algebra 0.1.0, core-algebra 0.1.0, polyval 0.7.3 |
 
 
@@ -403,76 +403,76 @@ Cycles per operation of `binary-field` against the fewest of the crates whose fu
 
 | Operation | Field | Chrome | Δ | Chrome, wide arithmetic | Δ | Firefox | Δ | Firefox, wide arithmetic | Δ |
 |---|---|---|---:|---|---:|---|---:|---|---:|
-| add | GF(2⁸) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.1 vs gf256 2.1 | +0.0 (1.00×) |
-| add | GF(2¹⁶) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.2 vs gf256 2.2 | +0.0 (1.00×) | 2.2 vs gf256 2.2 | +0.0 (1.00×) |
-| add | GF(2⁶⁴) | 2.5 vs gf256 2.5 | +0.0 (1.00×) | 2.5 vs gf256 2.5 | +0.0 (1.00×) | 2.2 vs gf256 2.2 | +0.0 (1.00×) | 2.2 vs gf256 2.2 | +0.0 (1.00×) |
-| add | GF(2¹²⁸) | 3.8 vs plonky3 3.7 | +0.1 (1.03×) | 3.8 vs hekate-math 3.7 | +0.1 (1.03×) | 3.3 vs hekate-math 3.3 | +0.0 (1.00×) | 3.3 vs hekate-math 3.3 | +0.0 (1.00×) |
-| add | GF(2²³³) | 7.4 | – | 7.5 | – | 6.3 | – | 6.3 | – |
-| add | GF(2²⁵⁶) | 7.4 vs hekate-math 8.0 | −0.6 (0.93×) | 7.5 vs hekate-math 8.0 | −0.5 (0.94×) | 6.3 vs hekate-math 6.3 | +0.0 (1.00×) | 6.3 vs hekate-math 6.4 | −0.1 (0.98×) |
-| add | GF(2⁵⁷¹) | 23.1 | – | 23.2 | – | 15.5 | – | 15.4 | – |
-| mul | GF(2⁸) | 2.2 vs g2p 2.7 | −0.5 (0.81×) | 2.2 vs g2p 2.6 | −0.4 (0.85×) | 2.2 vs reed-solomon-erasure 2.6 | −0.4 (0.85×) | 2.2 vs g2p 2.6 | −0.4 (0.85×) |
-| mul | GF(2¹⁶) | 5.8 vs reed-solomon-erasure 8.7 | −2.9 (0.67×) | 5.7 vs reed-solomon-erasure 8.7 | −3.0 (0.66×) | 6.2 vs reed-solomon-erasure 8.9 | −2.7 (0.70×) | 6.2 vs reed-solomon-erasure 9.0 | −2.8 (0.69×) |
-| mul | GF(2⁶⁴) | 63.9 vs plonky3 92.6 | −28.7 (0.69×) | 63.6 vs plonky3 92.0 | −28.4 (0.69×) | 73.1 vs plonky3 95.1 | −22.0 (0.77×) | 72.0 vs plonky3 95.6 | −23.6 (0.75×) |
-| mul | GF(2¹²⁸) | 184 vs polyval 227 | −43.0 (0.81×) | 184 vs polyval 227 | −43.0 (0.81×) | 200 vs polyval 258 | −58.0 (0.78×) | 200 vs polyval 258 | −58.0 (0.78×) |
-| mul | GF(2²³³) | 754 | – | 723 | – | 1,089 | – | 1,070 | – |
-| mul | GF(2²⁵⁶) | 706 vs hekate-math 8,420 | −7,714 (0.08×) | 705 vs hekate-math 8,413 | −7,708 (0.08×) | 1,073 vs hekate-math 9,581 | −8,508 (0.11×) | 1,068 vs hekate-math 9,564 | −8,496 (0.11×) |
-| mul | GF(2⁵⁷¹) | 4,011 | – | 3,988 | – | 4,979 | – | 4,910 | – |
-| square | GF(2⁸) | 2.2 vs g2p 2.2 | +0.0 (1.00×) | 2.1 vs g2p 2.2 | −0.1 (0.95×) | 2.2 vs g2p 2.2 | +0.0 (1.00×) | 2.2 vs g2p 2.2 | +0.0 (1.00×) |
-| square | GF(2¹⁶) | 2.2 vs plonky3 3.0 | −0.8 (0.73×) | 2.2 vs plonky3 3.0 | −0.8 (0.73×) | 2.3 vs plonky3 3.1 | −0.8 (0.74×) | 2.3 vs plonky3 3.1 | −0.8 (0.74×) |
-| square | GF(2⁶⁴) | 15.8 vs plonky3 46.2 | −30.4 (0.34×) | 15.2 vs plonky3 46.2 | −31.0 (0.33×) | 17.0 vs plonky3 49.0 | −32.0 (0.35×) | 17.0 vs plonky3 49.5 | −32.5 (0.34×) |
-| square | GF(2¹²⁸) | 28.0 vs plonky3 34.6 | −6.6 (0.81×) | 28.0 vs plonky3 30.7 | −2.7 (0.91×) | 31.0 vs plonky3 43.2 | −12.2 (0.72×) | 31.0 vs plonky3 33.5 | −2.5 (0.93×) |
-| square | GF(2²³³) | 50.7 | – | 50.6 | – | 61.0 | – | 61.0 | – |
-| square | GF(2²⁵⁶) | 58.1 vs hekate-math 1,383 | −1,325 (0.04×) | 57.9 vs hekate-math 1,383 | −1,325 (0.04×) | 62.0 vs hekate-math 1,533 | −1,471 (0.04×) | 62.0 vs hekate-math 1,665 | −1,603 (0.04×) |
-| square | GF(2⁵⁷¹) | 145 | – | 145 | – | 152 | – | 151 | – |
-| invert | GF(2⁸) | 2.2 vs gf256 3.6 | −1.4 (0.61×) | 2.1 vs gf256 3.6 | −1.5 (0.58×) | 2.2 vs gf256 4.0 | −1.8 (0.55×) | 2.2 vs gf256 4.0 | −1.8 (0.55×) |
-| invert | GF(2¹⁶) | 2.2 vs galois_field_2pm lut 8.2 | −6.0 (0.27×) | 2.2 vs galois_field_2pm lut 8.2 | −6.0 (0.27×) | 2.3 vs galois_field_2pm lut 9.4 | −7.1 (0.24×) | 2.3 vs galois_field_2pm lut 9.5 | −7.2 (0.24×) |
-| invert | GF(2⁶⁴) | 826 vs hekate-math 1,577 | −751 (0.52×) | 793 vs hekate-math 1,582 | −789 (0.50×) | 896 vs hekate-math 2,090 | −1,194 (0.43×) | 895 vs hekate-math 2,088 | −1,193 (0.43×) |
-| invert | GF(2¹²⁸) | 2,512 vs plonky3 1,221 | +1,291 (2.06×) | 2,506 vs plonky3 1,253 | +1,253 (2.00×) | 2,675 vs plonky3 1,303 | +1,372 (2.05×) | 2,680 vs plonky3 1,319 | +1,361 (2.03×) |
-| invert | GF(2²³³) | 20,793 | – | 20,878 | – | 24,297 | – | 23,914 | – |
-| invert | GF(2²⁵⁶) | 22,975 vs hekate-math 13,703 | +9,272 (1.68×) | 22,988 vs hekate-math 13,698 | +9,290 (1.68×) | 29,628 vs hekate-math 15,994 | +13,634 (1.85×) | 29,266 vs hekate-math 15,926 | +13,340 (1.84×) |
-| invert | GF(2⁵⁷¹) | 130,347 | – | 130,186 | – | 161,832 | – | 160,604 | – |
+| add | GF(2⁸) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.3 vs hekate-math 2.0 | +0.3 (1.15×) | 2.5 vs galois_field_2pm 2.0 | +0.5 (1.25×) | 2.1 vs gf256 2.1 | +0.0 (1.00×) |
+| add | GF(2¹⁶) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.1 vs plonky3 2.1 | +0.0 (1.00×) | 2.4 vs g2p 2.1 | +0.3 (1.14×) | 2.2 vs galois_field_2pm 2.1 | +0.1 (1.05×) |
+| add | GF(2⁶⁴) | 2.5 vs gf256 2.5 | +0.0 (1.00×) | 2.5 vs gf256 2.5 | +0.0 (1.00×) | 2.3 vs galois_field_2pm 2.0 | +0.3 (1.15×) | 2.2 vs gf256 2.2 | +0.0 (1.00×) |
+| add | GF(2¹²⁸) | 3.8 vs runtime-algebra 3.7 | +0.1 (1.03×) | 3.8 vs hekate-math 3.7 | +0.1 (1.03×) | 3.7 vs hekate-math 3.3 | +0.4 (1.12×) | 3.3 vs hekate-math 3.3 | +0.0 (1.00×) |
+| add | GF(2²³³) | 7.5 | – | 8.0 | – | 7.0 | – | 6.3 | – |
+| add | GF(2²⁵⁶) | 7.4 vs hekate-math 7.9 | −0.5 (0.94×) | 7.4 vs hekate-math 8.0 | −0.6 (0.93×) | 7.0 vs hekate-math 6.7 | +0.3 (1.04×) | 6.4 vs hekate-math 6.5 | −0.1 (0.98×) |
+| add | GF(2⁵⁷¹) | 23.4 | – | 23.2 | – | 15.9 | – | 15.6 | – |
+| mul | GF(2⁸) | 2.2 vs g2p 2.6 | −0.4 (0.85×) | 2.3 vs g2p 2.7 | −0.4 (0.85×) | 2.3 vs g2p 2.9 | −0.6 (0.79×) | 2.2 vs g2p 2.7 | −0.5 (0.81×) |
+| mul | GF(2¹⁶) | 5.8 vs reed-solomon-erasure 8.7 | −2.9 (0.67×) | 6.6 vs reed-solomon-erasure 8.6 | −2.0 (0.77×) | 5.9 vs reed-solomon-erasure 9.6 | −3.7 (0.61×) | 6.0 vs reed-solomon-erasure 9.0 | −3.0 (0.67×) |
+| mul | GF(2⁶⁴) | 63.9 vs plonky3 92.7 | −28.8 (0.69×) | 64.0 vs plonky3 92.9 | −28.9 (0.69×) | 72.0 vs plonky3 95.2 | −23.2 (0.76×) | 72.0 vs plonky3 95.4 | −23.4 (0.75×) |
+| mul | GF(2¹²⁸) | 184 vs polyval 232 | −48.0 (0.79×) | 184 vs polyval 232 | −48.0 (0.79×) | 200 vs polyval 257 | −57.0 (0.78×) | 198 vs polyval 258 | −60.0 (0.77×) |
+| mul | GF(2²³³) | 781 | – | 790 | – | 1,069 | – | 1,096 | – |
+| mul | GF(2²⁵⁶) | 706 vs hekate-math 8,424 | −7,718 (0.08×) | 705 vs hekate-math 8,420 | −7,715 (0.08×) | 1,121 vs hekate-math 9,484 | −8,363 (0.12×) | 1,074 vs hekate-math 9,575 | −8,501 (0.11×) |
+| mul | GF(2⁵⁷¹) | 4,009 | – | 4,003 | – | 4,832 | – | 4,860 | – |
+| square | GF(2⁸) | 2.1 vs g2p 2.2 | −0.1 (0.95×) | 2.1 vs g2p 2.2 | −0.1 (0.95×) | 2.2 vs g2p 2.2 | +0.0 (1.00×) | 2.2 vs g2p 2.2 | +0.0 (1.00×) |
+| square | GF(2¹⁶) | 2.2 vs plonky3 3.0 | −0.8 (0.73×) | 2.3 vs plonky3 3.2 | −0.9 (0.72×) | 2.1 vs plonky3 3.8 | −1.7 (0.55×) | 2.3 vs plonky3 3.2 | −0.9 (0.72×) |
+| square | GF(2⁶⁴) | 15.0 vs plonky3 46.1 | −31.1 (0.33×) | 16.2 vs plonky3 46.2 | −30.0 (0.35×) | 17.1 vs plonky3 49.6 | −32.5 (0.34×) | 17.0 vs plonky3 49.6 | −32.6 (0.34×) |
+| square | GF(2¹²⁸) | 28.0 vs plonky3 34.5 | −6.5 (0.81×) | 28.0 vs plonky3 30.7 | −2.7 (0.91×) | 31.1 vs plonky3 43.4 | −12.3 (0.72×) | 31.0 vs plonky3 33.8 | −2.8 (0.92×) |
+| square | GF(2²³³) | 50.6 | – | 50.8 | – | 61.2 | – | 61.0 | – |
+| square | GF(2²⁵⁶) | 58.0 vs hekate-math 1,383 | −1,325 (0.04×) | 58.1 vs hekate-math 1,394 | −1,336 (0.04×) | 61.9 vs hekate-math 1,529 | −1,467 (0.04×) | 62.1 vs hekate-math 1,517 | −1,455 (0.04×) |
+| square | GF(2⁵⁷¹) | 145 | – | 145 | – | 153 | – | 153 | – |
+| invert | GF(2⁸) | 2.1 vs gf256 3.6 | −1.5 (0.58×) | 2.1 vs gf256 3.6 | −1.5 (0.58×) | 2.2 vs gf256 4.0 | −1.8 (0.55×) | 2.2 vs gf256 6.0 | −3.8 (0.37×) |
+| invert | GF(2¹⁶) | 2.2 vs galois_field_2pm lut 8.2 | −6.0 (0.27×) | 2.3 vs galois_field_2pm lut 10.2 | −7.9 (0.23×) | 2.4 vs galois_field_2pm lut 9.7 | −7.3 (0.25×) | 2.3 vs galois_field_2pm lut 9.1 | −6.8 (0.25×) |
+| invert | GF(2⁶⁴) | 798 vs hekate-math 1,583 | −785 (0.50×) | 799 vs hekate-math 1,582 | −783 (0.51×) | 907 vs hekate-math 2,065 | −1,158 (0.44×) | 910 vs hekate-math 2,093 | −1,183 (0.43×) |
+| invert | GF(2¹²⁸) | 2,510 vs plonky3 1,217 | +1,293 (2.06×) | 2,527 vs plonky3 1,257 | +1,270 (2.01×) | 2,658 vs plonky3 1,316 | +1,342 (2.02×) | 2,623 vs plonky3 1,301 | +1,322 (2.02×) |
+| invert | GF(2²³³) | 20,737 | – | 20,903 | – | 24,425 | – | 24,489 | – |
+| invert | GF(2²⁵⁶) | 22,945 vs hekate-math 13,705 | +9,240 (1.67×) | 22,982 vs hekate-math 13,713 | +9,269 (1.68×) | 29,361 vs hekate-math 15,799 | +13,562 (1.86×) | 29,214 vs hekate-math 15,965 | +13,249 (1.83×) |
+| invert | GF(2⁵⁷¹) | 130,158 | – | 130,306 | – | 160,149 | – | 160,983 | – |
 | sqrt | GF(2⁸) | 2.2 vs plonky3 10.9 | −8.7 (0.20×) | 2.2 vs plonky3 10.9 | −8.7 (0.20×) | 2.2 vs plonky3 11.5 | −9.3 (0.19×) | 2.2 vs plonky3 11.5 | −9.3 (0.19×) |
-| sqrt | GF(2¹⁶) | 2.2 vs plonky3 3.3 | −1.1 (0.67×) | 2.2 vs plonky3 3.3 | −1.1 (0.67×) | 2.2 vs plonky3 3.4 | −1.2 (0.65×) | 2.3 vs plonky3 3.4 | −1.1 (0.68×) |
-| sqrt | GF(2⁶⁴) | 37.2 vs plonky3 80.1 | −42.9 (0.46×) | 37.2 vs plonky3 80.0 | −42.8 (0.47×) | 40.0 vs plonky3 84.1 | −44.1 (0.48×) | 40.7 vs plonky3 84.1 | −43.4 (0.48×) |
-| sqrt | GF(2¹²⁸) | 154 vs plonky3 149 | +5.0 (1.03×) | 154 vs plonky3 149 | +5.0 (1.03×) | 156 vs plonky3 163 | −7.0 (0.96×) | 156 vs plonky3 163 | −7.0 (0.96×) |
-| sqrt | GF(2²³³) | 96.5 | – | 107 | – | 132 | – | 132 | – |
-| sqrt | GF(2²⁵⁶) | 122 vs hekate-math 2,155,728 | −2,155,606 (0.00×) | 122 vs hekate-math 2,155,481 | −2,155,359 (0.00×) | 161 vs hekate-math 2,447,405 | −2,447,244 (0.00×) | 186 vs hekate-math 2,443,528 | −2,443,342 (0.00×) |
-| sqrt | GF(2⁵⁷¹) | 2,207 | – | 2,210 | – | 2,528 | – | 2,533 | – |
-| add, constant time | GF(2⁸) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.1 vs gf256 2.1 | +0.0 (1.00×) |
-| add, constant time | GF(2¹⁶) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.2 vs gf256 2.2 | +0.0 (1.00×) | 2.2 vs gf256 2.2 | +0.0 (1.00×) |
-| add, constant time | GF(2⁶⁴) | 2.5 vs gf256 2.5 | +0.0 (1.00×) | 2.5 vs gf256 2.5 | +0.0 (1.00×) | 2.2 vs gf256 2.2 | +0.0 (1.00×) | 2.2 vs gf256 2.2 | +0.0 (1.00×) |
-| add, constant time | GF(2¹²⁸) | 3.8 vs plonky3 3.7 | +0.1 (1.03×) | 3.8 vs hekate-math 3.7 | +0.1 (1.03×) | 3.3 vs hekate-math 3.3 | +0.0 (1.00×) | 3.3 vs hekate-math 3.3 | +0.0 (1.00×) |
-| add, constant time | GF(2²³³) | 7.5 | – | 7.5 | – | 6.3 | – | 6.3 | – |
-| add, constant time | GF(2²⁵⁶) | 7.5 vs hekate-math 8.0 | −0.5 (0.94×) | 7.4 vs hekate-math 8.0 | −0.6 (0.93×) | 6.3 vs hekate-math 6.3 | +0.0 (1.00×) | 6.3 vs hekate-math 6.4 | −0.1 (0.98×) |
-| add, constant time | GF(2⁵⁷¹) | 23.1 | – | 23.2 | – | 15.5 | – | 15.4 | – |
-| mul, constant time | GF(2⁸) | 13.0 vs plonky3 19.2 | −6.2 (0.68×) | 13.0 vs plonky3 19.2 | −6.2 (0.68×) | 15.5 vs plonky3 19.7 | −4.2 (0.79×) | 15.5 vs plonky3 19.5 | −4.0 (0.79×) |
-| mul, constant time | GF(2¹⁶) | 16.5 vs hekate-math 76.0 | −59.5 (0.22×) | 16.5 vs hekate-math 76.0 | −59.5 (0.22×) | 16.7 vs hekate-math 83.4 | −66.7 (0.20×) | 16.8 vs hekate-math 83.3 | −66.5 (0.20×) |
-| mul, constant time | GF(2⁶⁴) | 63.9 vs plonky3 92.6 | −28.7 (0.69×) | 61.9 vs plonky3 92.0 | −30.1 (0.67×) | 73.1 vs plonky3 95.1 | −22.0 (0.77×) | 72.0 vs plonky3 95.6 | −23.6 (0.75×) |
-| mul, constant time | GF(2¹²⁸) | 184 vs polyval 227 | −43.0 (0.81×) | 184 vs polyval 227 | −43.0 (0.81×) | 200 vs polyval 258 | −58.0 (0.78×) | 200 vs polyval 258 | −58.0 (0.78×) |
-| mul, constant time | GF(2²³³) | 794 | – | 787 | – | 1,096 | – | 1,070 | – |
-| mul, constant time | GF(2²⁵⁶) | 704 vs hekate-math 8,420 | −7,716 (0.08×) | 704 vs hekate-math 8,413 | −7,709 (0.08×) | 1,116 vs hekate-math 9,581 | −8,465 (0.12×) | 1,073 vs hekate-math 9,564 | −8,491 (0.11×) |
-| mul, constant time | GF(2⁵⁷¹) | 4,063 | – | 4,066 | – | 4,875 | – | 4,860 | – |
-| square, constant time | GF(2⁸) | 5.1 vs hekate-math 8.9 | −3.8 (0.57×) | 5.0 vs hekate-math 8.9 | −3.9 (0.56×) | 6.3 vs hekate-math 9.6 | −3.3 (0.66×) | 6.3 vs hekate-math 9.6 | −3.3 (0.66×) |
-| square, constant time | GF(2¹⁶) | 10.2 vs hekate-math 25.4 | −15.2 (0.40×) | 10.2 vs hekate-math 25.4 | −15.2 (0.40×) | 10.4 vs hekate-math 27.0 | −16.6 (0.39×) | 10.4 vs hekate-math 27.0 | −16.6 (0.39×) |
-| square, constant time | GF(2⁶⁴) | 15.6 vs plonky3 46.2 | −30.6 (0.34×) | 16.0 vs plonky3 46.2 | −30.2 (0.35×) | 17.0 vs plonky3 49.0 | −32.0 (0.35×) | 17.0 vs plonky3 49.5 | −32.5 (0.34×) |
-| square, constant time | GF(2¹²⁸) | 28.0 vs plonky3 34.6 | −6.6 (0.81×) | 28.0 vs plonky3 30.7 | −2.7 (0.91×) | 31.0 vs plonky3 43.2 | −12.2 (0.72×) | 31.0 vs plonky3 33.5 | −2.5 (0.93×) |
-| square, constant time | GF(2²³³) | 53.1 | – | 53.0 | – | 60.2 | – | 60.2 | – |
-| square, constant time | GF(2²⁵⁶) | 62.1 vs hekate-math 1,383 | −1,321 (0.04×) | 62.1 vs hekate-math 1,383 | −1,321 (0.04×) | 64.1 vs hekate-math 1,533 | −1,469 (0.04×) | 65.3 vs hekate-math 1,665 | −1,600 (0.04×) |
-| square, constant time | GF(2⁵⁷¹) | 162 | – | 162 | – | 208 | – | 208 | – |
+| sqrt | GF(2¹⁶) | 2.3 vs plonky3 3.4 | −1.1 (0.68×) | 2.3 vs plonky3 3.6 | −1.3 (0.64×) | 2.8 vs plonky3 3.7 | −0.9 (0.76×) | 2.3 vs plonky3 3.5 | −1.2 (0.66×) |
+| sqrt | GF(2⁶⁴) | 37.2 vs plonky3 80.0 | −42.8 (0.47×) | 37.7 vs plonky3 80.3 | −42.6 (0.47×) | 41.0 vs plonky3 84.0 | −43.0 (0.49×) | 40.6 vs plonky3 84.4 | −43.8 (0.48×) |
+| sqrt | GF(2¹²⁸) | 154 vs plonky3 150 | +4.0 (1.03×) | 154 vs plonky3 155 | −1.0 (0.99×) | 159 vs plonky3 163 | −4.0 (0.98×) | 156 vs plonky3 163 | −7.0 (0.96×) |
+| sqrt | GF(2²³³) | 102 | – | 115 | – | 134 | – | 134 | – |
+| sqrt | GF(2²⁵⁶) | 122 vs hekate-math 2,156,012 | −2,155,890 (0.00×) | 123 vs hekate-math 2,161,373 | −2,161,250 (0.00×) | 159 vs hekate-math 2,432,484 | −2,432,325 (0.00×) | 172 vs hekate-math 2,441,090 | −2,440,918 (0.00×) |
+| sqrt | GF(2⁵⁷¹) | 2,218 | – | 2,224 | – | 2,538 | – | 2,548 | – |
+| add, constant time | GF(2⁸) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.3 vs hekate-math 2.0 | +0.3 (1.15×) | 2.3 vs galois_field_2pm 2.0 | +0.3 (1.15×) | 2.1 vs gf256 2.1 | +0.0 (1.00×) |
+| add, constant time | GF(2¹⁶) | 2.1 vs gf256 2.1 | +0.0 (1.00×) | 2.2 vs plonky3 2.1 | +0.1 (1.05×) | 2.9 vs g2p 2.1 | +0.8 (1.38×) | 2.2 vs galois_field_2pm 2.1 | +0.1 (1.05×) |
+| add, constant time | GF(2⁶⁴) | 2.5 vs gf256 2.5 | +0.0 (1.00×) | 2.5 vs gf256 2.5 | +0.0 (1.00×) | 2.1 vs galois_field_2pm 2.0 | +0.1 (1.05×) | 2.2 vs gf256 2.2 | +0.0 (1.00×) |
+| add, constant time | GF(2¹²⁸) | 3.8 vs runtime-algebra 3.7 | +0.1 (1.03×) | 3.8 vs hekate-math 3.7 | +0.1 (1.03×) | 3.6 vs hekate-math 3.3 | +0.3 (1.09×) | 3.3 vs hekate-math 3.3 | +0.0 (1.00×) |
+| add, constant time | GF(2²³³) | 7.4 | – | 7.2 | – | 6.5 | – | 6.5 | – |
+| add, constant time | GF(2²⁵⁶) | 7.5 vs hekate-math 7.9 | −0.4 (0.95×) | 7.6 vs hekate-math 8.0 | −0.4 (0.95×) | 6.6 vs hekate-math 6.7 | −0.1 (0.99×) | 6.3 vs hekate-math 6.5 | −0.2 (0.97×) |
+| add, constant time | GF(2⁵⁷¹) | 23.3 | – | 23.4 | – | 15.7 | – | 15.5 | – |
+| mul, constant time | GF(2⁸) | 13.0 vs plonky3 19.2 | −6.2 (0.68×) | 13.0 vs plonky3 19.2 | −6.2 (0.68×) | 15.5 vs plonky3 19.5 | −4.0 (0.79×) | 15.5 vs plonky3 19.5 | −4.0 (0.79×) |
+| mul, constant time | GF(2¹⁶) | 16.5 vs hekate-math 76.1 | −59.6 (0.22×) | 16.5 vs hekate-math 76.0 | −59.5 (0.22×) | 17.2 vs hekate-math 84.2 | −67.0 (0.20×) | 16.8 vs hekate-math 82.9 | −66.1 (0.20×) |
+| mul, constant time | GF(2⁶⁴) | 63.8 vs plonky3 92.7 | −28.9 (0.69×) | 64.0 vs plonky3 92.9 | −28.9 (0.69×) | 72.1 vs plonky3 95.2 | −23.1 (0.76×) | 72.1 vs plonky3 95.4 | −23.3 (0.76×) |
+| mul, constant time | GF(2¹²⁸) | 184 vs polyval 232 | −48.0 (0.79×) | 184 vs polyval 232 | −48.0 (0.79×) | 201 vs polyval 257 | −56.0 (0.78×) | 197 vs polyval 258 | −61.0 (0.76×) |
+| mul, constant time | GF(2²³³) | 792 | – | 795 | – | 1,062 | – | 1,087 | – |
+| mul, constant time | GF(2²⁵⁶) | 705 vs hekate-math 8,424 | −7,719 (0.08×) | 706 vs hekate-math 8,420 | −7,714 (0.08×) | 1,093 vs hekate-math 9,484 | −8,391 (0.12×) | 1,108 vs hekate-math 9,575 | −8,467 (0.12×) |
+| mul, constant time | GF(2⁵⁷¹) | 4,028 | – | 4,066 | – | 4,980 | – | 4,882 | – |
+| square, constant time | GF(2⁸) | 5.1 vs hekate-math 9.1 | −4.0 (0.56×) | 5.1 vs hekate-math 9.0 | −3.9 (0.57×) | 6.3 vs hekate-math 9.6 | −3.3 (0.66×) | 6.3 vs hekate-math 9.6 | −3.3 (0.66×) |
+| square, constant time | GF(2¹⁶) | 10.2 vs hekate-math 25.4 | −15.2 (0.40×) | 10.3 vs hekate-math 25.4 | −15.1 (0.41×) | 10.4 vs hekate-math 27.0 | −16.6 (0.39×) | 10.4 vs hekate-math 25.1 | −14.7 (0.41×) |
+| square, constant time | GF(2⁶⁴) | 16.9 vs plonky3 46.1 | −29.2 (0.37×) | 16.6 vs plonky3 46.2 | −29.6 (0.36×) | 17.0 vs plonky3 49.6 | −32.6 (0.34×) | 17.0 vs plonky3 49.6 | −32.6 (0.34×) |
+| square, constant time | GF(2¹²⁸) | 28.0 vs plonky3 34.5 | −6.5 (0.81×) | 28.1 vs plonky3 30.7 | −2.6 (0.92×) | 31.1 vs plonky3 43.4 | −12.3 (0.72×) | 31.0 vs plonky3 33.8 | −2.8 (0.92×) |
+| square, constant time | GF(2²³³) | 53.0 | – | 53.1 | – | 57.2 | – | 58.9 | – |
+| square, constant time | GF(2²⁵⁶) | 62.1 vs hekate-math 1,383 | −1,321 (0.04×) | 62.2 vs hekate-math 1,394 | −1,332 (0.04×) | 64.0 vs hekate-math 1,529 | −1,465 (0.04×) | 63.9 vs hekate-math 1,517 | −1,453 (0.04×) |
+| square, constant time | GF(2⁵⁷¹) | 153 | – | 153 | – | 167 | – | 167 | – |
 | invert, constant time | GF(2⁸) | 123 vs plonky3 272 | −149 (0.45×) | 123 vs plonky3 272 | −149 (0.45×) | 136 vs plonky3 277 | −141 (0.49×) | 136 vs plonky3 277 | −141 (0.49×) |
-| invert, constant time | GF(2¹⁶) | 239 vs hekate-math 393 | −154 (0.61×) | 239 vs hekate-math 393 | −154 (0.61×) | 233 vs hekate-math 707 | −474 (0.33×) | 233 vs hekate-math 707 | −474 (0.33×) |
-| invert, constant time | GF(2⁶⁴) | 1,302 vs hekate-math 1,577 | −275 (0.83×) | 1,317 vs hekate-math 1,582 | −265 (0.83×) | 1,310 vs hekate-math 2,090 | −780 (0.63×) | 1,312 vs hekate-math 2,088 | −776 (0.63×) |
-| invert, constant time | GF(2¹²⁸) | 4,539 vs hekate-math 4,494 | +45.0 (1.01×) | 4,532 vs hekate-math 4,498 | +34.0 (1.01×) | 4,408 vs hekate-math 5,439 | −1,031 (0.81×) | 4,380 vs hekate-math 5,437 | −1,057 (0.81×) |
-| invert, constant time | GF(2²³³) | 20,876 | – | 20,848 | – | 24,485 | – | 24,133 | – |
-| invert, constant time | GF(2²⁵⁶) | 22,979 vs hekate-math 13,703 | +9,276 (1.68×) | 22,971 vs hekate-math 13,698 | +9,273 (1.68×) | 29,410 vs hekate-math 15,994 | +13,416 (1.84×) | 29,289 vs hekate-math 15,926 | +13,363 (1.84×) |
-| invert, constant time | GF(2⁵⁷¹) | 130,358 | – | 130,084 | – | 161,689 | – | 160,724 | – |
-| sqrt, constant time | GF(2⁸) | 5.1 vs plonky3 10.9 | −5.8 (0.47×) | 5.1 vs plonky3 10.9 | −5.8 (0.47×) | 6.3 vs plonky3 11.5 | −5.2 (0.55×) | 5.7 vs plonky3 11.5 | −5.8 (0.50×) |
-| sqrt, constant time | GF(2¹⁶) | 16.8 vs hekate-math 1,243 | −1,226 (0.01×) | 16.8 vs hekate-math 1,242 | −1,225 (0.01×) | 20.0 vs hekate-math 1,355 | −1,335 (0.01×) | 20.0 vs hekate-math 1,356 | −1,336 (0.01×) |
-| sqrt, constant time | GF(2⁶⁴) | 37.2 vs plonky3 80.1 | −42.9 (0.46×) | 37.1 vs plonky3 80.0 | −42.9 (0.46×) | 40.9 vs plonky3 84.1 | −43.2 (0.49×) | 40.9 vs plonky3 84.1 | −43.2 (0.49×) |
-| sqrt, constant time | GF(2¹²⁸) | 154 vs plonky3 149 | +5.0 (1.03×) | 154 vs plonky3 149 | +5.0 (1.03×) | 159 vs plonky3 163 | −4.0 (0.98×) | 156 vs plonky3 163 | −7.0 (0.96×) |
-| sqrt, constant time | GF(2²³³) | 111 | – | 113 | – | 132 | – | 133 | – |
-| sqrt, constant time | GF(2²⁵⁶) | 122 vs hekate-math 2,155,728 | −2,155,606 (0.00×) | 122 vs hekate-math 2,155,481 | −2,155,359 (0.00×) | 149 vs hekate-math 2,447,405 | −2,447,256 (0.00×) | 181 vs hekate-math 2,443,528 | −2,443,347 (0.00×) |
-| sqrt, constant time | GF(2⁵⁷¹) | 2,241 | – | 2,210 | – | 2,527 | – | 2,549 | – |
+| invert, constant time | GF(2¹⁶) | 239 vs hekate-math 393 | −154 (0.61×) | 239 vs hekate-math 393 | −154 (0.61×) | 233 vs hekate-math 719 | −486 (0.32×) | 236 vs hekate-math 706 | −470 (0.33×) |
+| invert, constant time | GF(2⁶⁴) | 1,312 vs hekate-math 1,583 | −271 (0.83×) | 1,305 vs hekate-math 1,582 | −277 (0.82×) | 1,303 vs hekate-math 2,065 | −762 (0.63×) | 1,319 vs hekate-math 2,093 | −774 (0.63×) |
+| invert, constant time | GF(2¹²⁸) | 4,565 vs hekate-math 4,502 | +63.0 (1.01×) | 4,664 vs hekate-math 4,490 | +174 (1.04×) | 4,395 vs hekate-math 5,381 | −986 (0.82×) | 4,392 vs hekate-math 5,440 | −1,048 (0.81×) |
+| invert, constant time | GF(2²³³) | 20,751 | – | 20,889 | – | 24,238 | – | 24,295 | – |
+| invert, constant time | GF(2²⁵⁶) | 22,948 vs hekate-math 13,705 | +9,243 (1.67×) | 22,976 vs hekate-math 13,713 | +9,263 (1.68×) | 29,510 vs hekate-math 15,799 | +13,711 (1.87×) | 29,312 vs hekate-math 15,965 | +13,347 (1.84×) |
+| invert, constant time | GF(2⁵⁷¹) | 130,404 | – | 129,893 | – | 160,824 | – | 160,708 | – |
+| sqrt, constant time | GF(2⁸) | 5.1 vs plonky3 10.9 | −5.8 (0.47×) | 5.1 vs plonky3 10.9 | −5.8 (0.47×) | 6.3 vs plonky3 11.5 | −5.2 (0.55×) | 6.3 vs plonky3 11.5 | −5.2 (0.55×) |
+| sqrt, constant time | GF(2¹⁶) | 16.8 vs hekate-math 1,242 | −1,225 (0.01×) | 16.9 vs hekate-math 1,243 | −1,226 (0.01×) | 20.0 vs hekate-math 1,353 | −1,333 (0.01×) | 20.0 vs hekate-math 1,356 | −1,336 (0.01×) |
+| sqrt, constant time | GF(2⁶⁴) | 37.2 vs plonky3 80.0 | −42.8 (0.47×) | 37.3 vs plonky3 80.3 | −43.0 (0.46×) | 41.1 vs plonky3 84.0 | −42.9 (0.49×) | 40.9 vs plonky3 84.4 | −43.5 (0.48×) |
+| sqrt, constant time | GF(2¹²⁸) | 154 vs plonky3 150 | +4.0 (1.03×) | 154 vs plonky3 155 | −1.0 (0.99×) | 156 vs plonky3 163 | −7.0 (0.96×) | 156 vs plonky3 163 | −7.0 (0.96×) |
+| sqrt, constant time | GF(2²³³) | 106 | – | 120 | – | 134 | – | 132 | – |
+| sqrt, constant time | GF(2²⁵⁶) | 122 vs hekate-math 2,156,012 | −2,155,890 (0.00×) | 122 vs hekate-math 2,161,373 | −2,161,251 (0.00×) | 191 vs hekate-math 2,432,484 | −2,432,293 (0.00×) | 186 vs hekate-math 2,441,090 | −2,440,904 (0.00×) |
+| sqrt, constant time | GF(2⁵⁷¹) | 2,220 | – | 2,224 | – | 2,522 | – | 2,529 | – |
 
 ### Against the best competitor, latency
 
@@ -480,48 +480,48 @@ Cycles per operation of `binary-field` against the fewest of the crates whose fu
 
 | Operation | Field | Chrome | Δ | Chrome, wide arithmetic | Δ | Firefox | Δ | Firefox, wide arithmetic | Δ |
 |---|---|---|---:|---|---:|---|---:|---|---:|
-| add | GF(2⁸) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) |
-| add | GF(2¹⁶) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) |
-| add | GF(2⁶⁴) | 1.3 vs gf256 1.3 | +0.0 (1.00×) | 1.3 vs gf256 1.3 | +0.0 (1.00×) | 1.0 vs gf256 1.0 | +0.0 (1.00×) | 1.0 vs gf256 1.0 | +0.0 (1.00×) |
-| add | GF(2¹²⁸) | 2.3 vs plonky3 2.3 | +0.0 (1.00×) | 2.3 vs compile-algebra 2.3 | +0.0 (1.00×) | 2.1 vs plonky3 2.2 | −0.1 (0.95×) | 2.1 vs hekate-math 2.3 | −0.2 (0.91×) |
-| add | GF(2²³³) | 4.8 | – | 4.8 | – | 4.6 | – | 4.6 | – |
-| add | GF(2²⁵⁶) | 4.8 vs hekate-math 5.0 | −0.2 (0.96×) | 4.8 vs hekate-math 5.0 | −0.2 (0.96×) | 4.6 vs hekate-math 4.6 | +0.0 (1.00×) | 4.6 vs hekate-math 4.6 | +0.0 (1.00×) |
-| add | GF(2⁵⁷¹) | 17.2 | – | 17.5 | – | 12.9 | – | 12.9 | – |
-| mul | GF(2⁸) | 10.5 vs reed-solomon-erasure 11.6 | −1.1 (0.91×) | 10.5 vs g2p 11.7 | −1.2 (0.90×) | 10.9 vs g2p 11.8 | −0.9 (0.92×) | 10.9 vs g2p 11.8 | −0.9 (0.92×) |
-| mul | GF(2¹⁶) | 30.1 vs reed-solomon-erasure 24.1 | +6.0 (1.25×) | 30.2 vs reed-solomon-erasure 23.9 | +6.3 (1.26×) | 30.9 vs reed-solomon-erasure 24.6 | +6.3 (1.26×) | 31.0 vs reed-solomon-erasure 24.0 | +7.0 (1.29×) |
-| mul | GF(2⁶⁴) | 72.0 vs plonky3 77.7 | −5.7 (0.93×) | 72.0 vs plonky3 76.1 | −4.1 (0.95×) | 73.0 vs plonky3 100 | −27.0 (0.73×) | 73.1 vs plonky3 100 | −26.9 (0.73×) |
-| mul | GF(2¹²⁸) | 184 vs polyval 228 | −44.0 (0.81×) | 182 vs polyval 229 | −47.0 (0.79×) | 197 vs polyval 263 | −66.0 (0.75×) | 197 vs polyval 263 | −66.0 (0.75×) |
-| mul | GF(2²³³) | 759 | – | 721 | – | 1,067 | – | 1,074 | – |
-| mul | GF(2²⁵⁶) | 705 vs hekate-math 8,431 | −7,726 (0.08×) | 707 vs hekate-math 8,427 | −7,720 (0.08×) | 1,049 vs hekate-math 9,582 | −8,533 (0.11×) | 1,058 vs hekate-math 9,570 | −8,512 (0.11×) |
-| mul | GF(2⁵⁷¹) | 3,978 | – | 4,018 | – | 4,724 | – | 4,759 | – |
-| square | GF(2⁸) | 5.1 vs reed-solomon-erasure 7.7 | −2.6 (0.66×) | 5.1 vs g2p 7.6 | −2.5 (0.67×) | 5.3 vs g2p 7.9 | −2.6 (0.67×) | 5.3 vs g2p 7.9 | −2.6 (0.67×) |
-| square | GF(2¹⁶) | 6.1 vs plonky3 8.3 | −2.2 (0.73×) | 6.1 vs plonky3 8.3 | −2.2 (0.73×) | 6.3 vs plonky3 8.4 | −2.1 (0.75×) | 6.3 vs plonky3 8.4 | −2.1 (0.75×) |
-| square | GF(2⁶⁴) | 19.0 vs plonky3 59.0 | −40.0 (0.32×) | 19.0 vs plonky3 59.0 | −40.0 (0.32×) | 19.0 vs plonky3 62.0 | −43.0 (0.31×) | 19.3 vs plonky3 62.0 | −42.7 (0.31×) |
-| square | GF(2¹²⁸) | 27.0 vs plonky3 34.3 | −7.3 (0.79×) | 27.0 vs plonky3 32.6 | −5.6 (0.83×) | 30.1 vs plonky3 43.7 | −13.6 (0.69×) | 30.0 vs plonky3 34.0 | −4.0 (0.88×) |
-| square | GF(2²³³) | 54.0 | – | 53.9 | – | 59.0 | – | 59.0 | – |
-| square | GF(2²⁵⁶) | 59.0 vs hekate-math 1,380 | −1,321 (0.04×) | 59.0 vs hekate-math 1,379 | −1,320 (0.04×) | 63.0 vs hekate-math 1,450 | −1,387 (0.04×) | 63.0 vs hekate-math 1,506 | −1,443 (0.04×) |
-| square | GF(2⁵⁷¹) | 161 | – | 165 | – | 234 | – | 235 | – |
-| add, constant time | GF(2⁸) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) |
-| add, constant time | GF(2¹⁶) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) |
-| add, constant time | GF(2⁶⁴) | 1.3 vs gf256 1.3 | +0.0 (1.00×) | 1.3 vs gf256 1.3 | +0.0 (1.00×) | 1.0 vs gf256 1.0 | +0.0 (1.00×) | 1.0 vs gf256 1.0 | +0.0 (1.00×) |
-| add, constant time | GF(2¹²⁸) | 2.3 vs plonky3 2.3 | +0.0 (1.00×) | 2.3 vs compile-algebra 2.3 | +0.0 (1.00×) | 2.1 vs plonky3 2.2 | −0.1 (0.95×) | 2.1 vs hekate-math 2.3 | −0.2 (0.91×) |
-| add, constant time | GF(2²³³) | 4.8 | – | 4.8 | – | 4.6 | – | 4.6 | – |
-| add, constant time | GF(2²⁵⁶) | 4.8 vs hekate-math 5.0 | −0.2 (0.96×) | 4.8 vs hekate-math 5.0 | −0.2 (0.96×) | 4.6 vs hekate-math 4.6 | +0.0 (1.00×) | 4.6 vs hekate-math 4.6 | +0.0 (1.00×) |
-| add, constant time | GF(2⁵⁷¹) | 17.7 | – | 17.5 | – | 12.9 | – | 12.9 | – |
+| add | GF(2⁸) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.0 vs gf256 1.1 | −0.1 (0.91×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) |
+| add | GF(2¹⁶) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs g2p 1.0 | +0.1 (1.10×) | 1.2 vs reed-solomon-erasure 1.1 | +0.1 (1.09×) |
+| add | GF(2⁶⁴) | 1.3 vs gf256 1.3 | +0.0 (1.00×) | 1.4 vs gf256 1.3 | +0.1 (1.08×) | 1.0 vs galois_field_2pm 1.0 | +0.0 (1.00×) | 1.0 vs gf256 1.0 | +0.0 (1.00×) |
+| add | GF(2¹²⁸) | 2.3 vs plonky3 2.4 | −0.1 (0.96×) | 2.5 vs polyval 2.1 | +0.4 (1.19×) | 2.2 vs hekate-math 2.4 | −0.2 (0.92×) | 2.1 vs plonky3 2.3 | −0.2 (0.91×) |
+| add | GF(2²³³) | 4.8 | – | 4.9 | – | 4.6 | – | 4.6 | – |
+| add | GF(2²⁵⁶) | 5.0 vs hekate-math 5.0 | +0.0 (1.00×) | 5.0 vs hekate-math 6.2 | −1.2 (0.81×) | 5.2 vs hekate-math 5.2 | +0.0 (1.00×) | 4.6 vs hekate-math 4.6 | +0.0 (1.00×) |
+| add | GF(2⁵⁷¹) | 17.3 | – | 17.7 | – | 15.2 | – | 13.0 | – |
+| mul | GF(2⁸) | 10.5 vs g2p 11.7 | −1.2 (0.90×) | 10.4 vs g2p 11.7 | −1.3 (0.89×) | 11.0 vs g2p 11.9 | −0.9 (0.92×) | 10.9 vs g2p 11.8 | −0.9 (0.92×) |
+| mul | GF(2¹⁶) | 30.2 vs reed-solomon-erasure 23.9 | +6.3 (1.26×) | 35.3 vs reed-solomon-erasure 24.2 | +11.1 (1.46×) | 30.9 vs reed-solomon-erasure 24.9 | +6.0 (1.24×) | 30.8 vs reed-solomon-erasure 25.1 | +5.7 (1.23×) |
+| mul | GF(2⁶⁴) | 71.9 vs plonky3 75.3 | −3.4 (0.95×) | 72.0 vs plonky3 81.2 | −9.2 (0.89×) | 73.1 vs plonky3 99.9 | −26.8 (0.73×) | 73.0 vs plonky3 100 | −27.0 (0.73×) |
+| mul | GF(2¹²⁸) | 184 vs polyval 228 | −44.0 (0.81×) | 184 vs polyval 229 | −45.0 (0.80×) | 197 vs polyval 263 | −66.0 (0.75×) | 197 vs polyval 265 | −68.0 (0.74×) |
+| mul | GF(2²³³) | 749 | – | 760 | – | 1,074 | – | 1,065 | – |
+| mul | GF(2²⁵⁶) | 703 vs hekate-math 8,432 | −7,729 (0.08×) | 712 vs hekate-math 8,429 | −7,717 (0.08×) | 1,040 vs hekate-math 9,477 | −8,437 (0.11×) | 1,057 vs hekate-math 9,572 | −8,515 (0.11×) |
+| mul | GF(2⁵⁷¹) | 3,994 | – | 4,036 | – | 4,820 | – | 4,792 | – |
+| square | GF(2⁸) | 5.1 vs g2p 7.7 | −2.6 (0.66×) | 5.1 vs reed-solomon-erasure 6.8 | −1.7 (0.75×) | 5.3 vs g2p 7.9 | −2.6 (0.67×) | 5.3 vs g2p 7.9 | −2.6 (0.67×) |
+| square | GF(2¹⁶) | 6.1 vs plonky3 8.3 | −2.2 (0.73×) | 6.1 vs plonky3 8.3 | −2.2 (0.73×) | 6.3 vs plonky3 8.3 | −2.0 (0.76×) | 6.3 vs plonky3 8.4 | −2.1 (0.75×) |
+| square | GF(2⁶⁴) | 19.0 vs plonky3 59.0 | −40.0 (0.32×) | 19.0 vs plonky3 59.0 | −40.0 (0.32×) | 19.3 vs plonky3 61.6 | −42.3 (0.31×) | 19.3 vs plonky3 62.0 | −42.7 (0.31×) |
+| square | GF(2¹²⁸) | 27.0 vs plonky3 35.0 | −8.0 (0.77×) | 27.0 vs plonky3 32.4 | −5.4 (0.83×) | 30.3 vs plonky3 43.8 | −13.5 (0.69×) | 29.8 vs plonky3 35.1 | −5.3 (0.85×) |
+| square | GF(2²³³) | 54.0 | – | 53.9 | – | 58.9 | – | 59.1 | – |
+| square | GF(2²⁵⁶) | 59.0 vs hekate-math 1,382 | −1,323 (0.04×) | 59.0 vs hekate-math 1,381 | −1,322 (0.04×) | 63.0 vs hekate-math 1,555 | −1,492 (0.04×) | 63.0 vs hekate-math 1,537 | −1,474 (0.04×) |
+| square | GF(2⁵⁷¹) | 164 | – | 161 | – | 183 | – | 184 | – |
+| add, constant time | GF(2⁸) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.2 vs gf256 1.1 | +0.1 (1.09×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) |
+| add, constant time | GF(2¹⁶) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.1 vs gf256 1.1 | +0.0 (1.00×) | 1.3 vs g2p 1.0 | +0.3 (1.30×) | 1.2 vs reed-solomon-erasure 1.1 | +0.1 (1.09×) |
+| add, constant time | GF(2⁶⁴) | 1.3 vs gf256 1.3 | +0.0 (1.00×) | 1.3 vs gf256 1.3 | +0.0 (1.00×) | 1.0 vs galois_field_2pm 1.0 | +0.0 (1.00×) | 1.0 vs gf256 1.0 | +0.0 (1.00×) |
+| add, constant time | GF(2¹²⁸) | 2.3 vs plonky3 2.4 | −0.1 (0.96×) | 2.4 vs polyval 2.1 | +0.3 (1.14×) | 3.2 vs hekate-math 2.4 | +0.8 (1.33×) | 2.1 vs plonky3 2.3 | −0.2 (0.91×) |
+| add, constant time | GF(2²³³) | 4.8 | – | 4.9 | – | 5.2 | – | 4.5 | – |
+| add, constant time | GF(2²⁵⁶) | 4.8 vs hekate-math 5.0 | −0.2 (0.96×) | 5.0 vs hekate-math 6.2 | −1.2 (0.81×) | 6.0 vs hekate-math 5.2 | +0.8 (1.15×) | 4.6 vs hekate-math 4.6 | +0.0 (1.00×) |
+| add, constant time | GF(2⁵⁷¹) | 17.7 | – | 17.5 | – | 14.2 | – | 12.8 | – |
 | mul, constant time | GF(2⁸) | 21.3 vs plonky3 23.0 | −1.7 (0.93×) | 21.3 vs plonky3 23.0 | −1.7 (0.93×) | 21.0 vs plonky3 23.0 | −2.0 (0.91×) | 21.0 vs plonky3 23.0 | −2.0 (0.91×) |
-| mul, constant time | GF(2¹⁶) | 22.0 vs hekate-math 82.0 | −60.0 (0.27×) | 22.0 vs hekate-math 81.9 | −59.9 (0.27×) | 23.0 vs hekate-math 98.7 | −75.7 (0.23×) | 23.0 vs hekate-math 101 | −78.0 (0.23×) |
-| mul, constant time | GF(2⁶⁴) | 72.0 vs plonky3 77.7 | −5.7 (0.93×) | 72.0 vs plonky3 76.1 | −4.1 (0.95×) | 73.1 vs plonky3 100 | −26.9 (0.73×) | 73.1 vs plonky3 100 | −26.9 (0.73×) |
-| mul, constant time | GF(2¹²⁸) | 184 vs polyval 228 | −44.0 (0.81×) | 182 vs polyval 229 | −47.0 (0.79×) | 197 vs polyval 263 | −66.0 (0.75×) | 197 vs polyval 263 | −66.0 (0.75×) |
-| mul, constant time | GF(2²³³) | 758 | – | 759 | – | 1,075 | – | 1,073 | – |
-| mul, constant time | GF(2²⁵⁶) | 704 vs hekate-math 8,431 | −7,727 (0.08×) | 706 vs hekate-math 8,427 | −7,721 (0.08×) | 1,051 vs hekate-math 9,582 | −8,531 (0.11×) | 1,057 vs hekate-math 9,570 | −8,513 (0.11×) |
-| mul, constant time | GF(2⁵⁷¹) | 3,984 | – | 4,002 | – | 4,717 | – | 4,773 | – |
-| square, constant time | GF(2⁸) | 15.0 vs hekate-math 19.1 | −4.1 (0.79×) | 15.0 vs hekate-math 19.3 | −4.3 (0.78×) | 15.0 vs hekate-math 19.5 | −4.5 (0.77×) | 15.0 vs hekate-math 19.5 | −4.5 (0.77×) |
-| square, constant time | GF(2¹⁶) | 23.0 vs hekate-math 34.0 | −11.0 (0.68×) | 23.0 vs hekate-math 34.0 | −11.0 (0.68×) | 23.0 vs hekate-math 36.0 | −13.0 (0.64×) | 23.0 vs hekate-math 34.0 | −11.0 (0.68×) |
-| square, constant time | GF(2⁶⁴) | 19.0 vs plonky3 59.0 | −40.0 (0.32×) | 19.0 vs plonky3 59.0 | −40.0 (0.32×) | 19.0 vs plonky3 62.0 | −43.0 (0.31×) | 19.3 vs plonky3 62.0 | −42.7 (0.31×) |
-| square, constant time | GF(2¹²⁸) | 27.3 vs plonky3 34.3 | −7.0 (0.80×) | 27.3 vs plonky3 32.6 | −5.3 (0.84×) | 31.0 vs plonky3 43.7 | −12.7 (0.71×) | 31.0 vs plonky3 34.0 | −3.0 (0.91×) |
-| square, constant time | GF(2²³³) | 54.1 | – | 54.0 | – | 59.0 | – | 59.8 | – |
-| square, constant time | GF(2²⁵⁶) | 59.0 vs hekate-math 1,380 | −1,321 (0.04×) | 59.0 vs hekate-math 1,379 | −1,320 (0.04×) | 63.0 vs hekate-math 1,450 | −1,387 (0.04×) | 63.0 vs hekate-math 1,506 | −1,443 (0.04×) |
-| square, constant time | GF(2⁵⁷¹) | 164 | – | 165 | – | 246 | – | 246 | – |
+| mul, constant time | GF(2¹⁶) | 22.0 vs hekate-math 82.0 | −60.0 (0.27×) | 22.0 vs hekate-math 82.0 | −60.0 (0.27×) | 23.0 vs hekate-math 95.2 | −72.2 (0.24×) | 23.0 vs hekate-math 95.3 | −72.3 (0.24×) |
+| mul, constant time | GF(2⁶⁴) | 71.7 vs plonky3 75.3 | −3.6 (0.95×) | 72.2 vs plonky3 81.2 | −9.0 (0.89×) | 73.1 vs plonky3 99.9 | −26.8 (0.73×) | 73.2 vs plonky3 100 | −26.8 (0.73×) |
+| mul, constant time | GF(2¹²⁸) | 184 vs polyval 228 | −44.0 (0.81×) | 184 vs polyval 229 | −45.0 (0.80×) | 197 vs polyval 263 | −66.0 (0.75×) | 197 vs polyval 265 | −68.0 (0.74×) |
+| mul, constant time | GF(2²³³) | 756 | – | 759 | – | 1,088 | – | 1,069 | – |
+| mul, constant time | GF(2²⁵⁶) | 701 vs hekate-math 8,432 | −7,731 (0.08×) | 713 vs hekate-math 8,429 | −7,716 (0.08×) | 1,046 vs hekate-math 9,477 | −8,431 (0.11×) | 1,048 vs hekate-math 9,572 | −8,524 (0.11×) |
+| mul, constant time | GF(2⁵⁷¹) | 4,009 | – | 4,005 | – | 4,686 | – | 4,809 | – |
+| square, constant time | GF(2⁸) | 15.0 vs hekate-math 19.3 | −4.3 (0.78×) | 15.0 vs hekate-math 19.3 | −4.3 (0.78×) | 15.0 vs hekate-math 19.5 | −4.5 (0.77×) | 15.0 vs hekate-math 19.5 | −4.5 (0.77×) |
+| square, constant time | GF(2¹⁶) | 23.0 vs hekate-math 34.0 | −11.0 (0.68×) | 23.0 vs hekate-math 34.0 | −11.0 (0.68×) | 23.0 vs hekate-math 34.0 | −11.0 (0.68×) | 23.0 vs hekate-math 36.0 | −13.0 (0.64×) |
+| square, constant time | GF(2⁶⁴) | 19.0 vs plonky3 59.0 | −40.0 (0.32×) | 19.0 vs plonky3 59.0 | −40.0 (0.32×) | 19.3 vs plonky3 61.6 | −42.3 (0.31×) | 19.3 vs plonky3 62.0 | −42.7 (0.31×) |
+| square, constant time | GF(2¹²⁸) | 27.3 vs plonky3 35.0 | −7.7 (0.78×) | 27.3 vs plonky3 32.4 | −5.1 (0.84×) | 31.0 vs plonky3 43.8 | −12.8 (0.71×) | 31.0 vs plonky3 35.1 | −4.1 (0.88×) |
+| square, constant time | GF(2²³³) | 55.1 | – | 53.9 | – | 59.6 | – | 59.0 | – |
+| square, constant time | GF(2²⁵⁶) | 59.0 vs hekate-math 1,382 | −1,323 (0.04×) | 59.0 vs hekate-math 1,381 | −1,322 (0.04×) | 63.0 vs hekate-math 1,555 | −1,492 (0.04×) | 63.1 vs hekate-math 1,537 | −1,474 (0.04×) |
+| square, constant time | GF(2⁵⁷¹) | 165 | – | 165 | – | 183 | – | 183 | – |
 
 ### Against native, throughput
 
@@ -529,76 +529,76 @@ Cycles per operation of `binary-field` in each build, then its ratio to the nati
 
 | Operation | Field | Native, without carry-less multiplication | Chrome | Chrome, wide arithmetic | Firefox | Firefox, wide arithmetic |
 |---|---|---:|---:|---:|---:|---:|
-| add | GF(2⁸) | 1.5 | 2.1 (1.4×) | 2.1 (1.4×) | 2.1 (1.4×) | 2.1 (1.4×) |
-| add | GF(2¹⁶) | 1.5 | 2.1 (1.4×) | 2.1 (1.4×) | 2.2 (1.5×) | 2.2 (1.5×) |
-| add | GF(2⁶⁴) | 1.3 | 2.5 (1.9×) | 2.5 (1.9×) | 2.2 (1.7×) | 2.2 (1.7×) |
-| add | GF(2¹²⁸) | 1.4 | 3.8 (2.7×) | 3.8 (2.7×) | 3.3 (2.4×) | 3.3 (2.4×) |
-| add | GF(2²³³) | 2.2 | 7.4 (3.4×) | 7.5 (3.4×) | 6.3 (2.9×) | 6.3 (2.9×) |
-| add | GF(2²⁵⁶) | 2.6 | 7.4 (2.8×) | 7.5 (2.9×) | 6.3 (2.4×) | 6.3 (2.4×) |
-| add | GF(2⁵⁷¹) | 6.7 | 23.1 (3.4×) | 23.2 (3.5×) | 15.5 (2.3×) | 15.4 (2.3×) |
-| mul | GF(2⁸) | 2.0 | 2.2 (1.1×) | 2.2 (1.1×) | 2.2 (1.1×) | 2.2 (1.1×) |
-| mul | GF(2¹⁶) | 5.4 | 5.8 (1.1×) | 5.7 (1.1×) | 6.2 (1.1×) | 6.2 (1.1×) |
-| mul | GF(2⁶⁴) | 31.9 | 63.9 (2.0×) | 63.6 (2.0×) | 73.1 (2.3×) | 72.0 (2.3×) |
-| mul | GF(2¹²⁸) | 55.4 | 184 (3.3×) | 184 (3.3×) | 200 (3.6×) | 200 (3.6×) |
-| mul | GF(2²³³) | 202 | 754 (3.7×) | 723 (3.6×) | 1,089 (5.4×) | 1,070 (5.3×) |
-| mul | GF(2²⁵⁶) | 191 | 706 (3.7×) | 705 (3.7×) | 1,073 (5.6×) | 1,068 (5.6×) |
-| mul | GF(2⁵⁷¹) | 1,292 | 4,011 (3.1×) | 3,988 (3.1×) | 4,979 (3.9×) | 4,910 (3.8×) |
-| square | GF(2⁸) | 1.2 | 2.2 (1.8×) | 2.1 (1.8×) | 2.2 (1.8×) | 2.2 (1.8×) |
-| square | GF(2¹⁶) | 1.7 | 2.2 (1.3×) | 2.2 (1.3×) | 2.3 (1.4×) | 2.3 (1.4×) |
-| square | GF(2⁶⁴) | 5.4 | 15.8 (2.9×) | 15.2 (2.8×) | 17.0 (3.1×) | 17.0 (3.1×) |
-| square | GF(2¹²⁸) | 6.7 | 28.0 (4.2×) | 28.0 (4.2×) | 31.0 (4.6×) | 31.0 (4.6×) |
-| square | GF(2²³³) | 20.8 | 50.7 (2.4×) | 50.6 (2.4×) | 61.0 (2.9×) | 61.0 (2.9×) |
-| square | GF(2²⁵⁶) | 20.4 | 58.1 (2.8×) | 57.9 (2.8×) | 62.0 (3.0×) | 62.0 (3.0×) |
-| square | GF(2⁵⁷¹) | 55.1 | 145 (2.6×) | 145 (2.6×) | 152 (2.8×) | 151 (2.7×) |
-| invert | GF(2⁸) | 1.2 | 2.2 (1.8×) | 2.1 (1.8×) | 2.2 (1.8×) | 2.2 (1.8×) |
-| invert | GF(2¹⁶) | 1.7 | 2.2 (1.3×) | 2.2 (1.3×) | 2.3 (1.4×) | 2.3 (1.4×) |
-| invert | GF(2⁶⁴) | 530 | 826 (1.6×) | 793 (1.5×) | 896 (1.7×) | 895 (1.7×) |
-| invert | GF(2¹²⁸) | 1,067 | 2,512 (2.4×) | 2,506 (2.3×) | 2,675 (2.5×) | 2,680 (2.5×) |
-| invert | GF(2²³³) | 9,445 | 20,793 (2.2×) | 20,878 (2.2×) | 24,297 (2.6×) | 23,914 (2.5×) |
-| invert | GF(2²⁵⁶) | 8,687 | 22,975 (2.6×) | 22,988 (2.6×) | 29,628 (3.4×) | 29,266 (3.4×) |
-| invert | GF(2⁵⁷¹) | 48,617 | 130,347 (2.7×) | 130,186 (2.7×) | 161,832 (3.3×) | 160,604 (3.3×) |
+| add | GF(2⁸) | 1.5 | 2.1 (1.4×) | 2.3 (1.5×) | 2.5 (1.7×) | 2.1 (1.4×) |
+| add | GF(2¹⁶) | 1.5 | 2.1 (1.4×) | 2.1 (1.4×) | 2.4 (1.6×) | 2.2 (1.5×) |
+| add | GF(2⁶⁴) | 1.3 | 2.5 (1.9×) | 2.5 (1.9×) | 2.3 (1.8×) | 2.2 (1.7×) |
+| add | GF(2¹²⁸) | 1.4 | 3.8 (2.7×) | 3.8 (2.7×) | 3.7 (2.6×) | 3.3 (2.4×) |
+| add | GF(2²³³) | 2.2 | 7.5 (3.4×) | 8.0 (3.6×) | 7.0 (3.2×) | 6.3 (2.9×) |
+| add | GF(2²⁵⁶) | 2.6 | 7.4 (2.8×) | 7.4 (2.8×) | 7.0 (2.7×) | 6.4 (2.5×) |
+| add | GF(2⁵⁷¹) | 6.7 | 23.4 (3.5×) | 23.2 (3.5×) | 15.9 (2.4×) | 15.6 (2.3×) |
+| mul | GF(2⁸) | 2.0 | 2.2 (1.1×) | 2.3 (1.1×) | 2.3 (1.1×) | 2.2 (1.1×) |
+| mul | GF(2¹⁶) | 5.4 | 5.8 (1.1×) | 6.6 (1.2×) | 5.9 (1.1×) | 6.0 (1.1×) |
+| mul | GF(2⁶⁴) | 31.9 | 63.9 (2.0×) | 64.0 (2.0×) | 72.0 (2.3×) | 72.0 (2.3×) |
+| mul | GF(2¹²⁸) | 55.4 | 184 (3.3×) | 184 (3.3×) | 200 (3.6×) | 198 (3.6×) |
+| mul | GF(2²³³) | 202 | 781 (3.9×) | 790 (3.9×) | 1,069 (5.3×) | 1,096 (5.4×) |
+| mul | GF(2²⁵⁶) | 191 | 706 (3.7×) | 705 (3.7×) | 1,121 (5.9×) | 1,074 (5.6×) |
+| mul | GF(2⁵⁷¹) | 1,292 | 4,009 (3.1×) | 4,003 (3.1×) | 4,832 (3.7×) | 4,860 (3.8×) |
+| square | GF(2⁸) | 1.2 | 2.1 (1.8×) | 2.1 (1.8×) | 2.2 (1.8×) | 2.2 (1.8×) |
+| square | GF(2¹⁶) | 1.7 | 2.2 (1.3×) | 2.3 (1.4×) | 2.1 (1.2×) | 2.3 (1.4×) |
+| square | GF(2⁶⁴) | 5.4 | 15.0 (2.8×) | 16.2 (3.0×) | 17.1 (3.2×) | 17.0 (3.1×) |
+| square | GF(2¹²⁸) | 6.7 | 28.0 (4.2×) | 28.0 (4.2×) | 31.1 (4.6×) | 31.0 (4.6×) |
+| square | GF(2²³³) | 20.8 | 50.6 (2.4×) | 50.8 (2.4×) | 61.2 (2.9×) | 61.0 (2.9×) |
+| square | GF(2²⁵⁶) | 20.4 | 58.0 (2.8×) | 58.1 (2.8×) | 61.9 (3.0×) | 62.1 (3.0×) |
+| square | GF(2⁵⁷¹) | 55.1 | 145 (2.6×) | 145 (2.6×) | 153 (2.8×) | 153 (2.8×) |
+| invert | GF(2⁸) | 1.2 | 2.1 (1.8×) | 2.1 (1.8×) | 2.2 (1.8×) | 2.2 (1.8×) |
+| invert | GF(2¹⁶) | 1.7 | 2.2 (1.3×) | 2.3 (1.4×) | 2.4 (1.4×) | 2.3 (1.4×) |
+| invert | GF(2⁶⁴) | 530 | 798 (1.5×) | 799 (1.5×) | 907 (1.7×) | 910 (1.7×) |
+| invert | GF(2¹²⁸) | 1,067 | 2,510 (2.4×) | 2,527 (2.4×) | 2,658 (2.5×) | 2,623 (2.5×) |
+| invert | GF(2²³³) | 9,445 | 20,737 (2.2×) | 20,903 (2.2×) | 24,425 (2.6×) | 24,489 (2.6×) |
+| invert | GF(2²⁵⁶) | 8,687 | 22,945 (2.6×) | 22,982 (2.6×) | 29,361 (3.4×) | 29,214 (3.4×) |
+| invert | GF(2⁵⁷¹) | 48,617 | 130,158 (2.7×) | 130,306 (2.7×) | 160,149 (3.3×) | 160,983 (3.3×) |
 | sqrt | GF(2⁸) | 1.2 | 2.2 (1.8×) | 2.2 (1.8×) | 2.2 (1.8×) | 2.2 (1.8×) |
-| sqrt | GF(2¹⁶) | 1.7 | 2.2 (1.3×) | 2.2 (1.3×) | 2.2 (1.3×) | 2.3 (1.4×) |
-| sqrt | GF(2⁶⁴) | 35.5 | 37.2 (1.0×) | 37.2 (1.0×) | 40.0 (1.1×) | 40.7 (1.1×) |
-| sqrt | GF(2¹²⁸) | 65.6 | 154 (2.3×) | 154 (2.3×) | 156 (2.4×) | 156 (2.4×) |
-| sqrt | GF(2²³³) | 111 | 96.5 (0.9×) | 107 (1.0×) | 132 (1.2×) | 132 (1.2×) |
-| sqrt | GF(2²⁵⁶) | 93.8 | 122 (1.3×) | 122 (1.3×) | 161 (1.7×) | 186 (2.0×) |
-| sqrt | GF(2⁵⁷¹) | 685 | 2,207 (3.2×) | 2,210 (3.2×) | 2,528 (3.7×) | 2,533 (3.7×) |
-| add, constant time | GF(2⁸) | 1.5 | 2.1 (1.4×) | 2.1 (1.4×) | 2.1 (1.4×) | 2.1 (1.4×) |
-| add, constant time | GF(2¹⁶) | 1.5 | 2.1 (1.4×) | 2.1 (1.4×) | 2.2 (1.5×) | 2.2 (1.5×) |
-| add, constant time | GF(2⁶⁴) | 1.3 | 2.5 (1.9×) | 2.5 (1.9×) | 2.2 (1.7×) | 2.2 (1.7×) |
-| add, constant time | GF(2¹²⁸) | 1.2 | 3.8 (3.2×) | 3.8 (3.2×) | 3.3 (2.8×) | 3.3 (2.8×) |
-| add, constant time | GF(2²³³) | 2.7 | 7.5 (2.8×) | 7.5 (2.8×) | 6.3 (2.3×) | 6.3 (2.3×) |
-| add, constant time | GF(2²⁵⁶) | 2.6 | 7.5 (2.9×) | 7.4 (2.8×) | 6.3 (2.4×) | 6.3 (2.4×) |
-| add, constant time | GF(2⁵⁷¹) | 7.5 | 23.1 (3.1×) | 23.2 (3.1×) | 15.5 (2.1×) | 15.4 (2.1×) |
+| sqrt | GF(2¹⁶) | 1.7 | 2.3 (1.4×) | 2.3 (1.4×) | 2.8 (1.6×) | 2.3 (1.4×) |
+| sqrt | GF(2⁶⁴) | 35.5 | 37.2 (1.0×) | 37.7 (1.1×) | 41.0 (1.2×) | 40.6 (1.1×) |
+| sqrt | GF(2¹²⁸) | 65.6 | 154 (2.3×) | 154 (2.3×) | 159 (2.4×) | 156 (2.4×) |
+| sqrt | GF(2²³³) | 111 | 102 (0.9×) | 115 (1.0×) | 134 (1.2×) | 134 (1.2×) |
+| sqrt | GF(2²⁵⁶) | 93.8 | 122 (1.3×) | 123 (1.3×) | 159 (1.7×) | 172 (1.8×) |
+| sqrt | GF(2⁵⁷¹) | 685 | 2,218 (3.2×) | 2,224 (3.2×) | 2,538 (3.7×) | 2,548 (3.7×) |
+| add, constant time | GF(2⁸) | 1.5 | 2.1 (1.4×) | 2.3 (1.5×) | 2.3 (1.5×) | 2.1 (1.4×) |
+| add, constant time | GF(2¹⁶) | 1.5 | 2.1 (1.4×) | 2.2 (1.5×) | 2.9 (1.9×) | 2.2 (1.5×) |
+| add, constant time | GF(2⁶⁴) | 1.3 | 2.5 (1.9×) | 2.5 (1.9×) | 2.1 (1.6×) | 2.2 (1.7×) |
+| add, constant time | GF(2¹²⁸) | 1.2 | 3.8 (3.2×) | 3.8 (3.2×) | 3.6 (3.0×) | 3.3 (2.8×) |
+| add, constant time | GF(2²³³) | 2.7 | 7.4 (2.7×) | 7.2 (2.7×) | 6.5 (2.4×) | 6.5 (2.4×) |
+| add, constant time | GF(2²⁵⁶) | 2.6 | 7.5 (2.9×) | 7.6 (2.9×) | 6.6 (2.5×) | 6.3 (2.4×) |
+| add, constant time | GF(2⁵⁷¹) | 7.5 | 23.3 (3.1×) | 23.4 (3.1×) | 15.7 (2.1×) | 15.5 (2.1×) |
 | mul, constant time | GF(2⁸) | 14.0 | 13.0 (0.9×) | 13.0 (0.9×) | 15.5 (1.1×) | 15.5 (1.1×) |
-| mul, constant time | GF(2¹⁶) | 15.0 | 16.5 (1.1×) | 16.5 (1.1×) | 16.7 (1.1×) | 16.8 (1.1×) |
-| mul, constant time | GF(2⁶⁴) | 31.7 | 63.9 (2.0×) | 61.9 (2.0×) | 73.1 (2.3×) | 72.0 (2.3×) |
-| mul, constant time | GF(2¹²⁸) | 54.9 | 184 (3.4×) | 184 (3.4×) | 200 (3.6×) | 200 (3.6×) |
-| mul, constant time | GF(2²³³) | 203 | 794 (3.9×) | 787 (3.9×) | 1,096 (5.4×) | 1,070 (5.3×) |
-| mul, constant time | GF(2²⁵⁶) | 191 | 704 (3.7×) | 704 (3.7×) | 1,116 (5.8×) | 1,073 (5.6×) |
-| mul, constant time | GF(2⁵⁷¹) | 1,290 | 4,063 (3.1×) | 4,066 (3.2×) | 4,875 (3.8×) | 4,860 (3.8×) |
-| square, constant time | GF(2⁸) | 3.5 | 5.1 (1.5×) | 5.0 (1.4×) | 6.3 (1.8×) | 6.3 (1.8×) |
-| square, constant time | GF(2¹⁶) | 8.7 | 10.2 (1.2×) | 10.2 (1.2×) | 10.4 (1.2×) | 10.4 (1.2×) |
-| square, constant time | GF(2⁶⁴) | 5.4 | 15.6 (2.9×) | 16.0 (3.0×) | 17.0 (3.1×) | 17.0 (3.1×) |
-| square, constant time | GF(2¹²⁸) | 6.6 | 28.0 (4.2×) | 28.0 (4.2×) | 31.0 (4.7×) | 31.0 (4.7×) |
-| square, constant time | GF(2²³³) | 20.6 | 53.1 (2.6×) | 53.0 (2.6×) | 60.2 (2.9×) | 60.2 (2.9×) |
-| square, constant time | GF(2²⁵⁶) | 20.4 | 62.1 (3.0×) | 62.1 (3.0×) | 64.1 (3.1×) | 65.3 (3.2×) |
-| square, constant time | GF(2⁵⁷¹) | 55.1 | 162 (2.9×) | 162 (2.9×) | 208 (3.8×) | 208 (3.8×) |
+| mul, constant time | GF(2¹⁶) | 15.0 | 16.5 (1.1×) | 16.5 (1.1×) | 17.2 (1.1×) | 16.8 (1.1×) |
+| mul, constant time | GF(2⁶⁴) | 31.7 | 63.8 (2.0×) | 64.0 (2.0×) | 72.1 (2.3×) | 72.1 (2.3×) |
+| mul, constant time | GF(2¹²⁸) | 54.9 | 184 (3.4×) | 184 (3.4×) | 201 (3.7×) | 197 (3.6×) |
+| mul, constant time | GF(2²³³) | 203 | 792 (3.9×) | 795 (3.9×) | 1,062 (5.2×) | 1,087 (5.4×) |
+| mul, constant time | GF(2²⁵⁶) | 191 | 705 (3.7×) | 706 (3.7×) | 1,093 (5.7×) | 1,108 (5.8×) |
+| mul, constant time | GF(2⁵⁷¹) | 1,290 | 4,028 (3.1×) | 4,066 (3.2×) | 4,980 (3.9×) | 4,882 (3.8×) |
+| square, constant time | GF(2⁸) | 3.5 | 5.1 (1.5×) | 5.1 (1.5×) | 6.3 (1.8×) | 6.3 (1.8×) |
+| square, constant time | GF(2¹⁶) | 8.7 | 10.2 (1.2×) | 10.3 (1.2×) | 10.4 (1.2×) | 10.4 (1.2×) |
+| square, constant time | GF(2⁶⁴) | 5.4 | 16.9 (3.1×) | 16.6 (3.1×) | 17.0 (3.1×) | 17.0 (3.1×) |
+| square, constant time | GF(2¹²⁸) | 6.6 | 28.0 (4.2×) | 28.1 (4.3×) | 31.1 (4.7×) | 31.0 (4.7×) |
+| square, constant time | GF(2²³³) | 20.6 | 53.0 (2.6×) | 53.1 (2.6×) | 57.2 (2.8×) | 58.9 (2.9×) |
+| square, constant time | GF(2²⁵⁶) | 20.4 | 62.1 (3.0×) | 62.2 (3.0×) | 64.0 (3.1×) | 63.9 (3.1×) |
+| square, constant time | GF(2⁵⁷¹) | 55.1 | 153 (2.8×) | 153 (2.8×) | 167 (3.0×) | 167 (3.0×) |
 | invert, constant time | GF(2⁸) | 104 | 123 (1.2×) | 123 (1.2×) | 136 (1.3×) | 136 (1.3×) |
-| invert, constant time | GF(2¹⁶) | 227 | 239 (1.1×) | 239 (1.1×) | 233 (1.0×) | 233 (1.0×) |
-| invert, constant time | GF(2⁶⁴) | 1,053 | 1,302 (1.2×) | 1,317 (1.3×) | 1,310 (1.2×) | 1,312 (1.2×) |
-| invert, constant time | GF(2¹²⁸) | 2,523 | 4,539 (1.8×) | 4,532 (1.8×) | 4,408 (1.7×) | 4,380 (1.7×) |
-| invert, constant time | GF(2²³³) | 9,362 | 20,876 (2.2×) | 20,848 (2.2×) | 24,485 (2.6×) | 24,133 (2.6×) |
-| invert, constant time | GF(2²⁵⁶) | 8,670 | 22,979 (2.7×) | 22,971 (2.6×) | 29,410 (3.4×) | 29,289 (3.4×) |
-| invert, constant time | GF(2⁵⁷¹) | 48,672 | 130,358 (2.7×) | 130,084 (2.7×) | 161,689 (3.3×) | 160,724 (3.3×) |
-| sqrt, constant time | GF(2⁸) | 3.5 | 5.1 (1.5×) | 5.1 (1.5×) | 6.3 (1.8×) | 5.7 (1.6×) |
-| sqrt, constant time | GF(2¹⁶) | 13.5 | 16.8 (1.2×) | 16.8 (1.2×) | 20.0 (1.5×) | 20.0 (1.5×) |
-| sqrt, constant time | GF(2⁶⁴) | 35.6 | 37.2 (1.0×) | 37.1 (1.0×) | 40.9 (1.1×) | 40.9 (1.1×) |
-| sqrt, constant time | GF(2¹²⁸) | 65.6 | 154 (2.3×) | 154 (2.3×) | 159 (2.4×) | 156 (2.4×) |
-| sqrt, constant time | GF(2²³³) | 111 | 111 (1.0×) | 113 (1.0×) | 132 (1.2×) | 133 (1.2×) |
-| sqrt, constant time | GF(2²⁵⁶) | 93.6 | 122 (1.3×) | 122 (1.3×) | 149 (1.6×) | 181 (1.9×) |
-| sqrt, constant time | GF(2⁵⁷¹) | 681 | 2,241 (3.3×) | 2,210 (3.2×) | 2,527 (3.7×) | 2,549 (3.7×) |
+| invert, constant time | GF(2¹⁶) | 227 | 239 (1.1×) | 239 (1.1×) | 233 (1.0×) | 236 (1.0×) |
+| invert, constant time | GF(2⁶⁴) | 1,053 | 1,312 (1.2×) | 1,305 (1.2×) | 1,303 (1.2×) | 1,319 (1.3×) |
+| invert, constant time | GF(2¹²⁸) | 2,523 | 4,565 (1.8×) | 4,664 (1.8×) | 4,395 (1.7×) | 4,392 (1.7×) |
+| invert, constant time | GF(2²³³) | 9,362 | 20,751 (2.2×) | 20,889 (2.2×) | 24,238 (2.6×) | 24,295 (2.6×) |
+| invert, constant time | GF(2²⁵⁶) | 8,670 | 22,948 (2.6×) | 22,976 (2.7×) | 29,510 (3.4×) | 29,312 (3.4×) |
+| invert, constant time | GF(2⁵⁷¹) | 48,672 | 130,404 (2.7×) | 129,893 (2.7×) | 160,824 (3.3×) | 160,708 (3.3×) |
+| sqrt, constant time | GF(2⁸) | 3.5 | 5.1 (1.5×) | 5.1 (1.5×) | 6.3 (1.8×) | 6.3 (1.8×) |
+| sqrt, constant time | GF(2¹⁶) | 13.5 | 16.8 (1.2×) | 16.9 (1.3×) | 20.0 (1.5×) | 20.0 (1.5×) |
+| sqrt, constant time | GF(2⁶⁴) | 35.6 | 37.2 (1.0×) | 37.3 (1.0×) | 41.1 (1.2×) | 40.9 (1.1×) |
+| sqrt, constant time | GF(2¹²⁸) | 65.6 | 154 (2.3×) | 154 (2.3×) | 156 (2.4×) | 156 (2.4×) |
+| sqrt, constant time | GF(2²³³) | 111 | 106 (1.0×) | 120 (1.1×) | 134 (1.2×) | 132 (1.2×) |
+| sqrt, constant time | GF(2²⁵⁶) | 93.6 | 122 (1.3×) | 122 (1.3×) | 191 (2.0×) | 186 (2.0×) |
+| sqrt, constant time | GF(2⁵⁷¹) | 681 | 2,220 (3.3×) | 2,224 (3.3×) | 2,522 (3.7×) | 2,529 (3.7×) |
 
 ### Against native, latency
 
@@ -606,48 +606,48 @@ Cycles per operation of `binary-field` in each build, then its ratio to the nati
 
 | Operation | Field | Native, without carry-less multiplication | Chrome | Chrome, wide arithmetic | Firefox | Firefox, wide arithmetic |
 |---|---|---:|---:|---:|---:|---:|
-| add | GF(2⁸) | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.1 (1.1×) | 1.1 (1.1×) |
-| add | GF(2¹⁶) | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.1 (1.1×) | 1.1 (1.1×) |
-| add | GF(2⁶⁴) | 1.1 | 1.3 (1.2×) | 1.3 (1.2×) | 1.0 (0.9×) | 1.0 (0.9×) |
-| add | GF(2¹²⁸) | 1.1 | 2.3 (2.1×) | 2.3 (2.1×) | 2.1 (1.9×) | 2.1 (1.9×) |
-| add | GF(2²³³) | 2.0 | 4.8 (2.4×) | 4.8 (2.4×) | 4.6 (2.3×) | 4.6 (2.3×) |
-| add | GF(2²⁵⁶) | 2.1 | 4.8 (2.3×) | 4.8 (2.3×) | 4.6 (2.2×) | 4.6 (2.2×) |
-| add | GF(2⁵⁷¹) | 5.1 | 17.2 (3.4×) | 17.5 (3.4×) | 12.9 (2.5×) | 12.9 (2.5×) |
-| mul | GF(2⁸) | 9.3 | 10.5 (1.1×) | 10.5 (1.1×) | 10.9 (1.2×) | 10.9 (1.2×) |
-| mul | GF(2¹⁶) | 32.1 | 30.1 (0.9×) | 30.2 (0.9×) | 30.9 (1.0×) | 31.0 (1.0×) |
-| mul | GF(2⁶⁴) | 41.5 | 72.0 (1.7×) | 72.0 (1.7×) | 73.0 (1.8×) | 73.1 (1.8×) |
-| mul | GF(2¹²⁸) | 64.8 | 184 (2.8×) | 182 (2.8×) | 197 (3.0×) | 197 (3.0×) |
-| mul | GF(2²³³) | 206 | 759 (3.7×) | 721 (3.5×) | 1,067 (5.2×) | 1,074 (5.2×) |
-| mul | GF(2²⁵⁶) | 185 | 705 (3.8×) | 707 (3.8×) | 1,049 (5.7×) | 1,058 (5.7×) |
-| mul | GF(2⁵⁷¹) | 1,285 | 3,978 (3.1×) | 4,018 (3.1×) | 4,724 (3.7×) | 4,759 (3.7×) |
+| add | GF(2⁸) | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.0 (1.0×) | 1.1 (1.1×) |
+| add | GF(2¹⁶) | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.1 (1.1×) | 1.2 (1.2×) |
+| add | GF(2⁶⁴) | 1.1 | 1.3 (1.2×) | 1.4 (1.3×) | 1.0 (0.9×) | 1.0 (0.9×) |
+| add | GF(2¹²⁸) | 1.1 | 2.3 (2.1×) | 2.5 (2.3×) | 2.2 (2.0×) | 2.1 (1.9×) |
+| add | GF(2²³³) | 2.0 | 4.8 (2.4×) | 4.9 (2.5×) | 4.6 (2.3×) | 4.6 (2.3×) |
+| add | GF(2²⁵⁶) | 2.1 | 5.0 (2.4×) | 5.0 (2.4×) | 5.2 (2.5×) | 4.6 (2.2×) |
+| add | GF(2⁵⁷¹) | 5.1 | 17.3 (3.4×) | 17.7 (3.5×) | 15.2 (3.0×) | 13.0 (2.5×) |
+| mul | GF(2⁸) | 9.3 | 10.5 (1.1×) | 10.4 (1.1×) | 11.0 (1.2×) | 10.9 (1.2×) |
+| mul | GF(2¹⁶) | 32.1 | 30.2 (0.9×) | 35.3 (1.1×) | 30.9 (1.0×) | 30.8 (1.0×) |
+| mul | GF(2⁶⁴) | 41.5 | 71.9 (1.7×) | 72.0 (1.7×) | 73.1 (1.8×) | 73.0 (1.8×) |
+| mul | GF(2¹²⁸) | 64.8 | 184 (2.8×) | 184 (2.8×) | 197 (3.0×) | 197 (3.0×) |
+| mul | GF(2²³³) | 206 | 749 (3.6×) | 760 (3.7×) | 1,074 (5.2×) | 1,065 (5.2×) |
+| mul | GF(2²⁵⁶) | 185 | 703 (3.8×) | 712 (3.8×) | 1,040 (5.6×) | 1,057 (5.7×) |
+| mul | GF(2⁵⁷¹) | 1,285 | 3,994 (3.1×) | 4,036 (3.1×) | 4,820 (3.8×) | 4,792 (3.7×) |
 | square | GF(2⁸) | 5.0 | 5.1 (1.0×) | 5.1 (1.0×) | 5.3 (1.1×) | 5.3 (1.1×) |
 | square | GF(2¹⁶) | 6.0 | 6.1 (1.0×) | 6.1 (1.0×) | 6.3 (1.1×) | 6.3 (1.1×) |
-| square | GF(2⁶⁴) | 11.8 | 19.0 (1.6×) | 19.0 (1.6×) | 19.0 (1.6×) | 19.3 (1.6×) |
-| square | GF(2¹²⁸) | 14.2 | 27.0 (1.9×) | 27.0 (1.9×) | 30.1 (2.1×) | 30.0 (2.1×) |
-| square | GF(2²³³) | 32.0 | 54.0 (1.7×) | 53.9 (1.7×) | 59.0 (1.8×) | 59.0 (1.8×) |
+| square | GF(2⁶⁴) | 11.8 | 19.0 (1.6×) | 19.0 (1.6×) | 19.3 (1.6×) | 19.3 (1.6×) |
+| square | GF(2¹²⁸) | 14.2 | 27.0 (1.9×) | 27.0 (1.9×) | 30.3 (2.1×) | 29.8 (2.1×) |
+| square | GF(2²³³) | 32.0 | 54.0 (1.7×) | 53.9 (1.7×) | 58.9 (1.8×) | 59.1 (1.8×) |
 | square | GF(2²⁵⁶) | 27.0 | 59.0 (2.2×) | 59.0 (2.2×) | 63.0 (2.3×) | 63.0 (2.3×) |
-| square | GF(2⁵⁷¹) | 57.1 | 161 (2.8×) | 165 (2.9×) | 234 (4.1×) | 235 (4.1×) |
-| add, constant time | GF(2⁸) | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.1 (1.1×) | 1.1 (1.1×) |
-| add, constant time | GF(2¹⁶) | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.1 (1.1×) | 1.1 (1.1×) |
+| square | GF(2⁵⁷¹) | 57.1 | 164 (2.9×) | 161 (2.8×) | 183 (3.2×) | 184 (3.2×) |
+| add, constant time | GF(2⁸) | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.2 (1.2×) | 1.1 (1.1×) |
+| add, constant time | GF(2¹⁶) | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.3 (1.3×) | 1.2 (1.2×) |
 | add, constant time | GF(2⁶⁴) | 1.1 | 1.3 (1.2×) | 1.3 (1.2×) | 1.0 (0.9×) | 1.0 (0.9×) |
-| add, constant time | GF(2¹²⁸) | 1.1 | 2.3 (2.1×) | 2.3 (2.1×) | 2.1 (1.9×) | 2.1 (1.9×) |
-| add, constant time | GF(2²³³) | 2.0 | 4.8 (2.4×) | 4.8 (2.4×) | 4.6 (2.3×) | 4.6 (2.3×) |
-| add, constant time | GF(2²⁵⁶) | 2.1 | 4.8 (2.3×) | 4.8 (2.3×) | 4.6 (2.2×) | 4.6 (2.2×) |
-| add, constant time | GF(2⁵⁷¹) | 4.6 | 17.7 (3.8×) | 17.5 (3.8×) | 12.9 (2.8×) | 12.9 (2.8×) |
+| add, constant time | GF(2¹²⁸) | 1.1 | 2.3 (2.1×) | 2.4 (2.2×) | 3.2 (2.9×) | 2.1 (1.9×) |
+| add, constant time | GF(2²³³) | 2.0 | 4.8 (2.4×) | 4.9 (2.5×) | 5.2 (2.6×) | 4.5 (2.2×) |
+| add, constant time | GF(2²⁵⁶) | 2.1 | 4.8 (2.3×) | 5.0 (2.4×) | 6.0 (2.9×) | 4.6 (2.2×) |
+| add, constant time | GF(2⁵⁷¹) | 4.6 | 17.7 (3.8×) | 17.5 (3.8×) | 14.2 (3.1×) | 12.8 (2.8×) |
 | mul, constant time | GF(2⁸) | 21.7 | 21.3 (1.0×) | 21.3 (1.0×) | 21.0 (1.0×) | 21.0 (1.0×) |
 | mul, constant time | GF(2¹⁶) | 22.5 | 22.0 (1.0×) | 22.0 (1.0×) | 23.0 (1.0×) | 23.0 (1.0×) |
-| mul, constant time | GF(2⁶⁴) | 41.3 | 72.0 (1.7×) | 72.0 (1.7×) | 73.1 (1.8×) | 73.1 (1.8×) |
-| mul, constant time | GF(2¹²⁸) | 64.8 | 184 (2.8×) | 182 (2.8×) | 197 (3.0×) | 197 (3.0×) |
-| mul, constant time | GF(2²³³) | 206 | 758 (3.7×) | 759 (3.7×) | 1,075 (5.2×) | 1,073 (5.2×) |
-| mul, constant time | GF(2²⁵⁶) | 193 | 704 (3.6×) | 706 (3.7×) | 1,051 (5.4×) | 1,057 (5.5×) |
-| mul, constant time | GF(2⁵⁷¹) | 1,281 | 3,984 (3.1×) | 4,002 (3.1×) | 4,717 (3.7×) | 4,773 (3.7×) |
+| mul, constant time | GF(2⁶⁴) | 41.3 | 71.7 (1.7×) | 72.2 (1.7×) | 73.1 (1.8×) | 73.2 (1.8×) |
+| mul, constant time | GF(2¹²⁸) | 64.8 | 184 (2.8×) | 184 (2.8×) | 197 (3.0×) | 197 (3.0×) |
+| mul, constant time | GF(2²³³) | 206 | 756 (3.7×) | 759 (3.7×) | 1,088 (5.3×) | 1,069 (5.2×) |
+| mul, constant time | GF(2²⁵⁶) | 193 | 701 (3.6×) | 713 (3.7×) | 1,046 (5.4×) | 1,048 (5.4×) |
+| mul, constant time | GF(2⁵⁷¹) | 1,281 | 4,009 (3.1×) | 4,005 (3.1×) | 4,686 (3.7×) | 4,809 (3.8×) |
 | square, constant time | GF(2⁸) | 10.4 | 15.0 (1.4×) | 15.0 (1.4×) | 15.0 (1.4×) | 15.0 (1.4×) |
 | square, constant time | GF(2¹⁶) | 22.2 | 23.0 (1.0×) | 23.0 (1.0×) | 23.0 (1.0×) | 23.0 (1.0×) |
-| square, constant time | GF(2⁶⁴) | 11.8 | 19.0 (1.6×) | 19.0 (1.6×) | 19.0 (1.6×) | 19.3 (1.6×) |
+| square, constant time | GF(2⁶⁴) | 11.8 | 19.0 (1.6×) | 19.0 (1.6×) | 19.3 (1.6×) | 19.3 (1.6×) |
 | square, constant time | GF(2¹²⁸) | 14.0 | 27.3 (1.9×) | 27.3 (1.9×) | 31.0 (2.2×) | 31.0 (2.2×) |
-| square, constant time | GF(2²³³) | 32.0 | 54.1 (1.7×) | 54.0 (1.7×) | 59.0 (1.8×) | 59.8 (1.9×) |
-| square, constant time | GF(2²⁵⁶) | 26.5 | 59.0 (2.2×) | 59.0 (2.2×) | 63.0 (2.4×) | 63.0 (2.4×) |
-| square, constant time | GF(2⁵⁷¹) | 57.0 | 164 (2.9×) | 165 (2.9×) | 246 (4.3×) | 246 (4.3×) |
+| square, constant time | GF(2²³³) | 32.0 | 55.1 (1.7×) | 53.9 (1.7×) | 59.6 (1.9×) | 59.0 (1.8×) |
+| square, constant time | GF(2²⁵⁶) | 26.5 | 59.0 (2.2×) | 59.0 (2.2×) | 63.0 (2.4×) | 63.1 (2.4×) |
+| square, constant time | GF(2⁵⁷¹) | 57.0 | 165 (2.9×) | 165 (2.9×) | 183 (3.2×) | 183 (3.2×) |
 
 ## Reproduce
 
