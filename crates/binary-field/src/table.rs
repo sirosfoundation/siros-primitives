@@ -122,6 +122,10 @@ impl<P: Polynomial> Tables<P> {
     const WORD_INVERSES: &'static [u16; WORDS] =
         &inverses(Self::WORD_ELEMENTS, Plan::<P>::DEGREE, Plan::<P>::TAPS);
 
+    /// The fold of the part of a product at and above `x^n` by bytes, for degrees 9 to 16.
+    const FOLDS: &'static ByteMap =
+        &fold_map(Plan::<P>::MUL_BY_FOLDS, Plan::<P>::DEGREE, Plan::<P>::TAPS);
+
     /// The square by bytes, for degrees 9 to 16.
     const SQUARE_BYTES: &'static ByteMap =
         &byte_map(Plan::<P>::BYTE_MAPS, Plan::<P>::DEGREE, Plan::<P>::TAPS, 1);
@@ -145,6 +149,22 @@ impl<P: Polynomial> Tables<P> {
             .get(((b << 8) | a) as usize)
             .copied()
             .map_or(0, u64::from)
+    }
+
+    /// `p mod f` for a product `p` of two elements of a field of degree 9 to 16: the low `n` bits
+    /// plus the folds of the two bytes above them.
+    #[inline(always)]
+    pub(crate) fn fold(product: u64) -> u64 {
+        let degree = Plan::<P>::DEGREE;
+        let high = product >> degree;
+        let [low_folds, high_folds] = Self::FOLDS;
+        let fold = |folds: &[u16; BYTES], byte: u64| {
+            folds
+                .get((byte & 0xFF) as usize)
+                .copied()
+                .map_or(0, u64::from)
+        };
+        (product & ((1 << degree) - 1)) ^ fold(low_folds, high) ^ fold(high_folds, high >> 8)
     }
 
     /// `a b` by logarithms, for degrees up to 16: the power of the sum of the logarithms, `0` when
@@ -657,6 +677,49 @@ const fn byte_map(used: bool, degree: usize, taps: &[usize], k: usize) -> ByteMa
             let bit = 8 * half + low.trailing_zeros() as usize;
             let image = if bit < degree { images[bit] as u16 } else { 0 };
             map[half][value] = map[half][value ^ low] ^ image;
+            value += 1;
+        }
+        half += 1;
+    }
+    map
+}
+
+/// `map[c][v] = v x^(n + 8 c) mod f` for degrees 9 to 16: the fold by bytes of the part of a product
+/// at and above `x^n`, of at most 15 bits. Zero unless `used`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn fold_map(used: bool, degree: usize, taps: &[usize]) -> ByteMap {
+    let mut map = [[0; BYTES]; 2];
+    if !used || degree > 16 {
+        return map;
+    }
+    let mut r = 0u32;
+    let mut rest = taps;
+    while let [tap, tail @ ..] = rest {
+        r |= 1 << *tap;
+        rest = tail;
+    }
+    // `x^(n + j) mod f`, from `x^n = r`.
+    let mut images = [0u16; 16];
+    let mut power = r;
+    let mut j = 0;
+    while j < 16 {
+        images[j] = power as u16;
+        power <<= 1;
+        if (power >> degree) & 1 == 1 {
+            power ^= (1 << degree) | r;
+        }
+        j += 1;
+    }
+    let mut half = 0;
+    while half < 2 {
+        let mut value: usize = 1;
+        while value < BYTES {
+            let low = value & value.wrapping_neg();
+            let bit = 8 * half + low.trailing_zeros() as usize;
+            map[half][value] = map[half][value ^ low] ^ images[bit];
             value += 1;
         }
         half += 1;

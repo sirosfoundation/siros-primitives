@@ -147,6 +147,10 @@ impl<P: Polynomial> Plan<P> {
         Tier::Full => Self::DEGREE > 8 && Self::SMALL && !clmul::HARDWARE,
         Tier::None => false,
     };
+    /// The default product of degrees 9 to 16 with hardware word products folds its part at and
+    /// above `x^n` by a table of each of its two bytes, 1 KiB in all.
+    pub(crate) const MUL_BY_FOLDS: bool =
+        !matches!(TIER, Tier::None) && Self::DEGREE > 8 && Self::SMALL && clmul::HARDWARE;
     /// The default square, square root and inverse index a table of every element: `precomputed`
     /// up to degree 16, the default tables up to degree 8.
     pub(crate) const ELEMENT_TABLES: bool = match TIER {

@@ -635,6 +635,8 @@ impl<P: Polynomial> Field<P> {
             Element::<P>::from_word(Tables::<P>::mul(a.word(), b.word()))
         } else if Plan::<P>::MUL_BY_LOGARITHMS {
             Element::<P>::from_word(Tables::<P>::log_mul(a.word(), b.word()))
+        } else if Plan::<P>::MUL_BY_FOLDS {
+            Element::<P>::from_word(Tables::<P>::fold(clmul::clmul64(a.word(), b.word()) as u64))
         } else {
             Self::ct_mul(a, b)
         }
