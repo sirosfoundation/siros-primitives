@@ -23,23 +23,60 @@ use crate::unrolled::unroll;
 use crate::width::Width;
 
 impl<M: Modulus> Shape<M> {
-    /// `a + b`.
+    /// Whether the variable-time sums and differences of several limbs branch on their correction.
+    /// On WebAssembly the borrow chain of the correction and the selects of a branch-free one cost
+    /// more than a branch: the 254-bit sum took 24.7 cycles branch-free against 16.0 with the
+    /// branch in Chrome. Elsewhere the flags of the carry chain feed conditional moves.
+    const BRANCHES: bool = cfg!(target_arch = "wasm32");
+
+    /// `a + b`, in constant time for `CT`.
     #[inline(always)]
-    pub(crate) fn add(a: &Limbs<M>, b: &Limbs<M>) -> Limbs<M> {
+    pub(crate) fn add<const CT: bool>(a: &Limbs<M>, b: &Limbs<M>) -> Limbs<M> {
         if Self::LIMBS == 1 {
             return Self::single(Self::add1(limb(a, 0), limb(b, 0)));
         }
         let (sum, carry) = Self::add_limbs(a, b);
+        if !CT && Self::BRANCHES {
+            // A sum at or above `p` loses `p`.
+            return if (Self::SPARE || carry == 0) && Self::below_p_vartime(&sum) {
+                sum
+            } else {
+                Self::sub_limbs(&sum, &Self::P).0
+            };
+        }
         Self::reduce_select(sum, if Self::SPARE { 0 } else { carry })
     }
 
-    /// `a - b`.
+    /// Whether the integer `value` lies below `p`, by its limbs from the top down to the first that
+    /// differs from `p`'s.
     #[inline(always)]
-    pub(crate) fn sub(a: &Limbs<M>, b: &Limbs<M>) -> Limbs<M> {
+    fn below_p_vartime(value: &Limbs<M>) -> bool {
+        let mut index = Self::LIMBS;
+        while index > 0 {
+            index -= 1;
+            let (limb, bound) = (limb(value, index), limb(&Self::P, index));
+            if limb != bound {
+                return limb < bound;
+            }
+        }
+        false
+    }
+
+    /// `a - b`, in constant time for `CT`.
+    #[inline(always)]
+    pub(crate) fn sub<const CT: bool>(a: &Limbs<M>, b: &Limbs<M>) -> Limbs<M> {
         if Self::LIMBS == 1 {
             return Self::single(Self::sub1(limb(a, 0), limb(b, 0)));
         }
         let (difference, borrow) = Self::sub_limbs(a, b);
+        if !CT && Self::BRANCHES {
+            // A difference that borrowed gains `p`.
+            return if borrow == 0 {
+                difference
+            } else {
+                Self::add_limbs(&difference, &Self::P).0
+            };
+        }
         let spread = 0u64.wrapping_sub(u64::from(borrow));
         if Self::SUB_MASKED {
             return Self::add_masked(difference, spread);
@@ -62,7 +99,7 @@ impl<M: Modulus> Shape<M> {
         if Self::LIMBS == 1 {
             return Self::single(Self::neg1(limb(a, 0)));
         }
-        Self::sub(&M::Width::ZERO, a)
+        Self::sub::<true>(&M::Width::ZERO, a)
     }
 
     /// `a * b`. Builds with debug assertions call it: inlined, it would copy every limb step

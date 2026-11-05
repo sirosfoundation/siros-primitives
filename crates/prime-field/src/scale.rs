@@ -162,7 +162,7 @@ impl<M: Modulus> Shape<M> {
             };
             Self::one_limb(sum)
         } else {
-            Self::add(acc, high)
+            Self::add::<true>(acc, high)
         }
     }
 

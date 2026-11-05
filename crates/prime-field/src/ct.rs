@@ -19,7 +19,7 @@ impl<M: Modulus> CtAdd for Fp<M> {
 
     #[inline]
     fn ct_add(self, rhs: Self) -> Self {
-        self.add_with(rhs)
+        self.add_with::<true>(rhs)
     }
 }
 
@@ -29,7 +29,7 @@ impl<M: Modulus> CtSub for Fp<M> {
 
     #[inline]
     fn ct_sub(self, rhs: Self) -> Self {
-        self.sub_with(rhs)
+        self.sub_with::<true>(rhs)
     }
 }
 
@@ -49,7 +49,7 @@ impl<M: Modulus, K: Bits> CtAdd<Uint<K>> for Fp<M> {
 
     #[inline(always)]
     fn ct_add(self, rhs: Uint<K>) -> Self {
-        self.add_with(Self::integer_with::<true>(rhs.as_limbs()))
+        self.add_with::<true>(Self::integer_with::<true>(rhs.as_limbs()))
     }
 }
 
@@ -59,7 +59,7 @@ impl<M: Modulus, K: Bits> CtSub<Uint<K>> for Fp<M> {
 
     #[inline(always)]
     fn ct_sub(self, rhs: Uint<K>) -> Self {
-        self.sub_with(Self::integer_with::<true>(rhs.as_limbs()))
+        self.sub_with::<true>(Self::integer_with::<true>(rhs.as_limbs()))
     }
 }
 

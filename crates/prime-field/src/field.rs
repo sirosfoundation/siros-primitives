@@ -181,7 +181,7 @@ impl<M: Modulus> Fp<M> {
         reason = "`Add` is implemented too; the method serves method-call syntax"
     )]
     pub fn add(self, rhs: Self) -> Self {
-        self.add_with(rhs)
+        self.add_with::<false>(rhs)
     }
 
     /// `self - rhs`.
@@ -192,7 +192,7 @@ impl<M: Modulus> Fp<M> {
         reason = "`Sub` is implemented too; the method serves method-call syntax"
     )]
     pub fn sub(self, rhs: Self) -> Self {
-        self.sub_with(rhs)
+        self.sub_with::<false>(rhs)
     }
 
     /// `-self`.
@@ -210,7 +210,7 @@ impl<M: Modulus> Fp<M> {
     #[inline]
     #[must_use]
     pub fn double(self) -> Self {
-        self.add_with(self)
+        self.add_with::<false>(self)
     }
 
     /// `self * rhs`.
@@ -281,16 +281,16 @@ impl<M: Modulus> Fp<M> {
         Self::from_limbs(Shape::<M>::square_raw(self.limbs()))
     }
 
-    /// `self + rhs`, in constant time: the default and the `ConstantTime` operation alike.
+    /// `self + rhs`, in constant time for `CT`, as [`Shape::add`] runs it.
     #[inline(always)]
-    pub(crate) fn add_with(self, rhs: Self) -> Self {
-        Self::from_limbs(Shape::<M>::add(&self.limbs, &rhs.limbs))
+    pub(crate) fn add_with<const CT: bool>(self, rhs: Self) -> Self {
+        Self::from_limbs(Shape::<M>::add::<CT>(&self.limbs, &rhs.limbs))
     }
 
-    /// `self - rhs`, in constant time: the default and the `ConstantTime` operation alike.
+    /// `self - rhs`, in constant time for `CT`, as [`Shape::sub`] runs it.
     #[inline(always)]
-    pub(crate) fn sub_with(self, rhs: Self) -> Self {
-        Self::from_limbs(Shape::<M>::sub(&self.limbs, &rhs.limbs))
+    pub(crate) fn sub_with<const CT: bool>(self, rhs: Self) -> Self {
+        Self::from_limbs(Shape::<M>::sub::<CT>(&self.limbs, &rhs.limbs))
     }
 
     /// `-self`, in constant time: the default and the `ConstantTime` operation alike.
@@ -439,7 +439,7 @@ impl<M: Modulus> Add for Fp<M> {
 
     #[inline]
     fn add(self, rhs: Self) -> Self {
-        self.add_with(rhs)
+        self.add_with::<false>(rhs)
     }
 }
 
@@ -448,7 +448,7 @@ impl<M: Modulus> Sub for Fp<M> {
 
     #[inline]
     fn sub(self, rhs: Self) -> Self {
-        self.sub_with(rhs)
+        self.sub_with::<false>(rhs)
     }
 }
 
@@ -473,14 +473,14 @@ impl<M: Modulus> Neg for Fp<M> {
 impl<M: Modulus> AddAssign for Fp<M> {
     #[inline]
     fn add_assign(&mut self, rhs: Self) {
-        *self = self.add_with(rhs);
+        *self = self.add_with::<false>(rhs);
     }
 }
 
 impl<M: Modulus> SubAssign for Fp<M> {
     #[inline]
     fn sub_assign(&mut self, rhs: Self) {
-        *self = self.sub_with(rhs);
+        *self = self.sub_with::<false>(rhs);
     }
 }
 
@@ -497,7 +497,7 @@ impl<M: Modulus, K: Bits> Add<Uint<K>> for Fp<M> {
 
     #[inline(always)]
     fn add(self, rhs: Uint<K>) -> Self {
-        self.add_with(Self::integer_with::<false>(rhs.as_limbs()))
+        self.add_with::<false>(Self::integer_with::<false>(rhs.as_limbs()))
     }
 }
 
@@ -507,7 +507,7 @@ impl<M: Modulus, K: Bits> Sub<Uint<K>> for Fp<M> {
 
     #[inline(always)]
     fn sub(self, rhs: Uint<K>) -> Self {
-        self.sub_with(Self::integer_with::<false>(rhs.as_limbs()))
+        self.sub_with::<false>(Self::integer_with::<false>(rhs.as_limbs()))
     }
 }
 
@@ -602,7 +602,7 @@ where
 impl<M: Modulus> Sum for Fp<M> {
     #[inline]
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Self::ZERO, |sum, item| sum.add_with(item))
+        iter.fold(Self::ZERO, |sum, item| sum.add_with::<false>(item))
     }
 }
 
