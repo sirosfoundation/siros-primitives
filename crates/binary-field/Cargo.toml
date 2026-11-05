@@ -16,8 +16,9 @@ rust-version.workspace = true
 default = []
 # The fastest tables, of any size: every product of the fields up to degree 8, logarithms and
 # antilogarithms from degree 9 to 16 in builds without hardware carry-less products, every square,
-# square root and inverse up to degree 16, and byte tables of the Frobenius powers of the
-# inverses from degree 17 to 128.
+# square root and inverse up to degree 16, byte tables of the Frobenius powers of the inverses
+# from degree 17 to 127, and at degree 128 the byte tables of the inverse through the subfield of
+# degree 64.
 precomputed = []
 # No lookup table: every operation computes, as `ConstantTime` does. It wins over `precomputed`.
 not-precomputed = []
