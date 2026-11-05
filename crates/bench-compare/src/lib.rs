@@ -29,7 +29,7 @@ pub use browser::{
     Browser, CHROME, CHROME_WIDE, Cpus, FIREFOX, FIREFOX_WIDE, Pref, Threads,
     run as run_in_browser, version as browser_version,
 };
-pub use count::{CPU, FEWEST_STEP_CYCLES, REPETITIONS, TARGET, main};
+pub use count::{CPU, FEWEST_STEP_CYCLES, REPETITIONS, RETRIES, TARGET, main};
 #[cfg(not(target_arch = "wasm32"))]
 pub use document::{LOAD, Layout, Operation, markdown_table, report, sentence};
 pub use error::Error;

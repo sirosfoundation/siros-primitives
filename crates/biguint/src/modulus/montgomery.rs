@@ -53,10 +53,7 @@ pub(crate) fn reduce_masked<L: ArrayLength>(
 ) {
     let above = fold::<L>(t, modulus, inverse);
     let (_, high) = split(t, L::USIZE);
-    for (slot, &limb) in out.iter_mut().zip(high) {
-        *slot = limb;
-    }
-    subtract_when_above_masked(out, modulus, above);
+    subtract_when_above_masked(out, high, modulus, above);
 }
 
 /// The rows of [`reduce`]: adds to `t` the multiples of the modulus that clear its low `k` limbs,

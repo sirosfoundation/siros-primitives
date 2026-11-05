@@ -20,7 +20,9 @@ use crate::bits::Bits;
 use crate::bits::sealed::Sealed;
 use crate::div::DiscardQuotient;
 use crate::div::ct::MaskedDivisor;
-use crate::kernel::{mask_of, select_masked};
+use crate::kernel::{
+    add_flipped_into, mask_of, select_masked, sub_into, subtract_when_above_masked,
+};
 use crate::modular::sum_mod_masked;
 use crate::mul::{full_product, truncated_product};
 use crate::nonzero::{NonZero, NonZeroUint};
@@ -44,10 +46,39 @@ pub(crate) fn bit<N: Bits>(value: &Uint<N>, index: usize) -> u64 {
     value.limbs.get(index / 64).copied().unwrap_or(0) >> (index % 64) & 1
 }
 
-/// `value mod divisor`, for a divisor of `value`'s width.
-#[inline(always)]
-fn reduce<N: Bits>(divisor: &MaskedDivisor<N::Limbs>, value: &Uint<N>) -> Uint<N> {
-    divisor.remainder::<N::Window, N>(&value.limbs, &mut DiscardQuotient)
+/// A public modulus prepared to reduce operands of its width in constant time over the operands.
+enum Reduction<'a, N: Bits> {
+    /// A modulus of at least `2^(N - 1)`: an operand below `2^N` is below twice the modulus, and
+    /// one subtraction under a mask reduces it.
+    Subtract(&'a Uint<N>),
+    /// A smaller modulus, which reduces each operand by a division.
+    Divide(MaskedDivisor<N::Limbs>),
+}
+
+impl<'a, N: Bits> Reduction<'a, N> {
+    #[inline(always)]
+    fn new(modulus: &'a NonZeroUint<N>) -> Self {
+        if bit(modulus.as_ref(), N::BITS - 1) == 1 {
+            Self::Subtract(modulus.as_ref())
+        } else {
+            Self::Divide(MaskedDivisor::new(modulus.limbs()))
+        }
+    }
+
+    /// `value mod modulus`.
+    #[inline(always)]
+    fn reduce(&self, value: &Uint<N>) -> Uint<N> {
+        match self {
+            Self::Subtract(modulus) => {
+                let mut reduced = Uint::ZERO;
+                subtract_when_above_masked(&mut reduced.limbs, &value.limbs, &modulus.limbs, 0);
+                reduced
+            }
+            Self::Divide(divisor) => {
+                divisor.remainder::<N::Window, N>(&value.limbs, &mut DiscardQuotient)
+            }
+        }
+    }
 }
 
 /// Implements a constant-time operator trait of `Uint` by its operator, which runs the same
@@ -140,8 +171,8 @@ impl<N: Bits, E: Bits> CtPow<ConstantTime<Uint<E>>> for Uint<N> {
 impl<N: Bits> CtAddMod<NonZeroUint<N>> for Uint<N> {
     #[inline(always)]
     fn ct_add_mod(self, rhs: Self, modulus: NonZeroUint<N>) -> Self {
-        let divisor = MaskedDivisor::new(modulus.limbs());
-        let (a, b) = (reduce(&divisor, &self), reduce(&divisor, &rhs));
+        let reduction = Reduction::new(&modulus);
+        let (a, b) = (reduction.reduce(&self), reduction.reduce(&rhs));
         sum_mod_masked(&a, b.source(), modulus.as_ref())
     }
 }
@@ -150,17 +181,43 @@ impl<N: Bits> CtAddMod<NonZeroUint<N>> for Uint<N> {
 impl<N: Bits> CtSubMod<NonZeroUint<N>> for Uint<N> {
     #[inline(always)]
     fn ct_sub_mod(self, rhs: Self, modulus: NonZeroUint<N>) -> Self {
-        let divisor = MaskedDivisor::new(modulus.limbs());
-        let (a, b) = (reduce(&divisor, &self), reduce(&divisor, &rhs));
-        sum_mod_masked(&a, TwosComplement(b.source()), modulus.as_ref())
+        let reduction = Reduction::new(&modulus);
+        let b = reduction.reduce(&rhs);
+        match reduction {
+            Reduction::Subtract(modulus) => difference_mod_masked(&self, &b, modulus),
+            Reduction::Divide(_) => sum_mod_masked(
+                &reduction.reduce(&self),
+                TwosComplement(b.source()),
+                modulus.as_ref(),
+            ),
+        }
     }
+}
+
+/// `(a - b) mod modulus` under masks, for `a` below twice the modulus and `b` below it: the
+/// difference `d` lies between `-modulus` and `2 * modulus`. A borrow puts `d` below zero, where
+/// `d + modulus` is the result; without one, `d - modulus` is the result when `d >= modulus`. Each
+/// correction carries out of the top limb exactly when it is the result.
+#[inline(always)]
+fn difference_mod_masked<N: Bits>(a: &Uint<N>, b: &Uint<N>, modulus: &Uint<N>) -> Uint<N> {
+    let mut difference = Uint::<N>::ZERO;
+    let borrow = sub_into(&mut difference.limbs, &a.limbs, &b.limbs);
+    let mut corrected = Uint::<N>::ZERO;
+    let carry = add_flipped_into(
+        &mut corrected.limbs,
+        &difference.limbs,
+        &modulus.limbs,
+        mask_of(borrow ^ 1),
+    );
+    select_masked(&mut difference.limbs, &corrected.limbs, mask_of(carry));
+    difference
 }
 
 /// `-self mod modulus`, for an operand of any value.
 impl<N: Bits> CtNegMod<NonZeroUint<N>> for Uint<N> {
     #[inline(always)]
     fn ct_neg_mod(self, modulus: NonZeroUint<N>) -> Self {
-        let a = reduce(&MaskedDivisor::new(modulus.limbs()), &self);
+        let a = Reduction::new(&modulus).reduce(&self);
         sum_mod_masked(&Self::ZERO, TwosComplement(a.source()), modulus.as_ref())
     }
 }

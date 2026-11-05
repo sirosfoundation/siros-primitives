@@ -21,7 +21,7 @@
 - Each cell: throughput / latency, in user-mode cycles per operation.
 - Throughput: independent operations on fresh operands.
 - Latency: the chain `x = op(x, y)`, with `x` in registers or in memory, whichever is faster.
-- Each figure: over 31 repetitions, the fewest cycles of 2n operations less the fewest of n, over n.
+- Each figure: over 31 repetitions, the fewest cycles of 2n operations less the fewest of n, over n. A case whose 2n runs counted no more than its n runs, or whose chain step counted under 0.75 cycles, ran 31 more, up to 3 times.
 - A sweep ran at a 1-minute load of 2 or more: compare figures within a table only.
 - Every field in the polynomial basis of its modulus: GF(2⁸) of AES, GF(2¹²⁸) of GCM, GF(2²³³) and GF(2⁵⁷¹) of NIST B-233 and B-571.
 - Every result matches a bit-serial reference before it is measured.

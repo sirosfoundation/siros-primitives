@@ -226,8 +226,9 @@ pub(crate) fn add_unless_carry(part: &mut [u64], addend: &[u64], carry: u64) {
         }
         return;
     }
-    // All ones without the carry.
-    let mask = mask_below(carry, 1);
+    // All ones without the carry, which is zero or one; the negation folds with a carry that is
+    // a negated borrow into one subtract-with-borrow.
+    let mask = 0u64.wrapping_sub(carry ^ 1);
     let mut addend = ZeroExtended::new(addend).pull();
     let mut carry = 0;
     for_each_slot(part, |slot| {
@@ -419,19 +420,46 @@ pub(crate) fn select_masked(out: &mut [u64], a: &[u64], mask: u64) {
     }
 }
 
-/// [`subtract_when_above_in_place`] under masks at every length: subtracts `divisor` from `part`
-/// when `carry` is set or `part >= divisor`. The subtraction always runs, and the divisor is added
-/// back under a mask when it borrowed without a carry.
+/// The most limbs of a correction under masks that adds the correction back under a mask. LLVM
+/// unrolls the chains up to this length; there the add-back costs two instructions a limb, and a
+/// select would gather the scalar limbs into vector lanes one by one. Longer corrections run in
+/// loops: the corrected value goes to memory, and the select of every limb vectorizes.
+pub(crate) const ADD_BACK_LIMBS: usize = 32;
+
+/// [`subtract_when_above`] under masks at every length: writes `part - divisor` to `out` when
+/// `carry` is set or `part >= divisor`, `part` otherwise. Up to [`ADD_BACK_LIMBS`] limbs, `out`
+/// takes `part`, the subtraction always runs, and the divisor is added back under a mask when it
+/// borrowed without a carry; longer, `out` takes the difference and then `part` under that mask.
 #[inline(always)]
-pub(crate) fn subtract_when_above_masked(part: &mut [u64], divisor: &[u64], carry: u64) {
-    let borrow = sub_assign(part, divisor);
-    fits(add_masked(part, divisor, mask_of(borrow & !carry & 1)));
+pub(crate) fn subtract_when_above_masked(
+    out: &mut [u64],
+    part: &[u64],
+    divisor: &[u64],
+    carry: u64,
+) {
+    if out.len() <= ADD_BACK_LIMBS {
+        copy(out, part);
+        let borrow = sub_assign(out, divisor);
+        fits(add_masked(out, divisor, mask_of(borrow & !carry & 1)));
+    } else {
+        let borrow = sub_into(out, part, divisor);
+        select_masked(out, part, mask_of(borrow & !carry & 1));
+    }
 }
 
-/// [`add_unless_carry`] under a mask at every length.
+/// [`add_unless_carry`] under a mask at every length: writes `part + addend mod 2^(64 * k)` to
+/// `out` when `carry` is zero, `part` otherwise. `out` sets `k`. Up to [`ADD_BACK_LIMBS`] limbs,
+/// `out` takes `part` and the addend under the mask; longer, the sum and then `part` under the
+/// opposite mask.
 #[inline(always)]
-pub(crate) fn add_unless_carry_masked(part: &mut [u64], addend: &[u64], carry: u64) {
-    fits(add_masked(part, addend, mask_of(carry ^ 1)));
+pub(crate) fn add_unless_carry_masked(out: &mut [u64], part: &[u64], addend: &[u64], carry: u64) {
+    if out.len() <= ADD_BACK_LIMBS {
+        copy(out, part);
+        fits(add_masked(out, addend, mask_of(carry ^ 1)));
+    } else {
+        fits(add_to(out, part, addend));
+        select_masked(out, part, mask_of(carry & 1));
+    }
 }
 
 /// Writes `-out mod 2^(64 * out.len())` over `out` where `mask` is all ones, and keeps `out` where
@@ -453,6 +481,19 @@ pub(crate) fn add_flipped(out: &mut [u64], b: &[u64], flip: u64) -> u64 {
     let mut carry = flip & 1;
     for_each_slot(out, |slot| {
         (*slot, carry) = slot.add_carry(source.next_limb() ^ flip, carry);
+    });
+    carry
+}
+
+/// Writes `a + (b ^ flip)` plus the low bit of `flip` to `out`, `a` and `b` zero-extended to its
+/// length, and returns the carry out of the top limb: `a + b` for a zero `flip`, `a - b` modulo
+/// `2^(64 * out.len())` for all ones.
+#[inline(always)]
+pub(crate) fn add_flipped_into(out: &mut [u64], a: &[u64], b: &[u64], flip: u64) -> u64 {
+    let (mut a, mut b) = (ZeroExtended::new(a).pull(), ZeroExtended::new(b).pull());
+    let mut carry = flip & 1;
+    for_each_slot(out, |slot| {
+        (*slot, carry) = a.next_limb().add_carry(b.next_limb() ^ flip, carry);
     });
     carry
 }
