@@ -112,6 +112,9 @@ cargo run --release -p bench-compare --bin bench-browser -- \
 
 ## WebAssembly
 
+- `WASM` holds eight builds: the default target features, `+wide-arithmetic`, `+simd128`, and
+  both, each in Chrome and in Firefox. Both browsers run SIMD by default; the builds with wide
+  arithmetic turn it on in the browser.
 - The driver starts the browser headless with a fresh profile and serves the page, the module and
   the workers. The page runs the module in a dedicated worker, which the driver finds by its CPU
   time while it spins, pins to the measuring CPU and counts with perf_event. The rest of the

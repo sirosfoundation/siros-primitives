@@ -887,18 +887,20 @@ fn results<K: Key>(
 /// The two parts of a cell, by name.
 const PARTS: [(usize, &str); 2] = [(0, "throughput"), (1, "latency")];
 
-/// The heading of the column of a WebAssembly build: its browser, and whether it has wide
+/// The heading of the column of a WebAssembly build: its browser, and whether it has SIMD and wide
 /// arithmetic.
 fn browser_column<K>(build: &Measurement<K>) -> String {
-    let browser = build
+    let mut column = build
         .browser
         .as_ref()
-        .map_or(build.name.as_str(), |engine| engine.name.as_str());
-    if build.rustflags.contains("+wide-arithmetic") {
-        format!("{browser}, wide arithmetic")
-    } else {
-        browser.to_owned()
+        .map_or(build.name.clone(), |engine| engine.name.clone());
+    if build.rustflags.contains("simd128") {
+        column += ", SIMD";
     }
+    if build.rustflags.contains("wide-arithmetic") {
+        column += ", wide arithmetic";
+    }
+    column
 }
 
 /// The figure of `part` of `library` on the row `key` of `operation`, as the tables show it.

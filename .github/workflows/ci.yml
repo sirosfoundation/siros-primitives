@@ -104,11 +104,17 @@ jobs:
         env:
           RUSTFLAGS: -C target-feature=+aes
       # The WebAssembly benches that `bench-wasm` runs in browsers, with and without wide
-      # arithmetic.
-      - run: cargo clippy --locked --target wasm32-unknown-unknown -p bench-compare -p biguint -p prime-field -p binary-field --benches --examples --all-features -- -D warnings
-      - run: cargo clippy --locked --target wasm32-unknown-unknown -p bench-compare -p biguint -p prime-field -p binary-field --benches --examples --all-features -- -D warnings
+      # arithmetic and SIMD.
+      - run: cargo clippy --locked --target wasm32-unknown-unknown -p bench-compare -p biguint -p prime-field -p clmul -p binary-field --benches --examples --all-features -- -D warnings
+      - run: cargo clippy --locked --target wasm32-unknown-unknown -p bench-compare -p biguint -p prime-field -p clmul -p binary-field --benches --examples --all-features -- -D warnings
         env:
           RUSTFLAGS: -C target-feature=+wide-arithmetic
+      - run: cargo clippy --locked --target wasm32-unknown-unknown -p bench-compare -p biguint -p prime-field -p clmul -p binary-field --benches --examples --all-features -- -D warnings
+        env:
+          RUSTFLAGS: -C target-feature=+simd128
+      - run: cargo clippy --locked --target wasm32-unknown-unknown -p bench-compare -p biguint -p prime-field -p clmul -p binary-field --benches --examples --all-features -- -D warnings
+        env:
+          RUSTFLAGS: -C target-feature=+simd128,+wide-arithmetic
 
   docs:
     name: Docs
