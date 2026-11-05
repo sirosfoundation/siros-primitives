@@ -3,7 +3,7 @@
 //! the sum below the modulus.
 
 use crate::bits::Bits;
-use crate::div::{DiscardQuotient, Top, divide_preparing};
+use crate::div::{DiscardQuotient, Top, divide, divide_preparing};
 use crate::kernel::{
     add_assign, add_unless_carry, add_unless_carry_masked, compare, fits, reduced, sub_assign,
     subtract_when_above_in_place, subtract_when_above_masked,
@@ -219,8 +219,27 @@ pub(crate) fn sum_mod_masked<N: Bits, B: Addend>(
 #[cfg_attr(target_arch = "wasm32", inline(never))]
 #[cfg_attr(not(target_arch = "wasm32"), inline(always))]
 fn remainder<N: Bits>(value: Uint<N>, modulus: NonZeroUint<N>) -> Uint<N> {
+    if const { apart::<N>() } {
+        return remainder_apart(&value, &modulus);
+    }
     if cfg!(not(target_arch = "wasm32")) {
         rare_call();
     }
     divide_preparing::<N::Window, N>(&value.limbs, modulus, Top::Any, &mut DiscardQuotient)
+}
+
+/// Whether the [`remainder`] of `N` bits is a call of its own, natively: at 6 limbs and from 32.
+/// Inlined, the division shares the frame of the sum, and the sum's path spills to the slots that
+/// the division leaves it. At 384 and 2048 bits the call took the sums 2 to 12 fewer cycles; at 512
+/// and 1024 bits the sums took 1 to 3 more, though they ran fewer instructions.
+/// Tested in a `const` block, it leaves the other arm out of the code of each length.
+const fn apart<N: Bits>() -> bool {
+    cfg!(not(target_arch = "wasm32")) && (N::LIMBS == 6 || N::LIMBS >= 32)
+}
+
+/// [`remainder`] in a frame of its own.
+#[cold]
+#[inline(never)]
+fn remainder_apart<N: Bits>(value: &Uint<N>, modulus: &NonZeroUint<N>) -> Uint<N> {
+    divide::<N::Window, N>(&value.limbs, *modulus, Top::Any, &mut DiscardQuotient)
 }

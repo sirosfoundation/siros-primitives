@@ -222,9 +222,9 @@ impl<'id, N: Bits> Ring<'id, N> {
                 for (slot, &limb) in t.iter_mut().zip(&value.limbs) {
                     *slot = limb;
                 }
-                let mut out = Uint::<N>::ZERO;
-                montgomery::reduce(&mut out.limbs, &mut t, &self.modulus.value.limbs, *inverse);
-                out
+                Uint {
+                    limbs: montgomery::reduce(&mut t, &self.modulus.value.limbs, *inverse),
+                }
             }
             Form::Plain | Form::Barrett(_) => value,
         }
@@ -275,11 +275,9 @@ impl<'id, N: Bits> Ring<'id, N> {
     #[inline(always)]
     fn reduce_product(self, t: &mut GenericArray<u64, N::ProductWindow>) -> Uint<N> {
         match &self.modulus.form {
-            Form::Montgomery { inverse, .. } => {
-                let mut out = Uint::<N>::ZERO;
-                montgomery::reduce(&mut out.limbs, t, &self.modulus.value.limbs, *inverse);
-                out
-            }
+            Form::Montgomery { inverse, .. } => Uint {
+                limbs: montgomery::reduce(t, &self.modulus.value.limbs, *inverse),
+            },
             Form::Plain => {
                 let (product, _) = split_mut(t, 2 * N::LIMBS);
                 self.modulus.divisor.remainder::<N::ProductWindow, N>(

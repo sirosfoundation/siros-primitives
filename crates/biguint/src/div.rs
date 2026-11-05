@@ -431,7 +431,7 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
             && let Some((_, upper)) = part.split_first_mut()
             && upper.len() >= L::USIZE
         {
-            divide_by_limbs::<true>(upper, normalized.as_slice(), leading, &mut Above(quotient));
+            divide_counted(upper, normalized.as_slice(), leading, &mut Above(quotient));
             return lowest_quotient_limb::<L, M>(&window, normalized, shift, leading, quotient);
         }
         if len == L::USIZE {
@@ -496,6 +496,32 @@ fn lowest_quotient_limb<L: ArrayLength, M: Bits>(
         shr_bits_into(&mut remainder, &reduced, shift);
     }
     Uint::from_generic_limbs(remainder)
+}
+
+/// [`divide_by_limbs`] of a window whose length the compiler knows, by a divisor of a length it
+/// knows: a loop of a counted range, which the compiler unrolls, keeps the divisor in registers
+/// beside the step that [`lowest_quotient_limb`] runs after it.
+#[inline(always)]
+fn divide_counted(
+    window: &mut [u64],
+    divisor: &[u64],
+    leading: Reciprocal3By2,
+    quotient: &mut (impl QuotientSink + ?Sized),
+) {
+    let mut end = window.len();
+    // Below a zero top limb the top quotient limb is `0` or `1`.
+    if window.last() == Some(&0)
+        && let Some(index) = end.checked_sub(divisor.len() + 1)
+        && let Some(part) = window.get_mut(index..end - 1)
+    {
+        quotient.put(index, u64::from(subtract_if_above(part, divisor)));
+        end -= 1;
+    }
+    for index in (0..end.saturating_sub(divisor.len())).rev() {
+        if let Some(part) = window.get_mut(index..index + divisor.len() + 1) {
+            quotient.put(index, quotient_limb::<true>(part, divisor, leading));
+        }
+    }
 }
 
 /// The quotient limbs of a division of the window above its lowest limb, at their indices in the

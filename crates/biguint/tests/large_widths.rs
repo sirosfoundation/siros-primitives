@@ -236,3 +236,31 @@ fn scans_past_sixty_four_limbs_find_the_set_bit() {
         (max >> 6500usize, max & (power - U::ONE))
     );
 }
+
+/// `(a + b) mod m` and `(a - b) mod m` of operands at and above the modulus, whose reduction from
+/// 32 limbs is a call of its own.
+#[test]
+fn modular_sums_of_unreduced_operands_match_reference() {
+    let operands = operand_samples::<U2048>(10);
+    for modulus in samples::<U2048>(11) {
+        let Some(divisor) = NonZeroUint::new(modulus) else {
+            continue;
+        };
+        let m = wide(modulus);
+        for &a in &operands {
+            for &b in &operands {
+                let (ra, rb) = (wide(a).reduce_mod(m), wide(b).reduce_mod(m));
+                assert_eq!(
+                    wide(a.add_mod(b, divisor)),
+                    ra.add_mod(rb, m),
+                    "{a:?} + {b:?}"
+                );
+                assert_eq!(
+                    wide(a.sub_mod(b, divisor)),
+                    ra.add_mod(m - rb, m),
+                    "{a:?} - {b:?}"
+                );
+            }
+        }
+    }
+}

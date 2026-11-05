@@ -24,22 +24,26 @@ pub(crate) const fn negated_inverse(low: u64) -> u64 {
     inverse.wrapping_neg()
 }
 
-/// Writes `t * R^-1 mod m` to `out`, `k = m.len()` limbs, for `t < m * R` in the low `2k` limbs of
-/// `t`, which the reduction overwrites. `inverse` is `-m^-1 mod 2^64`.
+/// `t * R^-1 mod m` in `k = m.len()` limbs, for `t < m * R` in the low `2k` limbs of `t`, which the
+/// reduction overwrites. `inverse` is `-m^-1 mod 2^64`.
 ///
-/// A call at the widths where its copy is large.
-#[inline]
+/// Natively it inlines into the product, the square and the value of a residue, which return its
+/// limbs: as a call, it wrote them to a copy that the caller read back with vector loads, which
+/// waited for its scalar stores to retire.
+#[cfg_attr(target_arch = "wasm32", inline)]
+#[cfg_attr(not(target_arch = "wasm32"), inline(always))]
 pub(crate) fn reduce<L: ArrayLength>(
-    out: &mut [u64],
     t: &mut [u64],
     modulus: &GenericArray<u64, L>,
     inverse: u64,
-) {
+) -> GenericArray<u64, L> {
+    let mut out = GenericArray::default();
     let above = fold::<L>(t, modulus, inverse);
     let (_, high) = split(t, L::USIZE);
     // Below `2m`, one subtraction at most brings the value below `m`. A carry out of the top limb
     // places it at or above `2^(64 * k)`, above `m`; the borrow cancels the carry.
-    reduced(subtract_when_above(out, high, modulus, above));
+    reduced(subtract_when_above(&mut out, high, modulus, above));
+    out
 }
 
 /// [`reduce`] with its final subtraction under masks at every length: no branch and no memory
