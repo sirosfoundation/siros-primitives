@@ -19,8 +19,11 @@
 //! thread: a one-`add` chain step took 1 cycle while the sibling idled and 2 while it ran, and a
 //! median of paired differences fell to 0.06 cycles where the two runs of a pair met different
 //! siblings. The latency of a case is its chain with the fewest cycles. A case
-//! whose `2n` runs count no more cycles than its `n` runs stops the sweep, and so does a chain
-//! step under [`FEWEST_STEP_CYCLES`]. A WebAssembly bench sizes and repeats its runs by its own
+//! whose `2n` runs count no more cycles than its `n` runs, or whose chain step counts fewer cycles
+//! than [`FEWEST_STEP_CYCLES`], runs [`REPETITIONS`] more repetitions, up to [`RETRIES`] times: a
+//! disturbance that hits every short run inflates the fewest of the short runs alone, and more
+//! repetitions give the short runs more chances to run undisturbed. A case that stays so stops the
+//! sweep. A WebAssembly bench sizes and repeats its runs by its own
 //! [`Protocol`].
 
 use std::mem::size_of;
@@ -42,6 +45,9 @@ use crate::suite::{
 
 /// The counted repetitions of every case.
 pub const REPETITIONS: usize = 31;
+
+/// The rounds of [`REPETITIONS`] more repetitions that a case with an implausible figure runs.
+pub const RETRIES: usize = 3;
 
 /// The cycles that a native short run takes at least, unless its operations reach their cap.
 pub const TARGET: u64 = 1 << 20;
@@ -242,7 +248,10 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
     crate::counters::pin(cpu)?;
     let mut counters = Counters::open()?;
     let window = crate::window::Window::open(cpu)?;
-    let mut lines = cells::<S>(&mut counters, None)?;
+    let mut lines = match cells::<S>(&mut counters, None) {
+        Ok(lines) => lines,
+        Err(error) => return Err(error.at_load(crate::window::load()?)),
+    };
     let line = Line::<S::Key>::Sweep(window.close()?);
     lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
     Ok(lines)
@@ -259,18 +268,34 @@ fn cells<S: Suite>(counters: &mut Counters, noise: Option<f64>) -> Result<Vec<St
         rng: Rng(SEED),
         cells: Vec::new(),
         cases: Vec::new(),
+        settled: Vec::new(),
         next: 0,
         error: None,
     };
-    for pass in 0..=REPETITIONS {
-        measuring = visit::<S, _>(Measuring {
-            pass,
-            next: 0,
-            ..measuring
-        });
-        if let Some(error) = measuring.error.take() {
-            return Err(error);
+    let mut passes = 0..=REPETITIONS;
+    let mut retries = 0;
+    loop {
+        for pass in passes {
+            measuring = visit::<S, _>(Measuring {
+                pass,
+                next: 0,
+                ..measuring
+            });
+            if let Some(error) = measuring.error.take() {
+                return Err(error);
+            }
         }
+        let settled: Vec<bool> = measuring
+            .cases
+            .iter()
+            .map(|case| case.settled(noise))
+            .collect();
+        if retries == RETRIES || settled.iter().all(|settled| *settled) {
+            break;
+        }
+        retries += 1;
+        measuring.settled = settled;
+        passes = retries * REPETITIONS + 1..=(retries + 1) * REPETITIONS;
     }
     let Measuring { cells, cases, .. } = measuring;
     let mut lines = Vec::with_capacity(cells.len() + 1);
@@ -410,6 +435,18 @@ struct Case {
 }
 
 impl Case {
+    /// Whether every form of the case has a plausible figure: its long runs count more cycles
+    /// than its short runs, and each chain step at least [`FEWEST_STEP_CYCLES`].
+    fn settled(&self, noise: Option<f64>) -> bool {
+        self.batch.events(&self.id, noise).is_ok()
+            && self.chains.iter().all(|chain| {
+                chain
+                    .form
+                    .events(&self.id, noise)
+                    .is_ok_and(|events| events.cycles >= FEWEST_STEP_CYCLES)
+            })
+    }
+
     /// The cell of the case, which runs `function`: its latency is its chain form with the fewest
     /// cycles per step. A chain step under [`FEWEST_STEP_CYCLES`], in any form, is an
     /// [`Error::Reassociated`].
@@ -424,6 +461,8 @@ impl Case {
                     return Err(Error::Reassociated {
                         case: name,
                         cycles: events.cycles,
+                        repetitions: chain.form.repetitions.len(),
+                        load: None,
                     });
                 }
                 Ok(Latency {
@@ -453,6 +492,8 @@ struct Measuring<'a, O, K> {
     /// Every cell of the comparison, in the order of [`visit`], noted by pass 0.
     cells: Vec<(CaseId<O, K>, Call)>,
     cases: Vec<Case>,
+    /// Per case, whether the passes past the first [`REPETITIONS`] skip it; empty before them.
+    settled: Vec<bool>,
     /// The case that the pass visits next.
     next: usize,
     /// The first failure of the pass, which ends it.
@@ -593,6 +634,11 @@ impl<O, K> Measuring<'_, O, K> {
         }
     }
 
+    /// Whether this pass skips the case `index`: a retry, for a case whose figures are plausible.
+    fn skips(&self, index: usize) -> bool {
+        self.settled.get(index).copied().unwrap_or(false)
+    }
+
     /// Keeps the first failure.
     fn fail(self, result: Result<(), Error>) -> Self {
         match result {
@@ -617,6 +663,9 @@ impl<O, K> Measuring<'_, O, K> {
             return Ok(());
         }
         let index = self.case(&id)?;
+        if self.skips(index) {
+            return Ok(());
+        }
         let run = self.cases[index].batch.run;
         let counts = self.repetition(trial, run, &id)?;
         self.cases[index].batch.repetitions.push(counts);
@@ -647,6 +696,9 @@ impl<O, K> Measuring<'_, O, K> {
         if self.pass == 0 {
             let form = self.size(trial, cap, id)?;
             self.cases[index].chains.push(ChainForm { class, form });
+            return Ok(());
+        }
+        if self.skips(index) {
             return Ok(());
         }
         let missing = || Error::missing(&format!("chain in {class}"), id);

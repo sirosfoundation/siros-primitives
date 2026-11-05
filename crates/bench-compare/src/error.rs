@@ -199,20 +199,48 @@ pub enum Error {
         feature: String,
     },
     /// A chain step counted fewer cycles than
-    /// [`FEWEST_STEP_CYCLES`](crate::FEWEST_STEP_CYCLES): the compiler regrouped the chain.
+    /// [`FEWEST_STEP_CYCLES`](crate::FEWEST_STEP_CYCLES) over every repetition of its case: the
+    /// compiler regrouped the chain, or a disturbance hit every short run and spared a long one.
     #[error(
-        "{case}: {cycles:.2} cycles per chain step, under {}: the compiler regrouped the chain",
-        crate::count::FEWEST_STEP_CYCLES
+        "{case}: {cycles:.2} cycles per chain step over {repetitions} repetitions, under {}{}: the \
+         compiler regrouped the chain, or a disturbance hit every short run and spared a long one",
+        crate::count::FEWEST_STEP_CYCLES,
+        load.map_or_else(String::new, |load| format!(", at a 1-minute load of {load}"))
     )]
     Reassociated {
         /// The case and its form.
         case: String,
         /// The cycles per step.
         cycles: f64,
+        /// The repetitions of the case.
+        repetitions: usize,
+        /// The 1-minute load at the stop, where the bench reads it.
+        load: Option<f64>,
     },
 }
 
 impl Error {
+    /// The error with the 1-minute load `load` at the stop, for the errors that name it.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn at_load(self, load: f64) -> Self {
+        if let Self::Reassociated {
+            case,
+            cycles,
+            repetitions,
+            ..
+        } = self
+        {
+            Self::Reassociated {
+                case,
+                cycles,
+                repetitions,
+                load: Some(load),
+            }
+        } else {
+            self
+        }
+    }
+
     pub(crate) fn io(path: &Path, source: io::Error) -> Self {
         Self::Io {
             path: path.to_path_buf(),

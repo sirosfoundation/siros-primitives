@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::fs;
 
-use crate::count::REPETITIONS;
+use crate::count::{FEWEST_STEP_CYCLES, REPETITIONS, RETRIES};
 use crate::error::Error;
 use crate::record::{Cell, Count, Key, Measurement, Outcome, Record, Sweep};
 use crate::run::Paths;
@@ -613,7 +613,9 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
             .to_owned(),
         format!(
             "- Each figure: over {REPETITIONS} repetitions, the fewest cycles of 2n operations \
-             less the fewest of n, over n."
+             less the fewest of n, over n. A case whose 2n runs counted no more than its n runs, \
+             or whose chain step counted under {FEWEST_STEP_CYCLES} cycles, ran {REPETITIONS} \
+             more, up to {RETRIES} times."
         ),
     ];
     if record.builds.iter().any(|build| loaded(&build.sweep)) {
