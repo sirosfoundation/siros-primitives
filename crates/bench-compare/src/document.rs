@@ -80,6 +80,8 @@ pub struct Layout<'a, K> {
     pub bits: fn(&K) -> u32,
     /// Facts of the `Method` section that reading the figures needs, one short line each.
     pub method: &'a [&'a str],
+    /// The name of the native build that the WebAssembly figures compare with.
+    pub wasm_native: &'a str,
 }
 
 /// Writes the document from `record` and from `wasm`, the record of the WebAssembly builds when
@@ -120,10 +122,18 @@ pub fn report<K: Key>(
         lines.extend(results(layout, table, build));
     }
     if let Some(wasm) = wasm {
+        let (_, reference) = native
+            .iter()
+            .find(|(build, _)| build.name == layout.wasm_native)
+            .ok_or_else(|| {
+                Error::missing(
+                    &format!("the native build `{}`", layout.wasm_native),
+                    "the run record",
+                )
+            })?;
         lines.extend(webassembly(wasm, layout, first));
-        for (build, table) in browsers {
-            lines.extend(results(layout, table, build));
-        }
+        lines.extend(against_competitors(layout, browsers));
+        lines.extend(against_native(layout, reference, browsers));
     }
     lines.extend(reproduce(layout.tool, wasm.is_some()));
     let path = paths.library.join("BENCHMARKS.md");
@@ -869,6 +879,208 @@ fn results<K: Key>(
             &("l".to_owned() + &"r".repeat(crates.len())),
         ));
         lines.extend(deviations(layout, &starred));
+    }
+    lines.push(String::new());
+    lines
+}
+
+/// The two parts of a cell, by name.
+const PARTS: [(usize, &str); 2] = [(0, "throughput"), (1, "latency")];
+
+/// The heading of the column of a WebAssembly build: its browser, and whether it has wide
+/// arithmetic.
+fn browser_column<K>(build: &Measurement<K>) -> String {
+    let browser = build
+        .browser
+        .as_ref()
+        .map_or(build.name.as_str(), |engine| engine.name.as_str());
+    if build.rustflags.contains("+wide-arithmetic") {
+        format!("{browser}, wide arithmetic")
+    } else {
+        browser.to_owned()
+    }
+}
+
+/// The figure of `part` of `library` on the row `key` of `operation`, as the tables show it.
+fn shown_part<K: Key>(
+    table: &Table<'_, K>,
+    operation: &Operation<'_>,
+    key: &K,
+    library: &str,
+    part: usize,
+) -> Option<f64> {
+    table
+        .figure(operation, key, library)
+        .and_then(|figure| parts(figure.count)[part])
+        .map(shown)
+}
+
+/// The fewest figure of `part` on the row `key` of `operation` among the other crates whose
+/// functions keep the row's definition, with its crate; the first of a tie.
+fn best_competitor<'a, K: Key>(
+    layout: &Layout<'_, K>,
+    table: &Table<'a, K>,
+    operation: &Operation<'_>,
+    key: &K,
+    part: usize,
+) -> Option<(f64, &'a str)> {
+    table
+        .crates
+        .iter()
+        .filter(|library| !library.starts_with(layout.subject))
+        .filter_map(|&library| {
+            let figure = table.figure(operation, key, library)?;
+            let number = parts(figure.count)[part]?;
+            figure
+                .count
+                .deviation
+                .is_none()
+                .then_some((shown(number), library))
+        })
+        .reduce(|best, next| if next.0 < best.0 { next } else { best })
+}
+
+/// The operations and rows of the WebAssembly tables of `part`: those where the subject has a
+/// figure of `part` in the first build.
+fn subject_rows<'t, K: Key>(
+    layout: &Layout<'_, K>,
+    table: &'t Table<'_, K>,
+    part: usize,
+) -> Vec<(Operation<'t>, &'t K)> {
+    table
+        .ops
+        .iter()
+        .flat_map(|operation| table.keys.iter().map(move |key| (*operation, key)))
+        .filter(|(operation, key)| {
+            shown_part(table, operation, key, layout.subject, part).is_some()
+        })
+        .collect()
+}
+
+/// `ours − best` with its sign, and `ours ÷ best`.
+fn difference(ours: f64, best: f64) -> String {
+    let delta = ours - best;
+    let sign = if delta < 0.0 { "−" } else { "+" };
+    format!("{sign}{} ({:.2}×)", value(delta.abs()), ours / best)
+}
+
+/// The tables of the WebAssembly builds against the best competitor, throughput then latency:
+/// per operation and row, each build's figure of the subject against the fewest figure of the
+/// crates that keep the row's definition.
+fn against_competitors<K: Key>(
+    layout: &Layout<'_, K>,
+    browsers: &[(&Measurement<K>, Table<'_, K>)],
+) -> Vec<String> {
+    let Some((_, first)) = browsers.first() else {
+        return Vec::new();
+    };
+    let mut lines = Vec::new();
+    for (part, name) in PARTS {
+        let mut header = vec!["Operation".to_owned(), layout.row_header.to_owned()];
+        for (build, _) in browsers {
+            header.extend([browser_column(build), "Δ".to_owned()]);
+        }
+        let rows: Vec<Vec<String>> = subject_rows(layout, first, part)
+            .into_iter()
+            .map(|(operation, key)| {
+                let mut row = vec![operation.title(), key.to_string()];
+                for (_, table) in browsers {
+                    let ours = shown_part(table, &operation, key, layout.subject, part);
+                    match (ours, best_competitor(layout, table, &operation, key, part)) {
+                        (Some(ours), Some((best, library))) => row.extend([
+                            format!("{} vs {library} {}", value(ours), value(best)),
+                            difference(ours, best),
+                        ]),
+                        (Some(ours), None) => row.extend([value(ours), "–".to_owned()]),
+                        (None, _) => row.extend(["–".to_owned(), "–".to_owned()]),
+                    }
+                }
+                row
+            })
+            .collect();
+        lines.extend([
+            String::new(),
+            format!("### Against the best competitor, {name}"),
+            String::new(),
+            format!(
+                "Cycles per operation of `{}` against the fewest of the crates whose functions \
+                 keep the row's definition. Δ: ours − best, then ours ÷ best; below 1 we lead.",
+                layout.subject
+            ),
+            String::new(),
+        ]);
+        lines.extend(markdown_table(
+            &header,
+            &rows,
+            &("ll".to_owned() + &"lr".repeat(browsers.len())),
+        ));
+    }
+    lines
+}
+
+/// The tables of the WebAssembly builds against the native build `reference`, throughput then
+/// latency: per operation and row, the subject's figure in each build and its ratio to the
+/// native figure.
+fn against_native<K: Key>(
+    layout: &Layout<'_, K>,
+    reference: &Table<'_, K>,
+    browsers: &[(&Measurement<K>, Table<'_, K>)],
+) -> Vec<String> {
+    let Some((_, first)) = browsers.first() else {
+        return Vec::new();
+    };
+    let native_column = if layout.wasm_native.is_empty() {
+        "Native".to_owned()
+    } else {
+        format!("Native, {}", layout.wasm_native)
+    };
+    let mut lines = Vec::new();
+    for (part, name) in PARTS {
+        let mut header = vec![
+            "Operation".to_owned(),
+            layout.row_header.to_owned(),
+            native_column.clone(),
+        ];
+        header.extend(browsers.iter().map(|(build, _)| browser_column(build)));
+        let rows: Vec<Vec<String>> = subject_rows(layout, first, part)
+            .into_iter()
+            .map(|(operation, key)| {
+                let native = shown_part(reference, &operation, key, layout.subject, part);
+                let mut row = vec![
+                    operation.title(),
+                    key.to_string(),
+                    native.map_or("–".to_owned(), value),
+                ];
+                row.extend(browsers.iter().map(|(_, table)| {
+                    match (
+                        shown_part(table, &operation, key, layout.subject, part),
+                        native,
+                    ) {
+                        (Some(ours), Some(native)) => {
+                            format!("{} ({:.1}×)", value(ours), ours / native)
+                        }
+                        (Some(ours), None) => value(ours),
+                        (None, _) => "–".to_owned(),
+                    }
+                }));
+                row
+            })
+            .collect();
+        lines.extend([
+            String::new(),
+            format!("### Against native, {name}"),
+            String::new(),
+            format!(
+                "Cycles per operation of `{}` in each build, then its ratio to the native figure.",
+                layout.subject
+            ),
+            String::new(),
+        ]);
+        lines.extend(markdown_table(
+            &header,
+            &rows,
+            &("llr".to_owned() + &"r".repeat(browsers.len())),
+        ));
     }
     lines.push(String::new());
     lines

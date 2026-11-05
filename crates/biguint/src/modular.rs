@@ -4,8 +4,8 @@
 
 use crate::bits::Bits;
 use crate::kernel::{
-    add_unless_carry, add_unless_carry_masked, reduced, subtract_when_above_in_place,
-    subtract_when_above_masked,
+    add_assign, add_unless_carry, add_unless_carry_masked, compare, fits, reduced, sub_assign,
+    subtract_when_above_in_place, subtract_when_above_masked,
 };
 use crate::limb::rare_call;
 use crate::nonzero::NonZeroUint;
@@ -108,6 +108,11 @@ pub(crate) fn top<N: Bits>(value: &Uint<N>) -> u64 {
     value.limbs.last().copied().unwrap_or(0)
 }
 
+/// Whether the variable-time sums branch on their correction. On WebAssembly the difference and the
+/// selects of every limb cost more than a branch: the 512-bit sum took Chrome 48 cycles with the
+/// branch against 65 with the selects.
+const BRANCHES: bool = cfg!(target_arch = "wasm32");
+
 /// The second operand of [`sum_mod`], with the correction that brings the sum below the modulus.
 pub(crate) trait Addend: LimbSource {
     /// The limbs of `a + addend` in `N` bits, and the carry out of the top limb.
@@ -131,6 +136,12 @@ impl Addend for ZeroExtended<'_> {
 
     #[inline(always)]
     fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]) {
+        if BRANCHES {
+            if carry != 0 || compare(sum, modulus).is_ge() {
+                fits(sub_assign(sum, modulus));
+            }
+            return;
+        }
         reduced(subtract_when_above_in_place(sum, modulus, carry));
     }
 
@@ -156,6 +167,12 @@ impl<S: LimbSource> Addend for TwosComplement<S> {
 
     #[inline(always)]
     fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]) {
+        if BRANCHES {
+            if carry == 0 {
+                fits(add_assign(sum, modulus));
+            }
+            return;
+        }
         add_unless_carry(sum, modulus, carry);
     }
 
@@ -190,11 +207,19 @@ pub(crate) fn sum_mod_masked<N: Bits, B: Addend>(
     out
 }
 
-/// `value mod modulus`, for an operand whose top limb reaches the modulus's: a path that
-/// [`rare_call`] lays out of the loop, so that the operands below the modulus run without a taken
-/// branch.
-#[inline(always)]
+/// `value mod modulus`, for an operand whose top limb reaches the modulus's.
+///
+/// Natively, [`rare_call`] lays this path out of the loop, so that the operands below the modulus
+/// run without a taken branch.
+///
+/// On WebAssembly it is a call. Inlined, the division's code joins the sum's and the browsers
+/// allocate the registers of the whole: the 64-bit modular sum took Chrome 11 cycles inlined against
+/// 6.1 as a call.
+#[cfg_attr(target_arch = "wasm32", inline(never))]
+#[cfg_attr(not(target_arch = "wasm32"), inline(always))]
 fn remainder<N: Bits>(value: Uint<N>, modulus: NonZeroUint<N>) -> Uint<N> {
-    rare_call();
+    if cfg!(not(target_arch = "wasm32")) {
+        rare_call();
+    }
     value % modulus
 }

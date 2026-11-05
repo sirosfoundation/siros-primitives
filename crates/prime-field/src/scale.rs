@@ -39,6 +39,11 @@ impl<M: Modulus> Shape<M> {
             Self::one_limb(Self::mul1::<CT>(limb(a, 0), Self::word1::<CT>(limb(k, 0))))
         } else if k.len() <= 1 {
             Self::reduce_wide::<CT>(Self::row(a, limb(k, 0)))
+        } else if cfg!(wide_arithmetic) && Self::MONTGOMERY && k.len() <= Self::LIMBS {
+            // The encoding of `k` and one Montgomery product: with wide arithmetic, two products
+            // of four limbs took Chrome 127 cycles over P-256 against 286 for the rows of Horner's
+            // rule. Natively the rows run faster: 110 cycles over P-256 scalar against 159.
+            return Self::mul::<CT>(a, &Self::integer::<CT>(k));
         } else {
             Self::horner::<CT>(a, k)
         };
@@ -68,9 +73,19 @@ impl<M: Modulus> Shape<M> {
             };
             return Self::represent_residue(Self::one_limb(residue));
         }
+        if Self::MONTGOMERY && Self::LIMBS > 1 && k.len() > 1 && k.len() <= Self::LIMBS {
+            // `R^2 k / R = R k mod p` for `k < R` unreduced: with `R^2 < p` as the factor of
+            // every row, each step keeps its accumulator below `2 p`, as it does for `k < p`,
+            // and the final subtraction brings the product below `p`.
+            let mut value = M::Width::ZERO;
+            Self::each_limb(
+                #[inline(always)]
+                |j| set(value.as_mut_slice(), j, limb(k, j)),
+            );
+            return Self::mul::<CT>(&Self::R2, &value);
+        }
         if Self::LIMBS > 1 && k.len() > 1 && k.len() <= Self::LIMBS {
-            // `k < 2^(64 L) <= p 2^64` reduces by one quotient step; a Montgomery product by
-            // `R^2` then encodes it.
+            // `k < 2^(64 L) <= p 2^64` reduces by one quotient step.
             let mut high = M::Width::ZERO;
             Self::each_limb(
                 #[inline(always)]
@@ -80,12 +95,7 @@ impl<M: Modulus> Shape<M> {
                     }
                 },
             );
-            let residue = Self::reduce_wide::<CT>((limb(k, 0), high));
-            return if Self::MONTGOMERY {
-                Self::mul::<CT>(&residue, &Self::R2)
-            } else {
-                residue
-            };
+            return Self::reduce_wide::<CT>((limb(k, 0), high));
         }
         Self::scale::<CT>(&Self::ONE, k)
     }

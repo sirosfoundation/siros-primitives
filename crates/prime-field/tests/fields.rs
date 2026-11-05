@@ -462,6 +462,8 @@ fn check_integers<M: Modulus>(rng: &mut Rng) {
         p.clone(),
         &p + 1u8,
         BigUint::from(u64::MAX),
+        // The largest integer of the width, which the Montgomery encoding takes unreduced.
+        (BigUint::from(1u8) << width) - 1u8,
     ];
     for bits in [64, 128, width, 2 * width] {
         ks.extend((0..4).map(|_| random_bits(rng, bits)));

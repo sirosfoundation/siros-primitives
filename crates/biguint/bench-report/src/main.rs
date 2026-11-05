@@ -60,6 +60,7 @@ const LAYOUT: Layout<'static, Width> = Layout {
         "A constant-time table compares `ConstantTime<Uint>` with every function whose time the \
          width fixes; divisors and moduli are public.",
     ],
+    wasm_native: "",
 };
 
 fn main() -> ExitCode {

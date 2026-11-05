@@ -653,7 +653,7 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ## WebAssembly
 
-`prime-field` at commit `81f38e6` against `prime-field × invert`, `ark-ff`, `crypto-bigint`, `k256/p256`, `halo2curves`, `plonky3`, `winter-math`, `runtime-algebra` and `compile-algebra`, built for `wasm32-unknown-unknown` and run in headless browsers, in cycles per operation, measured on 2026-11-05.
+`prime-field` at commit `6825d17` against `prime-field × invert`, `ark-ff`, `crypto-bigint`, `k256/p256`, `halo2curves`, `plonky3`, `winter-math`, `runtime-algebra` and `compile-algebra`, built for `wasm32-unknown-unknown` and run in headless browsers, in cycles per operation, measured on 2026-11-05.
 
 - The bench module runs in a dedicated worker of the browser, on the measuring CPU. A driver counts that thread with perf_event, and holds the CPU while the thread sleeps.
 - A second worker carries the start and the end of each count to the driver while the measuring worker sleeps.
@@ -676,2265 +676,1106 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | RUSTFLAGS, in WebAssembly with wide arithmetic, Firefox | `-C codegen-units=1 -C target-feature=+wide-arithmetic` |
 | Browser, in WebAssembly, Chrome | Google Chrome for Testing 156.0.8078.4; `--js-flags=--no-liftoff` |
 | Target features, in WebAssembly, Chrome | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext` |
-| Cost of a count, in WebAssembly, Chrome | 4,070 to 5,469 cycles and 3,081 instructions; its noise in a figure, 59.0 to 255 cycles |
+| Cost of a count, in WebAssembly, Chrome | 4,459 to 9,016 cycles and 3,081 instructions; its noise in a figure, 133 to 3,658 cycles |
 | Browser, in WebAssembly with wide arithmetic, Chrome | Google Chrome for Testing 156.0.8078.4; `--js-flags=--no-liftoff --wasm-wide-arithmetic` |
 | Target features, in WebAssembly with wide arithmetic, Chrome | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext`, `wide-arithmetic` |
-| Cost of a count, in WebAssembly with wide arithmetic, Chrome | 4,047 to 5,209 cycles and 3,081 instructions; its noise in a figure, 28.0 to 104 cycles |
+| Cost of a count, in WebAssembly with wide arithmetic, Chrome | 4,114 to 8,647 cycles and 3,081 instructions; its noise in a figure, 49.0 to 381 cycles |
 | Browser, in WebAssembly, Firefox | Mozilla Firefox 158.0.1; `javascript.options.wasm_baselinejit=false`, `javascript.options.wasm_wide_arithmetic=false` |
 | Target features, in WebAssembly, Firefox | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext` |
-| Cost of a count, in WebAssembly, Firefox | 4,047 to 4,758 cycles and 1,885 instructions; its noise in a figure, 83.0 to 708 cycles |
+| Cost of a count, in WebAssembly, Firefox | 6,381 to 22,055 cycles and 1,885 instructions; its noise in a figure, 368 to 8,624 cycles |
 | Browser, in WebAssembly with wide arithmetic, Firefox | Mozilla Firefox 158.0.1; `javascript.options.wasm_baselinejit=false`, `javascript.options.wasm_wide_arithmetic=true` |
 | Target features, in WebAssembly with wide arithmetic, Firefox | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext`, `wide-arithmetic` |
-| Cost of a count, in WebAssembly with wide arithmetic, Firefox | 4,036 to 4,793 cycles and 1,885 instructions; its noise in a figure, 52.0 to 1,181 cycles |
-| Load, in WebAssembly, Chrome | CPU 12; 1-minute load 6.67 before, 13.42 after; its SMT sibling, CPU 28, 6% busy |
-| Load, in WebAssembly with wide arithmetic, Chrome | CPU 12; 1-minute load 13.14 before, 6.42 after; its SMT sibling, CPU 28, 3% busy |
-| Load, in WebAssembly, Firefox | CPU 12; 1-minute load 6.15 before, 10.63 after; its SMT sibling, CPU 28, 6% busy |
-| Load, in WebAssembly with wide arithmetic, Firefox | CPU 12; 1-minute load 10.63 before, 10.89 after; its SMT sibling, CPU 28, 5% busy |
+| Cost of a count, in WebAssembly with wide arithmetic, Firefox | 8,875 to 18,204 cycles and 1,885 instructions; its noise in a figure, 691 to 5,183 cycles |
+| Load, in WebAssembly, Chrome | CPU 12; 1-minute load 12.98 before, 21.35 after; its SMT sibling, CPU 28, 24% busy |
+| Load, in WebAssembly with wide arithmetic, Chrome | CPU 12; 1-minute load 21.57 before, 23.17 after; its SMT sibling, CPU 28, 27% busy |
+| Load, in WebAssembly, Firefox | CPU 12; 1-minute load 23.17 before, 28.61 after; its SMT sibling, CPU 28, 47% busy |
+| Load, in WebAssembly with wide arithmetic, Firefox | CPU 12; 1-minute load 28.61 before, 19.93 after; its SMT sibling, CPU 28, 46% busy |
 | Crates | ark-ff 0.6.0, crypto-bigint 0.7.10, k256 0.13.4, p256 0.13.2, halo2curves 0.10.0, p3-field 0.9.0-rc.2, winter-math 0.13.1, runtime-algebra 0.1.0, compile-algebra 0.1.0 |
 
-## Results in WebAssembly, Chrome
 
-### add: a + b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **4.2** / **7.5** | – | 11.0 / 19.1 | – | – | 4.4 / 7.5\* | – | 10.8 / 18.0 | – |
-| BabyBear | **2.4** / **3.0** | – | 11.0 / 21.1 | – | – | **2.4** / **3.0** | – | 10.8 / 18.0 | – |
-| Goldilocks | **3.3** / **3.0** | – | 10.9 / 20.2 | – | – | 3.5 / 6.0 | **3.3** / 4.0 | 10.8 / 18.0 | – |
-| BN254 scalar | 16.7 / 14.7 | **13.6** / **13.3** | 53.1 / 83.0 | – | 36.2 / 41.6 | – | – | 62.2 / 104 | – |
-| secp256k1 base | **14.1** / **13.7** | 15.2 / 15.5 | 53.0 / 83.0 | 22.4 / 14.5 | 35.1 / 39.8 | – | – | 62.1 / 104 | – |
-| P-256 base | **15.1** / **12.9** | 15.6 / 15.2 | 53.2 / 82.9 | 30.5 / 39.6 | 30.5 / 38.9 | – | – | 62.2 / 103 | 440 / – |
-| P-256 scalar | **15.3** / **14.3** | 15.4 / 15.2 | 53.1 / 82.9 | 41.4 / 57.8 | 35.5 / 42.2 | – | – | 62.1 / 103 | 443 / – |
-| Tom-256 base | **15.0** / **14.3** | – | 53.1 / 83.0 | – | 36.6 / 42.9 | – | – | 62.2 / 104 | – |
-| BLS12-381 base | **25.8** / **25.0** | 35.4 / 43.9 | 107 / 113 | – | 63.5 / 63.3 | – | – | 115 / 158 | – |
-| P-521 base | **42.3** / **46.0** | – | 142 / 183 | – | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-### sub: a − b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **2.5** / **3.0** | – | 4.5 / 8.0 | – | – | 3.0 / 5.0 | – | 8.6 / 8.1 | – |
-| BabyBear | **2.5** / **3.0** | – | 4.5 / 8.0 | – | – | 2.7 / **3.0** | – | 8.5 / 7.9 | – |
-| Goldilocks | **2.6** / **3.0** | – | 4.5 / 8.0 | – | – | 3.5 / 5.0 | 2.8 / **3.0** | 10.4 / 8.1 | – |
-| BN254 scalar | **16.6** / **14.6** | 18.4 / 16.5 | 31.0 / 32.0 | – | 24.0 / 26.0 | – | – | 37.3 / 77.1 | – |
-| secp256k1 base | **16.7** / **16.5** | 18.5 / 16.6 | 31.0 / 29.0 | 25.5 / 19.7 | 22.3 / 25.2 | – | – | 37.6 / 77.1 | – |
-| P-256 base | **15.2** / **14.6** | 16.9 / 15.5 | 30.9 / 27.5 | 20.8 / 26.6 | 20.5 / 25.2 | – | – | 37.5 / 77.4 | 230 / – |
-| P-256 scalar | **16.8** / **15.2** | 17.9 / 16.4 | 31.0 / 31.0 | 23.2 / 24.7 | 23.6 / 26.8 | – | – | 36.9 / 77.1 | 233 / – |
-| Tom-256 base | **16.5** / **14.9** | – | 31.0 / 32.0 | – | 23.8 / 26.0 | – | – | 37.7 / 77.0 | – |
-| BLS12-381 base | **25.4** / **25.3** | 33.5 / 30.6 | 54.0 / 101 | – | 43.3 / 45.3 | – | – | 73.0 / 103 | – |
-| P-521 base | **48.4** / **43.5** | – | 88.7 / 159 | – | – | – | – | – | – |
-
-### mul: a × b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.1** / **12.0** | – | 29.3 / 46.5 | – | – | 5.2 / 12.0 | – | 51.4 / 59.0 | – |
-| BabyBear | 7.8 / 13.0 | – | 29.3 / 46.1 | – | – | **4.1** / **12.2** | – | 51.3 / 59.0 | – |
-| Goldilocks | **12.2** / **18.0** | – | 32.5 / 47.1 | – | – | 10.0\* / 16.6\* | 12.3 / **18.0** | 51.4 / 59.0 | – |
-| BN254 scalar | **235** / **228** | 318 / 316 | 431 / 441 | – | 375 / 378 | – | – | 897 / 938 | – |
-| secp256k1 base | **162** / **172** | 279 / 276 | 436 / 436 | 158\* / 162\* | 303 / 306 | – | – | 910 / 944 | – |
-| P-256 base | **177** / **190** | 262 / 258 | 429 / 437 | 241 / 241 | 243 / 243 | – | – | 558 / 589 | 1,081 / – |
-| P-256 scalar | **241** / **235** | 314 / 309 | 430 / 429 | 517 / 512 | 344 / 351 | – | – | 911 / 938 | 1,075 / – |
-| Tom-256 base | **237** / **236** | – | 443 / 443 | – | 344 / 342 | – | – | 909 / 943 | – |
-| BLS12-381 base | **726** / 722 | 805 / **683** | 912 / 986 | – | 884 / 892 | – | – | 2,009 / 2,023 | – |
-| P-521 base | **1,020** / **1,062** | – | 2,114 / 2,118 | – | – | – | – | – | – |
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### square: a², in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.2** / **12.0** | – | 28.5 / 45.0 | – | – | 5.1\* / 12.0\* | – | 46.5 / 55.3 | – |
-| BabyBear | 8.3 / 13.0 | – | 28.5 / 45.5 | – | – | **5.1** / **12.1** | – | 46.6 / 58.7 | – |
-| Goldilocks | **10.1** / **17.3** | – | 32.7 / 46.5 | – | – | 8.7\* / 16.3\* | 12.4 / 20.0 | 46.5 / 58.7 | – |
-| BN254 scalar | **215** / **206** | 271 / 263 | 318 / 351 | – | 310 / 309 | – | – | 899 / 925 | – |
-| secp256k1 base | **143** / **154** | 232 / 225 | 325 / 348 | 98.6\* / 116\* | 215 / 222 | – | – | 914 / 937 | – |
-| P-256 base | **159** / **155** | 214 / 210 | 325 / 350 | 240 / 244 | 200 / 178 | – | – | 560 / 590 | 1,086 / – |
-| P-256 scalar | **219** / **217** | 266 / 259 | 323 / 349 | 504 / 515 | 269 / 266 | – | – | 915 / 941 | 1,090 / – |
-| Tom-256 base | **205** / **201** | – | 323 / 350 | – | 317 / 267 | – | – | 914 / 943 | – |
-| BLS12-381 base | **578** / **609** | 633 / 620 | 903 / 974 | – | 670 / 928 | – | – | 2,010 / 2,024 | – |
-| P-521 base | **563** / **571** | – | 2,154 / 2,164 | – | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### invert: a⁻¹, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **266** / – | – | 1,731 / – | – | – | 676 / – | – | 2,214 / – | – |
-| BabyBear | **269** / – | – | 1,713 / – | – | – | 701 / – | – | 2,358 / – | – |
-| Goldilocks | **537** / – | – | 3,455 / – | – | – | 1,369 / – | 1,772 / – | 4,423 / – | – |
-| BN254 scalar | **8,440** / – | 24,008 / – | 18,492 / – | – | 14,085 / – | – | – | 42,132 / – | – |
-| secp256k1 base | **8,502** / – | 22,273 / – | 18,512 / – | 33,509 / – | 14,123 / – | – | – | 42,531 / – | – |
-| P-256 base | **8,282** / – | 21,861 / – | 18,511 / – | 66,059 / – | 14,147 / – | – | – | 41,441 / – | 248,166 / – |
-| P-256 scalar | **8,482** / – | 24,160 / – | 18,514 / – | 46,542 / – | 14,142 / – | – | – | 42,313 / – | 253,059 / – |
-| Tom-256 base | **8,554** / – | – | 18,478 / – | – | 14,150 / – | – | – | 42,309 / – | – |
-| BLS12-381 base | **19,335** / – | 46,919 / – | 32,746 / – | – | 25,564 / – | – | – | 98,059 / – | – |
-| P-521 base | **33,221** / – | – | 65,268 / – | – | – | – | – | – | – |
-
-### sqrt: √a, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 329 / – | – | 3,422 / – | – | – | **324** / – | 1,741 / – | – |
-| BabyBear | **2,670** / – | – | 34,149 / – | – | – | 3,090 / – | – | – |
-| Goldilocks | **5,768** / – | – | 48,789 / – | – | – | 5,571\* / – | – | – |
-| BN254 scalar | **108,085** / – | 147,910 / – | 330,187 / – | – | 380,651 / – | – | – | – |
-| secp256k1 base | **42,090** / – | 130,955 / – | 160,451 / – | 33,149\* / – | 158,742 / – | – | 474,951 / – | – |
-| P-256 base | **44,757** / – | 59,370 / – | 135,828 / – | 64,488 / – | 129,911 / – | – | 171,337 / – | 309,100 / – |
-| P-256 scalar | **74,255** / – | 115,519 / – | 158,074 / – | 240,007 / – | 153,029 / – | – | – | – |
-| Tom-256 base | **65,526** / – | – | 149,734 / – | – | 183,196 / – | – | 338,342 / – | – |
-| BLS12-381 base | **311,855** / – | 419,409 / – | 545,084 / – | – | 797,158 / – | – | 1,236,367 / – | – |
-| P-521 base | **320,120** / – | – | 1,528,245 / – | – | – | – | – | – |
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### mul_u64: a × k, k of 64 bits, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.4** / **14.0** | – | 61.3 / 59.5 | – | – | 9.1\* / 12.5\* | – | – |
-| BabyBear | **17.0** / **17.0** | – | 63.9 / 65.1 | – | – | 34.9 / 34.2 | – | – |
-| Goldilocks | **19.1** / **20.0** | – | 72.4 / 74.2 | – | – | 10.0\* / 16.6\* | 25.0 / 23.6 | – |
-| BN254 scalar | **99.6** / **91.7** | 694 / 659 | 853 / 853 | – | 1,035 / 1,050 | – | – | 1,842 / 1,840 |
-| secp256k1 base | **42.2** / **49.0** | 451 / 435 | 858 / 861 | 157 / 165 | 707 / 690 | – | – | 1,835 / 1,846 |
-| P-256 base | **72.2** / **75.0** | 609 / 530 | 868 / 855 | 484 / 487 | 719 / 735 | – | – | 1,209 / 1,215 |
-| P-256 scalar | **84.1** / **82.1** | 634 / 620 | 858 / 862 | 517 / 513 | 974 / 991 | – | – | 1,858 / 1,855 |
-| Tom-256 base | **82.2** / **84.9** | – | 867 / 843 | – | 937 / 947 | – | – | 1,855 / 1,864 |
-| BLS12-381 base | **131** / **123** | 1,636 / 1,627 | 1,920 / 1,941 | – | 2,380 / 2,378 | – | – | 4,106 / 4,101 |
-| P-521 base | **92.1** / **93.3** | – | 3,011 / 3,025 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### mul_uint: a × k, k of the bit length of p, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.4** / **14.0** | 60.5 / 59.6 | – | – | 8.9\* / 12.6\* | – |
-| BabyBear | **17.0** / **17.0** | 63.9 / 64.8 | – | – | 23.0 / 23.6 | – |
-| Goldilocks | **19.1** / **20.2** | 72.4 / 74.3 | – | – | 10.0\* / 16.6\* | 24.9 / 23.5 |
-| BN254 scalar | **433** / **434** | 858 / 870 | – | 756 / 754 | – | – |
-| secp256k1 base | **266** / **265** | 866 / 873 | – | 519 / 515 | – | – |
-| P-256 base | **353** / **353** | 866 / 866 | – | 456 / 452 | – | – |
-| P-256 scalar | **426** / **425** | 862 / 869 | 549 / 548 | 728 / 725 | – | – |
-| Tom-256 base | **410** / **409** | 858 / 861 | – | 692 / 693 | – | – |
-| BLS12-381 base | **990** / **982** | 1,903 / 1,940 | – | 1,957 / 1,939 | – | – |
-| P-521 base | **1,472** / **1,544** | 3,010 / 3,062 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### add_u64: a + k, k of 64 bits, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **8.1** / **8.6** | – | 36.1 / 35.4 | – | – | 7.6\* / 8.1\* | – | – |
-| BabyBear | **10.9** / **12.1** | – | 39.8 / 47.5 | – | – | 32.1 / 30.7 | – | – |
-| Goldilocks | **9.9** / **9.1** | – | 50.8 / 58.3 | – | – | 3.5\* / 6.0\* | 13.3 / 13.0 | – |
-| BN254 scalar | **122** / **117** | 349 / 339 | 506 / 527 | – | 691 / 663 | – | – | 1,057 / 1,056 |
-| secp256k1 base | **8.0** / **7.0** | 162 / 158 | 500 / 502 | 16.8 / 5.3\* | 424 / 402 | – | – | 1,022 / 1,027 |
-| P-256 base | **72.3** / **68.9** | 268 / 261 | 496 / 512 | 275 / 278 | 488 / 487 | – | – | 702 / 692 |
-| P-256 scalar | 70.2 / 69.2 | 339 / 335 | 499 / 507 | **41.7** / **57.4** | 678 / 655 | – | – | 1,053 / 1,052 |
-| Tom-256 base | **89.6** / **88.4** | – | 505 / 510 | – | 626 / 609 | – | – | 1,055 / 1,048 |
-| BLS12-381 base | **179** / **160** | 836 / 830 | 1,081 / 1,088 | – | 1,395 / 1,379 | – | – | 2,216 / 2,220 |
-| P-521 base | **23.1** / **21.1** | – | 1,668 / 1,674 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### add_uint: a + k, k of the bit length of p, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **8.2** / **8.7** | 36.1 / 35.4 | – | – | 7.6\* / 8.0\* | – |
-| BabyBear | **10.9** / **12.2** | 39.8 / 47.5 | – | – | 22.0 / 21.5 | – |
-| Goldilocks | **9.9** / **9.1** | 50.8 / 58.2 | – | – | 3.5\* / 6.0\* | 13.3 / 13.0 |
-| BN254 scalar | **290** / **284** | 509 / 514 | – | 412 / 392 | – | – |
-| secp256k1 base | **20.9** / **17.0** | 500 / 507 | – | 223 / 226 | – | – |
-| P-256 base | **204** / **197** | 502 / 513 | – | 244 / 246 | – | – |
-| P-256 scalar | 295 / 288 | 499 / 507 | **94.6** / **81.8** | 389 / 387 | – | – |
-| Tom-256 base | **294** / **289** | 503 / 511 | – | 378 / 380 | – | – |
-| BLS12-381 base | **836** / **807** | 1,072 / 1,087 | – | 979 / 994 | – | – |
-| P-521 base | **64.8** / **62.2** | 1,693 / 1,691 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### sub_u64: a − k, k of 64 bits, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **6.2** / **5.3** | – | 23.4 / 22.1 | – | – | 6.1\* / 6.1 | – | – |
-| BabyBear | **11.0** / **11.9** | – | 27.9 / 28.7 | – | – | 32.2 / 31.8 | – | – |
-| Goldilocks | **9.9** / **8.9** | – | 36.7 / 36.3 | – | – | 3.5\* / 5.0\* | 11.5 / 11.1 | – |
-| BN254 scalar | **113** / **113** | 352 / 347 | 499 / 490 | – | 666 / 652 | – | – | 1,003 / 991 |
-| secp256k1 base | **8.7** / **7.0** | 161 / 156 | 498 / 492 | 14.0 / 11.0 | 413 / 392 | – | – | 979 / 980 |
-| P-256 base | **71.4** / **71.3** | 272 / 263 | 485 / 486 | 264 / 265 | 493 / 470 | – | – | 645 / 643 |
-| P-256 scalar | 69.3 / 68.8 | 339 / 336 | 499 / 487 | **21.2** / **21.2** | 660 / 641 | – | – | 1,003 / 998 |
-| Tom-256 base | **88.1** / **91.7** | – | 493 / 481 | – | 631 / 599 | – | – | 1,002 / 992 |
-| BLS12-381 base | **162** / **155** | 837 / 824 | 1,083 / 1,093 | – | 1,381 / 1,332 | – | – | 2,160 / 2,163 |
-| P-521 base | **22.5** / **21.1** | – | 1,673 / 1,680 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### sub_uint: a − k, k of the bit length of p, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **6.2** / **5.3** | 23.4 / 22.1 | – | – | 6.1\* / 6.1 | – |
-| BabyBear | **11.0** / **11.9** | 27.9 / 28.7 | – | – | 23.0 / 22.0 | – |
-| Goldilocks | **9.9** / **8.9** | 36.7 / 36.3 | – | – | 3.5\* / 5.0\* | 11.5 / 11.1 |
-| BN254 scalar | **287** / **282** | 497 / 501 | – | 401 / 396 | – | – |
-| secp256k1 base | **21.2** / **18.9** | 501 / 488 | – | 215 / 214 | – | – |
-| P-256 base | **206** / **202** | 493 / 488 | – | 233 / 234 | – | – |
-| P-256 scalar | 290 / 286 | 500 / 490 | **67.8** / **71.9** | 373 / 370 | – | – |
-| Tom-256 base | **294** / **287** | 499 / 486 | – | 364 / 357 | – | – |
-| BLS12-381 base | **825** / **809** | 1,074 / 1,077 | – | 972 / 972 | – | – |
-| P-521 base | **75.5** / **67.4** | 1,677 / 1,680 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### from_u64: k mod p, k of 64 bits, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 4.7 / – | – | 18.0 / – | – | – | **4.1** / – | – | – |
-| BabyBear | **11.1** / – | – | 21.6 / – | – | – | 31.0 / – | – | – |
-| Goldilocks | **7.2** / – | – | 29.3 / – | – | – | 2.1\* / – | 10.6 / – | – |
-| BN254 scalar | **87.9** / – | 317 / – | 433 / – | – | 612 / – | – | – | 935 / – |
-| secp256k1 base | **3.8** / – | 150 / – | 432 / – | 6.0 / – | 352 / – | – | – | 923 / – |
-| P-256 base | **51.9** / – | 241 / – | 433 / – | 237 / – | 445 / – | – | – | 558 / – |
-| P-256 scalar | 50.7 / – | 311 / – | 427 / – | **4.0** / – | 605 / – | – | – | 930 / – |
-| Tom-256 base | **71.4** / – | – | 430 / – | – | 561 / – | – | – | 928 / – |
-| BLS12-381 base | **137** / – | 780 / – | 894 / – | – | 1,257 / – | – | – | 2,051 / – |
-| P-521 base | **6.0** / – | – | 1,460 / – | – | – | – | – | – |
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### div_u64: a / k, k of 64 bits, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | ark-ff | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | – | – | – | – | – | – | – |
-| BabyBear | – | – | – | – | – | – | – |
-| Goldilocks | – | – | – | – | – | – | – |
-| BN254 scalar | **1,215** / **1,208** | 8,057 / 7,944 | 25,047 / 25,084 | 18,046 / 18,019 | – | 13,498 / 13,474 | 33,415 / 33,200 |
-| secp256k1 base | **1,000** / **1,017** | 7,606 / 7,632 | 18,844 / 18,865 | 17,943 / 17,886 | 33,693 / 33,608 | 13,076 / 13,047 | 34,304 / 33,319 |
-| P-256 base | **1,089** / **1,086** | 7,562 / 7,458 | 22,410 / 22,564 | 17,952 / 17,934 | 66,720 / 66,686 | 13,089 / 13,117 | 33,325 / 32,879 |
-| P-256 scalar | **1,183** / **1,180** | 8,045 / 8,059 | 24,390 / 24,363 | 17,899 / 17,982 | 35,648 / 35,606 | 13,320 / 13,381 | 33,751 / 32,855 |
-| Tom-256 base | **1,192** / **1,181** | 8,083 / 7,920 | – | 17,761 / 17,950 | – | 13,332 / 13,342 | 34,189 / 33,782 |
-| BLS12-381 base | **1,795** / **1,799** | 18,161 / 18,195 | 48,325 / 48,207 | 31,321 / 31,271 | – | 24,070 / 24,145 | 73,439 / 73,095 |
-| P-521 base | **2,432** / **2,447** | 30,238 / 30,490 | – | 62,460 / 62,043 | – | – | – |
-
-### div_uint: a / k, k of one bit less than p, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 277 / 277 | **274** / **272** | – | 1,816 / 1,831 | – | – | 675 / 677 | – | 2,410 / 2,386 |
-| BabyBear | **278** / **279** | 297 / 296 | – | 1,810 / 1,829 | – | – | 680 / 669 | – | 2,540 / 2,518 |
-| Goldilocks | **550** / **553** | 580 / 580 | – | 3,572 / 3,584 | – | – | 1,378 / 1,381 | 1,825 / 1,812 | 4,743 / 4,728 |
-| BN254 scalar | 9,213 / **9,060** | **9,122** / 9,137 | 24,956 / 25,146 | 19,271 / 19,292 | – | 15,095 / 15,053 | – | – | 43,697 / 44,254 |
-| secp256k1 base | 8,585 / 8,605 | **8,572** / **8,538** | 22,522 / 22,671 | 19,542 / 19,440 | 33,059 / 33,877 | 14,909 / 14,888 | – | – | 44,288 / 44,555 |
-| P-256 base | 8,786 / **8,664** | **8,716** / 8,700 | 22,878 / 22,732 | 19,562 / 19,460 | 67,049 / 66,830 | 14,816 / 14,855 | – | – | 42,598 / 43,069 |
-| P-256 scalar | 9,231 / **9,062** | **9,139** / 9,069 | 25,017 / 24,982 | 19,444 / 19,518 | 47,776 / 47,606 | 15,092 / 15,050 | – | – | 44,474 / 44,496 |
-| Tom-256 base | **9,122** / **8,947** | 9,171 / 9,098 | – | 19,415 / 19,400 | – | 15,034 / 15,031 | – | – | 44,398 / 44,368 |
-| BLS12-381 base | 21,024 / 20,960 | **20,926** / **20,760** | 49,157 / 48,875 | 34,774 / 34,294 | – | 27,656 / 27,636 | – | – | 101,446 / 101,871 |
-| P-521 base | 34,627 / **34,184** | **34,586** / 34,613 | – | 68,848 / 68,267 | – | – | – | – | – |
-
-### add, constant time: a + b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **4.2** / **7.5** | 11.0 / 19.1 | – | – | – | 10.8 / 18.0 |
-| BabyBear | **2.4** / **3.0** | 11.0 / 21.1 | – | – | – | 10.8 / 18.0 |
-| Goldilocks | **3.3** / **3.0** | 10.9 / 20.2 | – | – | **3.3** / 4.0 | 10.8 / 18.0 |
-| BN254 scalar | **23.6** / **24.4** | 53.1 / 83.0 | – | 36.2 / 41.6 | – | 62.2 / 104 |
-| secp256k1 base | **26.3** / **28.0** | 53.0 / 83.0 | 22.4\* / 14.5\* | 35.1 / 39.8 | – | 62.1 / 104 |
-| P-256 base | **23.7** / **26.8** | 53.2 / 82.9 | 30.5 / 39.6 | 30.5 / 38.9 | – | 62.2 / 103 |
-| P-256 scalar | **26.9** / **27.3** | 53.1 / 82.9 | 41.4 / 57.8 | 35.5 / 42.2 | – | 62.1 / 103 |
-| Tom-256 base | **27.6** / **26.6** | 53.1 / 83.0 | – | 36.6 / 42.9 | – | 62.2 / 104 |
-| BLS12-381 base | **42.9** / **41.8** | 107 / 113 | – | 63.5 / 63.3 | – | 115 / 158 |
-| P-521 base | **76.7** / **77.8** | 142 / 183 | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### sub, constant time: a − b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **2.5** / **3.0** | 4.5 / 8.0 | – | – | 3.0 / 5.0 | – | 8.6 / 8.1 |
-| BabyBear | **2.5** / **3.0** | 4.5 / 8.0 | – | – | – | – | 8.5 / 7.9 |
-| Goldilocks | **2.6** / **3.0** | 4.5 / 8.0 | – | – | – | 2.8 / **3.0** | 10.4 / 8.1 |
-| BN254 scalar | **22.9** / 26.4 | 31.0 / 32.0 | – | 24.0 / **26.0** | – | – | 37.3 / 77.1 |
-| secp256k1 base | **19.8** / **21.2** | 31.0 / 29.0 | 25.5 / 19.7\* | 22.3 / 25.2 | – | – | 37.6 / 77.1 |
-| P-256 base | **17.3** / **18.9** | 30.9 / 27.5 | 20.8 / 26.6 | 20.5 / 25.2 | – | – | 37.5 / 77.4 |
-| P-256 scalar | **21.2** / **21.6** | 31.0 / 31.0 | 23.2 / 24.7 | 23.6 / 26.8 | – | – | 36.9 / 77.1 |
-| Tom-256 base | **21.0** / **21.4** | 31.0 / 32.0 | – | 23.8 / 26.0 | – | – | 37.7 / 77.0 |
-| BLS12-381 base | **37.7** / **37.4** | 54.0 / 101 | – | 43.3 / 45.3 | – | – | 73.0 / 103 |
-| P-521 base | **56.2** / **57.5** | 88.7 / 159 | – | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### mul, constant time: a × b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.1** / **12.0** | 29.3 / 46.5 | – | – | – | 51.4 / 59.0 |
-| BabyBear | **7.8** / **13.0** | 29.3 / 46.1 | – | – | – | 51.3 / 59.0 |
-| Goldilocks | **12.1** / **17.7** | 32.5 / 47.1 | – | – | 12.3 / 18.0 | 51.4 / 59.0 |
-| BN254 scalar | **236** / **243** | 431 / 441 | – | 375 / 378 | – | 897 / 938 |
-| secp256k1 base | **160** / **171** | 436 / 436 | 158\* / 162\* | 303 / 306 | – | 910 / 944 |
-| P-256 base | **177** / **190** | 429 / 437 | 241 / 241 | 243 / 243 | – | 558 / 589 |
-| P-256 scalar | **239** / **234** | 430 / 429 | 517 / 512 | 344 / 351 | – | 911 / 938 |
-| Tom-256 base | **236** / **238** | 443 / 443 | – | 344 / 342 | – | 909 / 943 |
-| BLS12-381 base | **727** / **721** | 912 / 986 | – | 884 / 892 | – | 2,009 / 2,023 |
-| P-521 base | **1,019** / **1,064** | 2,114 / 2,118 | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### square, constant time: a², in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.2** / **12.0** | 28.5 / 45.0 | – | – | – | 46.5 / 55.3 |
-| BabyBear | **8.3** / **13.0** | 28.5 / 45.5 | – | – | – | 46.6 / 58.7 |
-| Goldilocks | **10.1** / **17.3** | 32.7 / 46.5 | – | – | 12.4 / 20.0 | 46.5 / 58.7 |
-| BN254 scalar | **213** / **219** | 318 / 351 | – | 310 / 309 | – | 899 / 925 |
-| secp256k1 base | **143** / **154** | 325 / 348 | 98.6\* / 116\* | 215 / 222 | – | 914 / 937 |
-| P-256 base | **160** / **155** | 325 / 350 | 240 / 244 | 200 / 178 | – | 560 / 590 |
-| P-256 scalar | **214** / **222** | 323 / 349 | 504 / 515 | 269 / 266 | – | 915 / 941 |
-| Tom-256 base | **204** / **200** | 323 / 350 | – | 317 / 267 | – | 914 / 943 |
-| BLS12-381 base | **577** / **607** | 903 / 974 | – | 670 / 928 | – | 2,010 / 2,024 |
-| P-521 base | **559** / **569** | 2,154 / 2,164 | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### invert, constant time: a⁻¹, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **438** / – | 5,729 / – | – | – | – | 3,341 / – |
-| BabyBear | **520** / – | 5,775 / – | – | – | – | 3,302 / – |
-| Goldilocks | **1,261** / – | 5,736 / – | – | – | 1,772 / – | 7,031 / – |
-| BN254 scalar | **12,021** / – | 28,421 / – | – | 232,969 / – | – | 361,392 / – |
-| secp256k1 base | **11,868** / – | 28,539 / – | 33,509 / – | 199,247 / – | – | 477,924 / – |
-| P-256 base | **11,532** / – | 29,241 / – | 66,059 / – | 170,867 / – | – | 226,095 / – |
-| P-256 scalar | **11,880** / – | 28,615 / – | 218,570 / – | 233,387 / – | – | 406,562 / – |
-| Tom-256 base | **11,796** / – | 28,767 / – | – | 216,815 / – | – | 340,952 / – |
-| BLS12-381 base | **24,008** / – | 49,507 / – | – | 861,046 / – | – | 1,240,089 / – |
-| P-521 base | **41,752** / – | 101,758 / – | – | – | – | – |
-
-### sqrt, constant time: √a, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **334** / – | 3,422 / – | – | – | 1,741 / – |
-| BabyBear | **7,466** / – | 34,149 / – | – | – | – |
-| Goldilocks | **12,876** / – | 48,789 / – | – | – | – |
-| BN254 scalar | **178,607** / – | 330,187 / – | – | 380,651 / – | – |
-| secp256k1 base | **42,199** / – | 160,451 / – | 33,149\* / – | 158,742 / – | 474,951 / – |
-| P-256 base | **44,750** / – | 135,828 / – | 64,488 / – | 129,911 / – | 171,337 / – |
-| P-256 scalar | **78,923** / – | 158,074 / – | 240,007 / – | 153,029 / – | – |
-| Tom-256 base | **65,472** / – | 149,734 / – | – | 183,196 / – | 338,342 / – |
-| BLS12-381 base | **309,849** / – | 545,084 / – | – | 797,158 / – | 1,236,367 / – |
-| P-521 base | **325,144** / – | 1,528,245 / – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### mul_u64, constant time: a × k, k of 64 bits, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.4** / **14.0** | 61.3 / 59.5 | – | – | – |
-| BabyBear | **17.0** / **17.0** | 63.9 / 65.1 | – | – | – |
-| Goldilocks | **19.0** / **20.1** | 72.4 / 74.2 | – | – | 25.0 / 23.6 |
-| BN254 scalar | **106** / **110** | 853 / 853 | – | 1,035 / 1,050 | – |
-| secp256k1 base | **61.3** / **68.9** | 858 / 861 | 157 / 165 | 707 / 690 | – |
-| P-256 base | **85.3** / **90.3** | 868 / 855 | 484 / 487 | 719 / 735 | – |
-| P-256 scalar | **102** / **106** | 858 / 862 | 517 / 513 | 974 / 991 | – |
-| Tom-256 base | **95.4** / **100.0** | 867 / 843 | – | 937 / 947 | – |
-| BLS12-381 base | **148** / **154** | 1,920 / 1,941 | – | 2,380 / 2,378 | – |
-| P-521 base | **138** / **139** | 3,011 / 3,025 | – | – | – |
-
-### mul_uint, constant time: a × k, k of the bit length of p, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.4** / **14.0** | 60.5 / 59.6 | – | – | – |
-| BabyBear | **17.1** / **17.0** | 63.9 / 64.8 | – | – | – |
-| Goldilocks | **19.1** / **20.1** | 72.4 / 74.3 | – | – | 24.9 / 23.5 |
-| BN254 scalar | **487** / **479** | 858 / 870 | – | 756 / 754 | – |
-| secp256k1 base | **322** / **316** | 866 / 873 | – | 519 / 515 | – |
-| P-256 base | **412** / **408** | 866 / 866 | – | 456 / 452 | – |
-| P-256 scalar | **471** / **475** | 862 / 869 | 549 / 548 | 728 / 725 | – |
-| Tom-256 base | **465** / **465** | 858 / 861 | – | 692 / 693 | – |
-| BLS12-381 base | **1,084** / **1,079** | 1,903 / 1,940 | – | 1,957 / 1,939 | – |
-| P-521 base | **1,993** / **2,021** | 3,010 / 3,062 | – | – | – |
-
-### add_u64, constant time: a + k, k of 64 bits, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **8.1** / **8.7** | 36.1 / 35.4 | – | – | – |
-| BabyBear | **10.9** / **12.2** | 39.8 / 47.5 | – | – | – |
-| Goldilocks | **9.9** / **9.1** | 50.8 / 58.3 | – | – | 13.3 / 13.0 |
-| BN254 scalar | **135** / **140** | 506 / 527 | – | 691 / 663 | – |
-| secp256k1 base | **20.5** / **25.4** | 500 / 502 | 16.8\* / 5.3\* | 424 / 402 | – |
-| P-256 base | **90.1** / **89.5** | 496 / 512 | 275 / 278 | 488 / 487 | – |
-| P-256 scalar | 89.8 / 83.2 | 499 / 507 | **41.7** / **57.4** | 678 / 655 | – |
-| Tom-256 base | **115** / **119** | 505 / 510 | – | 626 / 609 | – |
-| BLS12-381 base | **192** / **185** | 1,081 / 1,088 | – | 1,395 / 1,379 | – |
-| P-521 base | **64.6** / **65.7** | 1,668 / 1,674 | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### add_uint, constant time: a + k, k of the bit length of p, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **8.1** / **8.7** | 36.1 / 35.4 | – | – | – |
-| BabyBear | **10.9** / **11.6** | 39.8 / 47.5 | – | – | – |
-| Goldilocks | **9.9** / **9.1** | 50.8 / 58.2 | – | – | 13.3 / 13.0 |
-| BN254 scalar | **327** / **314** | 509 / 514 | – | 412 / 392 | – |
-| secp256k1 base | **41.3** / **38.6** | 500 / 507 | – | 223 / 226 | – |
-| P-256 base | **235** / **218** | 502 / 513 | – | 244 / 246 | – |
-| P-256 scalar | 302 / 294 | 499 / 507 | **94.6** / **81.8** | 389 / 387 | – |
-| Tom-256 base | **300** / **290** | 503 / 511 | – | 378 / 380 | – |
-| BLS12-381 base | **843** / **841** | 1,072 / 1,087 | – | 979 / 994 | – |
-| P-521 base | **135** / **138** | 1,693 / 1,691 | – | – | – |
-
-### sub_u64, constant time: a − k, k of 64 bits, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **6.2** / **5.3** | 23.4 / 22.1 | – | – | – |
-| BabyBear | **11.0** / **11.9** | 27.9 / 28.7 | – | – | – |
-| Goldilocks | **9.9** / **8.9** | 36.7 / 36.3 | – | – | 11.5 / 11.1 |
-| BN254 scalar | **125** / **125** | 499 / 490 | – | 666 / 652 | – |
-| secp256k1 base | **15.5** / **18.0** | 498 / 492 | 14.0\* / 11.0\* | 413 / 392 | – |
-| P-256 base | **84.7** / **86.6** | 485 / 486 | 264 / 265 | 493 / 470 | – |
-| P-256 scalar | 80.6 / 79.7 | 499 / 487 | **21.2** / **21.2** | 660 / 641 | – |
-| Tom-256 base | **113** / **113** | 493 / 481 | – | 631 / 599 | – |
-| BLS12-381 base | **183** / **175** | 1,083 / 1,093 | – | 1,381 / 1,332 | – |
-| P-521 base | **42.2** / **45.8** | 1,673 / 1,680 | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### sub_uint, constant time: a − k, k of the bit length of p, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **6.2** / **5.4** | 23.4 / 22.1 | – | – | – |
-| BabyBear | **11.1** / **12.0** | 27.9 / 28.7 | – | – | – |
-| Goldilocks | **9.9** / **8.9** | 36.7 / 36.3 | – | – | 11.5 / 11.1 |
-| BN254 scalar | **320** / **313** | 497 / 501 | – | 401 / 396 | – |
-| secp256k1 base | **33.6** / **32.2** | 501 / 488 | – | 215 / 214 | – |
-| P-256 base | **229** / **225** | 493 / 488 | – | 233 / 234 | – |
-| P-256 scalar | 295 / 296 | 500 / 490 | **67.8** / **71.9** | 373 / 370 | – |
-| Tom-256 base | **300** / **289** | 499 / 486 | – | 364 / 357 | – |
-| BLS12-381 base | **828** / **814** | 1,074 / 1,077 | – | 972 / 972 | – |
-| P-521 base | **127** / **124** | 1,677 / 1,680 | – | – | – |
-
-### from_u64, constant time: k mod p, k of 64 bits, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **4.7** / – | 18.0 / – | – | – | – |
-| BabyBear | **13.5** / – | 21.6 / – | – | – | – |
-| Goldilocks | 14.9 / – | 29.3 / – | – | – | **10.6** / – |
-| BN254 scalar | **201** / – | 433 / – | – | 612 / – | – |
-| secp256k1 base | **3.4** / – | 432 / – | 6.0 / – | 352 / – | – |
-| P-256 base | **179** / – | 433 / – | 237 / – | 445 / – | – |
-| P-256 scalar | 249 / – | 427 / – | **4.0** / – | 605 / – | – |
-| Tom-256 base | **249** / – | 430 / – | – | 561 / – | – |
-| BLS12-381 base | **433** / – | 894 / – | – | 1,257 / – | – |
-| P-521 base | **6.0** / – | 1,460 / – | – | – | – |
-
-### div_u64, constant time: a / k, k of 64 bits, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | – | – | – | – | – | – |
-| BabyBear | – | – | – | – | – | – |
-| Goldilocks | – | – | – | – | – | – |
-| BN254 scalar | **12,356** / 12,417 | 12,452 / **12,408** | 28,523 / 29,683 | – | 233,313 / 234,318 | 351,604 / 349,714 |
-| secp256k1 base | 11,975 / 11,922 | **11,945** / **11,864** | 28,202 / 29,510 | 33,693 / 33,608 | 201,299 / 201,259 | 466,493 / 464,971 |
-| P-256 base | **11,826** / **11,832** | 11,948 / 11,860 | 28,340 / 29,445 | 66,720 / 66,686 | 165,894 / 164,896 | 226,037 / 226,683 |
-| P-256 scalar | **12,215** / 12,347 | 12,266 / **12,242** | 28,419 / 29,532 | 219,294 / 222,531 | 234,068 / 232,819 | 396,076 / 395,765 |
-| Tom-256 base | **12,193** / **12,203** | 12,409 / 12,372 | 28,484 / 29,575 | – | 215,197 / 215,524 | 330,648 / 328,205 |
-| BLS12-381 base | **24,787** / **24,797** | 24,832 / 24,856 | 51,013 / 51,387 | – | 874,859 / 874,968 | 1,241,613 / 1,242,284 |
-| P-521 base | **42,839** / **42,677** | 43,060 / 42,963 | 107,812 / 105,706 | – | – | – |
-
-### div_uint, constant time: a / k, k of one bit less than p, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **455** / **451** | 457 / 454 | 5,959 / 5,530 | – | – | – | 3,507 / 3,533 |
-| BabyBear | **546** / **545** | 552 / 553 | 5,995 / 5,677 | – | – | – | 3,567 / 3,525 |
-| Goldilocks | 1,313 / **1,308** | **1,308** / 1,310 | 5,955 / 5,610 | – | – | 1,825 / 1,812 | 7,360 / 7,373 |
-| BN254 scalar | **12,497** / **12,477** | 12,628 / 12,633 | 28,328 / 29,968 | – | 234,469 / 231,884 | – | 352,590 / 351,888 |
-| secp256k1 base | **11,942** / **11,932** | 11,975 / 12,006 | 28,433 / 29,691 | 33,059 / 33,877 | 200,582 / 201,933 | – | 470,012 / 466,725 |
-| P-256 base | **12,021** / **11,900** | 12,120 / 12,038 | 28,742 / 30,295 | 67,049 / 66,830 | 165,667 / 163,231 | – | 226,866 / 227,555 |
-| P-256 scalar | **12,289** / **12,390** | 12,546 / 12,637 | 28,661 / 29,718 | 219,596 / 222,717 | 233,916 / 234,255 | – | 396,267 / 395,990 |
-| Tom-256 base | **12,387** / **12,363** | 12,583 / 12,571 | 28,962 / 29,902 | – | 216,220 / 215,473 | – | 330,827 / 330,389 |
-| BLS12-381 base | **25,420** / **25,401** | 25,457 / 25,517 | 51,141 / 50,668 | – | 874,198 / 874,075 | – | 1,239,908 / 1,240,884 |
-| P-521 base | **42,601** / **42,935** | 43,149 / 43,011 | 107,498 / 105,569 | – | – | – | – |
-
-## Results in WebAssembly with wide arithmetic, Chrome
-
-### add: a + b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **4.2** / **7.5** | – | 11.7 / 19.3 | – | – | 4.4 / 7.5\* | – | 10.8 / 18.0 | – |
-| BabyBear | **2.4** / **3.0** | – | 11.7 / 19.7 | – | – | **2.4** / **3.0** | – | 10.8 / 18.0 | – |
-| Goldilocks | **3.3** / **3.0** | – | 11.3 / 19.1 | – | – | 4.5 / 8.0 | **3.3** / 4.0 | 10.8 / 18.0 | – |
-| BN254 scalar | **12.3** / **10.9** | 13.2 / 11.1 | 42.3 / 87.0 | – | 20.7 / 23.0 | – | – | 62.1 / 103 | – |
-| secp256k1 base | **11.8** / **10.7** | 12.8 / 11.2 | 42.4 / 87.0 | 22.5 / 14.5 | 19.4 / 23.0 | – | – | 62.2 / 104 | – |
-| P-256 base | **12.3** / **11.2** | **12.3** / 11.3 | 42.4 / 87.0 | 17.9 / 21.6 | 18.0 / 21.0 | – | – | 62.1 / 104 | 440 / – |
-| P-256 scalar | **11.9** / **11.0** | 13.4 / 11.2 | 42.4 / 87.1 | 41.4 / 58.0 | 20.6 / 24.7 | – | – | 61.9 / 103 | 456 / – |
-| Tom-256 base | **11.7** / **11.2** | – | 42.3 / 87.3 | – | 20.2 / 24.0 | – | – | 62.1 / 103 | – |
-| BLS12-381 base | **17.8** / **18.8** | 30.2 / 38.0 | 106 / 116 | – | 32.5 / 34.1 | – | – | 115 / 156 | – |
-| P-521 base | **26.3** / **28.9** | – | 134 / 179 | – | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-### sub: a − b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **2.5** / **3.0** | – | 4.5 / 8.0 | – | – | 3.0 / 5.0 | – | 8.9 / 8.1 | – |
-| BabyBear | **2.5** / **3.0** | – | 4.5 / 8.0 | – | – | 2.8 / **3.0** | – | 8.8 / 7.9 | – |
-| Goldilocks | **2.6** / **3.0** | – | 4.5 / 8.0 | – | – | 3.5 / 5.0 | 2.8 / **3.0** | 10.3 / 8.1 | – |
-| BN254 scalar | **11.9** / **10.8** | 17.1 / 14.0 | 26.7 / 27.0 | – | 15.0 / 14.9 | – | – | 37.4 / 76.8 | – |
-| secp256k1 base | **11.8** / **10.7** | 16.5 / 14.0 | 26.7 / 27.2 | 25.6 / 19.7 | 14.2 / 14.5 | – | – | 37.7 / 77.1 | – |
-| P-256 base | **11.9** / **10.5** | 16.0 / 12.9 | 26.7 / 25.8 | 13.4 / 14.6 | 12.4 / 14.1 | – | – | 37.8 / 77.4 | 231 / – |
-| P-256 scalar | **11.9** / **10.7** | 17.1 / 13.9 | 26.7 / 29.0 | 23.1 / 24.3 | 14.4 / 15.1 | – | – | 37.5 / 76.8 | 234 / – |
-| Tom-256 base | **11.9** / **10.7** | – | 26.7 / 27.0 | – | 15.0 / 14.9 | – | – | 37.6 / 77.4 | – |
-| BLS12-381 base | **17.9** / **17.5** | 27.4 / 23.8 | 43.8 / 97.3 | – | 23.5 / 24.9 | – | – | 73.7 / 104 | – |
-| P-521 base | **28.6** / **27.1** | – | 65.0 / 145 | – | – | – | – | – | – |
-
-### mul: a × b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.1** / **12.0** | – | 15.8 / 26.9 | – | – | 5.2 / 12.0 | – | 51.3 / 59.0 | – |
-| BabyBear | 5.2 / **11.0** | – | 15.8 / 26.9 | – | – | **4.1** / 12.2 | – | 51.3 / 59.0 | – |
-| Goldilocks | 7.0 / **14.4** | – | 16.2 / 27.0 | – | – | 11.6 / 17.7 | **6.5** / 14.5 | 51.4 / 59.0 | – |
-| BN254 scalar | 95.9 / **90.8** | 249 / 249 | 133 / 135 | – | **91.4** / 93.5 | – | – | 896 / 931 | – |
-| secp256k1 base | **64.1** / **77.5** | 203 / 203 | 133 / 135 | 158 / 161 | 91.0 / 90.3 | – | – | 907 / 943 | – |
-| P-256 base | **71.4** / **72.5** | 181 / 181 | 133 / 134 | 85.0 / 78.3 | 86.3 / 75.6 | – | – | 549 / 582 | 1,070 / – |
-| P-256 scalar | **86.6** / **93.4** | 248 / 245 | 133 / 135 | 258 / 250 | 93.5 / 95.4 | – | – | 909 / 943 | 1,065 / – |
-| Tom-256 base | **80.2** / **87.0** | – | 133 / 135 | – | 94.2 / 94.2 | – | – | 910 / 937 | – |
-| BLS12-381 base | 248 / 244 | 553 / 550 | 265 / 311 | – | **195** / **193** | – | – | 2,010 / 2,033 | – |
-| P-521 base | **399** / **416** | – | 600 / 617 | – | – | – | – | – | – |
-
-### square: a², in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.2** / **12.0** | – | 15.6 / 27.0 | – | – | 5.1\* / 12.0\* | – | 46.5 / 56.4 | – |
-| BabyBear | **4.8** / **11.0** | – | 15.6 / 27.0 | – | – | 5.2 / 11.9 | – | 46.5 / 54.3 | – |
-| Goldilocks | **6.0** / **12.0** | – | 15.9 / 27.0 | – | – | 9.1 / 18.0 | **6.0** / 12.8 | 46.6 / 55.5 | – |
-| BN254 scalar | 95.0 / **90.0** | 201 / 202 | 110 / 109 | – | **84.3** / 95.8 | – | – | 899 / 924 | – |
-| secp256k1 base | **60.8** / **69.9** | 162 / 161 | 110 / 108 | 98.6 / 116 | 77.9 / 84.1 | – | – | 916 / 936 | – |
-| P-256 base | 78.3 / 62.2 | 136 / 135 | 109 / 108 | **73.6** / 76.7 | 75.9 / **61.3** | – | – | 559 / 593 | 1,072 / – |
-| P-256 scalar | 83.6 / **89.5** | 186 / 185 | 110 / 108 | 248 / 254 | **83.0** / 92.5 | – | – | 918 / 939 | 1,066 / – |
-| Tom-256 base | **75.9** / **83.0** | – | 109 / 108 | – | 79.8 / 89.5 | – | – | 917 / 938 | – |
-| BLS12-381 base | 282 / 281 | 439 / 438 | 296 / 304 | – | **163** / **164** | – | – | 2,011 / 2,030 | – |
-| P-521 base | **260** / **263** | – | 614 / 613 | – | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-### invert: a⁻¹, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **266** / – | – | 1,587 / – | – | – | 672 / – | – | 2,204 / – | – |
-| BabyBear | **268** / – | – | 1,545 / – | – | – | 700 / – | – | 2,357 / – | – |
-| Goldilocks | **537** / – | – | 3,128 / – | – | – | 1,392 / – | 912 / – | 4,441 / – | – |
-| BN254 scalar | **6,417** / – | 22,474 / – | 15,204 / – | – | 8,010 / – | – | – | 42,069 / – | – |
-| secp256k1 base | **6,031** / – | 20,417 / – | 15,237 / – | 33,482 / – | 8,001 / – | – | – | 42,556 / – | – |
-| P-256 base | **6,062** / – | 20,777 / – | 15,236 / – | 22,180 / – | 8,013 / – | – | – | 40,744 / – | 245,048 / – |
-| P-256 scalar | **6,399** / – | 23,069 / – | 15,252 / – | 46,636 / – | 8,029 / – | – | – | 42,589 / – | 248,821 / – |
-| Tom-256 base | **6,400** / – | – | 15,253 / – | – | 8,023 / – | – | – | 42,485 / – | – |
-| BLS12-381 base | **11,422** / – | 42,184 / – | 26,321 / – | – | 13,127 / – | – | – | 97,980 / – | – |
-| P-521 base | **18,196** / – | – | 50,293 / – | – | – | – | – | – | – |
-
-### sqrt: √a, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 329 / – | – | 1,637 / – | – | – | **324** / – | 1,741 / – | – |
-| BabyBear | **2,040** / – | – | 20,193 / – | – | – | 3,118 / – | – | – |
-| Goldilocks | **3,697** / – | – | 28,889 / – | – | – | 5,739 / – | – | – |
-| BN254 scalar | **47,313** / – | 123,084 / – | 133,963 / – | – | 102,211 / – | – | – | – |
-| secp256k1 base | **19,095** / – | 91,221 / – | 55,374 / – | 33,129 / – | 42,787 / – | – | 475,590 / – | – |
-| P-256 base | **16,334** / – | 40,004 / – | 47,122 / – | 21,580 / – | 38,148 / – | – | 170,891 / – | 305,084 / – |
-| P-256 scalar | **35,837** / – | 88,463 / – | 54,754 / – | 115,422 / – | 49,826 / – | – | – | – |
-| Tom-256 base | **21,187** / – | – | 51,934 / – | – | 45,702 / – | – | 336,024 / – | – |
-| BLS12-381 base | **133,690** / – | 284,163 / – | 145,054 / – | – | 154,972 / – | – | 1,234,379 / – | – |
-| P-521 base | **143,071** / – | – | 296,403 / – | – | – | – | – | – |
-
-### mul_u64: a × k, k of 64 bits, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.3** / **14.0** | – | 30.5 / 31.4 | – | – | 9.1\* / 12.6\* | – | – |
-| BabyBear | **11.2** / **11.0** | – | 33.0 / 32.0 | – | – | 12.0 / 13.3 | – | – |
-| Goldilocks | 11.0 / **12.0** | – | 34.6 / 35.8 | – | – | 11.7 / 17.0 | **10.8** / 13.7 | – |
-| BN254 scalar | **28.8** / **34.5** | 514 / 519 | 263 / 262 | – | 284 / 291 | – | – | 1,840 / 1,854 |
-| secp256k1 base | **12.6** / **16.0** | 336 / 336 | 262 / 259 | 157 / 163 | 269 / 280 | – | – | 1,833 / 1,849 |
-| P-256 base | **27.3** / **33.0** | 351 / 351 | 262 / 258 | 150 / 151 | 239 / 251 | – | – | 1,215 / 1,214 |
-| P-256 scalar | **30.3** / **34.6** | 492 / 489 | 263 / 259 | 249 / 255 | 287 / 297 | – | – | 1,851 / 1,864 |
-| Tom-256 base | **30.0** / **33.0** | – | 262 / 259 | – | 290 / 299 | – | – | 1,832 / 1,860 |
-| BLS12-381 base | **44.2** / **47.8** | 1,123 / 1,121 | 509 / 592 | – | 481 / 486 | – | – | 4,086 / 4,094 |
-| P-521 base | **32.1** / **39.6** | – | 984 / 994 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-### mul_uint: a × k, k of the bit length of p, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.4** / **14.0** | 30.5 / 31.5 | – | – | 9.1\* / 12.6\* | – |
-| BabyBear | **11.2** / **11.0** | 33.1 / 32.4 | – | – | 11.6 / 13.3 | – |
-| Goldilocks | 11.0 / **12.0** | 34.7 / 35.5 | – | – | 11.6 / 17.8 | **10.8** / 13.7 |
-| BN254 scalar | **177** / 185 | 262 / 260 | – | 181 / **181** | – | – |
-| secp256k1 base | **113** / **118** | 262 / 260 | – | 154 / 154 | – | – |
-| P-256 base | 173 / 180 | 263 / 259 | – | **143** / **145** | – | – |
-| P-256 scalar | 188 / 189 | 262 / 260 | 296 / 289 | **183** / **185** | – | – |
-| Tom-256 base | **178** / **177** | 262 / 260 | – | 180 / 178 | – | – |
-| BLS12-381 base | **380** / 380 | 517 / 593 | – | 382 / **379** | – | – |
-| P-521 base | **618** / **644** | 1,008 / 1,011 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-### add_u64: a + k, k of 64 bits, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **8.1** / **8.7** | – | 30.4 / 30.1 | – | – | 7.6\* / 8.1\* | – | – |
-| BabyBear | **8.6** / **8.2** | – | 31.6 / 30.0 | – | – | 10.0 / 9.2 | – | – |
-| Goldilocks | 7.7 / **7.3** | – | 32.5 / 30.9 | – | – | 4.5\* / 8.0 | **7.4** / 7.4 | – |
-| BN254 scalar | **53.3** / **44.5** | 272 / 264 | 221 / 228 | – | 238 / 228 | – | – | 1,060 / 1,050 |
-| secp256k1 base | **8.0** / **6.0** | 121 / 119 | 221 / 229 | 14.6 / 5.3\* | 233 / 216 | – | – | 1,018 / 1,028 |
-| P-256 base | **36.8** / **35.2** | 171 / 162 | 224 / 228 | 96.6 / 92.5 | 214 / 192 | – | – | 706 / 694 |
-| P-256 scalar | **40.4** / **38.4** | 249 / 242 | 221 / 229 | 40.9 / 56.9 | 239 / 214 | – | – | 1,054 / 1,051 |
-| Tom-256 base | **41.6** / **39.7** | – | 221 / 229 | – | 246 / 223 | – | – | 1,053 / 1,049 |
-| BLS12-381 base | **65.9** / **62.0** | 615 / 612 | 406 / 413 | – | 323 / 320 | – | – | 2,218 / 2,219 |
-| P-521 base | **16.1** / **12.3** | – | 649 / 653 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### add_uint: a + k, k of the bit length of p, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **8.2** / **8.7** | 30.4 / 30.1 | – | – | 7.6\* / 8.1\* | – |
-| BabyBear | **8.6** / **8.2** | 31.7 / 30.0 | – | – | 10.0 / 9.2 | – |
-| Goldilocks | 7.7 / **7.3** | 32.5 / 31.0 | – | – | 4.5\* / 8.0 | **7.4** / 7.4 |
-| BN254 scalar | 142 / 136 | 237 / 231 | – | **113** / **111** | – | – |
-| secp256k1 base | **14.6** / **12.6** | 238 / 232 | – | 85.4 / 85.1 | – | – |
-| P-256 base | **87.2** / **88.0** | 237 / 232 | – | 91.5 / 90.1 | – | – |
-| P-256 scalar | 135 / 124 | 238 / 231 | **94.8** / **81.6** | 113 / 113 | – | – |
-| Tom-256 base | 134 / 124 | 237 / 232 | – | **110** / **110** | – | – |
-| BLS12-381 base | 343 / 320 | 408 / 402 | – | **225** / **224** | – | – |
-| P-521 base | **42.0** / **42.0** | 666 / 664 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### sub_u64: a − k, k of 64 bits, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **6.2** / **5.3** | – | 17.9 / 18.2 | – | – | 6.1\* / 6.1 | – | – |
-| BabyBear | **8.5** / **8.2** | – | 19.5 / 19.4 | – | – | 10.7 / 9.0 | – | – |
-| Goldilocks | **7.0** / **6.5** | – | 23.2 / 23.2 | – | – | 3.5\* / 5.0\* | **7.0** / 7.1 | – |
-| BN254 scalar | **51.3** / **45.6** | 276 / 266 | 151 / 152 | – | 244 / 214 | – | – | 1,001 / 996 |
-| secp256k1 base | **8.0** / **6.1** | 124 / 121 | 150 / 152 | 14.0 / 11.0 | 246 / 213 | – | – | 976 / 973 |
-| P-256 base | **36.8** / **35.2** | 172 / 165 | 150 / 150 | 89.4 / 88.0 | 224 / 201 | – | – | 643 / 644 |
-| P-256 scalar | 40.2 / 37.3 | 251 / 243 | 152 / 151 | **21.2** / **21.1** | 235 / 215 | – | – | 1,003 / 989 |
-| Tom-256 base | **50.1** / **39.2** | – | 151 / 152 | – | 240 / 219 | – | – | 1,001 / 989 |
-| BLS12-381 base | **67.6** / **62.8** | 609 / 600 | 386 / 381 | – | 308 / 317 | – | – | 2,153 / 2,168 |
-| P-521 base | **18.7** / **15.2** | – | 622 / 627 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### sub_uint: a − k, k of the bit length of p, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **6.2** / **5.3** | 17.9 / 18.2 | – | – | 6.1\* / 6.1 | – |
-| BabyBear | **8.5** / **8.2** | 19.5 / 19.4 | – | – | 10.7 / 9.0 | – |
-| Goldilocks | **7.0** / **6.5** | 23.2 / 23.2 | – | – | 3.5\* / 5.0\* | **7.0** / 7.0 |
-| BN254 scalar | 146 / 138 | 153 / 150 | – | **104** / **105** | – | – |
-| secp256k1 base | **14.6** / **12.4** | 152 / 150 | – | 108 / 79.7 | – | – |
-| P-256 base | 87.8 / 88.3 | 152 / 149 | – | **85.7** / **85.7** | – | – |
-| P-256 scalar | 133 / 124 | 153 / 149 | **70.4** / **72.0** | 105 / 105 | – | – |
-| Tom-256 base | 131 / 121 | 153 / 150 | – | **104** / **103** | – | – |
-| BLS12-381 base | 348 / 324 | 387 / 390 | – | **216** / **216** | – | – |
-| P-521 base | **42.1** / **38.7** | 635 / 638 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### from_u64: k mod p, k of 64 bits, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 4.7 / – | – | 11.6 / – | – | – | **4.1** / – | – | – |
-| BabyBear | **7.3** / – | – | 12.6 / – | – | – | 7.5 / – | – | – |
-| Goldilocks | **5.5** / – | – | 16.9 / – | – | – | 2.2\* / – | 5.9 / – | – |
-| BN254 scalar | **28.2** / – | 248 / – | 132 / – | – | 189 / – | – | – | 925 / – |
-| secp256k1 base | **3.8** / – | 114 / – | 133 / – | 6.0 / – | 169 / – | – | – | 928 / – |
-| P-256 base | **25.3** / – | 148 / – | 134 / – | 76.0 / – | 159 / – | – | – | 567 / – |
-| P-256 scalar | 25.9 / – | 225 / – | 133 / – | **4.0** / – | 190 / – | – | – | 931 / – |
-| Tom-256 base | **28.9** / – | – | 133 / – | – | 191 / – | – | – | 934 / – |
-| BLS12-381 base | **44.6** / – | 567 / – | 254 / – | – | 291 / – | – | – | 2,051 / – |
-| P-521 base | **6.0** / – | – | 506 / – | – | – | – | – | – |
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### div_u64: a / k, k of 64 bits, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | ark-ff | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | – | – | – | – | – | – | – |
-| BabyBear | – | – | – | – | – | – | – |
-| Goldilocks | – | – | – | – | – | – | – |
-| BN254 scalar | **834** / **842** | 5,563 / 5,589 | 22,943 / 23,124 | 14,135 / 14,122 | – | 7,017 / 6,985 | 33,645 / 33,610 |
-| secp256k1 base | **766** / **777** | 5,035 / 5,038 | 17,338 / 17,316 | 14,178 / 14,153 | 34,061 / 34,139 | 6,923 / 6,988 | 34,340 / 33,502 |
-| P-256 base | **867** / **887** | 5,172 / 5,113 | 20,686 / 20,729 | 14,087 / 14,130 | 22,360 / 23,992 | 6,881 / 6,910 | 32,328 / 32,846 |
-| P-256 scalar | **891** / **899** | 5,498 / 5,444 | 22,634 / 22,537 | 14,047 / 14,168 | 36,193 / 35,256 | 6,955 / 6,964 | 34,945 / 33,855 |
-| Tom-256 base | **823** / **854** | 5,373 / 5,405 | – | 14,161 / 14,108 | – | 6,918 / 6,927 | 33,930 / 34,243 |
-| BLS12-381 base | **1,106** / **1,133** | 9,886 / 9,866 | 42,303 / 42,395 | 23,914 / 23,888 | – | 11,006 / 11,021 | 73,398 / 73,613 |
-| P-521 base | **1,369** / **1,375** | 14,914 / 14,903 | – | 45,412 / 45,690 | – | – | – |
-
-### div_uint: a / k, k of one bit less than p, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 277 / 276 | **274** / **272** | – | 1,606 / 1,608 | – | – | 675 / 670 | – | 2,412 / 2,388 |
-| BabyBear | **278** / **278** | 289 / 288 | – | 1,582 / 1,593 | – | – | 662 / 655 | – | 2,544 / 2,520 |
-| Goldilocks | **544** / **544** | 562 / 562 | – | 3,162 / 3,161 | – | – | 1,384 / 1,384 | 946 / 927 | 4,740 / 4,717 |
-| BN254 scalar | 6,685 / **6,650** | **6,601** / 6,686 | 22,797 / 23,014 | 15,648 / 15,586 | – | 8,226 / 8,126 | – | – | 44,156 / 44,045 |
-| secp256k1 base | **6,068** / 6,042 | 6,072 / **6,029** | 20,760 / 20,749 | 15,623 / 15,556 | 35,214 / 34,145 | 8,204 / 8,168 | – | – | 44,125 / 44,449 |
-| P-256 base | **6,169** / **6,126** | 6,243 / 6,171 | 21,193 / 21,250 | 15,655 / 15,618 | 22,145 / 22,815 | 8,220 / 8,222 | – | – | 42,573 / 42,516 |
-| P-256 scalar | **6,641** / **6,538** | 6,673 / 6,657 | 23,587 / 23,602 | 15,693 / 15,568 | 47,473 / 46,910 | 8,240 / 8,246 | – | – | 44,137 / 44,322 |
-| Tom-256 base | **6,655** / 6,614 | 6,656 / **6,567** | – | 15,674 / 15,587 | – | 8,247 / 8,234 | – | – | 44,469 / 44,388 |
-| BLS12-381 base | 12,074 / **11,932** | **12,043** / 12,010 | 43,376 / 43,316 | 27,031 / 27,021 | – | 13,593 / 13,574 | – | – | 101,731 / 101,507 |
-| P-521 base | **18,428** / 18,379 | 18,716 / **18,085** | – | 52,233 / 52,443 | – | – | – | – | – |
-
-### add, constant time: a + b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **4.2** / **7.5** | 11.7 / 19.3 | – | – | – | 10.8 / 18.0 |
-| BabyBear | **2.4** / **3.0** | 11.7 / 19.7 | – | – | – | 10.8 / 18.0 |
-| Goldilocks | **3.3** / **3.0** | 11.3 / 19.1 | – | – | **3.3** / 4.0 | 10.8 / 18.0 |
-| BN254 scalar | **16.3** / **19.5** | 42.3 / 87.0 | – | 20.7 / 23.0 | – | 62.1 / 103 |
-| secp256k1 base | **18.2** / **22.6** | 42.4 / 87.0 | 22.5 / 14.5\* | 19.4 / 23.0 | – | 62.2 / 104 |
-| P-256 base | 18.1 / 22.8 | 42.4 / 87.0 | **17.9** / 21.6 | 18.0 / **21.0** | – | 62.1 / 104 |
-| P-256 scalar | **17.9** / **23.8** | 42.4 / 87.1 | 41.4 / 58.0 | 20.6 / 24.7 | – | 61.9 / 103 |
-| Tom-256 base | **18.1** / **23.8** | 42.3 / 87.3 | – | 20.2 / 24.0 | – | 62.1 / 103 |
-| BLS12-381 base | **25.7** / **28.5** | 106 / 116 | – | 32.5 / 34.1 | – | 115 / 156 |
-| P-521 base | **46.5** / **48.6** | 134 / 179 | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### sub, constant time: a − b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **2.6** / **3.0** | 4.5 / 8.0 | – | – | 3.0 / 5.0 | – | 8.9 / 8.1 |
-| BabyBear | **2.6** / **3.0** | 4.5 / 8.0 | – | – | – | – | 8.8 / 7.9 |
-| Goldilocks | **2.6** / **3.0** | 4.5 / 8.0 | – | – | – | 2.8 / **3.0** | 10.3 / 8.1 |
-| BN254 scalar | 16.6 / 16.9 | 26.7 / 27.0 | – | **15.0** / **14.9** | – | – | 37.4 / 76.8 |
-| secp256k1 base | 14.4 / 15.5 | 26.7 / 27.2 | 25.6 / 19.7 | **14.2** / **14.5** | – | – | 37.7 / 77.1 |
-| P-256 base | 13.4 / 15.5 | 26.7 / 25.8 | 13.4 / 14.6 | **12.4** / **14.1** | – | – | 37.8 / 77.4 |
-| P-256 scalar | 15.0 / 15.8 | 26.7 / 29.0 | 23.1 / 24.3 | **14.4** / **15.1** | – | – | 37.5 / 76.8 |
-| Tom-256 base | 15.3 / 17.1 | 26.7 / 27.0 | – | **15.0** / **14.9** | – | – | 37.6 / 77.4 |
-| BLS12-381 base | 24.4 / **24.7** | 43.8 / 97.3 | – | **23.5** / 24.9 | – | – | 73.7 / 104 |
-| P-521 base | **37.2** / **39.9** | 65.0 / 145 | – | – | – | – | – |
-
-### mul, constant time: a × b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.2** / **12.0** | 15.8 / 26.9 | – | – | – | 51.3 / 59.0 |
-| BabyBear | **5.2** / **11.0** | 15.8 / 26.9 | – | – | – | 51.3 / 59.0 |
-| Goldilocks | 7.0 / **14.4** | 16.2 / 27.0 | – | – | **6.5** / 14.5 | 51.4 / 59.0 |
-| BN254 scalar | **81.1** / 94.0 | 133 / 135 | – | 91.4 / **93.5** | – | 896 / 931 |
-| secp256k1 base | **64.3** / **77.5** | 133 / 135 | 158 / 161 | 91.0 / 90.3 | – | 907 / 943 |
-| P-256 base | **72.0** / **72.4** | 133 / 134 | 85.0 / 78.3 | 86.3 / 75.6 | – | 549 / 582 |
-| P-256 scalar | **86.6** / **93.5** | 133 / 135 | 258 / 250 | 93.5 / 95.4 | – | 909 / 943 |
-| Tom-256 base | **80.1** / **86.5** | 133 / 135 | – | 94.2 / 94.2 | – | 910 / 937 |
-| BLS12-381 base | 248 / 244 | 265 / 311 | – | **195** / **193** | – | 2,010 / 2,033 |
-| P-521 base | **400** / **417** | 600 / 617 | – | – | – | – |
-
-### square, constant time: a², in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.2** / **12.0** | 15.6 / 27.0 | – | – | – | 46.5 / 56.4 |
-| BabyBear | **4.9** / **11.0** | 15.6 / 27.0 | – | – | – | 46.5 / 54.3 |
-| Goldilocks | **6.0** / **12.0** | 15.9 / 27.0 | – | – | **6.0** / 12.8 | 46.6 / 55.5 |
-| BN254 scalar | **77.8** / **82.5** | 110 / 109 | – | 84.3 / 95.8 | – | 899 / 924 |
-| secp256k1 base | **61.2** / **69.9** | 110 / 108 | 98.6 / 116 | 77.9 / 84.1 | – | 916 / 936 |
-| P-256 base | 78.4 / 62.1 | 109 / 108 | **73.6** / 76.7 | 75.9 / **61.3** | – | 559 / 593 |
-| P-256 scalar | **81.6** / **89.1** | 110 / 108 | 248 / 254 | 83.0 / 92.5 | – | 918 / 939 |
-| Tom-256 base | 84.4 / **83.0** | 109 / 108 | – | **79.8** / 89.5 | – | 917 / 938 |
-| BLS12-381 base | 282 / 292 | 296 / 304 | – | **163** / **164** | – | 2,011 / 2,030 |
-| P-521 base | **262** / **261** | 614 / 613 | – | – | – | – |
-
-### invert, constant time: a⁻¹, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **438** / – | 5,299 / – | – | – | – | 3,341 / – |
-| BabyBear | **459** / – | 5,336 / – | – | – | – | 3,305 / – |
-| Goldilocks | **856** / – | 5,380 / – | – | – | 912 / – | 7,026 / – |
-| BN254 scalar | **9,515** / – | 25,649 / – | – | 59,812 / – | – | 361,576 / – |
-| secp256k1 base | **9,096** / – | 25,562 / – | 33,482 / – | 52,631 / – | – | 477,019 / – |
-| P-256 base | **8,923** / – | 25,223 / – | 22,180 / – | 43,495 / – | – | 224,813 / – |
-| P-256 scalar | **9,328** / – | 25,677 / – | 109,613 / – | 59,939 / – | – | 406,957 / – |
-| Tom-256 base | **9,293** / – | 25,568 / – | – | 58,354 / – | – | 340,567 / – |
-| BLS12-381 base | **16,592** / – | 42,655 / – | – | 166,073 / – | – | 1,242,751 / – |
-| P-521 base | **26,001** / – | 84,120 / – | – | – | – | – |
-
-### sqrt, constant time: √a, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **334** / – | 1,637 / – | – | – | 1,741 / – |
-| BabyBear | **6,456** / – | 20,193 / – | – | – | – |
-| Goldilocks | **8,887** / – | 28,889 / – | – | – | – |
-| BN254 scalar | **83,838** / – | 133,963 / – | – | 102,211 / – | – |
-| secp256k1 base | **19,399** / – | 55,374 / – | 33,129 / – | 42,787 / – | 475,590 / – |
-| P-256 base | **15,771** / – | 47,122 / – | 21,580 / – | 38,148 / – | 170,891 / – |
-| P-256 scalar | **37,110** / – | 54,754 / – | 115,422 / – | 49,826 / – | – |
-| Tom-256 base | **32,400** / – | 51,934 / – | – | 45,702 / – | 336,024 / – |
-| BLS12-381 base | **136,709** / – | 145,054 / – | – | 154,972 / – | 1,234,379 / – |
-| P-521 base | **135,728** / – | 296,403 / – | – | – | – |
-
-### mul_u64, constant time: a × k, k of 64 bits, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.4** / **14.0** | 30.5 / 31.4 | – | – | – |
-| BabyBear | **11.2** / **11.0** | 33.0 / 32.0 | – | – | – |
-| Goldilocks | 11.0 / **12.0** | 34.6 / 35.8 | – | – | **10.8** / 13.7 |
-| BN254 scalar | **38.9** / **50.9** | 263 / 262 | – | 284 / 291 | – |
-| secp256k1 base | **24.9** / **39.0** | 262 / 259 | 157 / 163 | 269 / 280 | – |
-| P-256 base | **40.3** / **53.2** | 262 / 258 | 150 / 151 | 239 / 251 | – |
-| P-256 scalar | **43.5** / **55.0** | 263 / 259 | 249 / 255 | 287 / 297 | – |
-| Tom-256 base | **41.8** / **52.0** | 262 / 259 | – | 290 / 299 | – |
-| BLS12-381 base | **65.8** / **72.0** | 509 / 592 | – | 481 / 486 | – |
-| P-521 base | **69.3** / **77.9** | 984 / 994 | – | – | – |
-
-### mul_uint, constant time: a × k, k of the bit length of p, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.4** / **14.0** | 30.5 / 31.5 | – | – | – |
-| BabyBear | **11.2** / **11.0** | 33.1 / 32.4 | – | – | – |
-| Goldilocks | 11.0 / **12.0** | 34.7 / 35.5 | – | – | **10.8** / 13.7 |
-| BN254 scalar | 246 / 251 | 262 / 260 | – | **181** / **181** | – |
-| secp256k1 base | 192 / 192 | 262 / 260 | – | **154** / **154** | – |
-| P-256 base | 268 / 247 | 263 / 259 | – | **143** / **145** | – |
-| P-256 scalar | 261 / 264 | 262 / 260 | 296 / 289 | **183** / **185** | – |
-| Tom-256 base | 259 / 257 | 262 / 260 | – | **180** / **178** | – |
-| BLS12-381 base | 513 / 506 | 517 / 593 | – | **382** / **379** | – |
-| P-521 base | **974** / **998** | 1,008 / 1,011 | – | – | – |
-
-### add_u64, constant time: a + k, k of 64 bits, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **8.1** / **8.7** | 30.4 / 30.1 | – | – | – |
-| BabyBear | **8.6** / **8.2** | 31.6 / 30.0 | – | – | – |
-| Goldilocks | 7.7 / **7.3** | 32.5 / 30.9 | – | – | **7.4** / 7.4 |
-| BN254 scalar | **58.3** / **56.2** | 221 / 228 | – | 238 / 228 | – |
-| secp256k1 base | **16.1** / **23.0** | 221 / 229 | 14.6\* / 5.3\* | 233 / 216 | – |
-| P-256 base | **58.7** / **56.3** | 224 / 228 | 96.6 / 92.5 | 214 / 192 | – |
-| P-256 scalar | 56.8 / 58.4 | 221 / 229 | **40.9** / **56.9** | 239 / 214 | – |
-| Tom-256 base | **62.6** / **62.0** | 221 / 229 | – | 246 / 223 | – |
-| BLS12-381 base | **93.2** / **96.0** | 406 / 413 | – | 323 / 320 | – |
-| P-521 base | **44.1** / **45.1** | 649 / 653 | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### add_uint, constant time: a + k, k of the bit length of p, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **8.1** / **8.7** | 30.4 / 30.1 | – | – | – |
-| BabyBear | **8.6** / **8.2** | 31.7 / 30.0 | – | – | – |
-| Goldilocks | 7.7 / **7.3** | 32.5 / 31.0 | – | – | **7.4** / 7.4 |
-| BN254 scalar | 131 / 129 | 237 / 231 | – | **113** / **111** | – |
-| secp256k1 base | **29.4** / **29.5** | 238 / 232 | – | 85.4 / 85.1 | – |
-| P-256 base | 116 / 108 | 237 / 232 | – | **91.5** / **90.1** | – |
-| P-256 scalar | 129 / 136 | 238 / 231 | **94.8** / **81.6** | 113 / 113 | – |
-| Tom-256 base | 114 / 128 | 237 / 232 | – | **110** / **110** | – |
-| BLS12-381 base | 361 / 351 | 408 / 402 | – | **225** / **224** | – |
-| P-521 base | **105** / **93.3** | 666 / 664 | – | – | – |
-
-### sub_u64, constant time: a − k, k of 64 bits, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **6.2** / **5.3** | 17.9 / 18.2 | – | – | – |
-| BabyBear | **8.5** / **8.2** | 19.5 / 19.4 | – | – | – |
-| Goldilocks | **7.0** / **6.6** | 23.2 / 23.2 | – | – | **7.0** / 7.1 |
-| BN254 scalar | **60.0** / **56.9** | 151 / 152 | – | 244 / 214 | – |
-| secp256k1 base | **12.3** / **15.1** | 150 / 152 | 14.0 / 11.0\* | 246 / 213 | – |
-| P-256 base | **52.4** / **49.0** | 150 / 150 | 89.4 / 88.0 | 224 / 201 | – |
-| P-256 scalar | 52.5 / 50.4 | 152 / 151 | **21.2** / **21.1** | 235 / 215 | – |
-| Tom-256 base | **56.4** / **57.1** | 151 / 152 | – | 240 / 219 | – |
-| BLS12-381 base | **86.5** / **90.0** | 386 / 381 | – | 308 / 317 | – |
-| P-521 base | **34.1** / **35.4** | 622 / 627 | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### sub_uint, constant time: a − k, k of the bit length of p, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **6.2** / **5.3** | 17.9 / 18.2 | – | – | – |
-| BabyBear | **8.5** / **8.2** | 19.5 / 19.4 | – | – | – |
-| Goldilocks | **7.0** / **6.5** | 23.2 / 23.2 | – | – | **7.0** / 7.0 |
-| BN254 scalar | 137 / 133 | 153 / 150 | – | **104** / **105** | – |
-| secp256k1 base | **26.0** / **24.9** | 152 / 150 | – | 108 / 79.7 | – |
-| P-256 base | 106 / 98.2 | 152 / 149 | – | **85.7** / **85.7** | – |
-| P-256 scalar | 122 / 127 | 153 / 149 | **70.4** / **72.0** | 105 / 105 | – |
-| Tom-256 base | 129 / 127 | 153 / 150 | – | **104** / **103** | – |
-| BLS12-381 base | 364 / 346 | 387 / 390 | – | **216** / **216** | – |
-| P-521 base | **86.9** / **85.3** | 635 / 638 | – | – | – |
-
-### from_u64, constant time: k mod p, k of 64 bits, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **4.7** / – | 11.6 / – | – | – | – |
-| BabyBear | **10.3** / – | 12.6 / – | – | – | – |
-| Goldilocks | 9.3 / – | 16.9 / – | – | – | **5.9** / – |
-| BN254 scalar | **81.0** / – | 132 / – | – | 189 / – | – |
-| secp256k1 base | **3.4** / – | 133 / – | 6.0 / – | 169 / – | – |
-| P-256 base | **49.9** / – | 134 / – | 76.0 / – | 159 / – | – |
-| P-256 scalar | 81.5 / – | 133 / – | **4.0** / – | 190 / – | – |
-| Tom-256 base | **79.0** / – | 133 / – | – | 191 / – | – |
-| BLS12-381 base | **155** / – | 254 / – | – | 291 / – | – |
-| P-521 base | **6.0** / – | 506 / – | – | – | – |
-
-### div_u64, constant time: a / k, k of 64 bits, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | – | – | – | – | – | – |
-| BabyBear | – | – | – | – | – | – |
-| Goldilocks | – | – | – | – | – | – |
-| BN254 scalar | **9,500** / 9,574 | 9,573 / **9,449** | 24,187 / 25,834 | – | 61,606 / 61,645 | 352,051 / 351,425 |
-| secp256k1 base | **9,072** / **9,049** | 9,111 / 9,093 | 24,339 / 25,819 | 34,061 / 34,139 | 53,609 / 53,612 | 466,788 / 460,817 |
-| P-256 base | **9,157** / **9,131** | 9,189 / 9,157 | 24,375 / 25,533 | 22,360 / 23,992 | 44,366 / 43,287 | 226,539 / 225,070 |
-| P-256 scalar | **9,471** / **9,427** | 9,641 / 9,594 | 24,270 / 25,876 | 109,928 / 144,510 | 59,900 / 59,700 | 396,123 / 395,065 |
-| Tom-256 base | **9,268** / 9,343 | 9,542 / **9,325** | 24,352 / 25,865 | – | 58,464 / 57,996 | 331,044 / 329,381 |
-| BLS12-381 base | **16,844** / **16,774** | 17,012 / 16,864 | 43,619 / 43,318 | – | 162,134 / 162,028 | 1,242,613 / 1,242,346 |
-| P-521 base | **26,172** / **25,998** | 26,715 / 26,801 | 84,766 / 87,479 | – | – | – |
-
-### div_uint, constant time: a / k, k of one bit less than p, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **455** / **451** | 457 / 454 | 5,551 / 5,146 | – | – | – | 3,506 / 3,539 |
-| BabyBear | 466 / **437** | **439** / 441 | 5,548 / 5,240 | – | – | – | 3,535 / 3,526 |
-| Goldilocks | 948 / 946 | 953 / 948 | 5,564 / 5,197 | – | – | **946** / **927** | 7,361 / 7,457 |
-| BN254 scalar | 9,578 / **9,545** | **9,503** / 9,618 | 24,876 / 26,236 | – | 62,215 / 61,402 | – | 352,629 / 350,955 |
-| secp256k1 base | **9,100** / **9,054** | 9,135 / 9,102 | 24,783 / 26,195 | 35,214 / 34,145 | 53,312 / 53,585 | – | 468,433 / 466,757 |
-| P-256 base | **9,104** / **9,122** | 9,291 / 9,188 | 24,534 / 25,533 | 22,145 / 22,815 | 44,472 / 43,090 | – | 226,451 / 226,604 |
-| P-256 scalar | **9,507** / **9,496** | 9,654 / 9,642 | 24,868 / 26,208 | 109,797 / 143,166 | 60,540 / 59,633 | – | 396,090 / 395,036 |
-| Tom-256 base | **9,458** / 9,432 | 9,494 / **9,281** | 24,963 / 26,262 | – | 58,239 / 56,483 | – | 331,118 / 331,397 |
-| BLS12-381 base | **16,995** / **16,947** | 17,178 / 17,157 | 43,537 / 43,382 | – | 160,480 / 160,883 | – | 1,244,751 / 1,241,073 |
-| P-521 base | **26,251** / **26,146** | 26,970 / 26,690 | 121,034 / 85,263 | – | – | – | – |
-
-## Results in WebAssembly, Firefox
-
-### add: a + b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **4.4** / **7.7** | – | 10.8 / 19.5 | – | – | 4.4\* / 7.8 | – | 10.9 / 17.7 | – |
-| BabyBear | 3.0 / **3.0** | – | 10.8 / 19.8 | – | – | **2.7** / **3.0** | – | 10.9 / 17.8 | – |
-| Goldilocks | **3.1** / **3.0** | – | 12.0 / 19.2 | – | – | 4.0 / 6.0 | 4.0 / 4.7 | 10.9 / 17.7 | – |
-| BN254 scalar | 17.1 / 14.7 | **14.1** / **13.6** | 63.4 / 90.6 | – | 39.4 / 45.1 | – | – | 76.6 / 116 | – |
-| secp256k1 base | **14.9** / **13.9** | 16.7 / 14.8 | 64.4 / 90.4 | 16.1 / 15.6 | 35.3 / 38.9 | – | – | 76.4 / 115 | – |
-| P-256 base | **15.0** / **14.4** | 17.4 / 15.7 | 64.2 / 90.4 | 33.7 / 39.8 | 33.6 / 39.6 | – | – | 76.7 / 134 | 526 / – |
-| P-256 scalar | **16.1** / **14.7** | 17.1 / 15.5 | 64.2 / 90.5 | 55.8 / 60.1 | 38.1 / 42.6 | – | – | 76.5 / 134 | 525 / – |
-| Tom-256 base | **15.8** / **14.5** | – | 62.7 / 89.5 | – | 38.6 / 43.0 | – | – | 76.7 / 116 | – |
-| BLS12-381 base | **24.9** / **24.8** | 39.8 / 45.4 | 95.6 / 141 | – | 71.9 / 67.0 | – | – | 128 / 173 | – |
-| P-521 base | **42.4** / **46.6** | – | 178 / 247 | – | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-### sub: a − b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **2.7** / **3.0** | – | 5.0 / 8.0 | – | – | 3.0 / 5.0 | – | 16.6 / 15.0 | – |
-| BabyBear | **2.7** / **3.0** | – | 5.0 / 8.0 | – | – | 3.0 / **3.0** | – | 16.8 / 14.8 | – |
-| Goldilocks | **3.0** / **3.0** | – | 5.0 / 8.0 | – | – | 4.3 / 5.0 | **3.0** / **3.0** | 18.5 / 13.0 | – |
-| BN254 scalar | **15.1** / **14.5** | 19.0 / 17.0 | 34.5 / 30.0 | – | 23.3 / 26.0 | – | – | 54.5 / 73.8 | – |
-| secp256k1 base | **15.6** / **13.5** | 19.6 / 17.1 | 34.5 / 32.0 | 15.8 / 18.1 | 20.2 / 25.2 | – | – | 54.9 / 74.2 | – |
-| P-256 base | **14.9** / **12.7** | 18.5 / 15.3 | 34.6 / 28.8 | 21.7 / 24.6 | 21.1 / 24.4 | – | – | 54.4 / 91.6 | 269 / – |
-| P-256 scalar | **15.5** / **14.0** | 18.7 / 16.5 | 34.6 / 33.6 | 26.6 / 26.9 | 23.1 / 27.2 | – | – | 54.6 / 91.7 | 273 / – |
-| Tom-256 base | **15.5** / **13.7** | – | 34.5 / 30.2 | – | 23.4 / 26.4 | – | – | 54.5 / 73.9 | – |
-| BLS12-381 base | **24.8** / **24.8** | 31.4 / 30.8 | 60.6 / 110 | – | 44.9 / 44.1 | – | – | 76.9 / 104 | – |
-| P-521 base | **42.4** / **43.1** | – | 124 / 212 | – | – | – | – | – | – |
-
-### mul: a × b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.5** / **12.0** | – | 38.8 / 50.0 | – | – | 5.6 / 12.0 | – | 51.6 / 56.0 | – |
-| BabyBear | 7.8 / 14.5 | – | 39.2 / 48.5 | – | – | **6.5** / **13.0** | – | 51.6 / 56.0 | – |
-| Goldilocks | **12.4** / 22.0 | – | 37.8 / 52.1 | – | – | 13.1 / 18.0\* | 17.1 / **19.0** | 51.5 / 56.1 | – |
-| BN254 scalar | **386** / **365** | 404 / 380 | 901 / 891 | – | 698 / 690 | – | – | 1,059 / 1,075 | – |
-| secp256k1 base | **218** / **221** | 407 / 396 | 892 / 886 | 171\* / 171\* | 594 / 587 | – | – | 1,069 / 1,086 | – |
-| P-256 base | **284** / **292** | 484 / 470 | 886 / 881 | 473 / 461 | 486 / 483 | – | – | 851 / 837 | 1,289 / – |
-| P-256 scalar | **319** / **320** | 422 / 409 | 881 / 884 | 828 / 813 | 710 / 693 | – | – | 1,065 / 1,082 | 1,289 / – |
-| Tom-256 base | **304** / **312** | – | 892 / 885 | – | 608 / 588 | – | – | 1,069 / 1,081 | – |
-| BLS12-381 base | **916** / **908** | 1,061 / 1,053 | 1,290 / 1,308 | – | 1,799 / 1,737 | – | – | 2,177 / 2,173 | – |
-| P-521 base | **1,637** / **1,605** | – | 2,716 / 2,780 | – | – | – | – | – | – |
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### square: a², in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.4** / **12.0** | – | 38.3 / 47.7 | – | – | 5.4\* / 12.0\* | – | 49.1 / 56.0 | – |
-| BabyBear | 8.0 / 14.0 | – | 38.2 / 52.7 | – | – | **5.7** / **13.0** | – | 49.0 / 56.0 | – |
-| Goldilocks | **12.0** / 21.2 | – | 39.5 / 52.0 | – | – | 11.2\* / 18.0\* | 17.0 / **20.0** | 49.1 / 56.0 | – |
-| BN254 scalar | 374 / 363 | **359** / **345** | 643 / 650 | – | 543 / 555 | – | – | 1,066 / 1,062 | – |
-| secp256k1 base | **192** / **198** | 306 / 298 | 654 / 644 | 116\* / 136\* | 430 / 456 | – | – | 1,076 / 1,072 | – |
-| P-256 base | **220** / **225** | 341 / 330 | 647 / 646 | 456 / 456 | 341 / 341 | – | – | 817 / 670 | 1,288 / – |
-| P-256 scalar | **281** / **240** | 350 / 343 | 659 / 645 | 818 / 818 | 554 / 551 | – | – | 1,073 / 1,074 | 1,281 / – |
-| Tom-256 base | **226** / **234** | – | 662 / 660 | – | 494 / 474 | – | – | 1,076 / 1,075 | – |
-| BLS12-381 base | 887 / 856 | **825** / **795** | 1,343 / 1,336 | – | 1,296 / 1,236 | – | – | 2,175 / 2,154 | – |
-| P-521 base | **909** / **908** | – | 2,798 / 2,812 | – | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### invert: a⁻¹, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **268** / – | – | 2,127 / – | – | – | 718 / – | – | 1,987 / – | – |
-| BabyBear | **277** / – | – | 2,108 / – | – | – | 728 / – | – | 2,068 / – | – |
-| Goldilocks | **563** / – | – | 4,214 / – | – | – | 1,514 / – | 1,837 / – | 4,003 / – | – |
-| BN254 scalar | **11,668** / – | 25,225 / – | 23,554 / – | – | 21,266 / – | – | – | 52,264 / – | – |
-| secp256k1 base | **11,702** / – | 24,007 / – | 23,617 / – | 37,370 / – | 21,577 / – | – | – | 52,251 / – | – |
-| P-256 base | **11,269** / – | 24,393 / – | 23,624 / – | 123,557 / – | 21,387 / – | – | – | 50,986 / – | 255,326 / – |
-| P-256 scalar | **11,980** / – | 25,792 / – | 23,597 / – | 63,566 / – | 21,472 / – | – | – | 52,705 / – | 255,460 / – |
-| Tom-256 base | **11,444** / – | – | 23,584 / – | – | 21,426 / – | – | – | 52,609 / – | – |
-| BLS12-381 base | **24,208** / – | 49,792 / – | 43,920 / – | – | 37,675 / – | – | – | 124,735 / – | – |
-| P-521 base | **47,873** / – | – | 79,649 / – | – | – | – | – | – | – |
-
-### sqrt: √a, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 330 / – | – | 3,728 / – | – | – | **329** / – | 1,747 / – | – |
-| BabyBear | **2,760** / – | – | 38,424 / – | – | – | 2,989 / – | – | – |
-| Goldilocks | **6,762** / – | – | 54,915 / – | – | – | 6,042\* / – | – | – |
-| BN254 scalar | **196,081** / – | 201,732 / – | 583,732 / – | – | 521,248 / – | – | – | – |
-| secp256k1 base | **72,835** / – | 176,941 / – | 244,994 / – | 37,006\* / – | 278,949 / – | – | 534,545 / – | – |
-| P-256 base | **78,047** / – | 98,628 / – | 192,719 / – | 121,574 / – | 212,390 / – | – | 241,212 / – | 370,757 / – |
-| P-256 scalar | **113,654** / – | 157,635 / – | 240,940 / – | 364,463 / – | 273,774 / – | – | – | – |
-| Tom-256 base | **94,927** / – | – | 223,204 / – | – | 289,606 / – | – | 375,453 / – | – |
-| BLS12-381 base | **423,946** / – | 567,436 / – | 617,309 / – | – | 1,206,737 / – | – | 1,323,194 / – | – |
-| P-521 base | **473,856** / – | – | 1,565,745 / – | – | – | – | – | – |
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### mul_u64: a × k, k of 64 bits, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.6** / **14.0** | – | 69.6 / 71.6 | – | – | 9.6\* / 12.8\* | – | – |
-| BabyBear | **20.1** / **17.1** | – | 86.1 / 90.3 | – | – | 45.9 / 45.0 | – | – |
-| Goldilocks | **21.1** / **25.5** | – | 92.3 / 92.1 | – | – | 13.3\* / 18.0\* | 32.7 / 32.1 | – |
-| BN254 scalar | **124** / **120** | 828 / 811 | 1,760 / 1,688 | – | 1,488 / 1,469 | – | – | 2,151 / 2,154 |
-| secp256k1 base | **65.1** / **65.0** | 633 / 613 | 1,754 / 1,740 | 167 / 175 | 1,045 / 1,048 | – | – | 2,150 / 2,149 |
-| P-256 base | **94.2** / **89.1** | 878 / 848 | 1,768 / 1,727 | 916 / 890 | 1,068 / 1,037 | – | – | 1,448 / 1,447 |
-| P-256 scalar | **113** / **109** | 808 / 816 | 1,762 / 1,735 | 818 / 814 | 1,446 / 1,474 | – | – | 2,277 / 2,331 |
-| Tom-256 base | **115** / **105** | – | 1,761 / 1,717 | – | 1,246 / 1,284 | – | – | 2,155 / 2,162 |
-| BLS12-381 base | **167** / **158** | 2,139 / 2,137 | 2,493 / 2,507 | – | 3,571 / 3,511 | – | – | 4,844 / 4,578 |
-| P-521 base | **232** / **161** | – | 3,977 / 3,994 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### mul_uint: a × k, k of the bit length of p, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.7** / **14.0** | 72.3 / 72.9 | – | – | 9.6\* / 12.8\* | – |
-| BabyBear | **20.0** / **17.0** | 85.5 / 84.6 | – | – | 35.1 / 33.7 | – |
-| Goldilocks | **21.1** / **25.5** | 94.1 / 88.6 | – | – | 13.3\* / 18.0\* | 32.7 / 32.1 |
-| BN254 scalar | **542** / **532** | 1,771 / 1,732 | – | 1,347 / 1,342 | – | – |
-| secp256k1 base | **324** / **323** | 1,783 / 1,731 | – | 971 / 969 | – | – |
-| P-256 base | **430** / **421** | 1,781 / 1,738 | – | 994 / 949 | – | – |
-| P-256 scalar | **473** / **474** | 1,773 / 1,746 | 886 / 880 | 1,445 / 1,380 | – | – |
-| Tom-256 base | **488** / **484** | 1,780 / 1,743 | – | 1,183 / 1,175 | – | – |
-| BLS12-381 base | **1,155** / **1,147** | 2,501 / 2,477 | – | 3,545 / 3,520 | – | – |
-| P-521 base | **2,383** / **2,381** | 3,978 / 3,996 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### add_u64: a + k, k of 64 bits, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.2** / **9.3** | – | 40.2 / 42.0 | – | – | 7.8\* / 7.1\* | – | – |
-| BabyBear | **13.0** / **12.7** | – | 52.4 / 52.4 | – | – | 44.0 / 41.7 | – | – |
-| Goldilocks | **11.1** / **10.7** | – | 58.2 / 61.1 | – | – | 4.0\* / 6.0\* | 19.1 / 19.1 | – |
-| BN254 scalar | **178** / **142** | 429 / 398 | 965 / 936 | – | 797 / 792 | – | – | 1,224 / 1,208 |
-| secp256k1 base | **8.0** / **8.0** | 228 / 222 | 962 / 937 | 16.0 / 5.4\* | 517 / 496 | – | – | 1,197 / 1,191 |
-| P-256 base | **85.7** / **77.5** | 409 / 400 | 966 / 938 | 491 / 501 | 597 / 600 | – | – | 982 / 983 |
-| P-256 scalar | 72.5 / 74.2 | 406 / 398 | 968 / 941 | **54.6** / **63.0** | 855 / 829 | – | – | 1,307 / 1,320 |
-| Tom-256 base | **109** / **100** | – | 974 / 945 | – | 737 / 705 | – | – | 1,218 / 1,211 |
-| BLS12-381 base | **258** / **265** | 1,071 / 1,060 | 1,384 / 1,370 | – | 1,681 / 1,691 | – | – | 2,509 / 2,441 |
-| P-521 base | **22.1** / **19.5** | – | 2,182 / 2,209 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### add_uint: a + k, k of the bit length of p, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.2** / **9.2** | 40.2 / 43.4 | – | – | 7.8\* / 7.2\* | – |
-| BabyBear | **13.0** / **12.7** | 52.4 / 52.3 | – | – | 34.8 / 31.1 | – |
-| Goldilocks | **11.1** / **10.7** | 57.1 / 61.0 | – | – | 4.0\* / 6.0\* | 19.1 / 19.1 |
-| BN254 scalar | **414** / **421** | 979 / 939 | – | 675 / 681 | – | – |
-| secp256k1 base | **18.5** / **16.6** | 977 / 957 | – | 425 / 431 | – | – |
-| P-256 base | **333** / **316** | 977 / 957 | – | 513 / 512 | – | – |
-| P-256 scalar | 382 / 371 | 983 / 950 | **120** / **110** | 717 / 716 | – | – |
-| Tom-256 base | **374** / **363** | 975 / 952 | – | 622 / 624 | – | – |
-| BLS12-381 base | **1,036** / **1,002** | 1,386 / 1,388 | – | 1,579 / 1,587 | – | – |
-| P-521 base | **86.7** / **85.4** | 2,189 / 2,210 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### sub_u64: a − k, k of 64 bits, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **7.1** / **6.6** | – | 30.7 / 30.3 | – | – | 6.3\* / 6.1\* | – | – |
-| BabyBear | **13.0** / **12.5** | – | 42.2 / 42.3 | – | – | 44.1 / 41.8 | – | – |
-| Goldilocks | **11.4** / **10.7** | – | 46.0 / 48.1 | – | – | 4.3\* / 5.0\* | 19.0 / 18.1 | – |
-| BN254 scalar | **139** / **136** | 402 / 401 | 950 / 977 | – | 770 / 755 | – | – | 1,172 / 1,161 |
-| secp256k1 base | **8.0** / **7.0** | 231 / 221 | 958 / 949 | 14.0 / 11.0 | 500 / 486 | – | – | 1,136 / 1,139 |
-| P-256 base | **80.9** / **80.2** | 404 / 400 | 931 / 950 | 488 / 489 | 584 / 587 | – | – | 931 / 913 |
-| P-256 scalar | 75.5 / 73.6 | 400 / 396 | 949 / 969 | **24.5** / **24.4** | 841 / 813 | – | – | 1,269 / 1,298 |
-| Tom-256 base | **106** / **104** | – | 935 / 970 | – | 716 / 690 | – | – | 1,167 / 1,164 |
-| BLS12-381 base | **250** / **272** | 1,106 / 1,049 | 1,358 / 1,365 | – | 1,651 / 1,677 | – | – | 2,433 / 2,376 |
-| P-521 base | **20.5** / **22.2** | – | 2,159 / 2,185 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### sub_uint: a − k, k of the bit length of p, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **7.1** / **6.6** | 30.7 / 30.4 | – | – | 6.3\* / 6.0\* | – |
-| BabyBear | **13.0** / **13.0** | 42.2 / 42.3 | – | – | 34.9 / 31.3 | – |
-| Goldilocks | **11.3** / **10.4** | 47.4 / 47.4 | – | – | 4.3\* / 5.0\* | 19.0 / 18.1 |
-| BN254 scalar | **417** / **420** | 956 / 974 | – | 654 / 662 | – | – |
-| secp256k1 base | **19.3** / **16.8** | 940 / 953 | – | 411 / 412 | – | – |
-| P-256 base | **376** / **382** | 928 / 941 | – | 499 / 504 | – | – |
-| P-256 scalar | 391 / 379 | 956 / 963 | **87.6** / **95.0** | 692 / 689 | – | – |
-| Tom-256 base | **369** / **363** | 932 / 963 | – | 607 / 616 | – | – |
-| BLS12-381 base | **1,007** / **999** | 1,355 / 1,361 | – | 1,587 / 1,562 | – | – |
-| P-521 base | **79.1** / **75.2** | 2,168 / 2,198 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### from_u64: k mod p, k of 64 bits, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 5.2 / – | – | 23.9 / – | – | – | **3.8** / – | – | – |
-| BabyBear | **12.9** / – | – | 35.1 / – | – | – | 41.1 / – | – | – |
-| Goldilocks | **9.0** / – | – | 39.2 / – | – | – | 2.2\* / – | 17.0 / – | – |
-| BN254 scalar | **121** / – | 370 / – | 881 / – | – | 723 / – | – | – | 1,080 / – |
-| secp256k1 base | **3.8** / – | 222 / – | 891 / – | 5.9 / – | 448 / – | – | – | 1,068 / – |
-| P-256 base | **61.0** / – | 380 / – | 887 / – | 465 / – | 554 / – | – | – | 807 / – |
-| P-256 scalar | 58.6 / – | 377 / – | 886 / – | **4.0** / – | 741 / – | – | – | 1,084 / – |
-| Tom-256 base | **85.8** / – | – | 874 / – | – | 658 / – | – | – | 1,079 / – |
-| BLS12-381 base | **217** / – | 998 / – | 1,256 / – | – | 1,647 / – | – | – | 2,321 / – |
-| P-521 base | **6.0** / – | – | 1,964 / – | – | – | – | – | – |
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### div_u64: a / k, k of 64 bits, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | ark-ff | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | – | – | – | – | – | – | – |
-| BabyBear | – | – | – | – | – | – | – |
-| Goldilocks | – | – | – | – | – | – | – |
-| BN254 scalar | **1,432** / **1,432** | 11,576 / 11,572 | 26,560 / 26,678 | 23,890 / 23,899 | – | 19,335 / 19,327 | 44,334 / 43,619 |
-| secp256k1 base | **1,233** / **1,228** | 11,095 / 11,007 | 20,546 / 20,507 | 23,859 / 23,824 | 37,487 / 37,435 | 18,951 / 18,889 | 45,099 / 44,425 |
-| P-256 base | **1,350** / **1,342** | 11,082 / 10,943 | 25,033 / 25,109 | 23,811 / 23,834 | 126,830 / 126,017 | 18,888 / 18,888 | 43,247 / 43,592 |
-| P-256 scalar | **1,422** / **1,419** | 11,384 / 11,391 | 25,838 / 25,830 | 23,839 / 23,863 | 48,935 / 48,737 | 19,404 / 19,216 | 45,117 / 44,162 |
-| Tom-256 base | **1,493** / **1,484** | 11,022 / 10,969 | – | 23,884 / 23,872 | – | 19,200 / 19,081 | 44,655 / 44,614 |
-| BLS12-381 base | **2,475** / **2,464** | 23,672 / 23,710 | 50,487 / 50,840 | 43,162 / 43,266 | – | 32,205 / 32,340 | 101,898 / 102,299 |
-| P-521 base | **3,577** / **3,585** | 44,669 / 44,768 | – | 77,902 / 77,832 | – | – | – |
-
-### div_uint: a / k, k of one bit less than p, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **287** / **283** | **287** / 285 | – | 2,230 / 2,231 | – | – | 736 / 724 | – | 2,098 / 2,113 |
-| BabyBear | **284** / **287** | 309 / 307 | – | 2,230 / 2,222 | – | – | 753 / 719 | – | 2,184 / 2,172 |
-| Goldilocks | **594** / **591** | 623 / 619 | – | 4,318 / 4,282 | – | – | 1,527 / 1,508 | 1,894 / 1,892 | 4,127 / 4,135 |
-| BN254 scalar | **12,642** / 12,599 | 12,770 / **12,574** | 26,625 / 26,740 | 25,326 / 25,404 | – | 23,032 / 22,881 | – | – | 54,445 / 54,137 |
-| secp256k1 base | **11,908** / 11,968 | 12,078 / **11,898** | 24,412 / 24,580 | 25,389 / 25,488 | 37,595 / 37,525 | 22,760 / 22,606 | – | – | 54,659 / 54,949 |
-| P-256 base | 12,357 / **12,034** | **12,252** / 12,248 | 25,500 / 25,623 | 25,450 / 25,406 | 126,719 / 127,328 | 22,601 / 22,392 | – | – | 54,430 / 54,284 |
-| P-256 scalar | **12,629** / 12,578 | 12,715 / **12,557** | 26,871 / 26,846 | 25,466 / 25,438 | 64,278 / 64,058 | 23,112 / 23,101 | – | – | 54,301 / 54,848 |
-| Tom-256 base | **12,167** / **12,177** | 12,314 / 12,187 | – | 25,471 / 25,425 | – | 23,023 / 22,893 | – | – | 54,481 / 54,752 |
-| BLS12-381 base | **26,726** / 26,684 | 26,727 / **26,566** | 51,557 / 52,051 | 46,524 / 46,559 | – | 40,048 / 39,855 | – | – | 128,504 / 128,570 |
-| P-521 base | **49,325** / 49,547 | 49,593 / **49,318** | – | 84,182 / 83,242 | – | – | – | – | – |
-
-### add, constant time: a + b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **4.4** / **7.7** | 10.8 / 19.5 | – | – | – | 10.9 / 17.7 |
-| BabyBear | **3.0** / **3.0** | 10.8 / 19.8 | – | – | – | 10.9 / 17.8 |
-| Goldilocks | **3.1** / **3.0** | 12.0 / 19.2 | – | – | 4.0 / 4.7 | 10.9 / 17.7 |
-| BN254 scalar | **20.6** / **23.1** | 63.4 / 90.6 | – | 39.4 / 45.1 | – | 76.6 / 116 |
-| secp256k1 base | **24.5** / **27.0** | 64.4 / 90.4 | 16.1\* / 15.6\* | 35.3 / 38.9 | – | 76.4 / 115 |
-| P-256 base | **22.8** / **24.9** | 64.2 / 90.4 | 33.7 / 39.8 | 33.6 / 39.6 | – | 76.7 / 134 |
-| P-256 scalar | **24.1** / **26.8** | 64.2 / 90.5 | 55.8 / 60.1 | 38.1 / 42.6 | – | 76.5 / 134 |
-| Tom-256 base | **24.1** / **27.0** | 62.7 / 89.5 | – | 38.6 / 43.0 | – | 76.7 / 116 |
-| BLS12-381 base | **35.4** / **35.3** | 95.6 / 141 | – | 71.9 / 67.0 | – | 128 / 173 |
-| P-521 base | **77.3** / **80.4** | 178 / 247 | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### sub, constant time: a − b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **2.7** / **3.0** | 5.0 / 8.0 | – | – | 3.0 / 5.0 | – | 16.6 / 15.0 |
-| BabyBear | **2.7** / **3.0** | 5.0 / 8.0 | – | – | – | – | 16.8 / 14.8 |
-| Goldilocks | **3.0** / **3.0** | 5.0 / 8.0 | – | – | – | **3.0** / **3.0** | 18.5 / 13.0 |
-| BN254 scalar | **21.4** / 27.0 | 34.5 / 30.0 | – | 23.3 / **26.0** | – | – | 54.5 / 73.8 |
-| secp256k1 base | **18.6** / **20.4** | 34.5 / 32.0 | 15.8\* / 18.1\* | 20.2 / 25.2 | – | – | 54.9 / 74.2 |
-| P-256 base | **18.4** / **18.9** | 34.6 / 28.8 | 21.7 / 24.6 | 21.1 / 24.4 | – | – | 54.4 / 91.6 |
-| P-256 scalar | **22.2** / **18.8** | 34.6 / 33.6 | 26.6 / 26.9 | 23.1 / 27.2 | – | – | 54.6 / 91.7 |
-| Tom-256 base | **20.7** / **19.8** | 34.5 / 30.2 | – | 23.4 / 26.4 | – | – | 54.5 / 73.9 |
-| BLS12-381 base | **34.7** / **36.6** | 60.6 / 110 | – | 44.9 / 44.1 | – | – | 76.9 / 104 |
-| P-521 base | **58.0** / **59.9** | 124 / 212 | – | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### mul, constant time: a × b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.5** / **12.0** | 38.8 / 50.0 | – | – | – | 51.6 / 56.0 |
-| BabyBear | **7.8** / **14.5** | 39.2 / 48.5 | – | – | – | 51.6 / 56.0 |
-| Goldilocks | **12.4** / 22.0 | 37.8 / 52.1 | – | – | 17.1 / **19.0** | 51.5 / 56.1 |
-| BN254 scalar | **415** / **411** | 901 / 891 | – | 698 / 690 | – | 1,059 / 1,075 |
-| secp256k1 base | **212** / **226** | 892 / 886 | 171\* / 171\* | 594 / 587 | – | 1,069 / 1,086 |
-| P-256 base | **281** / **292** | 886 / 881 | 473 / 461 | 486 / 483 | – | 851 / 837 |
-| P-256 scalar | **316** / **320** | 881 / 884 | 828 / 813 | 710 / 693 | – | 1,065 / 1,082 |
-| Tom-256 base | **304** / **311** | 892 / 885 | – | 608 / 588 | – | 1,069 / 1,081 |
-| BLS12-381 base | **916** / **914** | 1,290 / 1,308 | – | 1,799 / 1,737 | – | 2,177 / 2,173 |
-| P-521 base | **1,643** / **1,604** | 2,716 / 2,780 | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### square, constant time: a², in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.4** / **12.0** | 38.3 / 47.7 | – | – | – | 49.1 / 56.0 |
-| BabyBear | **8.0** / **14.0** | 38.2 / 52.7 | – | – | – | 49.0 / 56.0 |
-| Goldilocks | **12.0** / 21.2 | 39.5 / 52.0 | – | – | 17.0 / **20.0** | 49.1 / 56.0 |
-| BN254 scalar | **230** / **220** | 643 / 650 | – | 543 / 555 | – | 1,066 / 1,062 |
-| secp256k1 base | **192** / **198** | 654 / 644 | 116\* / 136\* | 430 / 456 | – | 1,076 / 1,072 |
-| P-256 base | **253** / **227** | 647 / 646 | 456 / 456 | 341 / 341 | – | 817 / 670 |
-| P-256 scalar | **280** / **238** | 659 / 645 | 818 / 818 | 554 / 551 | – | 1,073 / 1,074 |
-| Tom-256 base | **226** / **234** | 662 / 660 | – | 494 / 474 | – | 1,076 / 1,075 |
-| BLS12-381 base | **889** / **853** | 1,343 / 1,336 | – | 1,296 / 1,236 | – | 2,175 / 2,154 |
-| P-521 base | **915** / **912** | 2,798 / 2,812 | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### invert, constant time: a⁻¹, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **430** / – | 6,828 / – | – | – | – | 3,315 / – |
-| BabyBear | **550** / – | 6,846 / – | – | – | – | 3,329 / – |
-| Goldilocks | **1,559** / – | 6,861 / – | – | – | 1,837 / – | 7,055 / – |
-| BN254 scalar | **16,834** / – | 35,997 / – | – | 325,515 / – | – | 403,685 / – |
-| secp256k1 base | **16,751** / – | 35,964 / – | 37,370 / – | 275,356 / – | – | 538,663 / – |
-| P-256 base | **16,376** / – | 36,083 / – | 123,557 / – | 218,697 / – | – | 320,724 / – |
-| P-256 scalar | **16,986** / – | 35,927 / – | 348,095 / – | 329,795 / – | – | 454,729 / – |
-| Tom-256 base | **16,889** / – | 35,871 / – | – | 286,153 / – | – | 378,788 / – |
-| BLS12-381 base | **32,855** / – | 65,893 / – | – | 1,202,142 / – | – | 1,329,055 / – |
-| P-521 base | **63,515** / – | 122,580 / – | – | – | – | – |
-
-### sqrt, constant time: √a, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **341** / – | 3,728 / – | – | – | 1,747 / – |
-| BabyBear | **7,849** / – | 38,424 / – | – | – | – |
-| Goldilocks | **15,824** / – | 54,915 / – | – | – | – |
-| BN254 scalar | **298,605** / – | 583,732 / – | – | 521,248 / – | – |
-| secp256k1 base | **68,083** / – | 244,994 / – | 37,006\* / – | 278,949 / – | 534,545 / – |
-| P-256 base | **79,517** / – | 192,719 / – | 121,574 / – | 212,390 / – | 241,212 / – |
-| P-256 scalar | **120,380** / – | 240,940 / – | 364,463 / – | 273,774 / – | – |
-| Tom-256 base | **94,922** / – | 223,204 / – | – | 289,606 / – | 375,453 / – |
-| BLS12-381 base | **422,644** / – | 617,309 / – | – | 1,206,737 / – | 1,323,194 / – |
-| P-521 base | **504,081** / – | 1,565,745 / – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final normalization; the result is not canonical.
-
-### mul_u64, constant time: a × k, k of 64 bits, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.6** / **14.0** | 69.6 / 71.6 | – | – | – |
-| BabyBear | **20.1** / **17.1** | 86.1 / 90.3 | – | – | – |
-| Goldilocks | **21.1** / **25.5** | 92.3 / 92.1 | – | – | 32.7 / 32.1 |
-| BN254 scalar | **125** / **132** | 1,760 / 1,688 | – | 1,488 / 1,469 | – |
-| secp256k1 base | **80.0** / **85.1** | 1,754 / 1,740 | 167 / 175 | 1,045 / 1,048 | – |
-| P-256 base | **101** / **103** | 1,768 / 1,727 | 916 / 890 | 1,068 / 1,037 | – |
-| P-256 scalar | **122** / **127** | 1,762 / 1,735 | 818 / 814 | 1,446 / 1,474 | – |
-| Tom-256 base | **122** / **122** | 1,761 / 1,717 | – | 1,246 / 1,284 | – |
-| BLS12-381 base | **190** / **174** | 2,493 / 2,507 | – | 3,571 / 3,511 | – |
-| P-521 base | **138** / **171** | 3,977 / 3,994 | – | – | – |
-
-### mul_uint, constant time: a × k, k of the bit length of p, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.7** / **14.0** | 72.3 / 72.9 | – | – | – |
-| BabyBear | **20.1** / **17.0** | 85.5 / 84.6 | – | – | – |
-| Goldilocks | **21.1** / **25.5** | 94.1 / 88.6 | – | – | 32.7 / 32.1 |
-| BN254 scalar | **597** / **594** | 1,771 / 1,732 | – | 1,347 / 1,342 | – |
-| secp256k1 base | **380** / **379** | 1,783 / 1,731 | – | 971 / 969 | – |
-| P-256 base | **492** / **489** | 1,781 / 1,738 | – | 994 / 949 | – |
-| P-256 scalar | **562** / **544** | 1,773 / 1,746 | 886 / 880 | 1,445 / 1,380 | – |
-| Tom-256 base | **562** / **546** | 1,780 / 1,743 | – | 1,183 / 1,175 | – |
-| BLS12-381 base | **1,694** / **1,690** | 2,501 / 2,477 | – | 3,545 / 3,520 | – |
-| P-521 base | **2,923** / **2,905** | 3,978 / 3,996 | – | – | – |
-
-### add_u64, constant time: a + k, k of 64 bits, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.1** / **9.3** | 40.2 / 42.0 | – | – | – |
-| BabyBear | **13.0** / **12.7** | 52.4 / 52.4 | – | – | – |
-| Goldilocks | **11.1** / **10.8** | 58.2 / 61.1 | – | – | 19.1 / 19.1 |
-| BN254 scalar | **163** / **148** | 965 / 936 | – | 797 / 792 | – |
-| secp256k1 base | **20.2** / **25.2** | 962 / 937 | 16.0\* / 5.4\* | 517 / 496 | – |
-| P-256 base | **104** / **95.8** | 966 / 938 | 491 / 501 | 597 / 600 | – |
-| P-256 scalar | 100 / 97.2 | 968 / 941 | **54.6** / **63.0** | 855 / 829 | – |
-| Tom-256 base | **132** / **133** | 974 / 945 | – | 737 / 705 | – |
-| BLS12-381 base | **236** / **236** | 1,384 / 1,370 | – | 1,681 / 1,691 | – |
-| P-521 base | **74.7** / **68.0** | 2,182 / 2,209 | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### add_uint, constant time: a + k, k of the bit length of p, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.1** / **9.3** | 40.2 / 43.4 | – | – | – |
-| BabyBear | **13.0** / **12.7** | 52.4 / 52.3 | – | – | – |
-| Goldilocks | **11.1** / **10.8** | 57.1 / 61.0 | – | – | 19.1 / 19.1 |
-| BN254 scalar | **429** / **369** | 979 / 939 | – | 675 / 681 | – |
-| secp256k1 base | **37.5** / **36.4** | 977 / 957 | – | 425 / 431 | – |
-| P-256 base | **300** / **299** | 977 / 957 | – | 513 / 512 | – |
-| P-256 scalar | 364 / 347 | 983 / 950 | **120** / **110** | 717 / 716 | – |
-| Tom-256 base | **365** / **364** | 975 / 952 | – | 622 / 624 | – |
-| BLS12-381 base | **1,051** / **1,025** | 1,386 / 1,388 | – | 1,579 / 1,587 | – |
-| P-521 base | **142** / **139** | 2,189 / 2,210 | – | – | – |
-
-### sub_u64, constant time: a − k, k of 64 bits, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **7.0** / **6.5** | 30.7 / 30.3 | – | – | – |
-| BabyBear | **15.8** / **13.0** | 42.2 / 42.3 | – | – | – |
-| Goldilocks | **10.4** / **10.7** | 46.0 / 48.1 | – | – | 19.0 / 18.1 |
-| BN254 scalar | **155** / **153** | 950 / 977 | – | 770 / 755 | – |
-| secp256k1 base | **14.6** / **17.0** | 958 / 949 | 14.0\* / 11.0\* | 500 / 486 | – |
-| P-256 base | **96.3** / **88.4** | 931 / 950 | 488 / 489 | 584 / 587 | – |
-| P-256 scalar | 93.7 / 92.6 | 949 / 969 | **24.5** / **24.4** | 841 / 813 | – |
-| Tom-256 base | **124** / **125** | 935 / 970 | – | 716 / 690 | – |
-| BLS12-381 base | **242** / **229** | 1,358 / 1,365 | – | 1,651 / 1,677 | – |
-| P-521 base | **52.3** / **49.8** | 2,159 / 2,185 | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### sub_uint, constant time: a − k, k of the bit length of p, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **7.0** / **6.6** | 30.7 / 30.4 | – | – | – |
-| BabyBear | **15.8** / **13.3** | 42.2 / 42.3 | – | – | – |
-| Goldilocks | **10.4** / **10.8** | 47.4 / 47.4 | – | – | 19.0 / 18.1 |
-| BN254 scalar | **412** / **372** | 956 / 974 | – | 654 / 662 | – |
-| secp256k1 base | **34.4** / **31.6** | 940 / 953 | – | 411 / 412 | – |
-| P-256 base | **302** / **291** | 928 / 941 | – | 499 / 504 | – |
-| P-256 scalar | 364 / 343 | 956 / 963 | **87.6** / **95.0** | 692 / 689 | – |
-| Tom-256 base | **343** / **362** | 932 / 963 | – | 607 / 616 | – |
-| BLS12-381 base | **1,034** / **1,029** | 1,355 / 1,361 | – | 1,587 / 1,562 | – |
-| P-521 base | **127** / **119** | 2,168 / 2,198 | – | – | – |
-
-### from_u64, constant time: k mod p, k of 64 bits, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.2** / – | 23.9 / – | – | – | – |
-| BabyBear | **14.0** / – | 35.1 / – | – | – | – |
-| Goldilocks | 17.4 / – | 39.2 / – | – | – | **17.0** / – |
-| BN254 scalar | **270** / – | 881 / – | – | 723 / – | – |
-| secp256k1 base | **3.4** / – | 891 / – | 5.9 / – | 448 / – | – |
-| P-256 base | **211** / – | 887 / – | 465 / – | 554 / – | – |
-| P-256 scalar | 268 / – | 886 / – | **4.0** / – | 741 / – | – |
-| Tom-256 base | **265** / – | 874 / – | – | 658 / – | – |
-| BLS12-381 base | **605** / – | 1,256 / – | – | 1,647 / – | – |
-| P-521 base | **6.0** / – | 1,964 / – | – | – | – |
-
-### div_u64, constant time: a / k, k of 64 bits, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | – | – | – | – | – | – |
-| BabyBear | – | – | – | – | – | – |
-| Goldilocks | – | – | – | – | – | – |
-| BN254 scalar | 17,229 / **17,184** | **17,218** / 17,364 | 37,822 / 37,709 | – | 330,910 / 329,717 | 405,064 / 406,058 |
-| secp256k1 base | 17,026 / **16,679** | **16,776** / 16,942 | 37,822 / 37,551 | 37,487 / 37,435 | 282,771 / 285,691 | 537,096 / 537,534 |
-| P-256 base | **17,317** / 17,350 | 17,346 / **17,292** | 37,757 / 37,689 | 126,830 / 126,017 | 220,740 / 217,931 | 332,060 / 330,315 |
-| P-256 scalar | **17,336** / 17,251 | 17,387 / **17,225** | 37,769 / 37,668 | 348,210 / 348,269 | 330,836 / 329,295 | 454,945 / 455,824 |
-| Tom-256 base | 16,891 / 16,988 | **16,883** / **16,925** | 37,679 / 37,566 | – | 289,112 / 288,194 | 379,735 / 379,744 |
-| BLS12-381 base | **34,605** / **34,568** | 34,721 / 34,640 | 67,015 / 66,876 | – | 1,187,878 / 1,177,421 | 1,329,048 / 1,327,893 |
-| P-521 base | 65,412 / **64,664** | **64,838** / 65,765 | 128,218 / 127,864 | – | – | – |
-
-### div_uint, constant time: a / k, k of one bit less than p, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **460** / **459** | 464 / 464 | 6,894 / 6,888 | – | – | – | 3,416 / 3,419 |
-| BabyBear | **611** / **607** | 615 / 612 | 6,980 / 6,887 | – | – | – | 3,419 / 3,419 |
-| Goldilocks | 1,581 / **1,576** | **1,574** / 1,579 | 6,946 / 6,883 | – | – | 1,894 / 1,892 | 7,112 / 7,114 |
-| BN254 scalar | **17,677** / 17,629 | 17,835 / **17,542** | 37,929 / 37,726 | – | 331,640 / 331,036 | – | 404,477 / 404,849 |
-| secp256k1 base | **16,863** / **16,858** | 17,029 / 16,881 | 37,610 / 37,631 | 37,595 / 37,525 | 293,323 / 283,036 | – | 538,652 / 539,007 |
-| P-256 base | **17,544** / **17,440** | 17,613 / 17,661 | 37,709 / 37,633 | 126,719 / 127,328 | 218,431 / 217,334 | – | 331,130 / 331,544 |
-| P-256 scalar | **17,527** / **17,609** | 17,668 / 17,737 | 37,836 / 37,578 | 347,472 / 348,172 | 328,076 / 330,011 | – | 454,675 / 453,792 |
-| Tom-256 base | **16,923** / **16,861** | 17,373 / 17,326 | 37,794 / 37,633 | – | 291,104 / 288,248 | – | 378,961 / 378,497 |
-| BLS12-381 base | **35,347** / **35,267** | 35,598 / 35,472 | 66,970 / 66,603 | – | 1,176,943 / 1,173,365 | – | 1,325,631 / 1,325,816 |
-| P-521 base | **65,267** / **65,297** | 65,469 / 65,307 | 128,603 / 128,164 | – | – | – | – |
-
-## Results in WebAssembly with wide arithmetic, Firefox
-
-### add: a + b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **4.4** / **7.7** | – | 11.4 / 20.7 | – | – | 4.4\* / 7.7 | – | 10.9 / 17.8 | – |
-| BabyBear | 3.0 / **3.0** | – | 11.4 / 19.4 | – | – | **2.7** / **3.0** | – | 10.9 / 17.8 | – |
-| Goldilocks | **3.2** / **3.0** | – | 10.9 / 18.7 | – | – | 6.7 / 8.0 | 4.0 / 4.4 | 10.9 / 17.8 | – |
-| BN254 scalar | 19.0 / **17.4** | **18.5** / **17.4** | 60.1 / 92.5 | – | 35.0 / 34.0 | – | – | 76.6 / 115 | – |
-| secp256k1 base | 20.5 / 18.1 | **19.9** / **17.9** | 60.1 / 92.7 | 16.0\* / 15.7\* | 33.0 / 31.0 | – | – | 76.5 / 115 | – |
-| P-256 base | **20.0** / **18.4** | 20.5 / 18.8 | 60.1 / 89.3 | 31.5 / 29.4 | 31.5 / 30.0 | – | – | 76.5 / 119 | 535 / – |
-| P-256 scalar | 21.4 / 18.9 | **19.5** / **17.9** | 60.1 / 92.8 | 56.4 / 60.4 | 35.0 / 33.0 | – | – | 76.5 / 118 | 534 / – |
-| Tom-256 base | **20.5** / **19.4** | – | 60.1 / 93.0 | – | 34.0 / 32.5 | – | – | 76.5 / 116 | – |
-| BLS12-381 base | **29.4** / **29.8** | 41.8 / 44.9 | 85.5 / 136 | – | 54.0 / 54.0 | – | – | 136 / 165 | – |
-| P-521 base | **44.6** / **47.5** | – | 175 / 243 | – | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### sub: a − b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **2.7** / **3.0** | – | 5.0 / 8.0 | – | – | 3.0 / 5.0 | – | 17.0 / 14.5 | – |
-| BabyBear | **2.7** / **3.0** | – | 5.0 / 8.0 | – | – | 3.0 / **3.0** | – | 16.9 / 14.1 | – |
-| Goldilocks | **3.0** / **3.0** | – | 5.0 / 8.0 | – | – | 4.0 / 5.0 | **3.0** / **3.0** | 18.7 / 12.9 | – |
-| BN254 scalar | **19.6** / **18.4** | 22.8 / 21.4 | 37.0 / 30.6 | – | 24.0 / 22.0 | – | – | 54.9 / 75.2 | – |
-| secp256k1 base | **19.9** / **17.8** | 24.5 / 21.9 | 37.0 / 29.3 | 15.8\* / 17.6\* | 22.0 / 21.0 | – | – | 54.1 / 75.1 | – |
-| P-256 base | **18.8** / **17.4** | 22.9 / 21.4 | 37.1 / 28.2 | 22.0 / 20.0 | 21.5 / 20.0 | – | – | 53.8 / 75.1 | 274 / – |
-| P-256 scalar | **19.9** / **18.4** | 23.4 / 21.9 | 37.0 / 30.1 | 26.4 / 27.0 | 23.0 / 21.5 | – | – | 54.2 / 75.3 | 268 / – |
-| Tom-256 base | **19.6** / **18.3** | – | 37.1 / 30.5 | – | 24.0 / 22.0 | – | – | 54.7 / 75.6 | – |
-| BLS12-381 base | **29.2** / **30.4** | 38.8 / 36.9 | 57.3 / 105 | – | 37.0 / 36.1 | – | – | 69.7 / 102 | – |
-| P-521 base | **44.3** / **45.6** | – | 128 / 171 | – | – | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### mul: a × b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.5** / **12.0** | – | 19.2 / 30.8 | – | – | 5.6 / 12.0 | – | 49.8 / 57.0 | – |
-| BabyBear | **5.0** / **11.0** | – | 19.2 / 30.8 | – | – | 6.5 / 13.0 | – | 49.9 / 57.0 | – |
-| Goldilocks | 9.0 / **14.0** | – | 19.3 / 32.7 | – | – | 13.7 / 19.0 | **7.7** / **14.0** | 49.8 / 57.0 | – |
-| BN254 scalar | **162** / **151** | 276 / 276 | 204 / 211 | – | 182 / 178 | – | – | 1,066 / 1,073 | – |
-| secp256k1 base | **108** / **109** | 259 / 257 | 204 / 211 | 175 / 175 | 163 / 160 | – | – | 1,073 / 1,078 | – |
-| P-256 base | **122** / **118** | 235 / 235 | 203 / 212 | 135 / 131 | 135 / 132 | – | – | 798 / 777 | 1,273 / – |
-| P-256 scalar | **172** / **164** | 293 / 295 | 204 / 212 | 371 / 335 | 181 / 179 | – | – | 1,067 / 1,075 | 1,281 / – |
-| Tom-256 base | **149** / **160** | – | 204 / 211 | – | 176 / 171 | – | – | 1,071 / 1,080 | – |
-| BLS12-381 base | **421** / 430 | 815 / 786 | 512 / 534 | – | 473 / **376** | – | – | 2,173 / 2,180 | – |
-| P-521 base | **846** / **865** | – | 1,054 / 1,104 | – | – | – | – | – | – |
-
-### square: a², in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.4** / **12.0** | – | 18.0 / 30.1 | – | – | 5.5 / 12.0\* | – | 49.0 / 56.0 | – |
-| BabyBear | 5.8 / **11.0** | – | 18.2 / 30.7 | – | – | **5.7** / 13.0 | – | 49.0 / 56.0 | – |
-| Goldilocks | 9.7 / 14.4 | – | 18.8 / 30.6 | – | – | 11.0 / 19.0 | **7.0** / **14.3** | 49.0 / 56.0 | – |
-| BN254 scalar | 160 / **141** | 235 / 233 | 172 / 176 | – | **144** / 144 | – | – | 1,057 / 1,062 | – |
-| secp256k1 base | **99.5** / **82.9** | 217 / 214 | 175 / 176 | 115 / 136 | 121 / 122 | – | – | 1,070 / 1,072 | – |
-| P-256 base | 116 / **104** | 189 / 188 | 175 / 176 | 128 / 131 | **107** / 107 | – | – | 763 / 693 | 1,292 / – |
-| P-256 scalar | 144 / 150 | 259 / 259 | 175 / 176 | 335 / 337 | **140** / **140** | – | – | 1,069 / 1,069 | 1,298 / – |
-| Tom-256 base | 158 / 142 | – | 175 / 177 | – | **134** / **136** | – | – | 1,070 / 1,073 | – |
-| BLS12-381 base | 449 / 441 | 632 / 555 | 519 / 531 | – | **286** / **296** | – | – | 2,172 / 2,158 | – |
-| P-521 base | **419** / **415** | – | 1,123 / 1,201 | – | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-### invert: a⁻¹, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **270** / – | – | 1,966 / – | – | – | 729 / – | – | 1,990 / – | – |
-| BabyBear | **277** / – | – | 1,889 / – | – | – | 718 / – | – | 2,084 / – | – |
-| Goldilocks | **571** / – | – | 3,806 / – | – | – | 1,526 / – | 998 / – | 4,031 / – | – |
-| BN254 scalar | **7,879** / – | 26,505 / – | 19,414 / – | – | 14,337 / – | – | – | 51,712 / – | – |
-| secp256k1 base | **7,960** / – | 25,438 / – | 19,039 / – | 37,465 / – | 14,385 / – | – | – | 52,384 / – | – |
-| P-256 base | **7,747** / – | 26,251 / – | 19,161 / – | 34,425 / – | 14,263 / – | – | – | 51,719 / – | 272,936 / – |
-| P-256 scalar | **8,223** / – | 27,212 / – | 19,219 / – | 63,289 / – | 14,303 / – | – | – | 52,572 / – | 267,215 / – |
-| Tom-256 base | **7,943** / – | – | 19,234 / – | – | 14,362 / – | – | – | 52,612 / – | – |
-| BLS12-381 base | **15,490** / – | 52,701 / – | 33,923 / – | – | 23,613 / – | – | – | 123,971 / – | – |
-| P-521 base | **29,337** / – | – | 62,401 / – | – | – | – | – | – | – |
-
-### sqrt: √a, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | runtime-algebra | compile-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 330 / – | – | 2,163 / – | – | – | **329** / – | 1,679 / – | – |
-| BabyBear | **2,167** / – | – | 23,175 / – | – | – | 3,000 / – | – | – |
-| Goldilocks | **9,179** / – | – | 32,998 / – | – | – | 6,215\* / – | – | – |
-| BN254 scalar | **81,894** / – | 140,915 / – | 203,433 / – | – | 179,561 / – | – | – | – |
-| secp256k1 base | **30,979** / – | 121,854 / – | 79,732 / – | 37,132 / – | 87,682 / – | – | 531,665 / – | – |
-| P-256 base | **27,589** / – | 56,280 / – | 67,732 / – | 34,036 / – | 70,166 / – | – | 247,873 / – | 370,455 / – |
-| P-256 scalar | **64,107** / – | 129,219 / – | 79,070 / – | 154,418 / – | 72,365 / – | – | – | – |
-| Tom-256 base | **55,442** / – | – | 74,698 / – | – | 93,462 / – | – | 374,513 / – | – |
-| BLS12-381 base | **212,164** / – | 431,088 / – | 272,471 / – | – | 370,734 / – | – | 1,320,972 / – | – |
-| P-521 base | **268,222** / – | – | 591,360 / – | – | – | – | – | – |
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### mul_u64: a × k, k of 64 bits, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.7** / **14.0** | – | 38.7 / 38.8 | – | – | 9.5\* / 12.8\* | – | – |
-| BabyBear | **14.7** / **13.1** | – | 40.4 / 40.8 | – | – | 17.7 / 16.6 | – | – |
-| Goldilocks | 17.1 / 17.1 | – | 50.8 / 49.8 | – | – | 13.7\* / 19.0 | **13.5** / **15.2** | – |
-| BN254 scalar | **44.1** / **45.1** | 679 / 648 | 406 / 410 | – | 514 / 504 | – | – | 2,159 / 2,152 |
-| secp256k1 base | **23.0** / **23.0** | 480 / 427 | 408 / 409 | 167 / 175 | 437 / 430 | – | – | 2,153 / 2,148 |
-| P-256 base | **42.1** / **41.8** | 584 / 564 | 406 / 409 | 259 / 258 | 452 / 432 | – | – | 1,363 / 1,408 |
-| P-256 scalar | **48.0** / **47.4** | 720 / 701 | 407 / 411 | 395 / 340 | 442 / 511 | – | – | 2,188 / 2,187 |
-| Tom-256 base | **44.3** / **45.3** | – | 407 / 410 | – | 518 / 481 | – | – | 2,161 / 2,158 |
-| BLS12-381 base | **61.5** / **62.1** | 1,659 / 1,644 | 1,034 / 1,038 | – | 1,176 / 1,186 | – | – | 4,425 / 4,397 |
-| P-521 base | **49.4** / **52.7** | – | 1,825 / 1,844 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### mul_uint: a × k, k of the bit length of p, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.7** / **14.0** | 38.9 / 38.7 | – | – | 9.6\* / 12.8\* | – |
-| BabyBear | **14.7** / **13.1** | 40.5 / 40.8 | – | – | 17.7 / 16.6 | – |
-| Goldilocks | 17.1 / 17.1 | 49.8 / 50.0 | – | – | 13.7\* / 19.0 | **13.6** / **14.9** |
-| BN254 scalar | **253** / **251** | 409 / 408 | – | 349 / 348 | – | – |
-| secp256k1 base | **164** / **163** | 408 / 407 | – | 265 / 266 | – | – |
-| P-256 base | **236** / **237** | 408 / 408 | – | 252 / 252 | – | – |
-| P-256 scalar | **263** / **263** | 408 / 407 | 406 / 406 | 347 / 346 | – | – |
-| Tom-256 base | **254** / **255** | 408 / 409 | – | 335 / 335 | – | – |
-| BLS12-381 base | **552** / **553** | 940 / 1,035 | – | 1,092 / 1,064 | – | – |
-| P-521 base | **986** / **990** | 1,899 / 1,861 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### add_u64: a + k, k of 64 bits, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.1** / **9.3** | – | 30.7 / 30.1 | – | – | 7.8\* / 7.1\* | – | – |
-| BabyBear | **12.5** / **11.0** | – | 31.8 / 32.8 | – | – | 15.0 / 13.1 | – | – |
-| Goldilocks | 12.0 / 10.0 | – | 36.4 / 33.6 | – | – | 6.7\* / 8.1\* | **10.2** / **9.3** | – |
-| BN254 scalar | **86.7** / **65.2** | 330 / 325 | 311 / 310 | – | 323 / 299 | – | – | 1,212 / 1,210 |
-| secp256k1 base | **11.5** / **10.0** | 184 / 184 | 314 / 310 | 15.2 / 5.4\* | 270 / 246 | – | – | 1,187 / 1,179 |
-| P-256 base | **67.5** / **57.4** | 284 / 271 | 311 / 310 | 159 / 158 | 274 / 250 | – | – | 988 / 990 |
-| P-256 scalar | 83.3 / 65.7 | 362 / 333 | 312 / 310 | **54.7** / **63.0** | 323 / 299 | – | – | 1,229 / 1,224 |
-| Tom-256 base | **71.1** / **64.8** | – | 313 / 309 | – | 318 / 318 | – | – | 1,214 / 1,208 |
-| BLS12-381 base | **96.5** / **90.7** | 843 / 838 | 649 / 647 | – | 632 / 641 | – | – | 2,408 / 2,381 |
-| P-521 base | **25.1** / **26.8** | – | 1,127 / 1,141 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### add_uint: a + k, k of the bit length of p, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.1** / **9.3** | 30.4 / 30.5 | – | – | 7.8\* / 7.1\* | – |
-| BabyBear | **12.5** / **11.0** | 31.8 / 31.9 | – | – | 15.0 / 13.1 | – |
-| Goldilocks | 12.0 / 10.0 | 36.5 / 33.6 | – | – | 6.7\* / 8.1\* | **10.2** / **9.6** |
-| BN254 scalar | 212 / **200** | 314 / 313 | – | **205** / 205 | – | – |
-| secp256k1 base | **24.4** / **23.2** | 315 / 311 | – | 140 / 140 | – | – |
-| P-256 base | 165 / 161 | 314 / 311 | – | **153** / **153** | – | – |
-| P-256 scalar | 226 / 213 | 314 / 312 | **117** / **107** | 204 / 204 | – | – |
-| Tom-256 base | 212 / 204 | 314 / 313 | – | **196** / **196** | – | – |
-| BLS12-381 base | 521 / 505 | 652 / 649 | – | **424** / **425** | – | – |
-| P-521 base | **72.7** / **67.0** | 1,193 / 1,174 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### sub_u64: a − k, k of 64 bits, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **7.0** / **6.6** | – | 20.9 / 20.2 | – | – | 6.3\* / 6.1\* | – | – |
-| BabyBear | **12.5** / **10.9** | – | 21.8 / 21.4 | – | – | 15.1 / 13.3 | – | – |
-| Goldilocks | 11.0 / 9.7 | – | 27.5 / 24.0 | – | – | 4.3\* / 5.0\* | **9.5** / **8.7** | – |
-| BN254 scalar | **73.6** / **66.6** | 338 / 325 | 257 / 285 | – | 317 / 290 | – | – | 1,174 / 1,163 |
-| secp256k1 base | **10.0** / **9.5** | 193 / 182 | 258 / 286 | 14.0 / 11.0 | 263 / 239 | – | – | 1,150 / 1,139 |
-| P-256 base | **80.9** / **57.1** | 291 / 277 | 228 / 286 | 149 / 149 | 266 / 243 | – | – | 933 / 905 |
-| P-256 scalar | 84.0 / 65.4 | 382 / 342 | 256 / 293 | **24.2** / **24.7** | 315 / 288 | – | – | 1,187 / 1,191 |
-| Tom-256 base | **72.2** / **65.5** | – | 256 / 284 | – | 311 / 286 | – | – | 1,174 / 1,164 |
-| BLS12-381 base | **96.3** / **91.0** | 886 / 835 | 617 / 624 | – | 612 / 601 | – | – | 2,342 / 2,317 |
-| P-521 base | **21.1** / **21.7** | – | 1,139 / 1,106 | – | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### sub_uint: a − k, k of the bit length of p, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **7.0** / **6.6** | 20.9 / 20.1 | – | – | 6.3\* / 6.0\* | – |
-| BabyBear | **12.5** / **10.9** | 21.8 / 21.9 | – | – | 15.1 / 13.3 | – |
-| Goldilocks | 11.0 / 9.7 | 28.4 / 24.0 | – | – | 4.3\* / 5.0\* | **9.5** / **8.7** |
-| BN254 scalar | 216 / 204 | 257 / 282 | – | **194** / **193** | – | – |
-| secp256k1 base | **23.5** / **22.0** | 290 / 281 | – | 130 / 130 | – | – |
-| P-256 base | 165 / 163 | 229 / 282 | – | **144** / **143** | – | – |
-| P-256 scalar | 227 / 211 | 258 / 285 | **89.5** / **95.5** | 193 / 194 | – | – |
-| Tom-256 base | 217 / 208 | 258 / 282 | – | **187** / **188** | – | – |
-| BLS12-381 base | 524 / 505 | 618 / 623 | – | **407** / **408** | – | – |
-| P-521 base | **69.1** / **67.4** | 1,164 / 1,123 | – | – | – | – |
-
-\* `plonky3` over Mersenne-31: returns p for a zero result, which is not canonical.
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### from_u64: k mod p, k of 64 bits, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 5.2 / – | – | 13.2 / – | – | – | **3.9** / – | – | – |
-| BabyBear | **10.3** / – | – | 15.0 / – | – | – | 11.8 / – | – | – |
-| Goldilocks | 8.7 / – | – | 17.0 / – | – | – | 2.1\* / – | **7.0** / – | – |
-| BN254 scalar | **46.0** / – | 299 / – | 204 / – | – | 266 / – | – | – | 1,080 / – |
-| secp256k1 base | **3.8** / – | 181 / – | 204 / – | 6.0 / – | 215 / – | – | – | 1,079 / – |
-| P-256 base | **39.0** / – | 254 / – | 203 / – | 131 / – | 219 / – | – | – | 820 / – |
-| P-256 scalar | 43.0 / – | 315 / – | 204 / – | **4.0** / – | 266 / – | – | – | 1,077 / – |
-| Tom-256 base | **43.4** / – | – | 204 / – | – | 260 / – | – | – | 1,076 / – |
-| BLS12-381 base | **64.0** / – | 778 / – | 516 / – | – | 584 / – | – | – | 2,230 / – |
-| P-521 base | **6.0** / – | – | 889 / – | – | – | – | – | – |
-
-\* `plonky3` over Goldilocks: skips the final reduction; the result is not canonical.
-
-### div_u64: a / k, k of 64 bits, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | ark-ff | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | – | – | – | – | – | – | – |
-| BabyBear | – | – | – | – | – | – | – |
-| Goldilocks | – | – | – | – | – | – | – |
-| BN254 scalar | **982** / **988** | 7,292 / 7,213 | 27,240 / 27,178 | 17,740 / 17,743 | – | 11,753 / 11,726 | 43,639 / 43,830 |
-| secp256k1 base | **914** / **874** | 7,071 / 7,012 | 21,642 / 21,544 | 17,722 / 17,675 | 37,512 / 37,432 | 11,588 / 11,513 | 44,227 / 44,606 |
-| P-256 base | **948** / **944** | 6,796 / 6,783 | 26,242 / 26,240 | 17,751 / 17,681 | 34,651 / 34,686 | 11,565 / 11,506 | 43,255 / 42,960 |
-| P-256 scalar | **1,004** / **994** | 7,331 / 7,373 | 27,032 / 27,122 | 17,726 / 17,657 | 48,462 / 48,263 | 11,679 / 11,689 | 44,290 / 43,969 |
-| Tom-256 base | **972** / **966** | 7,227 / 7,189 | – | 17,728 / 17,727 | – | 11,645 / 11,657 | 43,366 / 44,059 |
-| BLS12-381 base | **1,307** / **1,303** | 14,206 / 14,157 | 53,203 / 53,118 | 31,415 / 31,539 | – | 18,616 / 18,530 | 102,215 / 101,682 |
-| P-521 base | **1,930** / **1,883** | 26,291 / 26,372 | – | 57,887 / 58,233 | – | – | – |
-
-### div_uint: a / k, k of one bit less than p, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | ark-ff | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **281** / **283** | 286 / **283** | – | 1,976 / 1,983 | – | – | 744 / 702 | – | 2,096 / 2,099 |
-| BabyBear | **291** / **287** | 303 / 297 | – | 1,965 / 1,958 | – | – | 716 / 723 | – | 2,197 / 2,195 |
-| Goldilocks | **586** / **588** | 614 / 609 | – | 3,868 / 3,863 | – | – | 1,562 / 1,564 | 1,047 / 1,028 | 4,163 / 4,151 |
-| BN254 scalar | **8,365** / 8,483 | 8,422 / **8,475** | 27,093 / 27,046 | 19,187 / 19,207 | – | 14,515 / 14,477 | – | – | 54,257 / 54,102 |
-| secp256k1 base | **8,118** / **8,098** | 8,121 / 8,100 | 25,670 / 26,010 | 19,216 / 19,250 | 37,611 / 37,532 | 14,549 / 14,389 | – | – | 54,504 / 54,609 |
-| P-256 base | **7,901** / **7,872** | 7,983 / 7,927 | 26,725 / 26,781 | 19,231 / 19,239 | 34,698 / 34,729 | 14,404 / 14,319 | – | – | 53,883 / 53,835 |
-| P-256 scalar | 8,667 / **8,639** | **8,579** / 8,653 | 27,990 / 28,138 | 19,281 / 19,258 | 64,300 / 63,942 | 14,686 / 14,648 | – | – | 54,719 / 54,484 |
-| Tom-256 base | 8,491 / **8,453** | **8,485** / 8,454 | – | 19,281 / 19,256 | – | 14,559 / 14,520 | – | – | 54,579 / 54,682 |
-| BLS12-381 base | 16,831 / **16,842** | **16,804** / 16,933 | 53,287 / 53,743 | 34,629 / 34,575 | – | 24,437 / 24,361 | – | – | 129,069 / 128,887 |
-| P-521 base | 30,683 / 30,667 | **30,601** / **30,323** | – | 63,807 / 63,655 | – | – | – | – | – |
-
-### add, constant time: a + b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **4.4** / **7.7** | 11.4 / 20.7 | – | – | – | 10.9 / 17.8 |
-| BabyBear | **3.0** / **3.0** | 11.4 / 19.4 | – | – | – | 10.9 / 17.8 |
-| Goldilocks | **3.2** / **3.0** | 10.9 / 18.7 | – | – | 4.0 / 4.4 | 10.9 / 17.8 |
-| BN254 scalar | **26.5** / **25.7** | 60.1 / 92.5 | – | 35.0 / 34.0 | – | 76.6 / 115 |
-| secp256k1 base | **29.0** / **29.8** | 60.1 / 92.7 | 16.0\* / 15.7\* | 33.0 / 31.0 | – | 76.5 / 115 |
-| P-256 base | **28.0** / **28.0** | 60.1 / 89.3 | 31.5 / 29.4 | 31.5 / 30.0 | – | 76.5 / 119 |
-| P-256 scalar | **29.5** / **30.1** | 60.1 / 92.8 | 56.4 / 60.4 | 35.0 / 33.0 | – | 76.5 / 118 |
-| Tom-256 base | **28.5** / **29.0** | 60.1 / 93.0 | – | 34.0 / 32.5 | – | 76.5 / 116 |
-| BLS12-381 base | **41.1** / **41.0** | 85.5 / 136 | – | 54.0 / 54.0 | – | 136 / 165 |
-| P-521 base | **74.0** / **74.0** | 175 / 243 | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### sub, constant time: a − b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | plonky3 | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **2.7** / **3.0** | 5.0 / 8.0 | – | – | 3.0 / 5.0 | – | 17.0 / 14.5 |
-| BabyBear | **2.7** / **3.0** | 5.0 / 8.0 | – | – | – | – | 16.9 / 14.1 |
-| Goldilocks | **3.0** / **3.0** | 5.0 / 8.0 | – | – | – | **3.0** / **3.0** | 18.7 / 12.9 |
-| BN254 scalar | 26.0 / 25.0 | 37.0 / 30.6 | – | **24.0** / **22.0** | – | – | 54.9 / 75.2 |
-| secp256k1 base | 22.5 / 21.5 | 37.0 / 29.3 | 15.8\* / 17.6\* | **22.0** / **21.0** | – | – | 54.1 / 75.1 |
-| P-256 base | 22.0 / **20.0** | 37.1 / 28.2 | 22.0 / **20.0** | **21.5** / **20.0** | – | – | 53.8 / 75.1 |
-| P-256 scalar | 24.0 / **21.5** | 37.0 / 30.1 | 26.4 / 27.0 | **23.0** / **21.5** | – | – | 54.2 / 75.3 |
-| Tom-256 base | **24.0** / 22.5 | 37.1 / 30.5 | – | **24.0** / **22.0** | – | – | 54.7 / 75.6 |
-| BLS12-381 base | **37.0** / 36.2 | 57.3 / 105 | – | **37.0** / **36.1** | – | – | 69.7 / 102 |
-| P-521 base | **53.0** / **53.0** | 128 / 171 | – | – | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### mul, constant time: a × b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.5** / **12.0** | 19.2 / 30.8 | – | – | – | 49.8 / 57.0 |
-| BabyBear | **5.0** / **11.0** | 19.2 / 30.8 | – | – | – | 49.9 / 57.0 |
-| Goldilocks | 9.0 / **14.0** | 19.3 / 32.7 | – | – | **7.7** / **14.0** | 49.8 / 57.0 |
-| BN254 scalar | **145** / **149** | 204 / 211 | – | 182 / 178 | – | 1,066 / 1,073 |
-| secp256k1 base | **109** / **108** | 204 / 211 | 175 / 175 | 163 / 160 | – | 1,073 / 1,078 |
-| P-256 base | **120** / **120** | 203 / 212 | 135 / 131 | 135 / 132 | – | 798 / 777 |
-| P-256 scalar | **156** / **164** | 204 / 212 | 371 / 335 | 181 / 179 | – | 1,067 / 1,075 |
-| Tom-256 base | **156** / **149** | 204 / 211 | – | 176 / 171 | – | 1,071 / 1,080 |
-| BLS12-381 base | **421** / 429 | 512 / 534 | – | 473 / **376** | – | 2,173 / 2,180 |
-| P-521 base | **847** / **866** | 1,054 / 1,104 | – | – | – | – |
-
-### square, constant time: a², in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.4** / **12.0** | 18.0 / 30.1 | – | – | – | 49.0 / 56.0 |
-| BabyBear | **5.8** / **11.0** | 18.2 / 30.7 | – | – | – | 49.0 / 56.0 |
-| Goldilocks | 9.7 / 14.4 | 18.8 / 30.6 | – | – | **7.0** / **14.3** | 49.0 / 56.0 |
-| BN254 scalar | **140** / 147 | 172 / 176 | – | 144 / **144** | – | 1,057 / 1,062 |
-| secp256k1 base | **102** / **95.7** | 175 / 176 | 115 / 136 | 121 / 122 | – | 1,070 / 1,072 |
-| P-256 base | 113 / **104** | 175 / 176 | 128 / 131 | **107** / 107 | – | 763 / 693 |
-| P-256 scalar | 155 / 150 | 175 / 176 | 335 / 337 | **140** / **140** | – | 1,069 / 1,069 |
-| Tom-256 base | 158 / 142 | 175 / 177 | – | **134** / **136** | – | 1,070 / 1,073 |
-| BLS12-381 base | 448 / 441 | 519 / 531 | – | **286** / **296** | – | 2,172 / 2,158 |
-| P-521 base | **420** / **418** | 1,123 / 1,201 | – | – | – | – |
-
-### invert, constant time: a⁻¹, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | **428** / – | 6,441 / – | – | – | – | 3,332 / – |
-| BabyBear | **417** / – | 6,455 / – | – | – | – | 3,342 / – |
-| Goldilocks | 1,194 / – | 6,463 / – | – | – | **998** / – | 7,060 / – |
-| BN254 scalar | **12,527** / – | 30,794 / – | – | 99,877 / – | – | 403,140 / – |
-| secp256k1 base | **12,594** / – | 30,446 / – | 37,465 / – | 109,486 / – | – | 537,289 / – |
-| P-256 base | **12,309** / – | 30,452 / – | 34,425 / – | 76,459 / – | – | 316,661 / – |
-| P-256 scalar | **12,736** / – | 30,685 / – | 147,110 / – | 98,594 / – | – | 452,861 / – |
-| Tom-256 base | **12,702** / – | 30,692 / – | – | 96,809 / – | – | 377,185 / – |
-| BLS12-381 base | **24,079** / – | 53,633 / – | – | 379,094 / – | – | 1,324,724 / – |
-| P-521 base | **41,255** / – | 101,412 / – | – | – | – | – |
-
-### sqrt, constant time: √a, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **340** / – | 2,163 / – | – | – | 1,679 / – |
-| BabyBear | **6,489** / – | 23,175 / – | – | – | – |
-| Goldilocks | **21,641** / – | 32,998 / – | – | – | – |
-| BN254 scalar | **152,636** / – | 203,433 / – | – | 179,561 / – | – |
-| secp256k1 base | **31,139** / – | 79,732 / – | 37,132 / – | 87,682 / – | 531,665 / – |
-| P-256 base | **32,304** / – | 67,732 / – | 34,036 / – | 70,166 / – | 247,873 / – |
-| P-256 scalar | **68,158** / – | 79,070 / – | 154,418 / – | 72,365 / – | – |
-| Tom-256 base | **52,551** / – | 74,698 / – | – | 93,462 / – | 374,513 / – |
-| BLS12-381 base | **211,927** / – | 272,471 / – | – | 370,734 / – | 1,320,972 / – |
-| P-521 base | **272,366** / – | 591,360 / – | – | – | – |
-
-### mul_u64, constant time: a × k, k of 64 bits, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.7** / **14.0** | 38.7 / 38.8 | – | – | – |
-| BabyBear | **14.7** / **13.1** | 40.4 / 40.8 | – | – | – |
-| Goldilocks | 17.1 / 17.1 | 50.8 / 49.8 | – | – | **13.5** / **15.2** |
-| BN254 scalar | **57.4** / **58.0** | 406 / 410 | – | 514 / 504 | – |
-| secp256k1 base | **37.2** / **45.5** | 408 / 409 | 167 / 175 | 437 / 430 | – |
-| P-256 base | **53.7** / **59.4** | 406 / 409 | 259 / 258 | 452 / 432 | – |
-| P-256 scalar | **62.0** / **67.3** | 407 / 411 | 395 / 340 | 442 / 511 | – |
-| Tom-256 base | **57.6** / **64.0** | 407 / 410 | – | 518 / 481 | – |
-| BLS12-381 base | **85.9** / **88.0** | 1,034 / 1,038 | – | 1,176 / 1,186 | – |
-| P-521 base | **95.7** / **95.0** | 1,825 / 1,844 | – | – | – |
-
-### mul_uint, constant time: a × k, k of the bit length of p, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.7** / **14.0** | 38.9 / 38.7 | – | – | – |
-| BabyBear | **14.7** / **13.1** | 40.5 / 40.8 | – | – | – |
-| Goldilocks | 17.1 / 17.1 | 49.8 / 50.0 | – | – | **13.6** / **14.9** |
-| BN254 scalar | **312** / **311** | 409 / 408 | – | 349 / 348 | – |
-| secp256k1 base | **251** / **252** | 408 / 407 | – | 265 / 266 | – |
-| P-256 base | 301 / 306 | 408 / 408 | – | **252** / **252** | – |
-| P-256 scalar | **336** / **333** | 408 / 407 | 406 / 406 | 347 / 346 | – |
-| Tom-256 base | **325** / **324** | 408 / 409 | – | 335 / 335 | – |
-| BLS12-381 base | **689** / **684** | 940 / 1,035 | – | 1,092 / 1,064 | – |
-| P-521 base | **1,496** / **1,470** | 1,899 / 1,861 | – | – | – |
-
-### add_u64, constant time: a + k, k of 64 bits, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.2** / **9.3** | 30.7 / 30.1 | – | – | – |
-| BabyBear | **12.5** / **11.0** | 31.8 / 32.8 | – | – | – |
-| Goldilocks | 12.0 / 10.0 | 36.4 / 33.6 | – | – | **10.2** / **9.3** |
-| BN254 scalar | **81.4** / **81.6** | 311 / 310 | – | 323 / 299 | – |
-| secp256k1 base | **25.1** / **29.0** | 314 / 310 | 15.2\* / 5.4\* | 270 / 246 | – |
-| P-256 base | **71.5** / **74.3** | 311 / 310 | 159 / 158 | 274 / 250 | – |
-| P-256 scalar | 77.1 / 79.7 | 312 / 310 | **54.7** / **63.0** | 323 / 299 | – |
-| Tom-256 base | **85.2** / **84.9** | 313 / 309 | – | 318 / 318 | – |
-| BLS12-381 base | **127** / **122** | 649 / 647 | – | 632 / 641 | – |
-| P-521 base | **64.1** / **64.7** | 1,127 / 1,141 | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### add_uint, constant time: a + k, k of the bit length of p, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **9.2** / **9.3** | 30.4 / 30.5 | – | – | – |
-| BabyBear | **12.5** / **11.0** | 31.8 / 31.9 | – | – | – |
-| Goldilocks | 12.0 / 10.0 | 36.5 / 33.6 | – | – | **10.2** / **9.6** |
-| BN254 scalar | 216 / **205** | 314 / 313 | – | **205** / **205** | – |
-| secp256k1 base | **44.4** / **44.5** | 315 / 311 | – | 140 / 140 | – |
-| P-256 base | 168 / 160 | 314 / 311 | – | **153** / **153** | – |
-| P-256 scalar | 192 / 213 | 314 / 312 | **117** / **107** | 204 / 204 | – |
-| Tom-256 base | 205 / 207 | 314 / 313 | – | **196** / **196** | – |
-| BLS12-381 base | 551 / 544 | 652 / 649 | – | **424** / **425** | – |
-| P-521 base | **138** / **134** | 1,193 / 1,174 | – | – | – |
-
-### sub_u64, constant time: a − k, k of 64 bits, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form. A `\*` marks the figure of a function that deviates from the row's definition where the figure is below `prime-field`'s; the note under the table says how the function deviates.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **7.0** / **6.6** | 20.9 / 20.2 | – | – | – |
-| BabyBear | **12.5** / **10.9** | 21.8 / 21.4 | – | – | – |
-| Goldilocks | 11.0 / 9.4 | 27.5 / 24.0 | – | – | **9.5** / **8.7** |
-| BN254 scalar | **80.1** / **79.9** | 257 / 285 | – | 317 / 290 | – |
-| secp256k1 base | **18.5** / **17.4** | 258 / 286 | 14.0\* / 11.0\* | 263 / 239 | – |
-| P-256 base | **68.0** / **69.6** | 228 / 286 | 149 / 149 | 266 / 243 | – |
-| P-256 scalar | 77.5 / 77.2 | 256 / 293 | **24.2** / **24.7** | 315 / 288 | – |
-| Tom-256 base | **80.4** / **80.1** | 256 / 284 | – | 311 / 286 | – |
-| BLS12-381 base | **118** / **119** | 617 / 624 | – | 612 / 601 | – |
-| P-521 base | **44.2** / **46.2** | 1,139 / 1,106 | – | – | – |
-
-\* `k256/p256` over secp256k1 base: skips the final reduction; the result is not canonical.
-
-### sub_uint, constant time: a − k, k of the bit length of p, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **7.1** / **6.5** | 20.9 / 20.1 | – | – | – |
-| BabyBear | **12.5** / **10.8** | 21.8 / 21.9 | – | – | – |
-| Goldilocks | 11.0 / 9.4 | 28.4 / 24.0 | – | – | **9.5** / **8.7** |
-| BN254 scalar | 218 / 219 | 257 / 282 | – | **194** / **193** | – |
-| secp256k1 base | **38.1** / **37.7** | 290 / 281 | – | 130 / 130 | – |
-| P-256 base | 163 / 158 | 229 / 282 | – | **144** / **143** | – |
-| P-256 scalar | 208 / 207 | 258 / 285 | **89.5** / **95.5** | 193 / 194 | – |
-| Tom-256 base | 202 / 193 | 258 / 282 | – | **187** / **188** | – |
-| BLS12-381 base | 547 / 541 | 618 / 623 | – | **407** / **408** | – |
-| P-521 base | **114** / **112** | 1,164 / 1,123 | – | – | – |
-
-### from_u64, constant time: k mod p, k of 64 bits, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | crypto-bigint | k256/p256 | halo2curves | winter-math |
-|---|---:|---:|---:|---:|---:|
-| Mersenne-31 | **5.2** / – | 13.2 / – | – | – | – |
-| BabyBear | **12.7** / – | 15.0 / – | – | – | – |
-| Goldilocks | 12.5 / – | 17.0 / – | – | – | **7.0** / – |
-| BN254 scalar | **119** / – | 204 / – | – | 266 / – | – |
-| secp256k1 base | **3.4** / – | 204 / – | 6.0 / – | 215 / – | – |
-| P-256 base | **84.0** / – | 203 / – | 131 / – | 219 / – | – |
-| P-256 scalar | 117 / – | 204 / – | **4.0** / – | 266 / – | – |
-| Tom-256 base | **113** / – | 204 / – | – | 260 / – | – |
-| BLS12-381 base | **273** / – | 516 / – | – | 584 / – | – |
-| P-521 base | **6.0** / – | 889 / – | – | – | – |
-
-### div_u64, constant time: a / k, k of 64 bits, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | crypto-bigint | k256/p256 | halo2curves | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | – | – | – | – | – | – |
-| BabyBear | – | – | – | – | – | – |
-| Goldilocks | – | – | – | – | – | – |
-| BN254 scalar | 12,948 / **12,896** | **12,915** / 12,952 | 31,291 / 31,382 | – | 110,969 / 110,896 | 405,988 / 405,334 |
-| secp256k1 base | **12,853** / 12,937 | 12,930 / **12,794** | 31,287 / 31,349 | 37,512 / 37,432 | 93,052 / 93,056 | 537,603 / 537,115 |
-| P-256 base | **12,501** / **12,483** | 12,513 / 12,486 | 31,256 / 31,375 | 34,651 / 34,686 | 96,968 / 98,259 | 325,721 / 325,293 |
-| P-256 scalar | **13,041** / **13,117** | 13,211 / 13,189 | 30,891 / 31,237 | 142,605 / 142,686 | 114,513 / 114,407 | 456,526 / 456,316 |
-| Tom-256 base | **12,990** / **12,925** | 13,052 / 12,957 | 31,209 / 31,377 | – | 110,718 / 110,570 | 379,800 / 379,429 |
-| BLS12-381 base | **24,119** / **24,124** | 24,204 / 24,125 | 55,120 / 54,655 | – | 400,957 / 400,667 | 1,329,828 / 1,327,806 |
-| P-521 base | 43,437 / **43,215** | **43,373** / 43,328 | 101,291 / 101,185 | – | – | – |
-
-### div_uint, constant time: a / k, k of one bit less than p, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Field | prime-field | prime-field × invert | crypto-bigint | k256/p256 | halo2curves | winter-math | runtime-algebra |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mersenne-31 | 465 / 461 | **464** / **459** | 6,520 / 6,439 | – | – | – | 3,417 / 3,419 |
-| BabyBear | **459** / **450** | 462 / **450** | 6,539 / 6,433 | – | – | – | 3,417 / 3,419 |
-| Goldilocks | 1,212 / 1,209 | 1,222 / 1,214 | 6,510 / 6,453 | – | – | **1,047** / **1,028** | 7,111 / 7,115 |
-| BN254 scalar | **13,063** / **13,112** | 13,295 / 13,119 | 31,379 / 31,324 | – | 110,359 / 110,733 | – | 405,031 / 404,545 |
-| secp256k1 base | **12,854** / 12,900 | 12,942 / **12,850** | 31,295 / 31,440 | 37,611 / 37,532 | 92,822 / 92,811 | – | 539,965 / 538,481 |
-| P-256 base | **12,643** / **12,584** | 12,729 / 12,683 | 31,191 / 31,370 | 34,698 / 34,729 | 97,750 / 97,361 | – | 326,167 / 328,102 |
-| P-256 scalar | **13,515** / **13,334** | 13,642 / 13,431 | 31,291 / 31,428 | 142,627 / 142,613 | 114,660 / 114,613 | – | 455,698 / 455,326 |
-| Tom-256 base | **13,094** / **13,134** | 13,227 / 13,170 | 31,268 / 31,376 | – | 110,662 / 110,544 | – | 379,618 / 378,997 |
-| BLS12-381 base | **24,508** / **24,562** | 24,662 / 24,651 | 54,952 / 54,691 | – | 400,596 / 400,562 | – | 1,328,282 / 1,326,774 |
-| P-521 base | **43,462** / **43,287** | 43,793 / 43,563 | 101,264 / 101,383 | – | – | – | – |
+### Against the best competitor, throughput
+
+Cycles per operation of `prime-field` against the fewest of the crates whose functions keep the row's definition. Δ: ours − best, then ours ÷ best; below 1 we lead.
+
+| Operation | Field | Chrome | Δ | Chrome, wide arithmetic | Δ | Firefox | Δ | Firefox, wide arithmetic | Δ |
+|---|---|---|---:|---|---:|---|---:|---|---:|
+| add | Mersenne-31 | 4.2 vs runtime-algebra 10.8 | −6.6 (0.39×) | 4.2 vs runtime-algebra 10.8 | −6.6 (0.39×) | 4.4 vs runtime-algebra 10.8 | −6.4 (0.41×) | 4.4 vs runtime-algebra 10.9 | −6.5 (0.40×) |
+| add | BabyBear | 2.4 vs plonky3 2.4 | +0.0 (1.00×) | 2.4 vs plonky3 2.4 | +0.0 (1.00×) | 3.0 vs plonky3 2.7 | +0.3 (1.11×) | 3.0 vs plonky3 2.7 | +0.3 (1.11×) |
+| add | Goldilocks | 3.3 vs winter-math 3.3 | +0.0 (1.00×) | 3.3 vs winter-math 3.3 | +0.0 (1.00×) | 3.1 vs winter-math 4.0 | −0.9 (0.78×) | 3.1 vs winter-math 4.0 | −0.9 (0.78×) |
+| add | BN254 scalar | 17.1 vs ark-ff 13.5 | +3.6 (1.27×) | 12.3 vs ark-ff 13.2 | −0.9 (0.93×) | 16.7 vs ark-ff 14.1 | +2.6 (1.18×) | 19.0 vs ark-ff 18.2 | +0.8 (1.04×) |
+| add | secp256k1 base | 14.0 vs ark-ff 15.2 | −1.2 (0.92×) | 11.8 vs ark-ff 12.8 | −1.0 (0.92×) | 14.8 vs ark-ff 17.1 | −2.3 (0.87×) | 20.4 vs ark-ff 20.1 | +0.3 (1.01×) |
+| add | P-256 base | 14.7 vs ark-ff 15.6 | −0.9 (0.94×) | 12.3 vs ark-ff 12.3 | +0.0 (1.00×) | 14.8 vs ark-ff 17.4 | −2.6 (0.85×) | 19.9 vs ark-ff 19.9 | +0.0 (1.00×) |
+| add | P-256 scalar | 15.4 vs ark-ff 15.3 | +0.1 (1.01×) | 11.8 vs ark-ff 13.3 | −1.5 (0.89×) | 16.2 vs ark-ff 17.2 | −1.0 (0.94×) | 21.4 vs ark-ff 20.6 | +0.8 (1.04×) |
+| add | Tom-256 base | 15.0 vs halo2curves 35.8 | −20.8 (0.42×) | 11.7 vs halo2curves 20.2 | −8.5 (0.58×) | 15.8 vs halo2curves 38.2 | −22.4 (0.41×) | 20.6 vs halo2curves 34.0 | −13.4 (0.61×) |
+| add | BLS12-381 base | 26.1 vs ark-ff 35.5 | −9.4 (0.74×) | 17.8 vs ark-ff 30.0 | −12.2 (0.59×) | 25.0 vs ark-ff 39.2 | −14.2 (0.64×) | 29.5 vs ark-ff 42.3 | −12.8 (0.70×) |
+| add | P-521 base | 43.2 vs crypto-bigint 146 | −103 (0.30×) | 26.1 vs crypto-bigint 133 | −107 (0.20×) | 42.5 vs crypto-bigint 176 | −134 (0.24×) | 43.9 vs crypto-bigint 184 | −140 (0.24×) |
+| sub | Mersenne-31 | 2.5 vs crypto-bigint 4.5 | −2.0 (0.56×) | 2.5 vs crypto-bigint 4.5 | −2.0 (0.56×) | 2.7 vs crypto-bigint 5.0 | −2.3 (0.54×) | 2.7 vs crypto-bigint 5.0 | −2.3 (0.54×) |
+| sub | BabyBear | 2.5 vs plonky3 2.8 | −0.3 (0.89×) | 2.5 vs plonky3 2.8 | −0.3 (0.89×) | 2.7 vs plonky3 3.0 | −0.3 (0.90×) | 2.7 vs plonky3 3.0 | −0.3 (0.90×) |
+| sub | Goldilocks | 2.6 vs winter-math 2.8 | −0.2 (0.93×) | 2.6 vs winter-math 2.8 | −0.2 (0.93×) | 3.0 vs winter-math 3.0 | +0.0 (1.00×) | 3.0 vs winter-math 3.0 | +0.0 (1.00×) |
+| sub | BN254 scalar | 16.4 vs ark-ff 18.4 | −2.0 (0.89×) | 11.7 vs halo2curves 15.0 | −3.3 (0.78×) | 15.5 vs ark-ff 19.1 | −3.6 (0.81×) | 19.8 vs ark-ff 23.7 | −3.9 (0.84×) |
+| sub | secp256k1 base | 16.6 vs ark-ff 18.4 | −1.8 (0.90×) | 11.8 vs halo2curves 14.2 | −2.4 (0.83×) | 15.3 vs ark-ff 19.5 | −4.2 (0.78×) | 19.6 vs halo2curves 22.0 | −2.4 (0.89×) |
+| sub | P-256 base | 15.2 vs ark-ff 17.0 | −1.8 (0.89×) | 11.9 vs halo2curves 12.3 | −0.4 (0.97×) | 15.1 vs ark-ff 18.1 | −3.0 (0.83×) | 18.9 vs halo2curves 21.5 | −2.6 (0.88×) |
+| sub | P-256 scalar | 16.5 vs ark-ff 17.8 | −1.3 (0.93×) | 11.9 vs halo2curves 14.4 | −2.5 (0.83×) | 15.5 vs ark-ff 18.8 | −3.3 (0.82×) | 19.7 vs ark-ff 23.0 | −3.3 (0.86×) |
+| sub | Tom-256 base | 16.2 vs halo2curves 24.0 | −7.8 (0.67×) | 11.8 vs halo2curves 15.0 | −3.2 (0.79×) | 16.0 vs halo2curves 23.3 | −7.3 (0.69×) | 19.4 vs halo2curves 24.1 | −4.7 (0.80×) |
+| sub | BLS12-381 base | 25.5 vs ark-ff 33.7 | −8.2 (0.76×) | 17.9 vs halo2curves 23.5 | −5.6 (0.76×) | 24.1 vs ark-ff 31.6 | −7.5 (0.76×) | 29.5 vs halo2curves 37.0 | −7.5 (0.80×) |
+| sub | P-521 base | 47.5 vs crypto-bigint 88.8 | −41.3 (0.53×) | 28.8 vs crypto-bigint 64.4 | −35.6 (0.45×) | 42.3 vs crypto-bigint 122 | −79.7 (0.35×) | 44.2 vs crypto-bigint 127 | −82.8 (0.35×) |
+| mul | Mersenne-31 | 5.1 vs crypto-bigint 29.3 | −24.2 (0.17×) | 5.1 vs crypto-bigint 15.8 | −10.7 (0.32×) | 5.5 vs crypto-bigint 38.8 | −33.3 (0.14×) | 5.5 vs crypto-bigint 19.2 | −13.7 (0.29×) |
+| mul | BabyBear | 7.8 vs plonky3 4.1 | +3.7 (1.90×) | 5.2 vs plonky3 4.1 | +1.1 (1.27×) | 7.8 vs plonky3 6.6 | +1.2 (1.18×) | 5.0 vs plonky3 6.5 | −1.5 (0.77×) |
+| mul | Goldilocks | 12.1 vs winter-math 12.3 | −0.2 (0.98×) | 7.0 vs winter-math 6.5 | +0.5 (1.08×) | 12.4 vs winter-math 17.1 | −4.7 (0.73×) | 9.0 vs winter-math 7.8 | +1.2 (1.15×) |
+| mul | BN254 scalar | 234 vs ark-ff 322 | −88.0 (0.73×) | 95.6 vs halo2curves 91.7 | +3.9 (1.04×) | 386 vs ark-ff 449 | −63.0 (0.86×) | 162 vs halo2curves 182 | −20.0 (0.89×) |
+| mul | secp256k1 base | 160 vs halo2curves 303 | −143 (0.53×) | 63.4 vs halo2curves 91.3 | −27.9 (0.69×) | 289 vs ark-ff 417 | −128 (0.69×) | 112 vs halo2curves 163 | −51.0 (0.69×) |
+| mul | P-256 base | 176 vs k256/p256 242 | −66.0 (0.73×) | 71.4 vs k256/p256 84.9 | −13.5 (0.84×) | 317 vs ark-ff 449 | −132 (0.71×) | 119 vs halo2curves 135 | −16.0 (0.88×) |
+| mul | P-256 scalar | 239 vs ark-ff 314 | −75.0 (0.76×) | 85.2 vs halo2curves 93.5 | −8.3 (0.91×) | 342 vs ark-ff 431 | −89.0 (0.79×) | 161 vs halo2curves 181 | −20.0 (0.89×) |
+| mul | Tom-256 base | 237 vs halo2curves 343 | −106 (0.69×) | 85.5 vs halo2curves 93.7 | −8.2 (0.91×) | 336 vs halo2curves 607 | −271 (0.55×) | 154 vs halo2curves 176 | −22.0 (0.88×) |
+| mul | BLS12-381 base | 727 vs ark-ff 807 | −80.0 (0.90×) | 199 vs halo2curves 194 | +5.0 (1.03×) | 944 vs ark-ff 1,093 | −149 (0.86×) | 352 vs halo2curves 381 | −29.0 (0.92×) |
+| mul | P-521 base | 665 vs crypto-bigint 2,112 | −1,447 (0.31×) | 253 vs crypto-bigint 600 | −347 (0.42×) | 1,293 vs crypto-bigint 2,726 | −1,433 (0.47×) | 444 vs crypto-bigint 1,045 | −601 (0.42×) |
+| square | Mersenne-31 | 5.2 vs crypto-bigint 28.4 | −23.2 (0.18×) | 5.2 vs crypto-bigint 15.6 | −10.4 (0.33×) | 5.4 vs crypto-bigint 38.3 | −32.9 (0.14×) | 5.4 vs crypto-bigint 18.2 | −12.8 (0.30×) |
+| square | BabyBear | 8.3 vs plonky3 5.2 | +3.1 (1.60×) | 4.8 vs plonky3 5.2 | −0.4 (0.92×) | 8.0 vs plonky3 5.7 | +2.3 (1.40×) | 5.8 vs plonky3 5.7 | +0.1 (1.02×) |
+| square | Goldilocks | 10.1 vs winter-math 12.4 | −2.3 (0.81×) | 6.0 vs winter-math 6.0 | +0.0 (1.00×) | 12.0 vs winter-math 17.0 | −5.0 (0.71×) | 9.7 vs winter-math 7.0 | +2.7 (1.39×) |
+| square | BN254 scalar | 214 vs ark-ff 271 | −57.0 (0.79×) | 93.9 vs halo2curves 84.6 | +9.3 (1.11×) | 375 vs ark-ff 373 | +2.0 (1.01×) | 163 vs halo2curves 142 | +21.0 (1.15×) |
+| square | secp256k1 base | 144 vs ark-ff 233 | −89.0 (0.62×) | 61.4 vs halo2curves 77.5 | −16.1 (0.79×) | 217 vs ark-ff 304 | −87.0 (0.71×) | 104 vs halo2curves 126 | −22.0 (0.83×) |
+| square | P-256 base | 147 vs halo2curves 172 | −25.0 (0.85×) | 78.4 vs k256/p256 74.5 | +3.9 (1.05×) | 258 vs ark-ff 340 | −82.0 (0.76×) | 129 vs halo2curves 107 | +22.0 (1.21×) |
+| square | P-256 scalar | 214 vs ark-ff 266 | −52.0 (0.80×) | 80.5 vs halo2curves 83.0 | −2.5 (0.97×) | 290 vs ark-ff 353 | −63.0 (0.82×) | 163 vs halo2curves 144 | +19.0 (1.13×) |
+| square | Tom-256 base | 208 vs halo2curves 312 | −104 (0.67×) | 76.3 vs halo2curves 79.6 | −3.3 (0.96×) | 321 vs halo2curves 466 | −145 (0.69×) | 148 vs halo2curves 136 | +12.0 (1.09×) |
+| square | BLS12-381 base | 586 vs ark-ff 633 | −47.0 (0.93×) | 189 vs halo2curves 170 | +19.0 (1.11×) | 894 vs ark-ff 844 | +50.0 (1.06×) | 320 vs halo2curves 331 | −11.0 (0.97×) |
+| square | P-521 base | 560 vs crypto-bigint 2,157 | −1,597 (0.26×) | 246 vs crypto-bigint 615 | −369 (0.40×) | 923 vs crypto-bigint 2,841 | −1,918 (0.32×) | 396 vs crypto-bigint 1,099 | −703 (0.36×) |
+| invert | Mersenne-31 | 266 vs plonky3 676 | −410 (0.39×) | 266 vs plonky3 676 | −410 (0.39×) | 276 vs plonky3 731 | −455 (0.38×) | 271 vs plonky3 723 | −452 (0.37×) |
+| invert | BabyBear | 269 vs plonky3 704 | −435 (0.38×) | 268 vs plonky3 699 | −431 (0.38×) | 281 vs plonky3 691 | −410 (0.41×) | 271 vs plonky3 699 | −428 (0.39×) |
+| invert | Goldilocks | 537 vs winter-math 1,760 | −1,223 (0.31×) | 538 vs winter-math 912 | −374 (0.59×) | 557 vs winter-math 1,831 | −1,274 (0.30×) | 563 vs winter-math 998 | −435 (0.56×) |
+| invert | BN254 scalar | 8,463 vs halo2curves 14,214 | −5,751 (0.60×) | 6,509 vs halo2curves 8,011 | −1,502 (0.81×) | 11,871 vs halo2curves 21,599 | −9,728 (0.55×) | 7,866 vs halo2curves 14,052 | −6,186 (0.56×) |
+| invert | secp256k1 base | 8,472 vs halo2curves 14,247 | −5,775 (0.59×) | 6,024 vs halo2curves 8,022 | −1,998 (0.75×) | 11,640 vs halo2curves 21,650 | −10,010 (0.54×) | 8,006 vs halo2curves 14,124 | −6,118 (0.57×) |
+| invert | P-256 base | 8,313 vs halo2curves 14,272 | −5,959 (0.58×) | 6,056 vs halo2curves 7,976 | −1,920 (0.76×) | 11,342 vs halo2curves 21,674 | −10,332 (0.52×) | 7,651 vs halo2curves 14,180 | −6,529 (0.54×) |
+| invert | P-256 scalar | 8,474 vs halo2curves 14,276 | −5,802 (0.59×) | 6,404 vs halo2curves 8,022 | −1,618 (0.80×) | 12,069 vs halo2curves 21,680 | −9,611 (0.56×) | 8,189 vs halo2curves 14,220 | −6,031 (0.58×) |
+| invert | Tom-256 base | 8,506 vs halo2curves 14,312 | −5,806 (0.59×) | 6,469 vs halo2curves 8,026 | −1,557 (0.81×) | 11,385 vs halo2curves 21,645 | −10,260 (0.53×) | 7,989 vs halo2curves 14,113 | −6,124 (0.57×) |
+| invert | BLS12-381 base | 19,365 vs halo2curves 25,486 | −6,121 (0.76×) | 11,508 vs halo2curves 13,186 | −1,678 (0.87×) | 24,350 vs halo2curves 38,146 | −13,796 (0.64×) | 16,049 vs halo2curves 23,734 | −7,685 (0.68×) |
+| invert | P-521 base | 33,347 vs crypto-bigint 64,815 | −31,468 (0.51×) | 18,149 vs crypto-bigint 50,519 | −32,370 (0.36×) | 48,398 vs crypto-bigint 80,712 | −32,314 (0.60×) | 29,621 vs crypto-bigint 62,079 | −32,458 (0.48×) |
+| sqrt | Mersenne-31 | 329 vs plonky3 324 | +5.0 (1.02×) | 329 vs plonky3 324 | +5.0 (1.02×) | 330 vs plonky3 329 | +1.0 (1.00×) | 329 vs plonky3 329 | +0.0 (1.00×) |
+| sqrt | BabyBear | 2,679 vs plonky3 3,103 | −424 (0.86×) | 2,032 vs plonky3 3,103 | −1,071 (0.65×) | 2,959 vs plonky3 3,007 | −48.0 (0.98×) | 2,065 vs plonky3 2,997 | −932 (0.69×) |
+| sqrt | Goldilocks | 5,778 vs crypto-bigint 48,300 | −42,522 (0.12×) | 3,689 vs crypto-bigint 28,889 | −25,200 (0.13×) | 6,745 vs crypto-bigint 54,744 | −47,999 (0.12×) | 9,289 vs crypto-bigint 32,626 | −23,337 (0.28×) |
+| sqrt | BN254 scalar | 108,172 vs ark-ff 148,991 | −40,819 (0.73×) | 46,725 vs halo2curves 102,173 | −55,448 (0.46×) | 198,613 vs ark-ff 205,733 | −7,120 (0.97×) | 82,256 vs ark-ff 142,771 | −60,515 (0.58×) |
+| sqrt | secp256k1 base | 42,077 vs ark-ff 133,936 | −91,859 (0.31×) | 19,615 vs halo2curves 43,341 | −23,726 (0.45×) | 61,004 vs ark-ff 174,395 | −113,391 (0.35×) | 31,141 vs crypto-bigint 84,300 | −53,159 (0.37×) |
+| sqrt | P-256 base | 44,705 vs ark-ff 59,760 | −15,055 (0.75×) | 19,828 vs k256/p256 21,666 | −1,838 (0.92×) | 78,041 vs ark-ff 97,377 | −19,336 (0.80×) | 31,414 vs k256/p256 33,665 | −2,251 (0.93×) |
+| sqrt | P-256 scalar | 74,031 vs ark-ff 115,229 | −41,198 (0.64×) | 35,781 vs halo2curves 49,988 | −14,207 (0.72×) | 114,957 vs ark-ff 160,627 | −45,670 (0.72×) | 63,922 vs halo2curves 72,417 | −8,495 (0.88×) |
+| sqrt | Tom-256 base | 65,540 vs crypto-bigint 148,468 | −82,928 (0.44×) | 19,242 vs halo2curves 45,267 | −26,025 (0.43×) | 94,543 vs crypto-bigint 232,503 | −137,960 (0.41×) | 49,342 vs crypto-bigint 77,789 | −28,447 (0.63×) |
+| sqrt | BLS12-381 base | 315,485 vs ark-ff 419,279 | −103,794 (0.75×) | 87,392 vs crypto-bigint 145,031 | −57,639 (0.60×) | 420,212 vs ark-ff 581,434 | −161,222 (0.72×) | 203,949 vs crypto-bigint 267,711 | −63,762 (0.76×) |
+| sqrt | P-521 base | 320,271 vs crypto-bigint 1,524,172 | −1,203,901 (0.21×) | 131,305 vs crypto-bigint 296,736 | −165,431 (0.44×) | 473,617 vs crypto-bigint 1,560,230 | −1,086,613 (0.30×) | 260,337 vs crypto-bigint 590,262 | −329,925 (0.44×) |
+| mul_u64 | Mersenne-31 | 9.4 vs crypto-bigint 61.4 | −52.0 (0.15×) | 9.4 vs crypto-bigint 30.6 | −21.2 (0.31×) | 9.8 vs crypto-bigint 74.4 | −64.6 (0.13×) | 9.8 vs crypto-bigint 38.9 | −29.1 (0.25×) |
+| mul_u64 | BabyBear | 17.1 vs plonky3 35.0 | −17.9 (0.49×) | 11.2 vs plonky3 12.0 | −0.8 (0.93×) | 20.1 vs plonky3 45.6 | −25.5 (0.44×) | 15.0 vs plonky3 18.0 | −3.0 (0.83×) |
+| mul_u64 | Goldilocks | 19.0 vs winter-math 25.0 | −6.0 (0.76×) | 11.0 vs winter-math 10.9 | +0.1 (1.01×) | 21.1 vs winter-math 31.1 | −10.0 (0.68×) | 16.7 vs winter-math 13.6 | +3.1 (1.23×) |
+| mul_u64 | BN254 scalar | 101 vs ark-ff 696 | −595 (0.15×) | 28.8 vs crypto-bigint 263 | −234 (0.11×) | 122 vs ark-ff 814 | −692 (0.15×) | 44.2 vs crypto-bigint 407 | −363 (0.11×) |
+| mul_u64 | secp256k1 base | 43.5 vs ark-ff 447 | −404 (0.10×) | 12.6 vs crypto-bigint 263 | −250 (0.05×) | 66.8 vs ark-ff 627 | −560 (0.11×) | 24.0 vs crypto-bigint 408 | −384 (0.06×) |
+| mul_u64 | P-256 base | 72.3 vs k256/p256 485 | −413 (0.15×) | 27.3 vs k256/p256 150 | −123 (0.18×) | 98.1 vs ark-ff 835 | −737 (0.12×) | 41.3 vs k256/p256 258 | −217 (0.16×) |
+| mul_u64 | P-256 scalar | 84.1 vs k256/p256 516 | −432 (0.16×) | 30.3 vs k256/p256 253 | −223 (0.12×) | 113 vs k256/p256 816 | −703 (0.14×) | 48.2 vs k256/p256 390 | −342 (0.12×) |
+| mul_u64 | Tom-256 base | 82.1 vs crypto-bigint 868 | −786 (0.09×) | 30.0 vs crypto-bigint 263 | −233 (0.11×) | 115 vs halo2curves 1,283 | −1,168 (0.09×) | 44.6 vs crypto-bigint 406 | −361 (0.11×) |
+| mul_u64 | BLS12-381 base | 131 vs ark-ff 1,641 | −1,510 (0.08×) | 44.1 vs halo2curves 483 | −439 (0.09×) | 194 vs ark-ff 2,130 | −1,936 (0.09×) | 61.6 vs crypto-bigint 1,020 | −958 (0.06×) |
+| mul_u64 | P-521 base | 92.3 vs crypto-bigint 3,038 | −2,946 (0.03×) | 32.0 vs crypto-bigint 991 | −959 (0.03×) | 228 vs crypto-bigint 3,974 | −3,746 (0.06×) | 49.3 vs crypto-bigint 1,831 | −1,782 (0.03×) |
+| mul_uint | Mersenne-31 | 9.4 vs crypto-bigint 61.9 | −52.5 (0.15×) | 9.4 vs crypto-bigint 30.7 | −21.3 (0.31×) | 9.8 vs crypto-bigint 72.8 | −63.0 (0.13×) | 9.8 vs crypto-bigint 38.8 | −29.0 (0.25×) |
+| mul_uint | BabyBear | 17.1 vs plonky3 23.1 | −6.0 (0.74×) | 11.2 vs plonky3 11.7 | −0.5 (0.96×) | 20.1 vs plonky3 35.0 | −14.9 (0.57×) | 15.0 vs plonky3 17.9 | −2.9 (0.84×) |
+| mul_uint | Goldilocks | 19.2 vs winter-math 25.0 | −5.8 (0.77×) | 11.0 vs winter-math 10.9 | +0.1 (1.01×) | 21.1 vs winter-math 31.0 | −9.9 (0.68×) | 16.7 vs winter-math 13.6 | +3.1 (1.23×) |
+| mul_uint | BN254 scalar | 434 vs halo2curves 769 | −335 (0.56×) | 179 vs halo2curves 180 | −1.0 (0.99×) | 523 vs halo2curves 1,348 | −825 (0.39×) | 303 vs halo2curves 349 | −46.0 (0.87×) |
+| mul_uint | secp256k1 base | 266 vs halo2curves 519 | −253 (0.51×) | 114 vs halo2curves 154 | −40.0 (0.74×) | 317 vs halo2curves 959 | −642 (0.33×) | 164 vs halo2curves 266 | −102 (0.62×) |
+| mul_uint | P-256 base | 353 vs halo2curves 458 | −105 (0.77×) | 134 vs halo2curves 143 | −9.0 (0.94×) | 422 vs halo2curves 954 | −532 (0.44×) | 243 vs halo2curves 252 | −9.0 (0.96×) |
+| mul_uint | P-256 scalar | 426 vs k256/p256 547 | −121 (0.78×) | 180 vs halo2curves 186 | −6.0 (0.97×) | 478 vs k256/p256 882 | −404 (0.54×) | 295 vs crypto-bigint 409 | −114 (0.72×) |
+| mul_uint | Tom-256 base | 411 vs halo2curves 695 | −284 (0.59×) | 166 vs halo2curves 180 | −14.0 (0.92×) | 493 vs halo2curves 1,176 | −683 (0.42×) | 351 vs halo2curves 335 | +16.0 (1.05×) |
+| mul_uint | BLS12-381 base | 990 vs halo2curves 1,940 | −950 (0.51×) | 371 vs halo2curves 381 | −10.0 (0.97×) | 1,139 vs crypto-bigint 2,519 | −1,380 (0.45×) | 856 vs crypto-bigint 982 | −126 (0.87×) |
+| mul_uint | P-521 base | 1,543 vs crypto-bigint 3,030 | −1,487 (0.51×) | 619 vs crypto-bigint 990 | −371 (0.63×) | 2,383 vs crypto-bigint 4,016 | −1,633 (0.59×) | 982 vs crypto-bigint 1,835 | −853 (0.54×) |
+| add_u64 | Mersenne-31 | 8.2 vs crypto-bigint 36.1 | −27.9 (0.23×) | 8.2 vs crypto-bigint 30.4 | −22.2 (0.27×) | 9.1 vs crypto-bigint 42.2 | −33.1 (0.22×) | 9.2 vs crypto-bigint 30.4 | −21.2 (0.30×) |
+| add_u64 | BabyBear | 10.9 vs plonky3 32.1 | −21.2 (0.34×) | 8.6 vs plonky3 10.0 | −1.4 (0.86×) | 13.0 vs plonky3 43.4 | −30.4 (0.30×) | 12.5 vs plonky3 16.0 | −3.5 (0.78×) |
+| add_u64 | Goldilocks | 9.9 vs winter-math 13.3 | −3.4 (0.74×) | 7.7 vs winter-math 7.4 | +0.3 (1.04×) | 11.1 vs winter-math 19.1 | −8.0 (0.58×) | 12.0 vs winter-math 11.0 | +1.0 (1.09×) |
+| add_u64 | BN254 scalar | 120 vs ark-ff 348 | −228 (0.34×) | 55.8 vs halo2curves 210 | −154 (0.27×) | 179 vs ark-ff 412 | −233 (0.43×) | 91.5 vs halo2curves 295 | −204 (0.31×) |
+| add_u64 | secp256k1 base | 8.0 vs ark-ff 163 | −155 (0.05×) | 8.0 vs ark-ff 121 | −113 (0.07×) | 8.0 vs ark-ff 229 | −221 (0.03×) | 12.0 vs ark-ff 185 | −173 (0.06×) |
+| add_u64 | P-256 base | 72.3 vs ark-ff 273 | −201 (0.26×) | 35.8 vs k256/p256 95.2 | −59.4 (0.38×) | 86.7 vs ark-ff 407 | −320 (0.21×) | 68.5 vs k256/p256 160 | −91.5 (0.43×) |
+| add_u64 | P-256 scalar | 70.2 vs k256/p256 41.3 | +28.9 (1.70×) | 40.4 vs k256/p256 41.3 | −0.9 (0.98×) | 72.5 vs k256/p256 54.6 | +17.9 (1.33×) | 83.3 vs k256/p256 55.0 | +28.3 (1.51×) |
+| add_u64 | Tom-256 base | 89.7 vs crypto-bigint 504 | −414 (0.18×) | 41.7 vs halo2curves 218 | −176 (0.19×) | 109 vs halo2curves 686 | −577 (0.16×) | 71.7 vs crypto-bigint 316 | −244 (0.23×) |
+| add_u64 | BLS12-381 base | 178 vs ark-ff 842 | −664 (0.21×) | 66.6 vs halo2curves 324 | −257 (0.21×) | 262 vs ark-ff 1,093 | −831 (0.24×) | 95.3 vs crypto-bigint 650 | −555 (0.15×) |
+| add_u64 | P-521 base | 23.1 vs crypto-bigint 1,688 | −1,665 (0.01×) | 16.1 vs crypto-bigint 651 | −635 (0.02×) | 22.3 vs crypto-bigint 2,197 | −2,175 (0.01×) | 25.1 vs crypto-bigint 1,117 | −1,092 (0.02×) |
+| add_uint | Mersenne-31 | 8.2 vs crypto-bigint 36.0 | −27.8 (0.23×) | 8.2 vs crypto-bigint 30.4 | −22.2 (0.27×) | 9.1 vs crypto-bigint 41.5 | −32.4 (0.22×) | 9.2 vs crypto-bigint 30.6 | −21.4 (0.30×) |
+| add_uint | BabyBear | 10.9 vs plonky3 22.0 | −11.1 (0.50×) | 8.6 vs plonky3 10.0 | −1.4 (0.86×) | 13.0 vs plonky3 34.3 | −21.3 (0.38×) | 12.6 vs plonky3 16.0 | −3.4 (0.79×) |
+| add_uint | Goldilocks | 10.0 vs winter-math 13.3 | −3.3 (0.75×) | 7.7 vs winter-math 7.4 | +0.3 (1.04×) | 11.1 vs winter-math 19.1 | −8.0 (0.58×) | 12.0 vs winter-math 11.0 | +1.0 (1.09×) |
+| add_uint | BN254 scalar | 252 vs halo2curves 415 | −163 (0.61×) | 119 vs halo2curves 112 | +7.0 (1.06×) | 387 vs halo2curves 678 | −291 (0.57×) | 190 vs halo2curves 205 | −15.0 (0.93×) |
+| add_uint | secp256k1 base | 21.0 vs halo2curves 224 | −203 (0.09×) | 14.6 vs halo2curves 84.9 | −70.3 (0.17×) | 18.4 vs halo2curves 415 | −397 (0.04×) | 24.0 vs halo2curves 140 | −116 (0.17×) |
+| add_uint | P-256 base | 189 vs halo2curves 248 | −59.0 (0.76×) | 79.7 vs halo2curves 91.5 | −11.8 (0.87×) | 327 vs halo2curves 509 | −182 (0.64×) | 148 vs halo2curves 154 | −6.0 (0.96×) |
+| add_uint | P-256 scalar | 261 vs k256/p256 94.7 | +166 (2.76×) | 116 vs k256/p256 94.9 | +21.1 (1.22×) | 350 vs k256/p256 118 | +232 (2.97×) | 211 vs k256/p256 119 | +92.0 (1.77×) |
+| add_uint | Tom-256 base | 249 vs halo2curves 380 | −131 (0.66×) | 109 vs halo2curves 110 | −1.0 (0.99×) | 339 vs halo2curves 629 | −290 (0.54×) | 198 vs halo2curves 196 | +2.0 (1.01×) |
+| add_uint | BLS12-381 base | 775 vs halo2curves 974 | −199 (0.80×) | 205 vs halo2curves 225 | −20.0 (0.91×) | 970 vs crypto-bigint 1,395 | −425 (0.70×) | 419 vs halo2curves 562 | −143 (0.75×) |
+| add_uint | P-521 base | 65.0 vs crypto-bigint 1,676 | −1,611 (0.04×) | 41.8 vs crypto-bigint 648 | −606 (0.06×) | 88.7 vs crypto-bigint 2,227 | −2,138 (0.04×) | 71.5 vs crypto-bigint 1,127 | −1,056 (0.06×) |
+| sub_u64 | Mersenne-31 | 6.2 vs crypto-bigint 23.4 | −17.2 (0.26×) | 6.2 vs crypto-bigint 17.9 | −11.7 (0.35×) | 7.0 vs crypto-bigint 31.3 | −24.3 (0.22×) | 7.0 vs crypto-bigint 20.9 | −13.9 (0.33×) |
+| sub_u64 | BabyBear | 11.1 vs crypto-bigint 27.9 | −16.8 (0.40×) | 8.5 vs plonky3 10.7 | −2.2 (0.79×) | 15.8 vs plonky3 44.0 | −28.2 (0.36×) | 12.6 vs plonky3 15.0 | −2.4 (0.84×) |
+| sub_u64 | Goldilocks | 9.9 vs winter-math 11.5 | −1.6 (0.86×) | 7.0 vs winter-math 7.0 | +0.0 (1.00×) | 11.4 vs winter-math 19.0 | −7.6 (0.60×) | 11.0 vs winter-math 9.6 | +1.4 (1.15×) |
+| sub_u64 | BN254 scalar | 113 vs ark-ff 354 | −241 (0.32×) | 53.9 vs crypto-bigint 151 | −97.1 (0.36×) | 138 vs ark-ff 415 | −277 (0.33×) | 74.2 vs crypto-bigint 279 | −205 (0.27×) |
+| sub_u64 | secp256k1 base | 8.7 vs ark-ff 161 | −152 (0.05×) | 8.0 vs ark-ff 123 | −115 (0.07×) | 7.5 vs ark-ff 232 | −225 (0.03×) | 11.0 vs ark-ff 193 | −182 (0.06×) |
+| sub_u64 | P-256 base | 72.1 vs k256/p256 266 | −194 (0.27×) | 35.9 vs k256/p256 89.1 | −53.2 (0.40×) | 81.0 vs ark-ff 408 | −327 (0.20×) | 61.7 vs k256/p256 149 | −87.3 (0.41×) |
+| sub_u64 | P-256 scalar | 69.0 vs k256/p256 21.2 | +47.8 (3.25×) | 40.1 vs k256/p256 21.2 | +18.9 (1.89×) | 75.9 vs k256/p256 24.4 | +51.5 (3.11×) | 82.7 vs k256/p256 24.3 | +58.4 (3.40×) |
+| sub_u64 | Tom-256 base | 88.7 vs crypto-bigint 506 | −417 (0.18×) | 51.3 vs crypto-bigint 152 | −101 (0.34×) | 106 vs halo2curves 665 | −559 (0.16×) | 71.8 vs crypto-bigint 259 | −187 (0.28×) |
+| sub_u64 | BLS12-381 base | 163 vs ark-ff 844 | −681 (0.19×) | 67.6 vs halo2curves 317 | −249 (0.21×) | 254 vs ark-ff 1,067 | −813 (0.24×) | 96.7 vs crypto-bigint 618 | −521 (0.16×) |
+| sub_u64 | P-521 base | 22.2 vs crypto-bigint 1,674 | −1,652 (0.01×) | 18.8 vs crypto-bigint 623 | −604 (0.03×) | 20.3 vs crypto-bigint 2,184 | −2,164 (0.01×) | 21.2 vs crypto-bigint 1,124 | −1,103 (0.02×) |
+| sub_uint | Mersenne-31 | 6.2 vs crypto-bigint 23.4 | −17.2 (0.26×) | 6.2 vs crypto-bigint 18.2 | −12.0 (0.34×) | 7.0 vs crypto-bigint 31.3 | −24.3 (0.22×) | 7.0 vs crypto-bigint 20.9 | −13.9 (0.33×) |
+| sub_uint | BabyBear | 11.1 vs plonky3 23.0 | −11.9 (0.48×) | 8.5 vs plonky3 10.7 | −2.2 (0.79×) | 15.8 vs plonky3 34.4 | −18.6 (0.46×) | 12.5 vs plonky3 15.0 | −2.5 (0.83×) |
+| sub_uint | Goldilocks | 9.9 vs winter-math 11.5 | −1.6 (0.86×) | 7.0 vs winter-math 7.0 | +0.0 (1.00×) | 11.4 vs winter-math 19.0 | −7.6 (0.60×) | 11.0 vs winter-math 9.5 | +1.5 (1.16×) |
+| sub_uint | BN254 scalar | 253 vs halo2curves 403 | −150 (0.63×) | 118 vs halo2curves 103 | +15.0 (1.15×) | 384 vs halo2curves 684 | −300 (0.56×) | 191 vs halo2curves 194 | −3.0 (0.98×) |
+| sub_uint | secp256k1 base | 21.2 vs halo2curves 209 | −188 (0.10×) | 14.6 vs halo2curves 110 | −95.4 (0.13×) | 18.2 vs halo2curves 409 | −391 (0.04×) | 24.2 vs halo2curves 130 | −106 (0.19×) |
+| sub_uint | P-256 base | 193 vs halo2curves 233 | −40.0 (0.83×) | 88.0 vs halo2curves 85.3 | +2.7 (1.03×) | 359 vs halo2curves 494 | −135 (0.73×) | 150 vs halo2curves 143 | +7.0 (1.05×) |
+| sub_uint | P-256 scalar | 267 vs k256/p256 64.8 | +202 (4.12×) | 116 vs k256/p256 65.0 | +51.0 (1.78×) | 357 vs k256/p256 89.0 | +268 (4.01×) | 212 vs k256/p256 88.9 | +123 (2.38×) |
+| sub_uint | Tom-256 base | 254 vs halo2curves 365 | −111 (0.70×) | 114 vs halo2curves 103 | +11.0 (1.11×) | 339 vs halo2curves 617 | −278 (0.55×) | 202 vs halo2curves 187 | +15.0 (1.08×) |
+| sub_uint | BLS12-381 base | 758 vs halo2curves 962 | −204 (0.79×) | 212 vs halo2curves 215 | −3.0 (0.99×) | 949 vs crypto-bigint 1,373 | −424 (0.69×) | 402 vs halo2curves 408 | −6.0 (0.99×) |
+| sub_uint | P-521 base | 75.9 vs crypto-bigint 1,674 | −1,598 (0.05×) | 42.3 vs crypto-bigint 621 | −579 (0.07×) | 81.1 vs crypto-bigint 2,196 | −2,115 (0.04×) | 69.0 vs crypto-bigint 1,104 | −1,035 (0.06×) |
+| from_u64 | Mersenne-31 | 4.7 vs plonky3 4.1 | +0.6 (1.15×) | 4.7 vs plonky3 4.1 | +0.6 (1.15×) | 5.2 vs plonky3 3.9 | +1.3 (1.33×) | 5.3 vs plonky3 3.9 | +1.4 (1.36×) |
+| from_u64 | BabyBear | 11.1 vs crypto-bigint 21.6 | −10.5 (0.51×) | 7.3 vs plonky3 7.8 | −0.5 (0.94×) | 12.9 vs crypto-bigint 36.1 | −23.2 (0.36×) | 10.3 vs plonky3 11.8 | −1.5 (0.87×) |
+| from_u64 | Goldilocks | 7.2 vs winter-math 10.6 | −3.4 (0.68×) | 5.5 vs winter-math 6.0 | −0.5 (0.92×) | 9.0 vs winter-math 17.0 | −8.0 (0.53×) | 8.7 vs winter-math 7.0 | +1.7 (1.24×) |
+| from_u64 | BN254 scalar | 87.0 vs ark-ff 315 | −228 (0.28×) | 28.2 vs crypto-bigint 133 | −105 (0.21×) | 121 vs ark-ff 375 | −254 (0.32×) | 45.0 vs crypto-bigint 205 | −160 (0.22×) |
+| from_u64 | secp256k1 base | 3.8 vs k256/p256 5.5 | −1.7 (0.69×) | 3.8 vs k256/p256 5.5 | −1.7 (0.69×) | 3.8 vs k256/p256 5.5 | −1.7 (0.69×) | 3.8 vs k256/p256 5.5 | −1.7 (0.69×) |
+| from_u64 | P-256 base | 51.4 vs k256/p256 239 | −188 (0.22×) | 23.7 vs k256/p256 76.2 | −52.5 (0.31×) | 61.4 vs ark-ff 376 | −315 (0.16×) | 36.1 vs k256/p256 130 | −93.9 (0.28×) |
+| from_u64 | P-256 scalar | 51.5 vs k256/p256 3.8 | +47.7 (13.55×) | 25.9 vs k256/p256 3.8 | +22.1 (6.82×) | 59.2 vs k256/p256 3.7 | +55.5 (16.00×) | 43.1 vs k256/p256 3.8 | +39.3 (11.34×) |
+| from_u64 | Tom-256 base | 72.0 vs crypto-bigint 428 | −356 (0.17×) | 28.6 vs crypto-bigint 133 | −104 (0.22×) | 85.7 vs halo2curves 667 | −581 (0.13×) | 43.4 vs crypto-bigint 205 | −162 (0.21×) |
+| from_u64 | BLS12-381 base | 141 vs ark-ff 811 | −670 (0.17×) | 44.6 vs crypto-bigint 252 | −207 (0.18×) | 234 vs ark-ff 1,022 | −788 (0.23×) | 63.1 vs crypto-bigint 479 | −416 (0.13×) |
+| from_u64 | P-521 base | 6.1 vs crypto-bigint 1,448 | −1,442 (0.00×) | 6.0 vs crypto-bigint 496 | −490 (0.01×) | 6.0 vs crypto-bigint 1,995 | −1,989 (0.00×) | 6.1 vs crypto-bigint 850 | −844 (0.01×) |
+| div_u64 | BN254 scalar | 1,214 vs halo2curves 13,461 | −12,247 (0.09×) | 821 vs halo2curves 7,020 | −6,199 (0.12×) | 1,419 vs halo2curves 19,554 | −18,135 (0.07×) | 1,049 vs halo2curves 11,740 | −10,691 (0.09×) |
+| div_u64 | secp256k1 base | 1,000 vs halo2curves 13,021 | −12,021 (0.08×) | 766 vs halo2curves 6,977 | −6,211 (0.11×) | 1,217 vs halo2curves 19,115 | −17,898 (0.06×) | 877 vs halo2curves 11,503 | −10,626 (0.08×) |
+| div_u64 | P-256 base | 1,089 vs halo2curves 13,112 | −12,023 (0.08×) | 808 vs halo2curves 6,914 | −6,106 (0.12×) | 1,356 vs halo2curves 18,926 | −17,570 (0.07×) | 987 vs halo2curves 11,529 | −10,542 (0.09×) |
+| div_u64 | P-256 scalar | 1,185 vs halo2curves 13,366 | −12,181 (0.09×) | 864 vs halo2curves 6,950 | −6,086 (0.12×) | 1,405 vs halo2curves 19,572 | −18,167 (0.07×) | 1,152 vs halo2curves 11,679 | −10,527 (0.10×) |
+| div_u64 | Tom-256 base | 1,188 vs halo2curves 13,321 | −12,133 (0.09×) | 864 vs halo2curves 6,977 | −6,113 (0.12×) | 1,478 vs halo2curves 19,296 | −17,818 (0.08×) | 1,036 vs halo2curves 11,639 | −10,603 (0.09×) |
+| div_u64 | BLS12-381 base | 1,795 vs halo2curves 24,322 | −22,527 (0.07×) | 1,033 vs halo2curves 11,012 | −9,979 (0.09×) | 2,510 vs halo2curves 32,685 | −30,175 (0.08×) | 1,750 vs halo2curves 18,871 | −17,121 (0.09×) |
+| div_u64 | P-521 base | 2,450 vs crypto-bigint 62,554 | −60,104 (0.04×) | 1,369 vs crypto-bigint 45,420 | −44,051 (0.03×) | 3,622 vs crypto-bigint 77,929 | −74,307 (0.05×) | 1,878 vs crypto-bigint 58,185 | −56,307 (0.03×) |
+| div_uint | Mersenne-31 | 276 vs crypto-bigint 1,816 | −1,540 (0.15×) | 278 vs crypto-bigint 1,620 | −1,342 (0.17×) | 281 vs runtime-algebra 2,131 | −1,850 (0.13×) | 287 vs crypto-bigint 2,023 | −1,736 (0.14×) |
+| div_uint | BabyBear | 277 vs plonky3 682 | −405 (0.41×) | 278 vs plonky3 666 | −388 (0.42×) | 290 vs plonky3 728 | −438 (0.40×) | 283 vs plonky3 733 | −450 (0.39×) |
+| div_uint | Goldilocks | 551 vs winter-math 1,800 | −1,249 (0.31×) | 545 vs winter-math 948 | −403 (0.57×) | 593 vs winter-math 1,902 | −1,309 (0.31×) | 596 vs winter-math 1,045 | −449 (0.57×) |
+| div_uint | BN254 scalar | 9,221 vs halo2curves 15,070 | −5,849 (0.61×) | 6,797 vs halo2curves 8,220 | −1,423 (0.83×) | 12,816 vs halo2curves 22,812 | −9,996 (0.56×) | 8,430 vs halo2curves 14,464 | −6,034 (0.58×) |
+| div_uint | secp256k1 base | 8,563 vs halo2curves 14,880 | −6,317 (0.58×) | 6,022 vs halo2curves 8,223 | −2,201 (0.73×) | 11,918 vs halo2curves 22,915 | −10,997 (0.52×) | 8,094 vs halo2curves 14,441 | −6,347 (0.56×) |
+| div_uint | P-256 base | 8,830 vs halo2curves 14,899 | −6,069 (0.59×) | 6,165 vs halo2curves 8,238 | −2,073 (0.75×) | 12,053 vs halo2curves 22,569 | −10,516 (0.53×) | 7,932 vs halo2curves 14,291 | −6,359 (0.56×) |
+| div_uint | P-256 scalar | 9,235 vs halo2curves 15,137 | −5,902 (0.61×) | 6,623 vs halo2curves 8,260 | −1,637 (0.80×) | 12,560 vs halo2curves 23,001 | −10,441 (0.55×) | 8,739 vs halo2curves 14,616 | −5,877 (0.60×) |
+| div_uint | Tom-256 base | 9,148 vs halo2curves 15,038 | −5,890 (0.61×) | 6,658 vs halo2curves 8,256 | −1,598 (0.81×) | 12,378 vs halo2curves 22,975 | −10,597 (0.54×) | 8,327 vs halo2curves 14,527 | −6,200 (0.57×) |
+| div_uint | BLS12-381 base | 20,940 vs halo2curves 27,763 | −6,823 (0.75×) | 12,042 vs halo2curves 13,709 | −1,667 (0.88×) | 26,464 vs halo2curves 40,634 | −14,170 (0.65×) | 16,866 vs halo2curves 24,359 | −7,493 (0.69×) |
+| div_uint | P-521 base | 34,250 vs crypto-bigint 68,362 | −34,112 (0.50×) | 18,513 vs crypto-bigint 51,058 | −32,545 (0.36×) | 50,018 vs crypto-bigint 84,804 | −34,786 (0.59×) | 29,895 vs crypto-bigint 63,936 | −34,041 (0.47×) |
+| add, constant time | Mersenne-31 | 4.2 vs runtime-algebra 10.8 | −6.6 (0.39×) | 4.2 vs runtime-algebra 10.8 | −6.6 (0.39×) | 4.4 vs runtime-algebra 10.8 | −6.4 (0.41×) | 4.4 vs runtime-algebra 10.9 | −6.5 (0.40×) |
+| add, constant time | BabyBear | 2.4 vs runtime-algebra 10.8 | −8.4 (0.22×) | 2.4 vs runtime-algebra 10.8 | −8.4 (0.22×) | 3.0 vs runtime-algebra 10.8 | −7.8 (0.28×) | 3.0 vs runtime-algebra 10.9 | −7.9 (0.28×) |
+| add, constant time | Goldilocks | 3.3 vs winter-math 3.3 | +0.0 (1.00×) | 3.3 vs winter-math 3.3 | +0.0 (1.00×) | 3.1 vs winter-math 4.0 | −0.9 (0.78×) | 3.1 vs winter-math 4.0 | −0.9 (0.78×) |
+| add, constant time | BN254 scalar | 23.6 vs halo2curves 36.4 | −12.8 (0.65×) | 16.3 vs halo2curves 20.6 | −4.3 (0.79×) | 20.7 vs halo2curves 39.4 | −18.7 (0.53×) | 27.1 vs halo2curves 35.0 | −7.9 (0.77×) |
+| add, constant time | secp256k1 base | 26.3 vs halo2curves 35.0 | −8.7 (0.75×) | 18.1 vs halo2curves 19.3 | −1.2 (0.94×) | 24.5 vs halo2curves 35.8 | −11.3 (0.68×) | 29.0 vs halo2curves 32.9 | −3.9 (0.88×) |
+| add, constant time | P-256 base | 23.6 vs halo2curves 30.5 | −6.9 (0.77×) | 18.1 vs halo2curves 17.9 | +0.2 (1.01×) | 22.9 vs halo2curves 33.7 | −10.8 (0.68×) | 28.0 vs halo2curves 31.5 | −3.5 (0.89×) |
+| add, constant time | P-256 scalar | 27.1 vs halo2curves 35.6 | −8.5 (0.76×) | 17.9 vs halo2curves 20.6 | −2.7 (0.87×) | 24.1 vs halo2curves 38.0 | −13.9 (0.63×) | 29.5 vs halo2curves 34.9 | −5.4 (0.85×) |
+| add, constant time | Tom-256 base | 27.6 vs halo2curves 35.8 | −8.2 (0.77×) | 18.0 vs halo2curves 20.2 | −2.2 (0.89×) | 23.8 vs halo2curves 38.2 | −14.4 (0.62×) | 28.5 vs halo2curves 34.0 | −5.5 (0.84×) |
+| add, constant time | BLS12-381 base | 42.7 vs halo2curves 63.7 | −21.0 (0.67×) | 25.6 vs halo2curves 32.7 | −7.1 (0.78×) | 35.7 vs halo2curves 69.9 | −34.2 (0.51×) | 41.2 vs halo2curves 54.0 | −12.8 (0.76×) |
+| add, constant time | P-521 base | 76.6 vs crypto-bigint 146 | −69.4 (0.52×) | 46.6 vs crypto-bigint 133 | −86.4 (0.35×) | 84.8 vs crypto-bigint 176 | −91.2 (0.48×) | 74.1 vs crypto-bigint 184 | −110 (0.40×) |
+| sub, constant time | Mersenne-31 | 2.5 vs crypto-bigint 4.5 | −2.0 (0.56×) | 2.5 vs crypto-bigint 4.5 | −2.0 (0.56×) | 2.7 vs crypto-bigint 5.0 | −2.3 (0.54×) | 2.7 vs crypto-bigint 5.0 | −2.3 (0.54×) |
+| sub, constant time | BabyBear | 2.5 vs crypto-bigint 4.5 | −2.0 (0.56×) | 2.5 vs crypto-bigint 4.5 | −2.0 (0.56×) | 2.7 vs crypto-bigint 5.0 | −2.3 (0.54×) | 2.7 vs crypto-bigint 5.0 | −2.3 (0.54×) |
+| sub, constant time | Goldilocks | 2.6 vs winter-math 2.8 | −0.2 (0.93×) | 2.6 vs winter-math 2.8 | −0.2 (0.93×) | 3.0 vs winter-math 3.0 | +0.0 (1.00×) | 3.0 vs winter-math 3.0 | +0.0 (1.00×) |
+| sub, constant time | BN254 scalar | 22.9 vs halo2curves 24.0 | −1.1 (0.95×) | 16.5 vs halo2curves 15.0 | +1.5 (1.10×) | 21.4 vs halo2curves 23.3 | −1.9 (0.92×) | 26.0 vs halo2curves 24.1 | +1.9 (1.08×) |
+| sub, constant time | secp256k1 base | 19.2 vs halo2curves 22.5 | −3.3 (0.85×) | 14.4 vs halo2curves 14.2 | +0.2 (1.01×) | 18.7 vs halo2curves 20.3 | −1.6 (0.92×) | 22.5 vs halo2curves 22.0 | +0.5 (1.02×) |
+| sub, constant time | P-256 base | 17.3 vs halo2curves 20.5 | −3.2 (0.84×) | 13.4 vs halo2curves 12.3 | +1.1 (1.09×) | 18.5 vs halo2curves 21.1 | −2.6 (0.88×) | 22.0 vs halo2curves 21.5 | +0.5 (1.02×) |
+| sub, constant time | P-256 scalar | 21.0 vs k256/p256 23.1 | −2.1 (0.91×) | 14.7 vs halo2curves 14.4 | +0.3 (1.02×) | 22.1 vs halo2curves 23.6 | −1.5 (0.94×) | 23.5 vs halo2curves 23.0 | +0.5 (1.02×) |
+| sub, constant time | Tom-256 base | 21.1 vs halo2curves 24.0 | −2.9 (0.88×) | 15.2 vs halo2curves 15.0 | +0.2 (1.01×) | 21.0 vs halo2curves 23.3 | −2.3 (0.90×) | 24.0 vs halo2curves 24.1 | −0.1 (1.00×) |
+| sub, constant time | BLS12-381 base | 37.7 vs halo2curves 43.3 | −5.6 (0.87×) | 24.4 vs halo2curves 23.5 | +0.9 (1.04×) | 35.3 vs halo2curves 44.2 | −8.9 (0.80×) | 37.3 vs halo2curves 37.0 | +0.3 (1.01×) |
+| sub, constant time | P-521 base | 56.3 vs crypto-bigint 88.8 | −32.5 (0.63×) | 37.2 vs crypto-bigint 64.4 | −27.2 (0.58×) | 58.2 vs crypto-bigint 122 | −63.8 (0.48×) | 53.1 vs crypto-bigint 127 | −73.9 (0.42×) |
+| mul, constant time | Mersenne-31 | 5.2 vs crypto-bigint 29.3 | −24.1 (0.18×) | 5.1 vs crypto-bigint 15.8 | −10.7 (0.32×) | 5.5 vs crypto-bigint 38.8 | −33.3 (0.14×) | 5.5 vs crypto-bigint 19.2 | −13.7 (0.29×) |
+| mul, constant time | BabyBear | 7.8 vs crypto-bigint 29.3 | −21.5 (0.27×) | 5.2 vs crypto-bigint 15.8 | −10.6 (0.33×) | 7.8 vs crypto-bigint 39.2 | −31.4 (0.20×) | 5.0 vs crypto-bigint 19.2 | −14.2 (0.26×) |
+| mul, constant time | Goldilocks | 12.1 vs winter-math 12.3 | −0.2 (0.98×) | 7.0 vs winter-math 6.5 | +0.5 (1.08×) | 12.4 vs winter-math 17.1 | −4.7 (0.73×) | 9.0 vs winter-math 7.8 | +1.2 (1.15×) |
+| mul, constant time | BN254 scalar | 236 vs halo2curves 378 | −142 (0.62×) | 86.7 vs halo2curves 91.7 | −5.0 (0.95×) | 418 vs halo2curves 709 | −291 (0.59×) | 151 vs halo2curves 182 | −31.0 (0.83×) |
+| mul, constant time | secp256k1 base | 160 vs halo2curves 303 | −143 (0.53×) | 63.6 vs halo2curves 91.3 | −27.7 (0.70×) | 275 vs halo2curves 589 | −314 (0.47×) | 108 vs halo2curves 163 | −55.0 (0.66×) |
+| mul, constant time | P-256 base | 173 vs k256/p256 242 | −69.0 (0.71×) | 71.8 vs k256/p256 84.9 | −13.1 (0.85×) | 321 vs k256/p256 484 | −163 (0.66×) | 121 vs halo2curves 135 | −14.0 (0.90×) |
+| mul, constant time | P-256 scalar | 244 vs halo2curves 343 | −99.0 (0.71×) | 85.4 vs halo2curves 93.5 | −8.1 (0.91×) | 343 vs halo2curves 691 | −348 (0.50×) | 168 vs halo2curves 181 | −13.0 (0.93×) |
+| mul, constant time | Tom-256 base | 235 vs halo2curves 343 | −108 (0.69×) | 85.8 vs halo2curves 93.7 | −7.9 (0.92×) | 331 vs halo2curves 607 | −276 (0.55×) | 157 vs halo2curves 176 | −19.0 (0.89×) |
+| mul, constant time | BLS12-381 base | 728 vs crypto-bigint 903 | −175 (0.81×) | 184 vs halo2curves 194 | −10.0 (0.95×) | 935 vs crypto-bigint 1,327 | −392 (0.70×) | 337 vs halo2curves 381 | −44.0 (0.88×) |
+| mul, constant time | P-521 base | 666 vs crypto-bigint 2,112 | −1,446 (0.32×) | 252 vs crypto-bigint 600 | −348 (0.42×) | 1,287 vs crypto-bigint 2,726 | −1,439 (0.47×) | 444 vs crypto-bigint 1,045 | −601 (0.42×) |
+| square, constant time | Mersenne-31 | 5.2 vs crypto-bigint 28.4 | −23.2 (0.18×) | 5.2 vs crypto-bigint 15.6 | −10.4 (0.33×) | 5.4 vs crypto-bigint 38.3 | −32.9 (0.14×) | 5.4 vs crypto-bigint 18.2 | −12.8 (0.30×) |
+| square, constant time | BabyBear | 8.3 vs crypto-bigint 28.5 | −20.2 (0.29×) | 4.9 vs crypto-bigint 15.6 | −10.7 (0.31×) | 8.0 vs crypto-bigint 38.5 | −30.5 (0.21×) | 5.8 vs crypto-bigint 18.3 | −12.5 (0.32×) |
+| square, constant time | Goldilocks | 10.1 vs winter-math 12.4 | −2.3 (0.81×) | 6.0 vs winter-math 6.0 | +0.0 (1.00×) | 12.0 vs winter-math 17.0 | −5.0 (0.71×) | 9.7 vs winter-math 7.0 | +2.7 (1.39×) |
+| square, constant time | BN254 scalar | 213 vs crypto-bigint 324 | −111 (0.66×) | 78.1 vs halo2curves 84.6 | −6.5 (0.92×) | 370 vs halo2curves 559 | −189 (0.66×) | 147 vs halo2curves 142 | +5.0 (1.04×) |
+| square, constant time | secp256k1 base | 143 vs halo2curves 267 | −124 (0.54×) | 61.3 vs halo2curves 77.5 | −16.2 (0.79×) | 217 vs halo2curves 463 | −246 (0.47×) | 98.1 vs halo2curves 126 | −27.9 (0.78×) |
+| square, constant time | P-256 base | 151 vs halo2curves 172 | −21.0 (0.88×) | 78.4 vs k256/p256 74.5 | +3.9 (1.05×) | 253 vs halo2curves 349 | −96.0 (0.72×) | 131 vs halo2curves 107 | +24.0 (1.22×) |
+| square, constant time | P-256 scalar | 214 vs halo2curves 306 | −92.0 (0.70×) | 80.7 vs halo2curves 83.0 | −2.3 (0.97×) | 288 vs halo2curves 561 | −273 (0.51×) | 140 vs halo2curves 144 | −4.0 (0.97×) |
+| square, constant time | Tom-256 base | 203 vs halo2curves 312 | −109 (0.65×) | 77.2 vs halo2curves 79.6 | −2.4 (0.97×) | 321 vs halo2curves 466 | −145 (0.69×) | 166 vs halo2curves 136 | +30.0 (1.22×) |
+| square, constant time | BLS12-381 base | 582 vs halo2curves 660 | −78.0 (0.88×) | 172 vs halo2curves 170 | +2.0 (1.01×) | 886 vs halo2curves 1,324 | −438 (0.67×) | 308 vs halo2curves 331 | −23.0 (0.93×) |
+| square, constant time | P-521 base | 563 vs crypto-bigint 2,157 | −1,594 (0.26×) | 246 vs crypto-bigint 615 | −369 (0.40×) | 917 vs crypto-bigint 2,841 | −1,924 (0.32×) | 398 vs crypto-bigint 1,099 | −701 (0.36×) |
+| invert, constant time | Mersenne-31 | 438 vs runtime-algebra 3,343 | −2,905 (0.13×) | 441 vs runtime-algebra 3,342 | −2,901 (0.13×) | 431 vs runtime-algebra 3,417 | −2,986 (0.13×) | 430 vs runtime-algebra 3,319 | −2,889 (0.13×) |
+| invert, constant time | BabyBear | 520 vs runtime-algebra 3,323 | −2,803 (0.16×) | 458 vs runtime-algebra 3,301 | −2,843 (0.14×) | 550 vs runtime-algebra 3,382 | −2,832 (0.16×) | 417 vs runtime-algebra 3,370 | −2,953 (0.12×) |
+| invert, constant time | Goldilocks | 1,263 vs winter-math 1,760 | −497 (0.72×) | 858 vs winter-math 912 | −54.0 (0.94×) | 1,564 vs winter-math 1,831 | −267 (0.85×) | 1,183 vs winter-math 998 | +185 (1.19×) |
+| invert, constant time | BN254 scalar | 12,015 vs crypto-bigint 29,062 | −17,047 (0.41×) | 9,244 vs crypto-bigint 25,295 | −16,051 (0.37×) | 16,857 vs crypto-bigint 36,220 | −19,363 (0.47×) | 12,578 vs crypto-bigint 30,674 | −18,096 (0.41×) |
+| invert, constant time | secp256k1 base | 11,831 vs crypto-bigint 29,572 | −17,741 (0.40×) | 9,093 vs crypto-bigint 25,390 | −16,297 (0.36×) | 16,945 vs crypto-bigint 36,301 | −19,356 (0.47×) | 12,668 vs crypto-bigint 30,676 | −18,008 (0.41×) |
+| invert, constant time | P-256 base | 11,533 vs crypto-bigint 29,002 | −17,469 (0.40×) | 8,967 vs k256/p256 22,033 | −13,066 (0.41×) | 16,307 vs crypto-bigint 36,230 | −19,923 (0.45×) | 12,319 vs crypto-bigint 30,742 | −18,423 (0.40×) |
+| invert, constant time | P-256 scalar | 11,904 vs crypto-bigint 29,654 | −17,750 (0.40×) | 9,379 vs crypto-bigint 25,464 | −16,085 (0.37×) | 17,148 vs crypto-bigint 36,454 | −19,306 (0.47×) | 12,779 vs crypto-bigint 30,623 | −17,844 (0.42×) |
+| invert, constant time | Tom-256 base | 11,773 vs crypto-bigint 29,588 | −17,815 (0.40×) | 9,286 vs crypto-bigint 25,633 | −16,347 (0.36×) | 16,992 vs crypto-bigint 36,176 | −19,184 (0.47×) | 12,767 vs crypto-bigint 30,737 | −17,970 (0.42×) |
+| invert, constant time | BLS12-381 base | 23,954 vs crypto-bigint 49,528 | −25,574 (0.48×) | 16,698 vs crypto-bigint 42,668 | −25,970 (0.39×) | 32,822 vs crypto-bigint 66,505 | −33,683 (0.49×) | 24,072 vs crypto-bigint 54,035 | −29,963 (0.45×) |
+| invert, constant time | P-521 base | 41,739 vs crypto-bigint 101,433 | −59,694 (0.41×) | 26,139 vs crypto-bigint 82,132 | −55,993 (0.32×) | 63,686 vs crypto-bigint 123,744 | −60,058 (0.51×) | 41,552 vs crypto-bigint 100,426 | −58,874 (0.41×) |
+| sqrt, constant time | Mersenne-31 | 334 vs runtime-algebra 1,740 | −1,406 (0.19×) | 334 vs crypto-bigint 1,647 | −1,313 (0.20×) | 341 vs runtime-algebra 1,748 | −1,407 (0.20×) | 340 vs runtime-algebra 1,679 | −1,339 (0.20×) |
+| sqrt, constant time | BabyBear | 7,468 vs crypto-bigint 34,215 | −26,747 (0.22×) | 6,464 vs crypto-bigint 20,220 | −13,756 (0.32×) | 7,850 vs crypto-bigint 38,485 | −30,635 (0.20×) | 6,531 vs crypto-bigint 22,801 | −16,270 (0.29×) |
+| sqrt, constant time | Goldilocks | 12,879 vs crypto-bigint 48,300 | −35,421 (0.27×) | 8,921 vs crypto-bigint 28,889 | −19,968 (0.31×) | 15,858 vs crypto-bigint 54,744 | −38,886 (0.29×) | 21,585 vs crypto-bigint 32,626 | −11,041 (0.66×) |
+| sqrt, constant time | BN254 scalar | 178,697 vs crypto-bigint 328,345 | −149,648 (0.54×) | 83,897 vs halo2curves 102,173 | −18,276 (0.82×) | 297,160 vs halo2curves 530,608 | −233,448 (0.56×) | 152,719 vs halo2curves 180,044 | −27,325 (0.85×) |
+| sqrt, constant time | secp256k1 base | 42,420 vs crypto-bigint 159,037 | −116,617 (0.27×) | 19,829 vs halo2curves 43,341 | −23,512 (0.46×) | 70,690 vs crypto-bigint 259,339 | −188,649 (0.27×) | 31,261 vs crypto-bigint 84,300 | −53,039 (0.37×) |
+| sqrt, constant time | P-256 base | 44,657 vs k256/p256 64,688 | −20,031 (0.69×) | 19,094 vs k256/p256 21,666 | −2,572 (0.88×) | 79,907 vs k256/p256 126,183 | −46,276 (0.63×) | 32,459 vs k256/p256 33,665 | −1,206 (0.96×) |
+| sqrt, constant time | P-256 scalar | 78,912 vs halo2curves 153,248 | −74,336 (0.51×) | 37,108 vs halo2curves 49,988 | −12,880 (0.74×) | 121,136 vs crypto-bigint 250,825 | −129,689 (0.48×) | 68,607 vs halo2curves 72,417 | −3,810 (0.95×) |
+| sqrt, constant time | Tom-256 base | 65,867 vs crypto-bigint 148,468 | −82,601 (0.44×) | 19,373 vs halo2curves 45,267 | −25,894 (0.43×) | 94,906 vs crypto-bigint 232,503 | −137,597 (0.41×) | 50,847 vs crypto-bigint 77,789 | −26,942 (0.65×) |
+| sqrt, constant time | BLS12-381 base | 314,938 vs crypto-bigint 542,867 | −227,929 (0.58×) | 97,430 vs crypto-bigint 145,031 | −47,601 (0.67×) | 423,132 vs crypto-bigint 623,651 | −200,519 (0.68×) | 214,113 vs crypto-bigint 267,711 | −53,598 (0.80×) |
+| sqrt, constant time | P-521 base | 324,637 vs crypto-bigint 1,524,172 | −1,199,535 (0.21×) | 129,843 vs crypto-bigint 296,736 | −166,893 (0.44×) | 507,844 vs crypto-bigint 1,560,230 | −1,052,386 (0.33×) | 266,374 vs crypto-bigint 590,262 | −323,888 (0.45×) |
+| mul_u64, constant time | Mersenne-31 | 9.4 vs crypto-bigint 61.4 | −52.0 (0.15×) | 9.4 vs crypto-bigint 30.6 | −21.2 (0.31×) | 9.8 vs crypto-bigint 74.4 | −64.6 (0.13×) | 9.8 vs crypto-bigint 38.9 | −29.1 (0.25×) |
+| mul_u64, constant time | BabyBear | 17.1 vs crypto-bigint 64.0 | −46.9 (0.27×) | 11.2 vs crypto-bigint 33.1 | −21.9 (0.34×) | 20.0 vs crypto-bigint 86.0 | −66.0 (0.23×) | 15.0 vs crypto-bigint 40.4 | −25.4 (0.37×) |
+| mul_u64, constant time | Goldilocks | 19.0 vs winter-math 25.0 | −6.0 (0.76×) | 11.0 vs winter-math 10.9 | +0.1 (1.01×) | 21.1 vs winter-math 31.1 | −10.0 (0.68×) | 16.7 vs winter-math 13.6 | +3.1 (1.23×) |
+| mul_u64, constant time | BN254 scalar | 106 vs crypto-bigint 866 | −760 (0.12×) | 38.9 vs crypto-bigint 263 | −224 (0.15×) | 125 vs halo2curves 1,417 | −1,292 (0.09×) | 57.3 vs crypto-bigint 407 | −350 (0.14×) |
+| mul_u64, constant time | secp256k1 base | 61.6 vs halo2curves 689 | −627 (0.09×) | 24.9 vs crypto-bigint 263 | −238 (0.09×) | 80.1 vs halo2curves 1,061 | −981 (0.08×) | 37.3 vs crypto-bigint 408 | −371 (0.09×) |
+| mul_u64, constant time | P-256 base | 85.5 vs k256/p256 485 | −400 (0.18×) | 40.3 vs k256/p256 150 | −110 (0.27×) | 103 vs k256/p256 957 | −854 (0.11×) | 57.2 vs k256/p256 258 | −201 (0.22×) |
+| mul_u64, constant time | P-256 scalar | 102 vs k256/p256 516 | −414 (0.20×) | 43.6 vs k256/p256 253 | −209 (0.17×) | 122 vs k256/p256 816 | −694 (0.15×) | 62.7 vs k256/p256 390 | −327 (0.16×) |
+| mul_u64, constant time | Tom-256 base | 95.3 vs crypto-bigint 868 | −773 (0.11×) | 41.8 vs crypto-bigint 263 | −221 (0.16×) | 123 vs halo2curves 1,283 | −1,160 (0.10×) | 63.4 vs crypto-bigint 406 | −343 (0.16×) |
+| mul_u64, constant time | BLS12-381 base | 149 vs crypto-bigint 1,931 | −1,782 (0.08×) | 65.7 vs halo2curves 483 | −417 (0.14×) | 160 vs crypto-bigint 2,535 | −2,375 (0.06×) | 85.9 vs crypto-bigint 1,020 | −934 (0.08×) |
+| mul_u64, constant time | P-521 base | 138 vs crypto-bigint 3,038 | −2,900 (0.05×) | 69.2 vs crypto-bigint 991 | −922 (0.07×) | 138 vs crypto-bigint 3,974 | −3,836 (0.03×) | 96.0 vs crypto-bigint 1,831 | −1,735 (0.05×) |
+| mul_uint, constant time | Mersenne-31 | 9.4 vs crypto-bigint 61.9 | −52.5 (0.15×) | 9.4 vs crypto-bigint 30.7 | −21.3 (0.31×) | 9.7 vs crypto-bigint 72.8 | −63.1 (0.13×) | 9.8 vs crypto-bigint 38.8 | −29.0 (0.25×) |
+| mul_uint, constant time | BabyBear | 17.1 vs crypto-bigint 63.8 | −46.7 (0.27×) | 11.2 vs crypto-bigint 33.1 | −21.9 (0.34×) | 20.1 vs crypto-bigint 85.1 | −65.0 (0.24×) | 15.0 vs crypto-bigint 40.6 | −25.6 (0.37×) |
+| mul_uint, constant time | Goldilocks | 19.1 vs winter-math 25.0 | −5.9 (0.76×) | 11.0 vs winter-math 10.9 | +0.1 (1.01×) | 21.1 vs winter-math 31.0 | −9.9 (0.68×) | 16.8 vs winter-math 13.6 | +3.2 (1.24×) |
+| mul_uint, constant time | BN254 scalar | 484 vs halo2curves 769 | −285 (0.63×) | 173 vs halo2curves 180 | −7.0 (0.96×) | 599 vs halo2curves 1,348 | −749 (0.44×) | 312 vs halo2curves 349 | −37.0 (0.89×) |
+| mul_uint, constant time | secp256k1 base | 322 vs halo2curves 519 | −197 (0.62×) | 192 vs halo2curves 154 | +38.0 (1.25×) | 381 vs halo2curves 959 | −578 (0.40×) | 251 vs halo2curves 266 | −15.0 (0.94×) |
+| mul_uint, constant time | P-256 base | 413 vs halo2curves 458 | −45.0 (0.90×) | 136 vs halo2curves 143 | −7.0 (0.95×) | 492 vs halo2curves 954 | −462 (0.52×) | 233 vs halo2curves 252 | −19.0 (0.92×) |
+| mul_uint, constant time | P-256 scalar | 473 vs k256/p256 547 | −74.0 (0.86×) | 186 vs halo2curves 186 | +0.0 (1.00×) | 562 vs k256/p256 882 | −320 (0.64×) | 304 vs crypto-bigint 409 | −105 (0.74×) |
+| mul_uint, constant time | Tom-256 base | 467 vs halo2curves 695 | −228 (0.67×) | 163 vs halo2curves 180 | −17.0 (0.91×) | 553 vs halo2curves 1,176 | −623 (0.47×) | 293 vs halo2curves 335 | −42.0 (0.87×) |
+| mul_uint, constant time | BLS12-381 base | 1,066 vs halo2curves 1,940 | −874 (0.55×) | 369 vs halo2curves 381 | −12.0 (0.97×) | 1,678 vs crypto-bigint 2,519 | −841 (0.67×) | 918 vs crypto-bigint 982 | −64.0 (0.93×) |
+| mul_uint, constant time | P-521 base | 1,989 vs crypto-bigint 3,030 | −1,041 (0.66×) | 975 vs crypto-bigint 990 | −15.0 (0.98×) | 2,921 vs crypto-bigint 4,016 | −1,095 (0.73×) | 1,477 vs crypto-bigint 1,835 | −358 (0.80×) |
+| add_u64, constant time | Mersenne-31 | 8.2 vs crypto-bigint 36.1 | −27.9 (0.23×) | 8.1 vs crypto-bigint 30.4 | −22.3 (0.27×) | 9.1 vs crypto-bigint 42.2 | −33.1 (0.22×) | 9.2 vs crypto-bigint 30.4 | −21.2 (0.30×) |
+| add_u64, constant time | BabyBear | 10.9 vs crypto-bigint 39.9 | −29.0 (0.27×) | 8.6 vs crypto-bigint 31.6 | −23.0 (0.27×) | 13.0 vs crypto-bigint 53.6 | −40.6 (0.24×) | 12.6 vs crypto-bigint 31.9 | −19.3 (0.39×) |
+| add_u64, constant time | Goldilocks | 9.9 vs winter-math 13.3 | −3.4 (0.74×) | 7.7 vs winter-math 7.4 | +0.3 (1.04×) | 11.1 vs winter-math 19.1 | −8.0 (0.58×) | 12.0 vs winter-math 11.0 | +1.0 (1.09×) |
+| add_u64, constant time | BN254 scalar | 136 vs crypto-bigint 504 | −368 (0.27×) | 78.3 vs halo2curves 210 | −132 (0.37×) | 163 vs halo2curves 758 | −595 (0.22×) | 81.4 vs halo2curves 295 | −214 (0.28×) |
+| add_u64, constant time | secp256k1 base | 20.5 vs halo2curves 380 | −360 (0.05×) | 16.1 vs halo2curves 203 | −187 (0.08×) | 19.5 vs halo2curves 488 | −469 (0.04×) | 25.1 vs halo2curves 243 | −218 (0.10×) |
+| add_u64, constant time | P-256 base | 90.4 vs k256/p256 276 | −186 (0.33×) | 57.7 vs k256/p256 95.2 | −37.5 (0.61×) | 103 vs k256/p256 510 | −407 (0.20×) | 73.0 vs k256/p256 160 | −87.0 (0.46×) |
+| add_u64, constant time | P-256 scalar | 90.2 vs k256/p256 41.3 | +48.9 (2.18×) | 56.4 vs k256/p256 41.3 | +15.1 (1.37×) | 100 vs k256/p256 54.6 | +45.4 (1.83×) | 93.4 vs k256/p256 55.0 | +38.4 (1.70×) |
+| add_u64, constant time | Tom-256 base | 116 vs crypto-bigint 504 | −388 (0.23×) | 61.5 vs halo2curves 218 | −157 (0.28×) | 132 vs halo2curves 686 | −554 (0.19×) | 93.8 vs crypto-bigint 316 | −222 (0.30×) |
+| add_u64, constant time | BLS12-381 base | 211 vs crypto-bigint 1,075 | −864 (0.20×) | 92.1 vs halo2curves 324 | −232 (0.28×) | 268 vs crypto-bigint 1,387 | −1,119 (0.19×) | 125 vs crypto-bigint 650 | −525 (0.19×) |
+| add_u64, constant time | P-521 base | 64.3 vs crypto-bigint 1,688 | −1,624 (0.04×) | 44.3 vs crypto-bigint 651 | −607 (0.07×) | 65.7 vs crypto-bigint 2,197 | −2,131 (0.03×) | 64.1 vs crypto-bigint 1,117 | −1,053 (0.06×) |
+| add_uint, constant time | Mersenne-31 | 8.1 vs crypto-bigint 36.0 | −27.9 (0.22×) | 8.2 vs crypto-bigint 30.4 | −22.2 (0.27×) | 9.1 vs crypto-bigint 41.5 | −32.4 (0.22×) | 9.1 vs crypto-bigint 30.6 | −21.5 (0.30×) |
+| add_uint, constant time | BabyBear | 10.9 vs crypto-bigint 39.9 | −29.0 (0.27×) | 8.6 vs crypto-bigint 31.7 | −23.1 (0.27×) | 13.0 vs crypto-bigint 53.7 | −40.7 (0.24×) | 12.6 vs crypto-bigint 31.6 | −19.0 (0.40×) |
+| add_uint, constant time | Goldilocks | 9.9 vs winter-math 13.3 | −3.4 (0.74×) | 7.7 vs winter-math 7.4 | +0.3 (1.04×) | 11.1 vs winter-math 19.1 | −8.0 (0.58×) | 12.0 vs winter-math 11.0 | +1.0 (1.09×) |
+| add_uint, constant time | BN254 scalar | 249 vs halo2curves 415 | −166 (0.60×) | 99.1 vs halo2curves 112 | −12.9 (0.88×) | 344 vs halo2curves 678 | −334 (0.51×) | 182 vs halo2curves 205 | −23.0 (0.89×) |
+| add_uint, constant time | secp256k1 base | 41.7 vs halo2curves 224 | −182 (0.19×) | 29.4 vs halo2curves 84.9 | −55.5 (0.35×) | 37.6 vs halo2curves 415 | −377 (0.09×) | 44.5 vs halo2curves 140 | −95.5 (0.32×) |
+| add_uint, constant time | P-256 base | 177 vs halo2curves 248 | −71.0 (0.71×) | 98.7 vs halo2curves 91.5 | +7.2 (1.08×) | 286 vs halo2curves 509 | −223 (0.56×) | 150 vs halo2curves 154 | −4.0 (0.97×) |
+| add_uint, constant time | P-256 scalar | 256 vs k256/p256 94.7 | +161 (2.70×) | 106 vs k256/p256 94.9 | +11.1 (1.12×) | 316 vs k256/p256 118 | +198 (2.68×) | 202 vs k256/p256 119 | +83.0 (1.70×) |
+| add_uint, constant time | Tom-256 base | 251 vs halo2curves 380 | −129 (0.66×) | 102 vs halo2curves 110 | −8.0 (0.93×) | 329 vs halo2curves 629 | −300 (0.52×) | 187 vs halo2curves 196 | −9.0 (0.95×) |
+| add_uint, constant time | BLS12-381 base | 770 vs halo2curves 974 | −204 (0.79×) | 209 vs halo2curves 225 | −16.0 (0.93×) | 949 vs crypto-bigint 1,395 | −446 (0.68×) | 411 vs halo2curves 562 | −151 (0.73×) |
+| add_uint, constant time | P-521 base | 138 vs crypto-bigint 1,676 | −1,538 (0.08×) | 105 vs crypto-bigint 648 | −543 (0.16×) | 155 vs crypto-bigint 2,227 | −2,072 (0.07×) | 138 vs crypto-bigint 1,127 | −989 (0.12×) |
+| sub_u64, constant time | Mersenne-31 | 6.2 vs crypto-bigint 23.4 | −17.2 (0.26×) | 6.2 vs crypto-bigint 17.9 | −11.7 (0.35×) | 7.0 vs crypto-bigint 31.3 | −24.3 (0.22×) | 7.0 vs crypto-bigint 20.9 | −13.9 (0.33×) |
+| sub_u64, constant time | BabyBear | 10.8 vs crypto-bigint 27.9 | −17.1 (0.39×) | 8.4 vs crypto-bigint 19.5 | −11.1 (0.43×) | 13.0 vs crypto-bigint 44.5 | −31.5 (0.29×) | 12.5 vs crypto-bigint 21.9 | −9.4 (0.57×) |
+| sub_u64, constant time | Goldilocks | 9.9 vs winter-math 11.5 | −1.6 (0.86×) | 7.0 vs winter-math 7.0 | +0.0 (1.00×) | 11.4 vs winter-math 19.0 | −7.6 (0.60×) | 11.0 vs winter-math 9.6 | +1.4 (1.15×) |
+| sub_u64, constant time | BN254 scalar | 126 vs crypto-bigint 509 | −383 (0.25×) | 60.0 vs crypto-bigint 151 | −91.0 (0.40×) | 155 vs halo2curves 763 | −608 (0.20×) | 80.0 vs crypto-bigint 279 | −199 (0.29×) |
+| sub_u64, constant time | secp256k1 base | 15.5 vs halo2curves 381 | −366 (0.04×) | 12.3 vs crypto-bigint 150 | −138 (0.08×) | 14.6 vs halo2curves 474 | −459 (0.03×) | 18.5 vs halo2curves 238 | −220 (0.08×) |
+| sub_u64, constant time | P-256 base | 84.8 vs k256/p256 266 | −181 (0.32×) | 51.9 vs k256/p256 89.1 | −37.2 (0.58×) | 97.8 vs k256/p256 507 | −409 (0.19×) | 67.7 vs k256/p256 149 | −81.3 (0.45×) |
+| sub_u64, constant time | P-256 scalar | 80.6 vs k256/p256 21.2 | +59.4 (3.80×) | 52.7 vs k256/p256 21.2 | +31.5 (2.49×) | 93.6 vs k256/p256 24.4 | +69.2 (3.84×) | 79.2 vs k256/p256 24.3 | +54.9 (3.26×) |
+| sub_u64, constant time | Tom-256 base | 113 vs crypto-bigint 506 | −393 (0.22×) | 58.9 vs crypto-bigint 152 | −93.1 (0.39×) | 124 vs halo2curves 665 | −541 (0.19×) | 80.1 vs crypto-bigint 259 | −179 (0.31×) |
+| sub_u64, constant time | BLS12-381 base | 187 vs crypto-bigint 1,090 | −903 (0.17×) | 87.6 vs halo2curves 317 | −229 (0.28×) | 250 vs crypto-bigint 1,383 | −1,133 (0.18×) | 118 vs crypto-bigint 618 | −500 (0.19×) |
+| sub_u64, constant time | P-521 base | 42.4 vs crypto-bigint 1,674 | −1,632 (0.03×) | 34.4 vs crypto-bigint 623 | −589 (0.06×) | 52.4 vs crypto-bigint 2,184 | −2,132 (0.02×) | 44.5 vs crypto-bigint 1,124 | −1,080 (0.04×) |
+| sub_uint, constant time | Mersenne-31 | 6.2 vs crypto-bigint 23.4 | −17.2 (0.26×) | 6.2 vs crypto-bigint 18.2 | −12.0 (0.34×) | 7.0 vs crypto-bigint 31.3 | −24.3 (0.22×) | 7.0 vs crypto-bigint 20.9 | −13.9 (0.33×) |
+| sub_uint, constant time | BabyBear | 10.9 vs crypto-bigint 27.9 | −17.0 (0.39×) | 8.5 vs crypto-bigint 19.6 | −11.1 (0.43×) | 13.0 vs crypto-bigint 43.6 | −30.6 (0.30×) | 12.5 vs crypto-bigint 21.8 | −9.3 (0.57×) |
+| sub_uint, constant time | Goldilocks | 9.9 vs winter-math 11.5 | −1.6 (0.86×) | 7.0 vs winter-math 7.0 | +0.0 (1.00×) | 11.4 vs winter-math 19.0 | −7.6 (0.60×) | 11.0 vs winter-math 9.5 | +1.5 (1.16×) |
+| sub_uint, constant time | BN254 scalar | 262 vs halo2curves 403 | −141 (0.65×) | 101 vs halo2curves 103 | −2.0 (0.98×) | 347 vs halo2curves 684 | −337 (0.51×) | 188 vs halo2curves 194 | −6.0 (0.97×) |
+| sub_uint, constant time | secp256k1 base | 33.5 vs halo2curves 209 | −176 (0.16×) | 26.1 vs halo2curves 110 | −83.9 (0.24×) | 34.4 vs halo2curves 409 | −375 (0.08×) | 38.5 vs halo2curves 130 | −91.5 (0.30×) |
+| sub_uint, constant time | P-256 base | 178 vs halo2curves 233 | −55.0 (0.76×) | 86.4 vs halo2curves 85.3 | +1.1 (1.01×) | 275 vs halo2curves 494 | −219 (0.56×) | 139 vs halo2curves 143 | −4.0 (0.97×) |
+| sub_uint, constant time | P-256 scalar | 250 vs k256/p256 64.8 | +185 (3.86×) | 106 vs k256/p256 65.0 | +41.0 (1.63×) | 328 vs k256/p256 89.0 | +239 (3.69×) | 184 vs k256/p256 88.9 | +95.1 (2.07×) |
+| sub_uint, constant time | Tom-256 base | 253 vs halo2curves 365 | −112 (0.69×) | 101 vs halo2curves 103 | −2.0 (0.98×) | 317 vs halo2curves 617 | −300 (0.51×) | 188 vs halo2curves 187 | +1.0 (1.01×) |
+| sub_uint, constant time | BLS12-381 base | 762 vs halo2curves 962 | −200 (0.79×) | 207 vs halo2curves 215 | −8.0 (0.96×) | 942 vs crypto-bigint 1,373 | −431 (0.69×) | 375 vs halo2curves 408 | −33.0 (0.92×) |
+| sub_uint, constant time | P-521 base | 127 vs crypto-bigint 1,674 | −1,547 (0.08×) | 86.8 vs crypto-bigint 621 | −534 (0.14×) | 126 vs crypto-bigint 2,196 | −2,070 (0.06×) | 113 vs crypto-bigint 1,104 | −991 (0.10×) |
+| from_u64, constant time | Mersenne-31 | 4.7 vs crypto-bigint 18.0 | −13.3 (0.26×) | 4.7 vs crypto-bigint 11.6 | −6.9 (0.41×) | 5.2 vs crypto-bigint 25.3 | −20.1 (0.21×) | 5.3 vs crypto-bigint 13.1 | −7.8 (0.40×) |
+| from_u64, constant time | BabyBear | 13.5 vs crypto-bigint 21.6 | −8.1 (0.62×) | 10.3 vs crypto-bigint 12.7 | −2.4 (0.81×) | 14.0 vs crypto-bigint 36.1 | −22.1 (0.39×) | 12.7 vs crypto-bigint 15.5 | −2.8 (0.82×) |
+| from_u64, constant time | Goldilocks | 15.0 vs winter-math 10.6 | +4.4 (1.42×) | 9.3 vs winter-math 6.0 | +3.3 (1.55×) | 17.4 vs winter-math 17.0 | +0.4 (1.02×) | 12.5 vs winter-math 7.0 | +5.5 (1.79×) |
+| from_u64, constant time | BN254 scalar | 201 vs crypto-bigint 433 | −232 (0.46×) | 80.9 vs crypto-bigint 133 | −52.1 (0.61×) | 275 vs halo2curves 708 | −433 (0.39×) | 119 vs crypto-bigint 205 | −86.0 (0.58×) |
+| from_u64, constant time | secp256k1 base | 3.4 vs k256/p256 5.5 | −2.1 (0.62×) | 3.4 vs k256/p256 5.5 | −2.1 (0.62×) | 3.4 vs k256/p256 5.5 | −2.1 (0.62×) | 3.4 vs k256/p256 5.5 | −2.1 (0.62×) |
+| from_u64, constant time | P-256 base | 178 vs k256/p256 239 | −61.0 (0.74×) | 50.0 vs k256/p256 76.2 | −26.2 (0.66×) | 210 vs k256/p256 480 | −270 (0.44×) | 84.1 vs k256/p256 130 | −45.9 (0.65×) |
+| from_u64, constant time | P-256 scalar | 255 vs k256/p256 3.8 | +251 (67.11×) | 81.8 vs k256/p256 3.8 | +78.0 (21.53×) | 268 vs k256/p256 3.7 | +264 (72.43×) | 118 vs k256/p256 3.8 | +114 (31.05×) |
+| from_u64, constant time | Tom-256 base | 253 vs crypto-bigint 428 | −175 (0.59×) | 79.1 vs crypto-bigint 133 | −53.9 (0.59×) | 271 vs halo2curves 667 | −396 (0.41×) | 114 vs crypto-bigint 205 | −91.0 (0.56×) |
+| from_u64, constant time | BLS12-381 base | 431 vs crypto-bigint 908 | −477 (0.47×) | 155 vs crypto-bigint 252 | −97.0 (0.62×) | 607 vs crypto-bigint 1,247 | −640 (0.49×) | 273 vs crypto-bigint 479 | −206 (0.57×) |
+| from_u64, constant time | P-521 base | 6.1 vs crypto-bigint 1,448 | −1,442 (0.00×) | 6.0 vs crypto-bigint 496 | −490 (0.01×) | 6.1 vs crypto-bigint 1,995 | −1,989 (0.00×) | 6.0 vs crypto-bigint 850 | −844 (0.01×) |
+| div_u64, constant time | BN254 scalar | 12,376 vs crypto-bigint 28,754 | −16,378 (0.43×) | 9,508 vs crypto-bigint 24,345 | −14,837 (0.39×) | 17,577 vs crypto-bigint 37,623 | −20,046 (0.47×) | 12,966 vs crypto-bigint 30,669 | −17,703 (0.42×) |
+| div_u64, constant time | secp256k1 base | 11,879 vs crypto-bigint 28,725 | −16,846 (0.41×) | 9,055 vs crypto-bigint 24,391 | −15,336 (0.37×) | 17,081 vs crypto-bigint 37,254 | −20,173 (0.46×) | 12,739 vs crypto-bigint 30,808 | −18,069 (0.41×) |
+| div_u64, constant time | P-256 base | 11,796 vs crypto-bigint 28,746 | −16,950 (0.41×) | 9,146 vs k256/p256 22,874 | −13,728 (0.40×) | 17,486 vs crypto-bigint 37,818 | −20,332 (0.46×) | 12,560 vs crypto-bigint 30,710 | −18,150 (0.41×) |
+| div_u64, constant time | P-256 scalar | 12,320 vs crypto-bigint 28,624 | −16,304 (0.43×) | 9,427 vs crypto-bigint 24,225 | −14,798 (0.39×) | 17,554 vs crypto-bigint 37,322 | −19,768 (0.47×) | 13,160 vs crypto-bigint 30,804 | −17,644 (0.43×) |
+| div_u64, constant time | Tom-256 base | 12,206 vs crypto-bigint 28,652 | −16,446 (0.43×) | 9,479 vs crypto-bigint 24,316 | −14,837 (0.39×) | 16,908 vs crypto-bigint 37,719 | −20,811 (0.45×) | 12,938 vs crypto-bigint 30,720 | −17,782 (0.42×) |
+| div_u64, constant time | BLS12-381 base | 24,806 vs crypto-bigint 51,455 | −26,649 (0.48×) | 17,035 vs crypto-bigint 43,435 | −26,400 (0.39×) | 35,168 vs crypto-bigint 68,726 | −33,558 (0.51×) | 24,433 vs crypto-bigint 53,670 | −29,237 (0.46×) |
+| div_u64, constant time | P-521 base | 42,369 vs crypto-bigint 105,869 | −63,500 (0.40×) | 25,993 vs crypto-bigint 83,064 | −57,071 (0.31×) | 64,051 vs crypto-bigint 127,692 | −63,641 (0.50×) | 42,942 vs crypto-bigint 100,983 | −58,041 (0.43×) |
+| div_uint, constant time | Mersenne-31 | 455 vs runtime-algebra 3,501 | −3,046 (0.13×) | 455 vs runtime-algebra 3,505 | −3,050 (0.13×) | 469 vs runtime-algebra 3,423 | −2,954 (0.14×) | 465 vs runtime-algebra 3,418 | −2,953 (0.14×) |
+| div_uint, constant time | BabyBear | 546 vs runtime-algebra 3,560 | −3,014 (0.15×) | 466 vs runtime-algebra 3,558 | −3,092 (0.13×) | 612 vs runtime-algebra 3,421 | −2,809 (0.18×) | 460 vs runtime-algebra 3,420 | −2,960 (0.13×) |
+| div_uint, constant time | Goldilocks | 1,308 vs winter-math 1,800 | −492 (0.73×) | 950 vs winter-math 948 | +2.0 (1.00×) | 1,576 vs winter-math 1,902 | −326 (0.83×) | 1,211 vs winter-math 1,045 | +166 (1.16×) |
+| div_uint, constant time | BN254 scalar | 12,579 vs crypto-bigint 28,689 | −16,110 (0.44×) | 9,691 vs crypto-bigint 24,283 | −14,592 (0.40×) | 17,813 vs crypto-bigint 37,914 | −20,101 (0.47×) | 13,321 vs crypto-bigint 30,779 | −17,458 (0.43×) |
+| div_uint, constant time | secp256k1 base | 11,955 vs crypto-bigint 28,138 | −16,183 (0.42×) | 9,092 vs crypto-bigint 24,270 | −15,178 (0.37×) | 17,052 vs crypto-bigint 37,604 | −20,552 (0.45×) | 12,806 vs crypto-bigint 30,636 | −17,830 (0.42×) |
+| div_uint, constant time | P-256 base | 12,024 vs crypto-bigint 29,068 | −17,044 (0.41×) | 9,118 vs k256/p256 23,746 | −14,628 (0.38×) | 17,545 vs crypto-bigint 37,452 | −19,907 (0.47×) | 12,681 vs crypto-bigint 30,857 | −18,176 (0.41×) |
+| div_uint, constant time | P-256 scalar | 12,378 vs crypto-bigint 28,892 | −16,514 (0.43×) | 9,541 vs crypto-bigint 24,219 | −14,678 (0.39×) | 17,746 vs crypto-bigint 37,474 | −19,728 (0.47×) | 13,496 vs crypto-bigint 30,742 | −17,246 (0.44×) |
+| div_uint, constant time | Tom-256 base | 12,457 vs crypto-bigint 28,763 | −16,306 (0.43×) | 9,428 vs crypto-bigint 24,174 | −14,746 (0.39×) | 17,276 vs crypto-bigint 37,817 | −20,541 (0.46×) | 13,089 vs crypto-bigint 30,871 | −17,782 (0.42×) |
+| div_uint, constant time | BLS12-381 base | 25,374 vs crypto-bigint 51,902 | −26,528 (0.49×) | 17,063 vs crypto-bigint 43,276 | −26,213 (0.39×) | 35,743 vs crypto-bigint 68,918 | −33,175 (0.52×) | 24,870 vs crypto-bigint 54,164 | −29,294 (0.46×) |
+| div_uint, constant time | P-521 base | 42,567 vs crypto-bigint 106,524 | −63,957 (0.40×) | 26,008 vs crypto-bigint 83,713 | −57,705 (0.31×) | 65,187 vs crypto-bigint 127,977 | −62,790 (0.51×) | 43,336 vs crypto-bigint 100,960 | −57,624 (0.43×) |
+
+### Against the best competitor, latency
+
+Cycles per operation of `prime-field` against the fewest of the crates whose functions keep the row's definition. Δ: ours − best, then ours ÷ best; below 1 we lead.
+
+| Operation | Field | Chrome | Δ | Chrome, wide arithmetic | Δ | Firefox | Δ | Firefox, wide arithmetic | Δ |
+|---|---|---|---:|---|---:|---|---:|---|---:|
+| add | Mersenne-31 | 7.5 vs runtime-algebra 18.0 | −10.5 (0.42×) | 7.5 vs runtime-algebra 18.0 | −10.5 (0.42×) | 7.7 vs runtime-algebra 17.7 | −10.0 (0.44×) | 7.7 vs runtime-algebra 17.7 | −10.0 (0.44×) |
+| add | BabyBear | 3.0 vs plonky3 3.0 | +0.0 (1.00×) | 3.0 vs plonky3 3.0 | +0.0 (1.00×) | 3.0 vs plonky3 3.0 | +0.0 (1.00×) | 3.0 vs plonky3 3.0 | +0.0 (1.00×) |
+| add | Goldilocks | 3.0 vs winter-math 4.0 | −1.0 (0.75×) | 3.0 vs winter-math 4.0 | −1.0 (0.75×) | 3.0 vs winter-math 4.4 | −1.4 (0.68×) | 3.0 vs winter-math 4.7 | −1.7 (0.64×) |
+| add | BN254 scalar | 14.6 vs ark-ff 14.0 | +0.6 (1.04×) | 10.9 vs ark-ff 11.1 | −0.2 (0.98×) | 15.6 vs ark-ff 13.6 | +2.0 (1.15×) | 17.4 vs ark-ff 16.4 | +1.0 (1.06×) |
+| add | secp256k1 base | 13.7 vs ark-ff 15.5 | −1.8 (0.88×) | 10.7 vs ark-ff 11.2 | −0.5 (0.96×) | 13.3 vs ark-ff 15.0 | −1.7 (0.89×) | 18.1 vs ark-ff 17.8 | +0.3 (1.02×) |
+| add | P-256 base | 12.9 vs ark-ff 15.1 | −2.2 (0.85×) | 11.2 vs ark-ff 11.2 | +0.0 (1.00×) | 13.8 vs ark-ff 15.6 | −1.8 (0.88×) | 17.9 vs ark-ff 19.4 | −1.5 (0.92×) |
+| add | P-256 scalar | 14.4 vs ark-ff 15.3 | −0.9 (0.94×) | 11.1 vs ark-ff 11.3 | −0.2 (0.98×) | 15.4 vs ark-ff 15.8 | −0.4 (0.97×) | 18.9 vs ark-ff 17.9 | +1.0 (1.06×) |
+| add | Tom-256 base | 14.3 vs halo2curves 42.9 | −28.6 (0.33×) | 11.2 vs halo2curves 24.0 | −12.8 (0.47×) | 15.0 vs halo2curves 42.5 | −27.5 (0.35×) | 18.4 vs halo2curves 32.5 | −14.1 (0.57×) |
+| add | BLS12-381 base | 24.9 vs ark-ff 43.9 | −19.0 (0.57×) | 18.7 vs halo2curves 34.1 | −15.4 (0.55×) | 24.7 vs ark-ff 47.5 | −22.8 (0.52×) | 29.8 vs ark-ff 46.1 | −16.3 (0.65×) |
+| add | P-521 base | 42.4 vs crypto-bigint 181 | −139 (0.23×) | 27.7 vs crypto-bigint 179 | −151 (0.15×) | 47.5 vs crypto-bigint 244 | −197 (0.19×) | 47.5 vs crypto-bigint 245 | −198 (0.19×) |
+| sub | Mersenne-31 | 3.0 vs crypto-bigint 8.0 | −5.0 (0.38×) | 3.0 vs crypto-bigint 8.0 | −5.0 (0.38×) | 3.0 vs crypto-bigint 8.0 | −5.0 (0.38×) | 3.0 vs crypto-bigint 8.0 | −5.0 (0.38×) |
+| sub | BabyBear | 3.0 vs plonky3 3.0 | +0.0 (1.00×) | 3.0 vs plonky3 3.0 | +0.0 (1.00×) | 3.0 vs plonky3 3.0 | +0.0 (1.00×) | 3.0 vs plonky3 3.0 | +0.0 (1.00×) |
+| sub | Goldilocks | 3.0 vs winter-math 3.0 | +0.0 (1.00×) | 3.0 vs winter-math 3.0 | +0.0 (1.00×) | 3.0 vs winter-math 3.0 | +0.0 (1.00×) | 3.0 vs winter-math 3.0 | +0.0 (1.00×) |
+| sub | BN254 scalar | 14.5 vs ark-ff 16.5 | −2.0 (0.88×) | 10.7 vs ark-ff 14.0 | −3.3 (0.76×) | 13.8 vs ark-ff 16.7 | −2.9 (0.83×) | 18.5 vs ark-ff 21.5 | −3.0 (0.86×) |
+| sub | secp256k1 base | 16.4 vs ark-ff 16.6 | −0.2 (0.99×) | 10.7 vs ark-ff 14.0 | −3.3 (0.76×) | 13.1 vs ark-ff 17.1 | −4.0 (0.77×) | 17.8 vs halo2curves 21.0 | −3.2 (0.85×) |
+| sub | P-256 base | 14.2 vs ark-ff 15.6 | −1.4 (0.91×) | 10.4 vs ark-ff 12.9 | −2.5 (0.81×) | 12.9 vs ark-ff 16.0 | −3.1 (0.81×) | 17.4 vs k256/p256 20.0 | −2.6 (0.87×) |
+| sub | P-256 scalar | 15.3 vs ark-ff 16.6 | −1.3 (0.92×) | 10.7 vs ark-ff 13.9 | −3.2 (0.77×) | 13.7 vs ark-ff 16.6 | −2.9 (0.83×) | 17.9 vs ark-ff 21.3 | −3.4 (0.84×) |
+| sub | Tom-256 base | 15.0 vs halo2curves 26.0 | −11.0 (0.58×) | 10.8 vs halo2curves 14.7 | −3.9 (0.73×) | 14.0 vs halo2curves 26.5 | −12.5 (0.53×) | 18.5 vs halo2curves 22.1 | −3.6 (0.84×) |
+| sub | BLS12-381 base | 25.3 vs ark-ff 31.8 | −6.5 (0.80×) | 17.5 vs ark-ff 23.6 | −6.1 (0.74×) | 24.4 vs ark-ff 30.8 | −6.4 (0.79×) | 30.6 vs halo2curves 36.1 | −5.5 (0.85×) |
+| sub | P-521 base | 44.9 vs crypto-bigint 159 | −114 (0.28×) | 26.8 vs crypto-bigint 144 | −117 (0.19×) | 43.3 vs crypto-bigint 194 | −151 (0.22×) | 45.5 vs crypto-bigint 225 | −180 (0.20×) |
+| mul | Mersenne-31 | 12.0 vs crypto-bigint 46.7 | −34.7 (0.26×) | 12.0 vs crypto-bigint 27.0 | −15.0 (0.44×) | 12.0 vs crypto-bigint 50.8 | −38.8 (0.24×) | 12.0 vs crypto-bigint 30.9 | −18.9 (0.39×) |
+| mul | BabyBear | 13.0 vs plonky3 12.2 | +0.8 (1.07×) | 11.0 vs plonky3 12.1 | −1.1 (0.91×) | 14.5 vs plonky3 13.0 | +1.5 (1.12×) | 11.0 vs plonky3 13.0 | −2.0 (0.85×) |
+| mul | Goldilocks | 18.0 vs winter-math 18.0 | +0.0 (1.00×) | 14.4 vs winter-math 14.5 | −0.1 (0.99×) | 21.0 vs winter-math 19.0 | +2.0 (1.11×) | 14.0 vs winter-math 14.0 | +0.0 (1.00×) |
+| mul | BN254 scalar | 227 vs ark-ff 317 | −90.0 (0.72×) | 90.9 vs halo2curves 95.1 | −4.2 (0.96×) | 368 vs ark-ff 423 | −55.0 (0.87×) | 152 vs halo2curves 178 | −26.0 (0.85×) |
+| mul | secp256k1 base | 173 vs ark-ff 276 | −103 (0.63×) | 77.6 vs halo2curves 90.2 | −12.6 (0.86×) | 250 vs ark-ff 400 | −150 (0.62×) | 106 vs halo2curves 159 | −53.0 (0.67×) |
+| mul | P-256 base | 190 vs k256/p256 243 | −53.0 (0.78×) | 72.3 vs halo2curves 74.9 | −2.6 (0.97×) | 315 vs ark-ff 449 | −134 (0.70×) | 121 vs halo2curves 130 | −9.0 (0.93×) |
+| mul | P-256 scalar | 239 vs ark-ff 310 | −71.0 (0.77×) | 93.4 vs halo2curves 95.9 | −2.5 (0.97×) | 325 vs ark-ff 407 | −82.0 (0.80×) | 164 vs halo2curves 176 | −12.0 (0.93×) |
+| mul | Tom-256 base | 239 vs halo2curves 344 | −105 (0.69×) | 84.9 vs halo2curves 93.9 | −9.0 (0.90×) | 332 vs halo2curves 595 | −263 (0.56×) | 159 vs halo2curves 172 | −13.0 (0.92×) |
+| mul | BLS12-381 base | 719 vs ark-ff 686 | +33.0 (1.05×) | 185 vs halo2curves 193 | −8.0 (0.96×) | 917 vs ark-ff 1,050 | −133 (0.87×) | 337 vs halo2curves 376 | −39.0 (0.90×) |
+| mul | P-521 base | 686 vs crypto-bigint 2,137 | −1,451 (0.32×) | 247 vs crypto-bigint 619 | −372 (0.40×) | 1,292 vs crypto-bigint 2,804 | −1,512 (0.46×) | 446 vs crypto-bigint 1,099 | −653 (0.41×) |
+| square | Mersenne-31 | 12.0 vs crypto-bigint 45.4 | −33.4 (0.26×) | 12.0 vs crypto-bigint 27.1 | −15.1 (0.44×) | 12.0 vs crypto-bigint 52.0 | −40.0 (0.23×) | 12.0 vs crypto-bigint 30.0 | −18.0 (0.40×) |
+| square | BabyBear | 13.0 vs plonky3 12.1 | +0.9 (1.07×) | 11.0 vs plonky3 12.1 | −1.1 (0.91×) | 14.0 vs plonky3 13.0 | +1.0 (1.08×) | 11.0 vs plonky3 13.0 | −2.0 (0.85×) |
+| square | Goldilocks | 17.3 vs winter-math 19.7 | −2.4 (0.88×) | 12.0 vs winter-math 12.8 | −0.8 (0.94×) | 21.3 vs winter-math 19.0 | +2.3 (1.12×) | 14.4 vs winter-math 14.7 | −0.3 (0.98×) |
+| square | BN254 scalar | 208 vs ark-ff 264 | −56.0 (0.79×) | 89.9 vs halo2curves 96.4 | −6.5 (0.93×) | 365 vs ark-ff 355 | +10.0 (1.03×) | 142 vs halo2curves 144 | −2.0 (0.99×) |
+| square | secp256k1 base | 154 vs halo2curves 222 | −68.0 (0.69×) | 69.9 vs halo2curves 83.6 | −13.7 (0.84×) | 183 vs ark-ff 298 | −115 (0.61×) | 95.5 vs halo2curves 126 | −30.5 (0.76×) |
+| square | P-256 base | 155 vs halo2curves 178 | −23.0 (0.87×) | 62.2 vs halo2curves 62.9 | −0.7 (0.99×) | 213 vs ark-ff 331 | −118 (0.64×) | 114 vs halo2curves 107 | +7.0 (1.07×) |
+| square | P-256 scalar | 223 vs ark-ff 259 | −36.0 (0.86×) | 89.1 vs halo2curves 93.8 | −4.7 (0.95×) | 240 vs ark-ff 347 | −107 (0.69×) | 150 vs halo2curves 137 | +13.0 (1.09×) |
+| square | Tom-256 base | 201 vs halo2curves 268 | −67.0 (0.75×) | 83.0 vs halo2curves 88.5 | −5.5 (0.94×) | 236 vs halo2curves 451 | −215 (0.52×) | 142 vs halo2curves 135 | +7.0 (1.05×) |
+| square | BLS12-381 base | 609 vs ark-ff 619 | −10.0 (0.98×) | 179 vs halo2curves 163 | +16.0 (1.10×) | 870 vs ark-ff 838 | +32.0 (1.04×) | 294 vs halo2curves 292 | +2.0 (1.01×) |
+| square | P-521 base | 571 vs crypto-bigint 2,140 | −1,569 (0.27×) | 210 vs crypto-bigint 634 | −424 (0.33×) | 913 vs crypto-bigint 2,840 | −1,927 (0.32×) | 390 vs crypto-bigint 1,139 | −749 (0.34×) |
+| mul_u64 | Mersenne-31 | 14.0 vs crypto-bigint 60.6 | −46.6 (0.23×) | 14.0 vs crypto-bigint 32.2 | −18.2 (0.43×) | 14.0 vs crypto-bigint 71.3 | −57.3 (0.20×) | 14.0 vs crypto-bigint 38.8 | −24.8 (0.36×) |
+| mul_u64 | BabyBear | 17.0 vs plonky3 34.2 | −17.2 (0.50×) | 11.1 vs plonky3 13.3 | −2.2 (0.83×) | 19.3 vs plonky3 45.0 | −25.7 (0.43×) | 13.1 vs plonky3 16.5 | −3.4 (0.79×) |
+| mul_u64 | Goldilocks | 20.4 vs winter-math 23.4 | −3.0 (0.87×) | 12.0 vs winter-math 13.2 | −1.2 (0.91×) | 25.0 vs winter-math 34.6 | −9.6 (0.72×) | 17.2 vs winter-math 14.5 | +2.7 (1.19×) |
+| mul_u64 | BN254 scalar | 91.3 vs ark-ff 662 | −571 (0.14×) | 34.5 vs crypto-bigint 262 | −228 (0.13×) | 120 vs ark-ff 818 | −698 (0.15×) | 45.4 vs crypto-bigint 412 | −367 (0.11×) |
+| mul_u64 | secp256k1 base | 49.0 vs ark-ff 438 | −389 (0.11×) | 16.0 vs crypto-bigint 259 | −243 (0.06×) | 65.1 vs ark-ff 609 | −544 (0.11×) | 23.0 vs crypto-bigint 410 | −387 (0.06×) |
+| mul_u64 | P-256 base | 74.9 vs k256/p256 487 | −412 (0.15×) | 33.0 vs k256/p256 153 | −120 (0.22×) | 89.1 vs ark-ff 831 | −742 (0.11×) | 42.4 vs k256/p256 258 | −216 (0.16×) |
+| mul_u64 | P-256 scalar | 82.2 vs k256/p256 516 | −434 (0.16×) | 34.6 vs k256/p256 255 | −220 (0.14×) | 106 vs ark-ff 816 | −710 (0.13×) | 48.1 vs k256/p256 340 | −292 (0.14×) |
+| mul_u64 | Tom-256 base | 84.9 vs crypto-bigint 873 | −788 (0.10×) | 32.9 vs crypto-bigint 261 | −228 (0.13×) | 105 vs halo2curves 1,273 | −1,168 (0.08×) | 45.4 vs crypto-bigint 410 | −365 (0.11×) |
+| mul_u64 | BLS12-381 base | 125 vs ark-ff 1,627 | −1,502 (0.08×) | 47.9 vs halo2curves 485 | −437 (0.10×) | 183 vs ark-ff 2,124 | −1,941 (0.09×) | 62.1 vs crypto-bigint 1,050 | −988 (0.06×) |
+| mul_u64 | P-521 base | 95.7 vs crypto-bigint 3,015 | −2,919 (0.03×) | 39.5 vs crypto-bigint 990 | −951 (0.04×) | 191 vs crypto-bigint 4,018 | −3,827 (0.05×) | 51.8 vs crypto-bigint 1,843 | −1,791 (0.03×) |
+| mul_uint | Mersenne-31 | 14.0 vs crypto-bigint 60.4 | −46.4 (0.23×) | 14.0 vs crypto-bigint 31.7 | −17.7 (0.44×) | 14.0 vs crypto-bigint 73.4 | −59.4 (0.19×) | 14.0 vs crypto-bigint 38.8 | −24.8 (0.36×) |
+| mul_uint | BabyBear | 17.0 vs plonky3 23.6 | −6.6 (0.72×) | 11.0 vs plonky3 13.3 | −2.3 (0.83×) | 19.3 vs plonky3 33.9 | −14.6 (0.57×) | 13.1 vs plonky3 16.5 | −3.4 (0.79×) |
+| mul_uint | Goldilocks | 20.5 vs winter-math 23.6 | −3.1 (0.87×) | 12.1 vs winter-math 13.8 | −1.7 (0.88×) | 25.0 vs winter-math 34.5 | −9.5 (0.72×) | 17.2 vs winter-math 14.5 | +2.7 (1.19×) |
+| mul_uint | BN254 scalar | 439 vs halo2curves 773 | −334 (0.57×) | 173 vs halo2curves 182 | −9.0 (0.95×) | 533 vs halo2curves 1,317 | −784 (0.40×) | 294 vs halo2curves 354 | −60.0 (0.83×) |
+| mul_uint | secp256k1 base | 265 vs halo2curves 516 | −251 (0.51×) | 117 vs halo2curves 154 | −37.0 (0.76×) | 319 vs halo2curves 959 | −640 (0.33×) | 164 vs halo2curves 265 | −101 (0.62×) |
+| mul_uint | P-256 base | 356 vs halo2curves 460 | −104 (0.77×) | 138 vs halo2curves 145 | −7.0 (0.95×) | 424 vs halo2curves 947 | −523 (0.45×) | 233 vs halo2curves 252 | −19.0 (0.92×) |
+| mul_uint | P-256 scalar | 425 vs k256/p256 551 | −126 (0.77×) | 178 vs halo2curves 186 | −8.0 (0.96×) | 474 vs k256/p256 863 | −389 (0.55×) | 301 vs halo2curves 350 | −49.0 (0.86×) |
+| mul_uint | Tom-256 base | 411 vs halo2curves 695 | −284 (0.59×) | 172 vs halo2curves 180 | −8.0 (0.96×) | 497 vs halo2curves 1,179 | −682 (0.42×) | 324 vs halo2curves 335 | −11.0 (0.97×) |
+| mul_uint | BLS12-381 base | 956 vs halo2curves 1,928 | −972 (0.50×) | 357 vs halo2curves 379 | −22.0 (0.94×) | 1,134 vs crypto-bigint 2,549 | −1,415 (0.44×) | 832 vs halo2curves 1,040 | −208 (0.80×) |
+| mul_uint | P-521 base | 1,566 vs crypto-bigint 3,057 | −1,491 (0.51×) | 643 vs crypto-bigint 1,010 | −367 (0.64×) | 2,382 vs crypto-bigint 4,023 | −1,641 (0.59×) | 989 vs crypto-bigint 1,874 | −885 (0.53×) |
+| add_u64 | Mersenne-31 | 8.7 vs crypto-bigint 35.4 | −26.7 (0.25×) | 8.7 vs crypto-bigint 30.1 | −21.4 (0.29×) | 9.3 vs crypto-bigint 43.6 | −34.3 (0.21×) | 9.3 vs crypto-bigint 30.6 | −21.3 (0.30×) |
+| add_u64 | BabyBear | 12.2 vs plonky3 30.7 | −18.5 (0.40×) | 8.2 vs plonky3 9.2 | −1.0 (0.89×) | 12.7 vs plonky3 41.7 | −29.0 (0.30×) | 11.0 vs plonky3 13.1 | −2.1 (0.84×) |
+| add_u64 | Goldilocks | 9.1 vs winter-math 13.1 | −4.0 (0.69×) | 7.3 vs winter-math 7.6 | −0.3 (0.96×) | 10.8 vs winter-math 19.1 | −8.3 (0.57×) | 10.0 vs winter-math 9.1 | +0.9 (1.10×) |
+| add_u64 | BN254 scalar | 117 vs ark-ff 341 | −224 (0.34×) | 44.3 vs halo2curves 213 | −169 (0.21×) | 142 vs ark-ff 403 | −261 (0.35×) | 65.5 vs halo2curves 298 | −233 (0.22×) |
+| add_u64 | secp256k1 base | 7.0 vs ark-ff 157 | −150 (0.04×) | 6.0 vs ark-ff 118 | −112 (0.05×) | 7.0 vs ark-ff 222 | −215 (0.03×) | 10.0 vs ark-ff 183 | −173 (0.05×) |
+| add_u64 | P-256 base | 68.6 vs ark-ff 267 | −198 (0.26×) | 34.9 vs k256/p256 92.6 | −57.7 (0.38×) | 77.7 vs ark-ff 400 | −322 (0.19×) | 55.7 vs k256/p256 158 | −102 (0.35×) |
+| add_u64 | P-256 scalar | 69.3 vs k256/p256 56.0 | +13.3 (1.24×) | 38.4 vs k256/p256 56.2 | −17.8 (0.68×) | 72.9 vs k256/p256 61.9 | +11.0 (1.18×) | 65.1 vs k256/p256 62.9 | +2.2 (1.03×) |
+| add_u64 | Tom-256 base | 88.0 vs crypto-bigint 511 | −423 (0.17×) | 39.8 vs halo2curves 217 | −177 (0.18×) | 98.4 vs halo2curves 708 | −610 (0.14×) | 65.8 vs halo2curves 290 | −224 (0.23×) |
+| add_u64 | BLS12-381 base | 160 vs ark-ff 830 | −670 (0.19×) | 62.4 vs halo2curves 323 | −261 (0.19×) | 270 vs ark-ff 1,075 | −805 (0.25×) | 89.0 vs crypto-bigint 646 | −557 (0.14×) |
+| add_u64 | P-521 base | 21.2 vs crypto-bigint 1,686 | −1,665 (0.01×) | 12.5 vs crypto-bigint 653 | −641 (0.02×) | 19.4 vs crypto-bigint 2,236 | −2,217 (0.01×) | 27.7 vs crypto-bigint 1,135 | −1,107 (0.02×) |
+| add_uint | Mersenne-31 | 8.6 vs crypto-bigint 35.4 | −26.8 (0.24×) | 8.6 vs crypto-bigint 30.1 | −21.5 (0.29×) | 9.3 vs crypto-bigint 41.8 | −32.5 (0.22×) | 9.3 vs crypto-bigint 30.5 | −21.2 (0.30×) |
+| add_uint | BabyBear | 12.2 vs plonky3 21.5 | −9.3 (0.57×) | 8.2 vs plonky3 9.2 | −1.0 (0.89×) | 12.7 vs plonky3 31.3 | −18.6 (0.41×) | 11.0 vs plonky3 13.0 | −2.0 (0.85×) |
+| add_uint | Goldilocks | 9.1 vs winter-math 13.1 | −4.0 (0.69×) | 7.3 vs winter-math 7.4 | −0.1 (0.99×) | 10.8 vs winter-math 19.1 | −8.3 (0.57×) | 10.1 vs winter-math 9.1 | +1.0 (1.11×) |
+| add_uint | BN254 scalar | 230 vs halo2curves 413 | −183 (0.56×) | 104 vs halo2curves 111 | −7.0 (0.94×) | 382 vs halo2curves 696 | −314 (0.55×) | 174 vs halo2curves 206 | −32.0 (0.84×) |
+| add_uint | secp256k1 base | 17.0 vs halo2curves 225 | −208 (0.08×) | 12.5 vs halo2curves 86.4 | −73.9 (0.14×) | 16.7 vs halo2curves 421 | −404 (0.04×) | 23.4 vs halo2curves 140 | −117 (0.17×) |
+| add_uint | P-256 base | 181 vs halo2curves 244 | −63.0 (0.74×) | 78.1 vs halo2curves 90.9 | −12.8 (0.86×) | 328 vs halo2curves 512 | −184 (0.64×) | 149 vs halo2curves 153 | −4.0 (0.97×) |
+| add_uint | P-256 scalar | 258 vs k256/p256 85.1 | +173 (3.03×) | 106 vs k256/p256 82.0 | +24.0 (1.29×) | 342 vs k256/p256 107 | +235 (3.20×) | 201 vs k256/p256 107 | +94.0 (1.88×) |
+| add_uint | Tom-256 base | 245 vs halo2curves 373 | −128 (0.66×) | 108 vs halo2curves 111 | −3.0 (0.97×) | 332 vs halo2curves 634 | −302 (0.52×) | 196 vs halo2curves 196 | +0.0 (1.00×) |
+| add_uint | BLS12-381 base | 763 vs halo2curves 976 | −213 (0.78×) | 196 vs halo2curves 225 | −29.0 (0.87×) | 955 vs crypto-bigint 1,413 | −458 (0.68×) | 375 vs halo2curves 425 | −50.0 (0.88×) |
+| add_uint | P-521 base | 62.6 vs crypto-bigint 1,698 | −1,635 (0.04×) | 42.1 vs crypto-bigint 664 | −622 (0.06×) | 85.0 vs crypto-bigint 2,220 | −2,135 (0.04×) | 67.2 vs crypto-bigint 1,153 | −1,086 (0.06×) |
+| sub_u64 | Mersenne-31 | 5.3 vs crypto-bigint 22.1 | −16.8 (0.24×) | 5.3 vs crypto-bigint 18.2 | −12.9 (0.29×) | 6.5 vs crypto-bigint 30.4 | −23.9 (0.21×) | 6.7 vs crypto-bigint 20.2 | −13.5 (0.33×) |
+| sub_u64 | BabyBear | 11.9 vs crypto-bigint 28.7 | −16.8 (0.41×) | 8.2 vs plonky3 9.0 | −0.8 (0.91×) | 12.7 vs plonky3 41.8 | −29.1 (0.30×) | 11.1 vs plonky3 13.4 | −2.3 (0.83×) |
+| sub_u64 | Goldilocks | 8.9 vs winter-math 11.1 | −2.2 (0.80×) | 6.6 vs winter-math 6.5 | +0.1 (1.02×) | 10.7 vs winter-math 18.1 | −7.4 (0.59×) | 9.4 vs winter-math 8.8 | +0.6 (1.07×) |
+| sub_u64 | BN254 scalar | 113 vs ark-ff 345 | −232 (0.33×) | 45.8 vs crypto-bigint 153 | −107 (0.30×) | 137 vs ark-ff 402 | −265 (0.34×) | 67.1 vs crypto-bigint 286 | −219 (0.23×) |
+| sub_u64 | secp256k1 base | 7.0 vs ark-ff 157 | −150 (0.04×) | 6.1 vs ark-ff 120 | −114 (0.05×) | 7.0 vs ark-ff 221 | −214 (0.03×) | 9.0 vs ark-ff 183 | −174 (0.05×) |
+| sub_u64 | P-256 base | 71.3 vs k256/p256 265 | −194 (0.27×) | 34.7 vs k256/p256 88.0 | −53.3 (0.39×) | 79.8 vs ark-ff 395 | −315 (0.20×) | 55.6 vs k256/p256 149 | −93.4 (0.37×) |
+| sub_u64 | P-256 scalar | 68.7 vs k256/p256 21.2 | +47.5 (3.24×) | 37.9 vs k256/p256 21.1 | +16.8 (1.80×) | 73.5 vs k256/p256 24.7 | +48.8 (2.98×) | 64.8 vs k256/p256 24.4 | +40.4 (2.66×) |
+| sub_u64 | Tom-256 base | 91.6 vs crypto-bigint 488 | −396 (0.19×) | 39.3 vs crypto-bigint 152 | −113 (0.26×) | 105 vs halo2curves 699 | −594 (0.15×) | 66.6 vs crypto-bigint 284 | −217 (0.23×) |
+| sub_u64 | BLS12-381 base | 155 vs ark-ff 831 | −676 (0.19×) | 62.2 vs halo2curves 315 | −253 (0.20×) | 266 vs ark-ff 1,055 | −789 (0.25×) | 92.1 vs crypto-bigint 624 | −532 (0.15×) |
+| sub_u64 | P-521 base | 21.1 vs crypto-bigint 1,672 | −1,651 (0.01×) | 15.3 vs crypto-bigint 631 | −616 (0.02×) | 21.7 vs crypto-bigint 2,194 | −2,172 (0.01×) | 21.9 vs crypto-bigint 1,108 | −1,086 (0.02×) |
+| sub_uint | Mersenne-31 | 5.3 vs crypto-bigint 22.1 | −16.8 (0.24×) | 5.4 vs crypto-bigint 18.2 | −12.8 (0.30×) | 6.5 vs crypto-bigint 30.6 | −24.1 (0.21×) | 6.6 vs crypto-bigint 20.3 | −13.7 (0.33×) |
+| sub_uint | BabyBear | 12.0 vs plonky3 22.0 | −10.0 (0.55×) | 8.2 vs plonky3 9.2 | −1.0 (0.89×) | 13.1 vs plonky3 31.0 | −17.9 (0.42×) | 11.2 vs plonky3 13.1 | −1.9 (0.85×) |
+| sub_uint | Goldilocks | 8.9 vs winter-math 11.1 | −2.2 (0.80×) | 6.6 vs winter-math 7.0 | −0.4 (0.94×) | 10.7 vs winter-math 18.1 | −7.4 (0.59×) | 9.4 vs winter-math 8.7 | +0.7 (1.08×) |
+| sub_uint | BN254 scalar | 228 vs halo2curves 397 | −169 (0.57×) | 103 vs halo2curves 105 | −2.0 (0.98×) | 367 vs halo2curves 672 | −305 (0.55×) | 177 vs halo2curves 194 | −17.0 (0.91×) |
+| sub_uint | secp256k1 base | 18.9 vs halo2curves 210 | −191 (0.09×) | 12.4 vs halo2curves 80.7 | −68.3 (0.15×) | 16.5 vs halo2curves 403 | −387 (0.04×) | 21.9 vs halo2curves 130 | −108 (0.17×) |
+| sub_uint | P-256 base | 185 vs halo2curves 233 | −48.0 (0.79×) | 78.9 vs halo2curves 85.7 | −6.8 (0.92×) | 372 vs halo2curves 504 | −132 (0.74×) | 145 vs halo2curves 143 | +2.0 (1.01×) |
+| sub_uint | P-256 scalar | 257 vs k256/p256 72.0 | +185 (3.57×) | 109 vs k256/p256 72.0 | +37.0 (1.51×) | 340 vs k256/p256 95.2 | +245 (3.57×) | 202 vs k256/p256 95.0 | +107 (2.13×) |
+| sub_uint | Tom-256 base | 246 vs halo2curves 359 | −113 (0.69×) | 105 vs halo2curves 103 | +2.0 (1.02×) | 332 vs halo2curves 613 | −281 (0.54×) | 196 vs halo2curves 187 | +9.0 (1.05×) |
+| sub_uint | BLS12-381 base | 755 vs halo2curves 953 | −198 (0.79×) | 194 vs halo2curves 216 | −22.0 (0.90×) | 934 vs crypto-bigint 1,390 | −456 (0.67×) | 379 vs halo2curves 409 | −30.0 (0.93×) |
+| sub_uint | P-521 base | 67.1 vs crypto-bigint 1,696 | −1,629 (0.04×) | 38.7 vs crypto-bigint 644 | −605 (0.06×) | 76.9 vs crypto-bigint 2,202 | −2,125 (0.03×) | 67.7 vs crypto-bigint 1,149 | −1,081 (0.06×) |
+| div_u64 | BN254 scalar | 1,213 vs halo2curves 13,496 | −12,283 (0.09×) | 819 vs halo2curves 6,992 | −6,173 (0.12×) | 1,421 vs halo2curves 19,620 | −18,199 (0.07×) | 1,046 vs halo2curves 11,717 | −10,671 (0.09×) |
+| div_u64 | secp256k1 base | 1,019 vs halo2curves 13,078 | −12,059 (0.08×) | 777 vs halo2curves 6,970 | −6,193 (0.11×) | 1,216 vs halo2curves 18,989 | −17,773 (0.06×) | 871 vs halo2curves 11,469 | −10,598 (0.08×) |
+| div_u64 | P-256 base | 1,094 vs halo2curves 13,091 | −11,997 (0.08×) | 798 vs halo2curves 6,920 | −6,122 (0.12×) | 1,342 vs halo2curves 18,986 | −17,644 (0.07×) | 982 vs halo2curves 11,481 | −10,499 (0.09×) |
+| div_u64 | P-256 scalar | 1,179 vs halo2curves 13,391 | −12,212 (0.09×) | 861 vs halo2curves 6,973 | −6,112 (0.12×) | 1,400 vs halo2curves 19,429 | −18,029 (0.07×) | 1,132 vs halo2curves 11,674 | −10,542 (0.10×) |
+| div_u64 | Tom-256 base | 1,183 vs halo2curves 13,294 | −12,111 (0.09×) | 859 vs halo2curves 6,930 | −6,071 (0.12×) | 1,486 vs halo2curves 19,216 | −17,730 (0.08×) | 1,082 vs halo2curves 11,707 | −10,625 (0.09×) |
+| div_u64 | BLS12-381 base | 1,802 vs halo2curves 24,152 | −22,350 (0.07×) | 1,031 vs halo2curves 11,019 | −9,988 (0.09×) | 2,484 vs halo2curves 32,568 | −30,084 (0.08×) | 1,753 vs halo2curves 18,582 | −16,829 (0.09×) |
+| div_u64 | P-521 base | 2,454 vs crypto-bigint 62,363 | −59,909 (0.04×) | 1,373 vs crypto-bigint 45,439 | −44,066 (0.03×) | 3,629 vs crypto-bigint 77,369 | −73,740 (0.05×) | 1,867 vs crypto-bigint 57,961 | −56,094 (0.03×) |
+| div_uint | Mersenne-31 | 276 vs crypto-bigint 1,808 | −1,532 (0.15×) | 277 vs crypto-bigint 1,613 | −1,336 (0.17×) | 287 vs runtime-algebra 2,123 | −1,836 (0.14×) | 281 vs crypto-bigint 2,005 | −1,724 (0.14×) |
+| div_uint | BabyBear | 278 vs plonky3 672 | −394 (0.41×) | 278 vs plonky3 652 | −374 (0.43×) | 286 vs plonky3 728 | −442 (0.39×) | 283 vs plonky3 726 | −443 (0.39×) |
+| div_uint | Goldilocks | 553 vs winter-math 1,809 | −1,256 (0.31×) | 543 vs winter-math 927 | −384 (0.59×) | 593 vs winter-math 1,875 | −1,282 (0.32×) | 579 vs winter-math 1,034 | −455 (0.56×) |
+| div_uint | BN254 scalar | 9,042 vs halo2curves 15,087 | −6,045 (0.60×) | 6,541 vs halo2curves 8,206 | −1,665 (0.80×) | 12,999 vs halo2curves 22,942 | −9,943 (0.57×) | 8,439 vs halo2curves 14,422 | −5,983 (0.59×) |
+| div_uint | secp256k1 base | 8,481 vs halo2curves 14,868 | −6,387 (0.57×) | 6,033 vs halo2curves 8,217 | −2,184 (0.73×) | 12,094 vs halo2curves 22,500 | −10,406 (0.54×) | 8,085 vs halo2curves 14,385 | −6,300 (0.56×) |
+| div_uint | P-256 base | 8,763 vs halo2curves 14,915 | −6,152 (0.59×) | 6,170 vs halo2curves 8,220 | −2,050 (0.75×) | 12,245 vs halo2curves 22,615 | −10,370 (0.54×) | 7,914 vs halo2curves 14,350 | −6,436 (0.55×) |
+| div_uint | P-256 scalar | 9,221 vs halo2curves 15,134 | −5,913 (0.61×) | 6,605 vs halo2curves 8,215 | −1,610 (0.80×) | 12,426 vs halo2curves 23,280 | −10,854 (0.53×) | 8,667 vs halo2curves 14,530 | −5,863 (0.60×) |
+| div_uint | Tom-256 base | 8,984 vs halo2curves 15,040 | −6,056 (0.60×) | 6,489 vs halo2curves 8,218 | −1,729 (0.79×) | 12,329 vs halo2curves 23,030 | −10,701 (0.54×) | 8,467 vs halo2curves 14,603 | −6,136 (0.58×) |
+| div_uint | BLS12-381 base | 20,824 vs halo2curves 27,811 | −6,987 (0.75×) | 12,045 vs halo2curves 13,611 | −1,566 (0.88×) | 26,517 vs halo2curves 40,627 | −14,110 (0.65×) | 16,955 vs halo2curves 24,277 | −7,322 (0.70×) |
+| div_uint | P-521 base | 34,490 vs crypto-bigint 68,460 | −33,970 (0.50×) | 18,121 vs crypto-bigint 51,107 | −32,986 (0.35×) | 50,364 vs crypto-bigint 84,483 | −34,119 (0.60×) | 30,006 vs crypto-bigint 63,601 | −33,595 (0.47×) |
+| add, constant time | Mersenne-31 | 7.5 vs runtime-algebra 18.0 | −10.5 (0.42×) | 7.5 vs runtime-algebra 18.0 | −10.5 (0.42×) | 7.7 vs runtime-algebra 17.7 | −10.0 (0.44×) | 7.7 vs runtime-algebra 17.7 | −10.0 (0.44×) |
+| add, constant time | BabyBear | 3.0 vs runtime-algebra 18.0 | −15.0 (0.17×) | 3.0 vs runtime-algebra 18.0 | −15.0 (0.17×) | 3.0 vs runtime-algebra 17.7 | −14.7 (0.17×) | 3.0 vs runtime-algebra 17.7 | −14.7 (0.17×) |
+| add, constant time | Goldilocks | 3.0 vs winter-math 4.0 | −1.0 (0.75×) | 3.0 vs winter-math 4.0 | −1.0 (0.75×) | 3.0 vs winter-math 4.4 | −1.4 (0.68×) | 3.0 vs winter-math 4.7 | −1.7 (0.64×) |
+| add, constant time | BN254 scalar | 24.8 vs halo2curves 40.8 | −16.0 (0.61×) | 19.4 vs halo2curves 23.0 | −3.6 (0.84×) | 23.1 vs halo2curves 45.0 | −21.9 (0.51×) | 25.7 vs halo2curves 34.0 | −8.3 (0.76×) |
+| add, constant time | secp256k1 base | 28.1 vs halo2curves 40.2 | −12.1 (0.70×) | 22.6 vs halo2curves 23.0 | −0.4 (0.98×) | 27.0 vs halo2curves 38.0 | −11.0 (0.71×) | 29.8 vs halo2curves 31.0 | −1.2 (0.96×) |
+| add, constant time | P-256 base | 26.8 vs halo2curves 38.9 | −12.1 (0.69×) | 22.7 vs halo2curves 21.0 | +1.7 (1.08×) | 24.9 vs halo2curves 38.0 | −13.1 (0.66×) | 28.1 vs k256/p256 29.4 | −1.3 (0.96×) |
+| add, constant time | P-256 scalar | 26.6 vs halo2curves 42.2 | −15.6 (0.63×) | 23.7 vs halo2curves 24.8 | −1.1 (0.96×) | 26.9 vs halo2curves 42.6 | −15.7 (0.63×) | 30.1 vs halo2curves 33.0 | −2.9 (0.91×) |
+| add, constant time | Tom-256 base | 27.9 vs halo2curves 42.9 | −15.0 (0.65×) | 23.8 vs halo2curves 24.0 | −0.2 (0.99×) | 27.1 vs halo2curves 42.5 | −15.4 (0.64×) | 29.1 vs halo2curves 32.5 | −3.4 (0.90×) |
+| add, constant time | BLS12-381 base | 41.4 vs halo2curves 63.3 | −21.9 (0.65×) | 28.3 vs halo2curves 34.1 | −5.8 (0.83×) | 35.5 vs halo2curves 66.8 | −31.3 (0.53×) | 41.1 vs halo2curves 54.1 | −13.0 (0.76×) |
+| add, constant time | P-521 base | 76.7 vs crypto-bigint 181 | −104 (0.42×) | 47.2 vs crypto-bigint 179 | −132 (0.26×) | 80.0 vs crypto-bigint 244 | −164 (0.33×) | 74.1 vs crypto-bigint 245 | −171 (0.30×) |
+| sub, constant time | Mersenne-31 | 3.0 vs crypto-bigint 8.0 | −5.0 (0.38×) | 3.0 vs crypto-bigint 8.0 | −5.0 (0.38×) | 3.0 vs crypto-bigint 8.0 | −5.0 (0.38×) | 3.0 vs crypto-bigint 8.0 | −5.0 (0.38×) |
+| sub, constant time | BabyBear | 3.0 vs runtime-algebra 7.9 | −4.9 (0.38×) | 3.0 vs runtime-algebra 7.9 | −4.9 (0.38×) | 3.0 vs crypto-bigint 8.0 | −5.0 (0.38×) | 3.0 vs crypto-bigint 8.0 | −5.0 (0.38×) |
+| sub, constant time | Goldilocks | 3.0 vs winter-math 3.0 | +0.0 (1.00×) | 3.0 vs winter-math 3.0 | +0.0 (1.00×) | 3.0 vs winter-math 3.0 | +0.0 (1.00×) | 3.0 vs winter-math 3.0 | +0.0 (1.00×) |
+| sub, constant time | BN254 scalar | 26.4 vs halo2curves 26.0 | +0.4 (1.02×) | 16.9 vs halo2curves 14.9 | +2.0 (1.13×) | 27.0 vs halo2curves 25.5 | +1.5 (1.06×) | 25.0 vs halo2curves 22.0 | +3.0 (1.14×) |
+| sub, constant time | secp256k1 base | 21.4 vs halo2curves 25.3 | −3.9 (0.85×) | 15.5 vs halo2curves 14.5 | +1.0 (1.07×) | 20.5 vs halo2curves 26.4 | −5.9 (0.78×) | 21.5 vs halo2curves 21.0 | +0.5 (1.02×) |
+| sub, constant time | P-256 base | 19.1 vs halo2curves 25.1 | −6.0 (0.76×) | 15.6 vs halo2curves 14.0 | +1.6 (1.11×) | 18.6 vs halo2curves 24.0 | −5.4 (0.78×) | 20.0 vs k256/p256 20.0 | +0.0 (1.00×) |
+| sub, constant time | P-256 scalar | 21.6 vs k256/p256 24.8 | −3.2 (0.87×) | 15.7 vs halo2curves 15.7 | +0.0 (1.00×) | 18.7 vs halo2curves 25.9 | −7.2 (0.72×) | 22.0 vs halo2curves 21.6 | +0.4 (1.02×) |
+| sub, constant time | Tom-256 base | 21.2 vs halo2curves 26.0 | −4.8 (0.82×) | 17.1 vs halo2curves 14.7 | +2.4 (1.16×) | 19.8 vs halo2curves 26.5 | −6.7 (0.75×) | 23.0 vs halo2curves 22.1 | +0.9 (1.04×) |
+| sub, constant time | BLS12-381 base | 37.4 vs halo2curves 45.3 | −7.9 (0.83×) | 24.2 vs halo2curves 24.9 | −0.7 (0.97×) | 36.9 vs halo2curves 44.1 | −7.2 (0.84×) | 36.3 vs halo2curves 36.1 | +0.2 (1.01×) |
+| sub, constant time | P-521 base | 57.1 vs crypto-bigint 159 | −102 (0.36×) | 37.2 vs crypto-bigint 144 | −107 (0.26×) | 60.3 vs crypto-bigint 194 | −134 (0.31×) | 53.1 vs crypto-bigint 225 | −172 (0.24×) |
+| mul, constant time | Mersenne-31 | 12.0 vs crypto-bigint 46.7 | −34.7 (0.26×) | 12.0 vs crypto-bigint 27.0 | −15.0 (0.44×) | 12.0 vs crypto-bigint 50.8 | −38.8 (0.24×) | 12.0 vs crypto-bigint 30.9 | −18.9 (0.39×) |
+| mul, constant time | BabyBear | 13.0 vs crypto-bigint 46.4 | −33.4 (0.28×) | 11.0 vs crypto-bigint 27.0 | −16.0 (0.41×) | 14.5 vs crypto-bigint 50.1 | −35.6 (0.29×) | 11.0 vs crypto-bigint 29.9 | −18.9 (0.37×) |
+| mul, constant time | Goldilocks | 18.1 vs winter-math 18.0 | +0.1 (1.01×) | 14.4 vs winter-math 14.5 | −0.1 (0.99×) | 21.0 vs winter-math 19.0 | +2.0 (1.11×) | 14.0 vs winter-math 14.0 | +0.0 (1.00×) |
+| mul, constant time | BN254 scalar | 242 vs halo2curves 378 | −136 (0.64×) | 94.8 vs halo2curves 95.1 | −0.3 (1.00×) | 415 vs halo2curves 677 | −262 (0.61×) | 154 vs halo2curves 178 | −24.0 (0.87×) |
+| mul, constant time | secp256k1 base | 173 vs halo2curves 306 | −133 (0.57×) | 77.6 vs halo2curves 90.2 | −12.6 (0.86×) | 276 vs halo2curves 583 | −307 (0.47×) | 106 vs halo2curves 159 | −53.0 (0.67×) |
+| mul, constant time | P-256 base | 189 vs k256/p256 243 | −54.0 (0.78×) | 72.2 vs halo2curves 74.9 | −2.7 (0.96×) | 316 vs k256/p256 467 | −151 (0.68×) | 120 vs halo2curves 130 | −10.0 (0.92×) |
+| mul, constant time | P-256 scalar | 233 vs halo2curves 349 | −116 (0.67×) | 94.4 vs halo2curves 95.9 | −1.5 (0.98×) | 335 vs halo2curves 680 | −345 (0.49×) | 158 vs halo2curves 176 | −18.0 (0.90×) |
+| mul, constant time | Tom-256 base | 237 vs halo2curves 344 | −107 (0.69×) | 88.2 vs halo2curves 93.9 | −5.7 (0.94×) | 336 vs halo2curves 595 | −259 (0.56×) | 151 vs halo2curves 172 | −21.0 (0.88×) |
+| mul, constant time | BLS12-381 base | 720 vs halo2curves 937 | −217 (0.77×) | 189 vs halo2curves 193 | −4.0 (0.98×) | 930 vs crypto-bigint 1,333 | −403 (0.70×) | 337 vs halo2curves 376 | −39.0 (0.90×) |
+| mul, constant time | P-521 base | 687 vs crypto-bigint 2,137 | −1,450 (0.32×) | 247 vs crypto-bigint 619 | −372 (0.40×) | 1,300 vs crypto-bigint 2,804 | −1,504 (0.46×) | 445 vs crypto-bigint 1,099 | −654 (0.40×) |
+| square, constant time | Mersenne-31 | 12.0 vs crypto-bigint 45.4 | −33.4 (0.26×) | 12.0 vs crypto-bigint 27.1 | −15.1 (0.44×) | 12.0 vs crypto-bigint 52.0 | −40.0 (0.23×) | 12.0 vs crypto-bigint 30.0 | −18.0 (0.40×) |
+| square, constant time | BabyBear | 13.0 vs crypto-bigint 45.3 | −32.3 (0.29×) | 11.0 vs crypto-bigint 27.0 | −16.0 (0.41×) | 14.0 vs crypto-bigint 52.7 | −38.7 (0.27×) | 11.0 vs crypto-bigint 30.9 | −19.9 (0.36×) |
+| square, constant time | Goldilocks | 17.3 vs winter-math 19.7 | −2.4 (0.88×) | 12.0 vs winter-math 12.8 | −0.8 (0.94×) | 21.1 vs winter-math 19.0 | +2.1 (1.11×) | 14.4 vs winter-math 14.7 | −0.3 (0.98×) |
+| square, constant time | BN254 scalar | 219 vs halo2curves 309 | −90.0 (0.71×) | 83.7 vs halo2curves 96.4 | −12.7 (0.87×) | 329 vs halo2curves 551 | −222 (0.60×) | 138 vs halo2curves 144 | −6.0 (0.96×) |
+| square, constant time | secp256k1 base | 153 vs halo2curves 222 | −69.0 (0.69×) | 69.9 vs halo2curves 83.6 | −13.7 (0.84×) | 168 vs halo2curves 441 | −273 (0.38×) | 97.4 vs halo2curves 126 | −28.6 (0.77×) |
+| square, constant time | P-256 base | 155 vs halo2curves 178 | −23.0 (0.87×) | 62.6 vs halo2curves 62.9 | −0.3 (1.00×) | 227 vs halo2curves 338 | −111 (0.67×) | 113 vs halo2curves 107 | +6.0 (1.06×) |
+| square, constant time | P-256 scalar | 206 vs halo2curves 266 | −60.0 (0.77×) | 89.8 vs halo2curves 93.8 | −4.0 (0.96×) | 242 vs halo2curves 567 | −325 (0.43×) | 149 vs halo2curves 137 | +12.0 (1.09×) |
+| square, constant time | Tom-256 base | 200 vs halo2curves 268 | −68.0 (0.75×) | 83.1 vs halo2curves 88.5 | −5.4 (0.94×) | 290 vs halo2curves 451 | −161 (0.64×) | 142 vs halo2curves 135 | +7.0 (1.05×) |
+| square, constant time | BLS12-381 base | 608 vs halo2curves 919 | −311 (0.66×) | 169 vs halo2curves 163 | +6.0 (1.04×) | 867 vs halo2curves 1,266 | −399 (0.68×) | 297 vs halo2curves 292 | +5.0 (1.02×) |
+| square, constant time | P-521 base | 571 vs crypto-bigint 2,140 | −1,569 (0.27×) | 208 vs crypto-bigint 634 | −426 (0.33×) | 907 vs crypto-bigint 2,840 | −1,933 (0.32×) | 392 vs crypto-bigint 1,139 | −747 (0.34×) |
+| mul_u64, constant time | Mersenne-31 | 14.0 vs crypto-bigint 60.6 | −46.6 (0.23×) | 14.0 vs crypto-bigint 32.2 | −18.2 (0.43×) | 14.0 vs crypto-bigint 71.3 | −57.3 (0.20×) | 14.0 vs crypto-bigint 38.8 | −24.8 (0.36×) |
+| mul_u64, constant time | BabyBear | 17.0 vs crypto-bigint 65.2 | −48.2 (0.26×) | 11.0 vs crypto-bigint 32.7 | −21.7 (0.34×) | 19.3 vs crypto-bigint 86.1 | −66.8 (0.22×) | 13.0 vs crypto-bigint 41.0 | −28.0 (0.32×) |
+| mul_u64, constant time | Goldilocks | 20.4 vs winter-math 23.4 | −3.0 (0.87×) | 12.1 vs winter-math 13.2 | −1.1 (0.92×) | 25.0 vs winter-math 34.6 | −9.6 (0.72×) | 17.2 vs winter-math 14.5 | +2.7 (1.19×) |
+| mul_u64, constant time | BN254 scalar | 108 vs crypto-bigint 862 | −754 (0.13×) | 50.9 vs crypto-bigint 262 | −211 (0.19×) | 132 vs halo2curves 1,439 | −1,307 (0.09×) | 58.0 vs crypto-bigint 412 | −354 (0.14×) |
+| mul_u64, constant time | secp256k1 base | 68.9 vs halo2curves 690 | −621 (0.10×) | 39.0 vs crypto-bigint 259 | −220 (0.15×) | 85.1 vs halo2curves 1,053 | −968 (0.08×) | 44.3 vs crypto-bigint 410 | −366 (0.11×) |
+| mul_u64, constant time | P-256 base | 87.6 vs k256/p256 487 | −399 (0.18×) | 53.2 vs k256/p256 153 | −99.8 (0.35×) | 105 vs k256/p256 919 | −814 (0.11×) | 59.5 vs k256/p256 258 | −199 (0.23×) |
+| mul_u64, constant time | P-256 scalar | 105 vs k256/p256 516 | −411 (0.20×) | 55.0 vs k256/p256 255 | −200 (0.22×) | 133 vs k256/p256 820 | −687 (0.16×) | 65.5 vs k256/p256 340 | −275 (0.19×) |
+| mul_u64, constant time | Tom-256 base | 99.7 vs crypto-bigint 873 | −773 (0.11×) | 52.0 vs crypto-bigint 261 | −209 (0.20×) | 122 vs halo2curves 1,273 | −1,151 (0.10×) | 61.4 vs crypto-bigint 410 | −349 (0.15×) |
+| mul_u64, constant time | BLS12-381 base | 154 vs crypto-bigint 1,953 | −1,799 (0.08×) | 70.8 vs halo2curves 485 | −414 (0.15×) | 195 vs crypto-bigint 2,511 | −2,316 (0.08×) | 88.5 vs crypto-bigint 1,050 | −962 (0.08×) |
+| mul_u64, constant time | P-521 base | 139 vs crypto-bigint 3,015 | −2,876 (0.05×) | 78.0 vs crypto-bigint 990 | −912 (0.08×) | 170 vs crypto-bigint 4,018 | −3,848 (0.04×) | 94.9 vs crypto-bigint 1,843 | −1,748 (0.05×) |
+| mul_uint, constant time | Mersenne-31 | 14.0 vs crypto-bigint 60.4 | −46.4 (0.23×) | 14.0 vs crypto-bigint 31.7 | −17.7 (0.44×) | 14.0 vs crypto-bigint 73.4 | −59.4 (0.19×) | 14.0 vs crypto-bigint 38.8 | −24.8 (0.36×) |
+| mul_uint, constant time | BabyBear | 17.0 vs crypto-bigint 65.6 | −48.6 (0.26×) | 11.0 vs crypto-bigint 32.3 | −21.3 (0.34×) | 19.4 vs crypto-bigint 89.1 | −69.7 (0.22×) | 13.1 vs crypto-bigint 40.8 | −27.7 (0.32×) |
+| mul_uint, constant time | Goldilocks | 20.4 vs winter-math 23.6 | −3.2 (0.86×) | 12.1 vs winter-math 13.8 | −1.7 (0.88×) | 25.0 vs winter-math 34.5 | −9.5 (0.72×) | 17.2 vs winter-math 14.5 | +2.7 (1.19×) |
+| mul_uint, constant time | BN254 scalar | 481 vs halo2curves 773 | −292 (0.62×) | 167 vs halo2curves 182 | −15.0 (0.92×) | 593 vs halo2curves 1,317 | −724 (0.45×) | 312 vs halo2curves 354 | −42.0 (0.88×) |
+| mul_uint, constant time | secp256k1 base | 317 vs halo2curves 516 | −199 (0.61×) | 193 vs halo2curves 154 | +39.0 (1.25×) | 380 vs halo2curves 959 | −579 (0.40×) | 253 vs halo2curves 265 | −12.0 (0.95×) |
+| mul_uint, constant time | P-256 base | 406 vs halo2curves 460 | −54.0 (0.88×) | 137 vs halo2curves 145 | −8.0 (0.94×) | 489 vs halo2curves 947 | −458 (0.52×) | 235 vs halo2curves 252 | −17.0 (0.93×) |
+| mul_uint, constant time | P-256 scalar | 478 vs k256/p256 551 | −73.0 (0.87×) | 178 vs halo2curves 186 | −8.0 (0.96×) | 540 vs k256/p256 863 | −323 (0.63×) | 314 vs halo2curves 350 | −36.0 (0.90×) |
+| mul_uint, constant time | Tom-256 base | 467 vs halo2curves 695 | −228 (0.67×) | 172 vs halo2curves 180 | −8.0 (0.96×) | 554 vs halo2curves 1,179 | −625 (0.47×) | 300 vs halo2curves 335 | −35.0 (0.90×) |
+| mul_uint, constant time | BLS12-381 base | 1,082 vs halo2curves 1,928 | −846 (0.56×) | 370 vs halo2curves 379 | −9.0 (0.98×) | 1,699 vs crypto-bigint 2,549 | −850 (0.67×) | 912 vs halo2curves 1,040 | −128 (0.88×) |
+| mul_uint, constant time | P-521 base | 2,017 vs crypto-bigint 3,057 | −1,040 (0.66×) | 997 vs crypto-bigint 1,010 | −13.0 (0.99×) | 2,901 vs crypto-bigint 4,023 | −1,122 (0.72×) | 1,465 vs crypto-bigint 1,874 | −409 (0.78×) |
+| add_u64, constant time | Mersenne-31 | 8.6 vs crypto-bigint 35.4 | −26.8 (0.24×) | 8.7 vs crypto-bigint 30.1 | −21.4 (0.29×) | 9.3 vs crypto-bigint 43.6 | −34.3 (0.21×) | 9.3 vs crypto-bigint 30.6 | −21.3 (0.30×) |
+| add_u64, constant time | BabyBear | 12.2 vs crypto-bigint 47.6 | −35.4 (0.26×) | 8.2 vs crypto-bigint 30.1 | −21.9 (0.27×) | 12.7 vs crypto-bigint 53.0 | −40.3 (0.24×) | 11.0 vs crypto-bigint 31.8 | −20.8 (0.35×) |
+| add_u64, constant time | Goldilocks | 9.1 vs winter-math 13.1 | −4.0 (0.69×) | 7.3 vs winter-math 7.6 | −0.3 (0.96×) | 10.7 vs winter-math 19.1 | −8.4 (0.56×) | 10.0 vs winter-math 9.1 | +0.9 (1.10×) |
+| add_u64, constant time | BN254 scalar | 132 vs crypto-bigint 490 | −358 (0.27×) | 55.9 vs halo2curves 213 | −157 (0.26×) | 151 vs halo2curves 746 | −595 (0.20×) | 81.8 vs halo2curves 298 | −216 (0.27×) |
+| add_u64, constant time | secp256k1 base | 25.4 vs halo2curves 401 | −376 (0.06×) | 23.0 vs halo2curves 218 | −195 (0.11×) | 25.1 vs halo2curves 494 | −469 (0.05×) | 29.0 vs halo2curves 247 | −218 (0.12×) |
+| add_u64, constant time | P-256 base | 89.1 vs k256/p256 278 | −189 (0.32×) | 55.6 vs k256/p256 92.6 | −37.0 (0.60×) | 94.9 vs k256/p256 507 | −412 (0.19×) | 74.6 vs k256/p256 158 | −83.4 (0.47×) |
+| add_u64, constant time | P-256 scalar | 85.7 vs k256/p256 56.0 | +29.7 (1.53×) | 58.6 vs k256/p256 56.2 | +2.4 (1.04×) | 98.4 vs k256/p256 61.9 | +36.5 (1.59×) | 89.6 vs k256/p256 62.9 | +26.7 (1.42×) |
+| add_u64, constant time | Tom-256 base | 119 vs crypto-bigint 511 | −392 (0.23×) | 59.6 vs halo2curves 217 | −157 (0.27×) | 133 vs halo2curves 708 | −575 (0.19×) | 85.1 vs halo2curves 290 | −205 (0.29×) |
+| add_u64, constant time | BLS12-381 base | 182 vs crypto-bigint 1,084 | −902 (0.17×) | 96.1 vs halo2curves 323 | −227 (0.30×) | 233 vs crypto-bigint 1,376 | −1,143 (0.17×) | 124 vs crypto-bigint 646 | −522 (0.19×) |
+| add_u64, constant time | P-521 base | 65.6 vs crypto-bigint 1,686 | −1,620 (0.04×) | 47.0 vs crypto-bigint 653 | −606 (0.07×) | 69.0 vs crypto-bigint 2,236 | −2,167 (0.03×) | 64.9 vs crypto-bigint 1,135 | −1,070 (0.06×) |
+| add_uint, constant time | Mersenne-31 | 8.7 vs crypto-bigint 35.4 | −26.7 (0.25×) | 8.6 vs crypto-bigint 30.1 | −21.5 (0.29×) | 9.3 vs crypto-bigint 41.8 | −32.5 (0.22×) | 9.3 vs crypto-bigint 30.5 | −21.2 (0.30×) |
+| add_uint, constant time | BabyBear | 12.4 vs crypto-bigint 47.5 | −35.1 (0.26×) | 8.2 vs crypto-bigint 30.1 | −21.9 (0.27×) | 12.7 vs crypto-bigint 51.1 | −38.4 (0.25×) | 11.0 vs crypto-bigint 31.9 | −20.9 (0.34×) |
+| add_uint, constant time | Goldilocks | 9.0 vs winter-math 13.1 | −4.1 (0.69×) | 7.3 vs winter-math 7.4 | −0.1 (0.99×) | 10.7 vs winter-math 19.1 | −8.4 (0.56×) | 10.0 vs winter-math 9.1 | +0.9 (1.10×) |
+| add_uint, constant time | BN254 scalar | 230 vs halo2curves 413 | −183 (0.56×) | 98.1 vs halo2curves 111 | −12.9 (0.88×) | 297 vs halo2curves 696 | −399 (0.43×) | 181 vs halo2curves 206 | −25.0 (0.88×) |
+| add_uint, constant time | secp256k1 base | 38.3 vs halo2curves 225 | −187 (0.17×) | 29.4 vs halo2curves 86.4 | −57.0 (0.34×) | 36.3 vs halo2curves 421 | −385 (0.09×) | 44.2 vs halo2curves 140 | −95.8 (0.32×) |
+| add_uint, constant time | P-256 base | 178 vs halo2curves 244 | −66.0 (0.73×) | 84.7 vs halo2curves 90.9 | −6.2 (0.93×) | 255 vs halo2curves 512 | −257 (0.50×) | 144 vs halo2curves 153 | −9.0 (0.94×) |
+| add_uint, constant time | P-256 scalar | 260 vs k256/p256 85.1 | +175 (3.06×) | 107 vs k256/p256 82.0 | +25.0 (1.30×) | 311 vs k256/p256 107 | +204 (2.91×) | 197 vs k256/p256 107 | +90.0 (1.84×) |
+| add_uint, constant time | Tom-256 base | 255 vs halo2curves 373 | −118 (0.68×) | 104 vs halo2curves 111 | −7.0 (0.94×) | 332 vs halo2curves 634 | −302 (0.52×) | 182 vs halo2curves 196 | −14.0 (0.93×) |
+| add_uint, constant time | BLS12-381 base | 764 vs halo2curves 976 | −212 (0.78×) | 206 vs halo2curves 225 | −19.0 (0.92×) | 941 vs crypto-bigint 1,413 | −472 (0.67×) | 369 vs halo2curves 425 | −56.0 (0.87×) |
+| add_uint, constant time | P-521 base | 138 vs crypto-bigint 1,698 | −1,560 (0.08×) | 93.5 vs crypto-bigint 664 | −571 (0.14×) | 147 vs crypto-bigint 2,220 | −2,073 (0.07×) | 134 vs crypto-bigint 1,153 | −1,019 (0.12×) |
+| sub_u64, constant time | Mersenne-31 | 5.3 vs crypto-bigint 22.1 | −16.8 (0.24×) | 5.4 vs crypto-bigint 18.2 | −12.8 (0.30×) | 6.6 vs crypto-bigint 30.4 | −23.8 (0.22×) | 6.6 vs crypto-bigint 20.2 | −13.6 (0.33×) |
+| sub_u64, constant time | BabyBear | 11.9 vs crypto-bigint 28.7 | −16.8 (0.41×) | 8.2 vs crypto-bigint 19.3 | −11.1 (0.42×) | 13.1 vs crypto-bigint 42.3 | −29.2 (0.31×) | 11.2 vs crypto-bigint 21.8 | −10.6 (0.51×) |
+| sub_u64, constant time | Goldilocks | 8.8 vs winter-math 11.1 | −2.3 (0.79×) | 6.6 vs winter-math 6.5 | +0.1 (1.02×) | 10.7 vs winter-math 18.1 | −7.4 (0.59×) | 9.4 vs winter-math 8.8 | +0.6 (1.07×) |
+| sub_u64, constant time | BN254 scalar | 125 vs crypto-bigint 484 | −359 (0.26×) | 56.9 vs crypto-bigint 153 | −96.1 (0.37×) | 153 vs halo2curves 743 | −590 (0.21×) | 80.0 vs crypto-bigint 286 | −206 (0.28×) |
+| sub_u64, constant time | secp256k1 base | 18.0 vs halo2curves 380 | −362 (0.05×) | 15.1 vs crypto-bigint 151 | −136 (0.10×) | 17.0 vs halo2curves 481 | −464 (0.04×) | 17.3 vs halo2curves 239 | −222 (0.07×) |
+| sub_u64, constant time | P-256 base | 85.7 vs k256/p256 265 | −179 (0.32×) | 50.6 vs k256/p256 88.0 | −37.4 (0.58×) | 88.2 vs k256/p256 491 | −403 (0.18×) | 67.2 vs k256/p256 149 | −81.8 (0.45×) |
+| sub_u64, constant time | P-256 scalar | 81.3 vs k256/p256 21.2 | +60.1 (3.83×) | 50.8 vs k256/p256 21.1 | +29.7 (2.41×) | 93.2 vs k256/p256 24.7 | +68.5 (3.77×) | 79.8 vs k256/p256 24.4 | +55.4 (3.27×) |
+| sub_u64, constant time | Tom-256 base | 113 vs crypto-bigint 488 | −375 (0.23×) | 56.2 vs crypto-bigint 152 | −95.8 (0.37×) | 125 vs halo2curves 699 | −574 (0.18×) | 80.5 vs crypto-bigint 284 | −204 (0.28×) |
+| sub_u64, constant time | BLS12-381 base | 181 vs crypto-bigint 1,092 | −911 (0.17×) | 90.0 vs halo2curves 315 | −225 (0.29×) | 223 vs crypto-bigint 1,387 | −1,164 (0.16×) | 120 vs crypto-bigint 624 | −504 (0.19×) |
+| sub_u64, constant time | P-521 base | 45.5 vs crypto-bigint 1,672 | −1,627 (0.03×) | 36.1 vs crypto-bigint 631 | −595 (0.06×) | 49.8 vs crypto-bigint 2,194 | −2,144 (0.02×) | 46.3 vs crypto-bigint 1,108 | −1,062 (0.04×) |
+| sub_uint, constant time | Mersenne-31 | 5.3 vs crypto-bigint 22.1 | −16.8 (0.24×) | 5.3 vs crypto-bigint 18.2 | −12.9 (0.29×) | 6.6 vs crypto-bigint 30.6 | −24.0 (0.22×) | 6.6 vs crypto-bigint 20.3 | −13.7 (0.33×) |
+| sub_uint, constant time | BabyBear | 11.9 vs crypto-bigint 28.7 | −16.8 (0.41×) | 8.2 vs crypto-bigint 19.4 | −11.2 (0.42×) | 13.0 vs crypto-bigint 42.4 | −29.4 (0.31×) | 11.2 vs crypto-bigint 21.3 | −10.1 (0.53×) |
+| sub_uint, constant time | Goldilocks | 8.9 vs winter-math 11.1 | −2.2 (0.80×) | 6.5 vs winter-math 7.0 | −0.5 (0.93×) | 10.7 vs winter-math 18.1 | −7.4 (0.59×) | 9.4 vs winter-math 8.7 | +0.7 (1.08×) |
+| sub_uint, constant time | BN254 scalar | 242 vs halo2curves 397 | −155 (0.61×) | 99.0 vs halo2curves 105 | −6.0 (0.94×) | 283 vs halo2curves 672 | −389 (0.42×) | 180 vs halo2curves 194 | −14.0 (0.93×) |
+| sub_uint, constant time | secp256k1 base | 32.2 vs halo2curves 210 | −178 (0.15×) | 25.0 vs halo2curves 80.7 | −55.7 (0.31×) | 31.8 vs halo2curves 403 | −371 (0.08×) | 38.3 vs halo2curves 130 | −91.7 (0.29×) |
+| sub_uint, constant time | P-256 base | 176 vs halo2curves 233 | −57.0 (0.76×) | 80.3 vs halo2curves 85.7 | −5.4 (0.94×) | 251 vs halo2curves 504 | −253 (0.50×) | 138 vs halo2curves 143 | −5.0 (0.97×) |
+| sub_uint, constant time | P-256 scalar | 253 vs k256/p256 72.0 | +181 (3.51×) | 102 vs k256/p256 72.0 | +30.0 (1.42×) | 331 vs k256/p256 95.2 | +236 (3.48×) | 189 vs k256/p256 95.0 | +94.0 (1.99×) |
+| sub_uint, constant time | Tom-256 base | 248 vs halo2curves 359 | −111 (0.69×) | 98.4 vs halo2curves 103 | −4.6 (0.96×) | 333 vs halo2curves 613 | −280 (0.54×) | 177 vs halo2curves 187 | −10.0 (0.95×) |
+| sub_uint, constant time | BLS12-381 base | 754 vs halo2curves 953 | −199 (0.79×) | 204 vs halo2curves 216 | −12.0 (0.94×) | 946 vs crypto-bigint 1,390 | −444 (0.68×) | 376 vs halo2curves 409 | −33.0 (0.92×) |
+| sub_uint, constant time | P-521 base | 124 vs crypto-bigint 1,696 | −1,572 (0.07×) | 85.4 vs crypto-bigint 644 | −559 (0.13×) | 121 vs crypto-bigint 2,202 | −2,081 (0.05×) | 113 vs crypto-bigint 1,149 | −1,036 (0.10×) |
+| div_u64, constant time | BN254 scalar | 12,371 vs crypto-bigint 30,027 | −17,656 (0.41×) | 9,487 vs crypto-bigint 25,481 | −15,994 (0.37×) | 17,513 vs crypto-bigint 37,804 | −20,291 (0.46×) | 12,967 vs crypto-bigint 30,530 | −17,563 (0.42×) |
+| div_u64, constant time | secp256k1 base | 11,948 vs crypto-bigint 30,315 | −18,367 (0.39×) | 8,999 vs crypto-bigint 25,508 | −16,509 (0.35×) | 17,024 vs crypto-bigint 37,939 | −20,915 (0.45×) | 12,708 vs crypto-bigint 30,532 | −17,824 (0.42×) |
+| div_u64, constant time | P-256 base | 11,856 vs crypto-bigint 29,686 | −17,830 (0.40×) | 9,177 vs k256/p256 22,383 | −13,206 (0.41×) | 17,369 vs crypto-bigint 37,657 | −20,288 (0.46×) | 12,549 vs crypto-bigint 30,555 | −18,006 (0.41×) |
+| div_u64, constant time | P-256 scalar | 12,313 vs crypto-bigint 30,112 | −17,799 (0.41×) | 9,442 vs crypto-bigint 25,573 | −16,131 (0.37×) | 17,333 vs crypto-bigint 37,588 | −20,255 (0.46×) | 13,173 vs crypto-bigint 30,438 | −17,265 (0.43×) |
+| div_u64, constant time | Tom-256 base | 12,164 vs crypto-bigint 29,997 | −17,833 (0.41×) | 9,294 vs crypto-bigint 25,532 | −16,238 (0.36×) | 16,956 vs crypto-bigint 37,743 | −20,787 (0.45×) | 12,902 vs crypto-bigint 30,560 | −17,658 (0.42×) |
+| div_u64, constant time | BLS12-381 base | 24,774 vs crypto-bigint 51,874 | −27,100 (0.48×) | 16,947 vs crypto-bigint 43,315 | −26,368 (0.39×) | 35,027 vs crypto-bigint 68,818 | −33,791 (0.51×) | 24,420 vs crypto-bigint 54,007 | −29,587 (0.45×) |
+| div_u64, constant time | P-521 base | 43,048 vs crypto-bigint 106,113 | −63,065 (0.41×) | 26,016 vs crypto-bigint 84,937 | −58,921 (0.31×) | 64,693 vs crypto-bigint 127,003 | −62,310 (0.51×) | 43,074 vs crypto-bigint 99,817 | −56,743 (0.43×) |
+| div_uint, constant time | Mersenne-31 | 451 vs runtime-algebra 3,532 | −3,081 (0.13×) | 451 vs runtime-algebra 3,542 | −3,091 (0.13×) | 459 vs runtime-algebra 3,417 | −2,958 (0.13×) | 462 vs runtime-algebra 3,417 | −2,955 (0.14×) |
+| div_uint, constant time | BabyBear | 545 vs runtime-algebra 3,557 | −3,012 (0.15×) | 436 vs runtime-algebra 3,526 | −3,090 (0.12×) | 607 vs runtime-algebra 3,414 | −2,807 (0.18×) | 450 vs runtime-algebra 3,418 | −2,968 (0.13×) |
+| div_uint, constant time | Goldilocks | 1,308 vs winter-math 1,809 | −501 (0.72×) | 947 vs winter-math 927 | +20.0 (1.02×) | 1,577 vs winter-math 1,875 | −298 (0.84×) | 1,207 vs winter-math 1,034 | +173 (1.17×) |
+| div_uint, constant time | BN254 scalar | 12,397 vs crypto-bigint 29,764 | −17,367 (0.42×) | 9,514 vs crypto-bigint 25,794 | −16,280 (0.37×) | 17,589 vs crypto-bigint 37,624 | −20,035 (0.47×) | 13,298 vs crypto-bigint 30,615 | −17,317 (0.43×) |
+| div_uint, constant time | secp256k1 base | 11,902 vs crypto-bigint 29,969 | −18,067 (0.40×) | 9,074 vs crypto-bigint 25,885 | −16,811 (0.35×) | 16,852 vs crypto-bigint 37,805 | −20,953 (0.45×) | 12,843 vs crypto-bigint 30,472 | −17,629 (0.42×) |
+| div_uint, constant time | P-256 base | 11,985 vs crypto-bigint 29,958 | −17,973 (0.40×) | 9,149 vs k256/p256 22,389 | −13,240 (0.41×) | 17,590 vs crypto-bigint 37,639 | −20,049 (0.47×) | 12,643 vs crypto-bigint 30,481 | −17,838 (0.41×) |
+| div_uint, constant time | P-256 scalar | 12,486 vs crypto-bigint 29,972 | −17,486 (0.42×) | 9,436 vs crypto-bigint 25,862 | −16,426 (0.36×) | 17,771 vs crypto-bigint 37,629 | −19,858 (0.47×) | 13,263 vs crypto-bigint 30,620 | −17,357 (0.43×) |
+| div_uint, constant time | Tom-256 base | 12,377 vs crypto-bigint 30,082 | −17,705 (0.41×) | 9,442 vs crypto-bigint 25,996 | −16,554 (0.36×) | 17,138 vs crypto-bigint 38,199 | −21,061 (0.45×) | 13,092 vs crypto-bigint 30,579 | −17,487 (0.43×) |
+| div_uint, constant time | BLS12-381 base | 25,361 vs crypto-bigint 51,625 | −26,264 (0.49×) | 16,780 vs crypto-bigint 43,064 | −26,284 (0.39×) | 35,352 vs crypto-bigint 68,948 | −33,596 (0.51×) | 24,779 vs crypto-bigint 53,885 | −29,106 (0.46×) |
+| div_uint, constant time | P-521 base | 42,851 vs crypto-bigint 104,924 | −62,073 (0.41×) | 25,984 vs crypto-bigint 84,638 | −58,654 (0.31×) | 65,678 vs crypto-bigint 127,407 | −61,729 (0.52×) | 43,052 vs crypto-bigint 100,068 | −57,016 (0.43×) |
+
+### Against native, throughput
+
+Cycles per operation of `prime-field` in each build, then its ratio to the native figure.
+
+| Operation | Field | Native | Chrome | Chrome, wide arithmetic | Firefox | Firefox, wide arithmetic |
+|---|---|---:|---:|---:|---:|---:|
+| add | Mersenne-31 | 1.9 | 4.2 (2.2×) | 4.2 (2.2×) | 4.4 (2.3×) | 4.4 (2.3×) |
+| add | BabyBear | 1.9 | 2.4 (1.3×) | 2.4 (1.3×) | 3.0 (1.6×) | 3.0 (1.6×) |
+| add | Goldilocks | 2.0 | 3.3 (1.6×) | 3.3 (1.6×) | 3.1 (1.6×) | 3.1 (1.6×) |
+| add | BN254 scalar | 5.1 | 17.1 (3.4×) | 12.3 (2.4×) | 16.7 (3.3×) | 19.0 (3.7×) |
+| add | secp256k1 base | 5.8 | 14.0 (2.4×) | 11.8 (2.0×) | 14.8 (2.6×) | 20.4 (3.5×) |
+| add | P-256 base | 5.8 | 14.7 (2.5×) | 12.3 (2.1×) | 14.8 (2.6×) | 19.9 (3.4×) |
+| add | P-256 scalar | 6.0 | 15.4 (2.6×) | 11.8 (2.0×) | 16.2 (2.7×) | 21.4 (3.6×) |
+| add | Tom-256 base | 6.0 | 15.0 (2.5×) | 11.7 (1.9×) | 15.8 (2.6×) | 20.6 (3.4×) |
+| add | BLS12-381 base | 9.9 | 26.1 (2.6×) | 17.8 (1.8×) | 25.0 (2.5×) | 29.5 (3.0×) |
+| add | P-521 base | 12.5 | 43.2 (3.5×) | 26.1 (2.1×) | 42.5 (3.4×) | 43.9 (3.5×) |
+| sub | Mersenne-31 | 1.9 | 2.5 (1.3×) | 2.5 (1.3×) | 2.7 (1.4×) | 2.7 (1.4×) |
+| sub | BabyBear | 1.9 | 2.5 (1.3×) | 2.5 (1.3×) | 2.7 (1.4×) | 2.7 (1.4×) |
+| sub | Goldilocks | 1.9 | 2.6 (1.4×) | 2.6 (1.4×) | 3.0 (1.6×) | 3.0 (1.6×) |
+| sub | BN254 scalar | 5.1 | 16.4 (3.2×) | 11.7 (2.3×) | 15.5 (3.0×) | 19.8 (3.9×) |
+| sub | secp256k1 base | 5.4 | 16.6 (3.1×) | 11.8 (2.2×) | 15.3 (2.8×) | 19.6 (3.6×) |
+| sub | P-256 base | 5.3 | 15.2 (2.9×) | 11.9 (2.2×) | 15.1 (2.8×) | 18.9 (3.6×) |
+| sub | P-256 scalar | 5.1 | 16.5 (3.2×) | 11.9 (2.3×) | 15.5 (3.0×) | 19.7 (3.9×) |
+| sub | Tom-256 base | 5.5 | 16.2 (2.9×) | 11.8 (2.1×) | 16.0 (2.9×) | 19.4 (3.5×) |
+| sub | BLS12-381 base | 10.0 | 25.5 (2.5×) | 17.9 (1.8×) | 24.1 (2.4×) | 29.5 (3.0×) |
+| sub | P-521 base | 12.2 | 47.5 (3.9×) | 28.8 (2.4×) | 42.3 (3.5×) | 44.2 (3.6×) |
+| mul | Mersenne-31 | 2.7 | 5.1 (1.9×) | 5.1 (1.9×) | 5.5 (2.0×) | 5.5 (2.0×) |
+| mul | BabyBear | 3.3 | 7.8 (2.4×) | 5.2 (1.6×) | 7.8 (2.4×) | 5.0 (1.5×) |
+| mul | Goldilocks | 3.8 | 12.1 (3.2×) | 7.0 (1.8×) | 12.4 (3.3×) | 9.0 (2.4×) |
+| mul | BN254 scalar | 68.6 | 234 (3.4×) | 95.6 (1.4×) | 386 (5.6×) | 162 (2.4×) |
+| mul | secp256k1 base | 44.6 | 160 (3.6×) | 63.4 (1.4×) | 289 (6.5×) | 112 (2.5×) |
+| mul | P-256 base | 49.4 | 176 (3.6×) | 71.4 (1.4×) | 317 (6.4×) | 119 (2.4×) |
+| mul | P-256 scalar | 75.0 | 239 (3.2×) | 85.2 (1.1×) | 342 (4.6×) | 161 (2.1×) |
+| mul | Tom-256 base | 71.0 | 237 (3.3×) | 85.5 (1.2×) | 336 (4.7×) | 154 (2.2×) |
+| mul | BLS12-381 base | 139 | 727 (5.2×) | 199 (1.4×) | 944 (6.8×) | 352 (2.5×) |
+| mul | P-521 base | 175 | 665 (3.8×) | 253 (1.4×) | 1,293 (7.4×) | 444 (2.5×) |
+| square | Mersenne-31 | 2.7 | 5.2 (1.9×) | 5.2 (1.9×) | 5.4 (2.0×) | 5.4 (2.0×) |
+| square | BabyBear | 3.4 | 8.3 (2.4×) | 4.8 (1.4×) | 8.0 (2.4×) | 5.8 (1.7×) |
+| square | Goldilocks | 3.8 | 10.1 (2.7×) | 6.0 (1.6×) | 12.0 (3.2×) | 9.7 (2.6×) |
+| square | BN254 scalar | 63.2 | 214 (3.4×) | 93.9 (1.5×) | 375 (5.9×) | 163 (2.6×) |
+| square | secp256k1 base | 33.8 | 144 (4.3×) | 61.4 (1.8×) | 217 (6.4×) | 104 (3.1×) |
+| square | P-256 base | 40.0 | 147 (3.7×) | 78.4 (2.0×) | 258 (6.5×) | 129 (3.2×) |
+| square | P-256 scalar | 64.1 | 214 (3.3×) | 80.5 (1.3×) | 290 (4.5×) | 163 (2.5×) |
+| square | Tom-256 base | 57.0 | 208 (3.6×) | 76.3 (1.3×) | 321 (5.6×) | 148 (2.6×) |
+| square | BLS12-381 base | 132 | 586 (4.4×) | 189 (1.4×) | 894 (6.8×) | 320 (2.4×) |
+| square | P-521 base | 121 | 560 (4.6×) | 246 (2.0×) | 923 (7.6×) | 396 (3.3×) |
+| invert | Mersenne-31 | 216 | 266 (1.2×) | 266 (1.2×) | 276 (1.3×) | 271 (1.3×) |
+| invert | BabyBear | 223 | 269 (1.2×) | 268 (1.2×) | 281 (1.3×) | 271 (1.2×) |
+| invert | Goldilocks | 435 | 537 (1.2×) | 538 (1.2×) | 557 (1.3×) | 563 (1.3×) |
+| invert | BN254 scalar | 5,042 | 8,463 (1.7×) | 6,509 (1.3×) | 11,871 (2.4×) | 7,866 (1.6×) |
+| invert | secp256k1 base | 4,917 | 8,472 (1.7×) | 6,024 (1.2×) | 11,640 (2.4×) | 8,006 (1.6×) |
+| invert | P-256 base | 4,844 | 8,313 (1.7×) | 6,056 (1.3×) | 11,342 (2.3×) | 7,651 (1.6×) |
+| invert | P-256 scalar | 5,048 | 8,474 (1.7×) | 6,404 (1.3×) | 12,069 (2.4×) | 8,189 (1.6×) |
+| invert | Tom-256 base | 5,026 | 8,506 (1.7×) | 6,469 (1.3×) | 11,385 (2.3×) | 7,989 (1.6×) |
+| invert | BLS12-381 base | 8,838 | 19,365 (2.2×) | 11,508 (1.3×) | 24,350 (2.8×) | 16,049 (1.8×) |
+| invert | P-521 base | 14,234 | 33,347 (2.3×) | 18,149 (1.3×) | 48,398 (3.4×) | 29,621 (2.1×) |
+| sqrt | Mersenne-31 | 135 | 329 (2.4×) | 329 (2.4×) | 330 (2.4×) | 329 (2.4×) |
+| sqrt | BabyBear | 1,974 | 2,679 (1.4×) | 2,032 (1.0×) | 2,959 (1.5×) | 2,065 (1.0×) |
+| sqrt | Goldilocks | 2,824 | 5,778 (2.0×) | 3,689 (1.3×) | 6,745 (2.4×) | 9,289 (3.3×) |
+| sqrt | BN254 scalar | 33,878 | 108,172 (3.2×) | 46,725 (1.4×) | 198,613 (5.9×) | 82,256 (2.4×) |
+| sqrt | secp256k1 base | 12,290 | 42,077 (3.4×) | 19,615 (1.6×) | 61,004 (5.0×) | 31,141 (2.5×) |
+| sqrt | P-256 base | 11,937 | 44,705 (3.7×) | 19,828 (1.7×) | 78,041 (6.5×) | 31,414 (2.6×) |
+| sqrt | P-256 scalar | 24,065 | 74,031 (3.1×) | 35,781 (1.5×) | 114,957 (4.8×) | 63,922 (2.7×) |
+| sqrt | Tom-256 base | 21,265 | 65,540 (3.1×) | 19,242 (0.9×) | 94,543 (4.4×) | 49,342 (2.3×) |
+| sqrt | BLS12-381 base | 65,900 | 315,485 (4.8×) | 87,392 (1.3×) | 420,212 (6.4×) | 203,949 (3.1×) |
+| sqrt | P-521 base | 68,261 | 320,271 (4.7×) | 131,305 (1.9×) | 473,617 (6.9×) | 260,337 (3.8×) |
+| mul_u64 | Mersenne-31 | 5.9 | 9.4 (1.6×) | 9.4 (1.6×) | 9.8 (1.7×) | 9.8 (1.7×) |
+| mul_u64 | BabyBear | 8.9 | 17.1 (1.9×) | 11.2 (1.3×) | 20.1 (2.3×) | 15.0 (1.7×) |
+| mul_u64 | Goldilocks | 7.0 | 19.0 (2.7×) | 11.0 (1.6×) | 21.1 (3.0×) | 16.7 (2.4×) |
+| mul_u64 | BN254 scalar | 20.8 | 101 (4.9×) | 28.8 (1.4×) | 122 (5.9×) | 44.2 (2.1×) |
+| mul_u64 | secp256k1 base | 9.7 | 43.5 (4.5×) | 12.6 (1.3×) | 66.8 (6.9×) | 24.0 (2.5×) |
+| mul_u64 | P-256 base | 18.9 | 72.3 (3.8×) | 27.3 (1.4×) | 98.1 (5.2×) | 41.3 (2.2×) |
+| mul_u64 | P-256 scalar | 22.4 | 84.1 (3.8×) | 30.3 (1.4×) | 113 (5.0×) | 48.2 (2.2×) |
+| mul_u64 | Tom-256 base | 20.5 | 82.1 (4.0×) | 30.0 (1.5×) | 115 (5.6×) | 44.6 (2.2×) |
+| mul_u64 | BLS12-381 base | 28.8 | 131 (4.5×) | 44.1 (1.5×) | 194 (6.7×) | 61.6 (2.1×) |
+| mul_u64 | P-521 base | 19.7 | 92.3 (4.7×) | 32.0 (1.6×) | 228 (11.6×) | 49.3 (2.5×) |
+| mul_uint | Mersenne-31 | 5.9 | 9.4 (1.6×) | 9.4 (1.6×) | 9.8 (1.7×) | 9.8 (1.7×) |
+| mul_uint | BabyBear | 8.9 | 17.1 (1.9×) | 11.2 (1.3×) | 20.1 (2.3×) | 15.0 (1.7×) |
+| mul_uint | Goldilocks | 6.9 | 19.2 (2.8×) | 11.0 (1.6×) | 21.1 (3.1×) | 16.7 (2.4×) |
+| mul_uint | BN254 scalar | 103 | 434 (4.2×) | 179 (1.7×) | 523 (5.1×) | 303 (2.9×) |
+| mul_uint | secp256k1 base | 56.6 | 266 (4.7×) | 114 (2.0×) | 317 (5.6×) | 164 (2.9×) |
+| mul_uint | P-256 base | 102 | 353 (3.5×) | 134 (1.3×) | 422 (4.1×) | 243 (2.4×) |
+| mul_uint | P-256 scalar | 110 | 426 (3.9×) | 180 (1.6×) | 478 (4.3×) | 295 (2.7×) |
+| mul_uint | Tom-256 base | 108 | 411 (3.8×) | 166 (1.5×) | 493 (4.6×) | 351 (3.2×) |
+| mul_uint | BLS12-381 base | 214 | 990 (4.6×) | 371 (1.7×) | 1,139 (5.3×) | 856 (4.0×) |
+| mul_uint | P-521 base | 352 | 1,543 (4.4×) | 619 (1.8×) | 2,383 (6.8×) | 982 (2.8×) |
+| add_u64 | Mersenne-31 | 4.6 | 8.2 (1.8×) | 8.2 (1.8×) | 9.1 (2.0×) | 9.2 (2.0×) |
+| add_u64 | BabyBear | 6.0 | 10.9 (1.8×) | 8.6 (1.4×) | 13.0 (2.2×) | 12.5 (2.1×) |
+| add_u64 | Goldilocks | 4.7 | 9.9 (2.1×) | 7.7 (1.6×) | 11.1 (2.4×) | 12.0 (2.6×) |
+| add_u64 | BN254 scalar | 24.8 | 120 (4.8×) | 55.8 (2.2×) | 179 (7.2×) | 91.5 (3.7×) |
+| add_u64 | secp256k1 base | 5.9 | 8.0 (1.4×) | 8.0 (1.4×) | 8.0 (1.4×) | 12.0 (2.0×) |
+| add_u64 | P-256 base | 25.8 | 72.3 (2.8×) | 35.8 (1.4×) | 86.7 (3.4×) | 68.5 (2.7×) |
+| add_u64 | P-256 scalar | 25.3 | 70.2 (2.8×) | 40.4 (1.6×) | 72.5 (2.9×) | 83.3 (3.3×) |
+| add_u64 | Tom-256 base | 26.2 | 89.7 (3.4×) | 41.7 (1.6×) | 109 (4.2×) | 71.7 (2.7×) |
+| add_u64 | BLS12-381 base | 38.3 | 178 (4.6×) | 66.6 (1.7×) | 262 (6.8×) | 95.3 (2.5×) |
+| add_u64 | P-521 base | 10.8 | 23.1 (2.1×) | 16.1 (1.5×) | 22.3 (2.1×) | 25.1 (2.3×) |
+| add_uint | Mersenne-31 | 4.6 | 8.2 (1.8×) | 8.2 (1.8×) | 9.1 (2.0×) | 9.2 (2.0×) |
+| add_uint | BabyBear | 5.9 | 10.9 (1.8×) | 8.6 (1.5×) | 13.0 (2.2×) | 12.6 (2.1×) |
+| add_uint | Goldilocks | 4.7 | 10.0 (2.1×) | 7.7 (1.6×) | 11.1 (2.4×) | 12.0 (2.6×) |
+| add_uint | BN254 scalar | 87.8 | 252 (2.9×) | 119 (1.4×) | 387 (4.4×) | 190 (2.2×) |
+| add_uint | secp256k1 base | 6.8 | 21.0 (3.1×) | 14.6 (2.1×) | 18.4 (2.7×) | 24.0 (3.5×) |
+| add_uint | P-256 base | 61.2 | 189 (3.1×) | 79.7 (1.3×) | 327 (5.3×) | 148 (2.4×) |
+| add_uint | P-256 scalar | 88.6 | 261 (2.9×) | 116 (1.3×) | 350 (4.0×) | 211 (2.4×) |
+| add_uint | Tom-256 base | 87.1 | 249 (2.9×) | 109 (1.3×) | 339 (3.9×) | 198 (2.3×) |
+| add_uint | BLS12-381 base | 169 | 775 (4.6×) | 205 (1.2×) | 970 (5.7×) | 419 (2.5×) |
+| add_uint | P-521 base | 22.8 | 65.0 (2.9×) | 41.8 (1.8×) | 88.7 (3.9×) | 71.5 (3.1×) |
+| sub_u64 | Mersenne-31 | 4.7 | 6.2 (1.3×) | 6.2 (1.3×) | 7.0 (1.5×) | 7.0 (1.5×) |
+| sub_u64 | BabyBear | 6.0 | 11.1 (1.8×) | 8.5 (1.4×) | 15.8 (2.6×) | 12.6 (2.1×) |
+| sub_u64 | Goldilocks | 4.3 | 9.9 (2.3×) | 7.0 (1.6×) | 11.4 (2.7×) | 11.0 (2.6×) |
+| sub_u64 | BN254 scalar | 24.5 | 113 (4.6×) | 53.9 (2.2×) | 138 (5.6×) | 74.2 (3.0×) |
+| sub_u64 | secp256k1 base | 4.2 | 8.7 (2.1×) | 8.0 (1.9×) | 7.5 (1.8×) | 11.0 (2.6×) |
+| sub_u64 | P-256 base | 20.1 | 72.1 (3.6×) | 35.9 (1.8×) | 81.0 (4.0×) | 61.7 (3.1×) |
+| sub_u64 | P-256 scalar | 24.8 | 69.0 (2.8×) | 40.1 (1.6×) | 75.9 (3.1×) | 82.7 (3.3×) |
+| sub_u64 | Tom-256 base | 24.6 | 88.7 (3.6×) | 51.3 (2.1×) | 106 (4.3×) | 71.8 (2.9×) |
+| sub_u64 | BLS12-381 base | 38.1 | 163 (4.3×) | 67.6 (1.8×) | 254 (6.7×) | 96.7 (2.5×) |
+| sub_u64 | P-521 base | 9.6 | 22.2 (2.3×) | 18.8 (2.0×) | 20.3 (2.1×) | 21.2 (2.2×) |
+| sub_uint | Mersenne-31 | 4.7 | 6.2 (1.3×) | 6.2 (1.3×) | 7.0 (1.5×) | 7.0 (1.5×) |
+| sub_uint | BabyBear | 6.0 | 11.1 (1.8×) | 8.5 (1.4×) | 15.8 (2.6×) | 12.5 (2.1×) |
+| sub_uint | Goldilocks | 4.3 | 9.9 (2.3×) | 7.0 (1.6×) | 11.4 (2.7×) | 11.0 (2.6×) |
+| sub_uint | BN254 scalar | 87.8 | 253 (2.9×) | 118 (1.3×) | 384 (4.4×) | 191 (2.2×) |
+| sub_uint | secp256k1 base | 5.4 | 21.2 (3.9×) | 14.6 (2.7×) | 18.2 (3.4×) | 24.2 (4.5×) |
+| sub_uint | P-256 base | 59.8 | 193 (3.2×) | 88.0 (1.5×) | 359 (6.0×) | 150 (2.5×) |
+| sub_uint | P-256 scalar | 86.3 | 267 (3.1×) | 116 (1.3×) | 357 (4.1×) | 212 (2.5×) |
+| sub_uint | Tom-256 base | 83.7 | 254 (3.0×) | 114 (1.4×) | 339 (4.1×) | 202 (2.4×) |
+| sub_uint | BLS12-381 base | 168 | 758 (4.5×) | 212 (1.3×) | 949 (5.6×) | 402 (2.4×) |
+| sub_uint | P-521 base | 20.2 | 75.9 (3.8×) | 42.3 (2.1×) | 81.1 (4.0×) | 69.0 (3.4×) |
+| from_u64 | Mersenne-31 | 3.2 | 4.7 (1.5×) | 4.7 (1.5×) | 5.2 (1.6×) | 5.3 (1.7×) |
+| from_u64 | BabyBear | 6.2 | 11.1 (1.8×) | 7.3 (1.2×) | 12.9 (2.1×) | 10.3 (1.7×) |
+| from_u64 | Goldilocks | 3.3 | 7.2 (2.2×) | 5.5 (1.7×) | 9.0 (2.7×) | 8.7 (2.6×) |
+| from_u64 | BN254 scalar | 22.0 | 87.0 (4.0×) | 28.2 (1.3×) | 121 (5.5×) | 45.0 (2.0×) |
+| from_u64 | secp256k1 base | 2.2 | 3.8 (1.7×) | 3.8 (1.7×) | 3.8 (1.7×) | 3.8 (1.7×) |
+| from_u64 | P-256 base | 17.6 | 51.4 (2.9×) | 23.7 (1.3×) | 61.4 (3.5×) | 36.1 (2.1×) |
+| from_u64 | P-256 scalar | 18.0 | 51.5 (2.9×) | 25.9 (1.4×) | 59.2 (3.3×) | 43.1 (2.4×) |
+| from_u64 | Tom-256 base | 21.1 | 72.0 (3.4×) | 28.6 (1.4×) | 85.7 (4.1×) | 43.4 (2.1×) |
+| from_u64 | BLS12-381 base | 29.1 | 141 (4.8×) | 44.6 (1.5×) | 234 (8.0×) | 63.1 (2.2×) |
+| from_u64 | P-521 base | 5.0 | 6.1 (1.2×) | 6.0 (1.2×) | 6.0 (1.2×) | 6.1 (1.2×) |
+| div_u64 | BN254 scalar | 615 | 1,214 (2.0×) | 821 (1.3×) | 1,419 (2.3×) | 1,049 (1.7×) |
+| div_u64 | secp256k1 base | 563 | 1,000 (1.8×) | 766 (1.4×) | 1,217 (2.2×) | 877 (1.6×) |
+| div_u64 | P-256 base | 601 | 1,089 (1.8×) | 808 (1.3×) | 1,356 (2.3×) | 987 (1.6×) |
+| div_u64 | P-256 scalar | 619 | 1,185 (1.9×) | 864 (1.4×) | 1,405 (2.3×) | 1,152 (1.9×) |
+| div_u64 | Tom-256 base | 613 | 1,188 (1.9×) | 864 (1.4×) | 1,478 (2.4×) | 1,036 (1.7×) |
+| div_u64 | BLS12-381 base | 751 | 1,795 (2.4×) | 1,033 (1.4×) | 2,510 (3.3×) | 1,750 (2.3×) |
+| div_u64 | P-521 base | 927 | 2,450 (2.6×) | 1,369 (1.5×) | 3,622 (3.9×) | 1,878 (2.0×) |
+| div_uint | Mersenne-31 | 220 | 276 (1.3×) | 278 (1.3×) | 281 (1.3×) | 287 (1.3×) |
+| div_uint | BabyBear | 217 | 277 (1.3×) | 278 (1.3×) | 290 (1.3×) | 283 (1.3×) |
+| div_uint | Goldilocks | 440 | 551 (1.3×) | 545 (1.2×) | 593 (1.3×) | 596 (1.4×) |
+| div_uint | BN254 scalar | 5,030 | 9,221 (1.8×) | 6,797 (1.4×) | 12,816 (2.5×) | 8,430 (1.7×) |
+| div_uint | secp256k1 base | 4,880 | 8,563 (1.8×) | 6,022 (1.2×) | 11,918 (2.4×) | 8,094 (1.7×) |
+| div_uint | P-256 base | 5,136 | 8,830 (1.7×) | 6,165 (1.2×) | 12,053 (2.3×) | 7,932 (1.5×) |
+| div_uint | P-256 scalar | 4,966 | 9,235 (1.9×) | 6,623 (1.3×) | 12,560 (2.5×) | 8,739 (1.8×) |
+| div_uint | Tom-256 base | 5,047 | 9,148 (1.8×) | 6,658 (1.3×) | 12,378 (2.5×) | 8,327 (1.6×) |
+| div_uint | BLS12-381 base | 8,963 | 20,940 (2.3×) | 12,042 (1.3×) | 26,464 (3.0×) | 16,866 (1.9×) |
+| div_uint | P-521 base | 14,948 | 34,250 (2.3×) | 18,513 (1.2×) | 50,018 (3.3×) | 29,895 (2.0×) |
+| add, constant time | Mersenne-31 | 1.9 | 4.2 (2.2×) | 4.2 (2.2×) | 4.4 (2.3×) | 4.4 (2.3×) |
+| add, constant time | BabyBear | 1.9 | 2.4 (1.3×) | 2.4 (1.3×) | 3.0 (1.6×) | 3.0 (1.6×) |
+| add, constant time | Goldilocks | 2.0 | 3.3 (1.6×) | 3.3 (1.6×) | 3.1 (1.6×) | 3.1 (1.6×) |
+| add, constant time | BN254 scalar | 5.0 | 23.6 (4.7×) | 16.3 (3.3×) | 20.7 (4.1×) | 27.1 (5.4×) |
+| add, constant time | secp256k1 base | 5.8 | 26.3 (4.5×) | 18.1 (3.1×) | 24.5 (4.2×) | 29.0 (5.0×) |
+| add, constant time | P-256 base | 6.0 | 23.6 (3.9×) | 18.1 (3.0×) | 22.9 (3.8×) | 28.0 (4.7×) |
+| add, constant time | P-256 scalar | 5.9 | 27.1 (4.6×) | 17.9 (3.0×) | 24.1 (4.1×) | 29.5 (5.0×) |
+| add, constant time | Tom-256 base | 6.0 | 27.6 (4.6×) | 18.0 (3.0×) | 23.8 (4.0×) | 28.5 (4.8×) |
+| add, constant time | BLS12-381 base | 9.9 | 42.7 (4.3×) | 25.6 (2.6×) | 35.7 (3.6×) | 41.2 (4.2×) |
+| add, constant time | P-521 base | 12.7 | 76.6 (6.0×) | 46.6 (3.7×) | 84.8 (6.7×) | 74.1 (5.8×) |
+| sub, constant time | Mersenne-31 | 2.0 | 2.5 (1.2×) | 2.5 (1.2×) | 2.7 (1.4×) | 2.7 (1.4×) |
+| sub, constant time | BabyBear | 2.0 | 2.5 (1.2×) | 2.5 (1.2×) | 2.7 (1.4×) | 2.7 (1.4×) |
+| sub, constant time | Goldilocks | 1.9 | 2.6 (1.4×) | 2.6 (1.4×) | 3.0 (1.6×) | 3.0 (1.6×) |
+| sub, constant time | BN254 scalar | 5.1 | 22.9 (4.5×) | 16.5 (3.2×) | 21.4 (4.2×) | 26.0 (5.1×) |
+| sub, constant time | secp256k1 base | 5.3 | 19.2 (3.6×) | 14.4 (2.7×) | 18.7 (3.5×) | 22.5 (4.2×) |
+| sub, constant time | P-256 base | 5.3 | 17.3 (3.3×) | 13.4 (2.5×) | 18.5 (3.5×) | 22.0 (4.2×) |
+| sub, constant time | P-256 scalar | 5.0 | 21.0 (4.2×) | 14.7 (2.9×) | 22.1 (4.4×) | 23.5 (4.7×) |
+| sub, constant time | Tom-256 base | 5.5 | 21.1 (3.8×) | 15.2 (2.8×) | 21.0 (3.8×) | 24.0 (4.4×) |
+| sub, constant time | BLS12-381 base | 9.9 | 37.7 (3.8×) | 24.4 (2.5×) | 35.3 (3.6×) | 37.3 (3.8×) |
+| sub, constant time | P-521 base | 12.1 | 56.3 (4.7×) | 37.2 (3.1×) | 58.2 (4.8×) | 53.1 (4.4×) |
+| mul, constant time | Mersenne-31 | 2.7 | 5.2 (1.9×) | 5.1 (1.9×) | 5.5 (2.0×) | 5.5 (2.0×) |
+| mul, constant time | BabyBear | 3.4 | 7.8 (2.3×) | 5.2 (1.5×) | 7.8 (2.3×) | 5.0 (1.5×) |
+| mul, constant time | Goldilocks | 3.8 | 12.1 (3.2×) | 7.0 (1.8×) | 12.4 (3.3×) | 9.0 (2.4×) |
+| mul, constant time | BN254 scalar | 67.8 | 236 (3.5×) | 86.7 (1.3×) | 418 (6.2×) | 151 (2.2×) |
+| mul, constant time | secp256k1 base | 44.6 | 160 (3.6×) | 63.6 (1.4×) | 275 (6.2×) | 108 (2.4×) |
+| mul, constant time | P-256 base | 49.2 | 173 (3.5×) | 71.8 (1.5×) | 321 (6.5×) | 121 (2.5×) |
+| mul, constant time | P-256 scalar | 74.8 | 244 (3.3×) | 85.4 (1.1×) | 343 (4.6×) | 168 (2.2×) |
+| mul, constant time | Tom-256 base | 71.0 | 235 (3.3×) | 85.8 (1.2×) | 331 (4.7×) | 157 (2.2×) |
+| mul, constant time | BLS12-381 base | 142 | 728 (5.1×) | 184 (1.3×) | 935 (6.6×) | 337 (2.4×) |
+| mul, constant time | P-521 base | 173 | 666 (3.8×) | 252 (1.5×) | 1,287 (7.4×) | 444 (2.6×) |
+| square, constant time | Mersenne-31 | 2.7 | 5.2 (1.9×) | 5.2 (1.9×) | 5.4 (2.0×) | 5.4 (2.0×) |
+| square, constant time | BabyBear | 3.7 | 8.3 (2.2×) | 4.9 (1.3×) | 8.0 (2.2×) | 5.8 (1.6×) |
+| square, constant time | Goldilocks | 3.8 | 10.1 (2.7×) | 6.0 (1.6×) | 12.0 (3.2×) | 9.7 (2.6×) |
+| square, constant time | BN254 scalar | 65.0 | 213 (3.3×) | 78.1 (1.2×) | 370 (5.7×) | 147 (2.3×) |
+| square, constant time | secp256k1 base | 33.9 | 143 (4.2×) | 61.3 (1.8×) | 217 (6.4×) | 98.1 (2.9×) |
+| square, constant time | P-256 base | 40.2 | 151 (3.8×) | 78.4 (2.0×) | 253 (6.3×) | 131 (3.3×) |
+| square, constant time | P-256 scalar | 63.9 | 214 (3.3×) | 80.7 (1.3×) | 288 (4.5×) | 140 (2.2×) |
+| square, constant time | Tom-256 base | 57.0 | 203 (3.6×) | 77.2 (1.4×) | 321 (5.6×) | 166 (2.9×) |
+| square, constant time | BLS12-381 base | 137 | 582 (4.2×) | 172 (1.3×) | 886 (6.5×) | 308 (2.2×) |
+| square, constant time | P-521 base | 123 | 563 (4.6×) | 246 (2.0×) | 917 (7.5×) | 398 (3.2×) |
+| invert, constant time | Mersenne-31 | 248 | 438 (1.8×) | 441 (1.8×) | 431 (1.7×) | 430 (1.7×) |
+| invert, constant time | BabyBear | 383 | 520 (1.4×) | 458 (1.2×) | 550 (1.4×) | 417 (1.1×) |
+| invert, constant time | Goldilocks | 645 | 1,263 (2.0×) | 858 (1.3×) | 1,564 (2.4×) | 1,183 (1.8×) |
+| invert, constant time | BN254 scalar | 6,760 | 12,015 (1.8×) | 9,244 (1.4×) | 16,857 (2.5×) | 12,578 (1.9×) |
+| invert, constant time | secp256k1 base | 6,858 | 11,831 (1.7×) | 9,093 (1.3×) | 16,945 (2.5×) | 12,668 (1.8×) |
+| invert, constant time | P-256 base | 6,512 | 11,533 (1.8×) | 8,967 (1.4×) | 16,307 (2.5×) | 12,319 (1.9×) |
+| invert, constant time | P-256 scalar | 6,917 | 11,904 (1.7×) | 9,379 (1.4×) | 17,148 (2.5×) | 12,779 (1.8×) |
+| invert, constant time | Tom-256 base | 6,974 | 11,773 (1.7×) | 9,286 (1.3×) | 16,992 (2.4×) | 12,767 (1.8×) |
+| invert, constant time | BLS12-381 base | 12,573 | 23,954 (1.9×) | 16,698 (1.3×) | 32,822 (2.6×) | 24,072 (1.9×) |
+| invert, constant time | P-521 base | 20,025 | 41,739 (2.1×) | 26,139 (1.3×) | 63,686 (3.2×) | 41,552 (2.1×) |
+| sqrt, constant time | Mersenne-31 | 142 | 334 (2.4×) | 334 (2.4×) | 341 (2.4×) | 340 (2.4×) |
+| sqrt, constant time | BabyBear | 5,592 | 7,468 (1.3×) | 6,464 (1.2×) | 7,850 (1.4×) | 6,531 (1.2×) |
+| sqrt, constant time | Goldilocks | 7,152 | 12,879 (1.8×) | 8,921 (1.2×) | 15,858 (2.2×) | 21,585 (3.0×) |
+| sqrt, constant time | BN254 scalar | 58,580 | 178,697 (3.1×) | 83,897 (1.4×) | 297,160 (5.1×) | 152,719 (2.6×) |
+| sqrt, constant time | secp256k1 base | 12,273 | 42,420 (3.5×) | 19,829 (1.6×) | 70,690 (5.8×) | 31,261 (2.5×) |
+| sqrt, constant time | P-256 base | 11,984 | 44,657 (3.7×) | 19,094 (1.6×) | 79,907 (6.7×) | 32,459 (2.7×) |
+| sqrt, constant time | P-256 scalar | 25,624 | 78,912 (3.1×) | 37,108 (1.4×) | 121,136 (4.7×) | 68,607 (2.7×) |
+| sqrt, constant time | Tom-256 base | 20,056 | 65,867 (3.3×) | 19,373 (1.0×) | 94,906 (4.7×) | 50,847 (2.5×) |
+| sqrt, constant time | BLS12-381 base | 69,780 | 314,938 (4.5×) | 97,430 (1.4×) | 423,132 (6.1×) | 214,113 (3.1×) |
+| sqrt, constant time | P-521 base | 68,425 | 324,637 (4.7×) | 129,843 (1.9×) | 507,844 (7.4×) | 266,374 (3.9×) |
+| mul_u64, constant time | Mersenne-31 | 5.9 | 9.4 (1.6×) | 9.4 (1.6×) | 9.8 (1.7×) | 9.8 (1.7×) |
+| mul_u64, constant time | BabyBear | 8.9 | 17.1 (1.9×) | 11.2 (1.3×) | 20.0 (2.2×) | 15.0 (1.7×) |
+| mul_u64, constant time | Goldilocks | 6.9 | 19.0 (2.8×) | 11.0 (1.6×) | 21.1 (3.1×) | 16.7 (2.4×) |
+| mul_u64, constant time | BN254 scalar | 21.9 | 106 (4.8×) | 38.9 (1.8×) | 125 (5.7×) | 57.3 (2.6×) |
+| mul_u64, constant time | secp256k1 base | 11.0 | 61.6 (5.6×) | 24.9 (2.3×) | 80.1 (7.3×) | 37.3 (3.4×) |
+| mul_u64, constant time | P-256 base | 24.4 | 85.5 (3.5×) | 40.3 (1.7×) | 103 (4.2×) | 57.2 (2.3×) |
+| mul_u64, constant time | P-256 scalar | 22.9 | 102 (4.5×) | 43.6 (1.9×) | 122 (5.3×) | 62.7 (2.7×) |
+| mul_u64, constant time | Tom-256 base | 22.4 | 95.3 (4.3×) | 41.8 (1.9×) | 123 (5.5×) | 63.4 (2.8×) |
+| mul_u64, constant time | BLS12-381 base | 34.7 | 149 (4.3×) | 65.7 (1.9×) | 160 (4.6×) | 85.9 (2.5×) |
+| mul_u64, constant time | P-521 base | 26.4 | 138 (5.2×) | 69.2 (2.6×) | 138 (5.2×) | 96.0 (3.6×) |
+| mul_uint, constant time | Mersenne-31 | 5.9 | 9.4 (1.6×) | 9.4 (1.6×) | 9.7 (1.6×) | 9.8 (1.7×) |
+| mul_uint, constant time | BabyBear | 9.0 | 17.1 (1.9×) | 11.2 (1.2×) | 20.1 (2.2×) | 15.0 (1.7×) |
+| mul_uint, constant time | Goldilocks | 6.9 | 19.1 (2.8×) | 11.0 (1.6×) | 21.1 (3.1×) | 16.8 (2.4×) |
+| mul_uint, constant time | BN254 scalar | 120 | 484 (4.0×) | 173 (1.4×) | 599 (5.0×) | 312 (2.6×) |
+| mul_uint, constant time | secp256k1 base | 78.2 | 322 (4.1×) | 192 (2.5×) | 381 (4.9×) | 251 (3.2×) |
+| mul_uint, constant time | P-256 base | 119 | 413 (3.5×) | 136 (1.1×) | 492 (4.1×) | 233 (2.0×) |
+| mul_uint, constant time | P-256 scalar | 132 | 473 (3.6×) | 186 (1.4×) | 562 (4.3×) | 304 (2.3×) |
+| mul_uint, constant time | Tom-256 base | 122 | 467 (3.8×) | 163 (1.3×) | 553 (4.5×) | 293 (2.4×) |
+| mul_uint, constant time | BLS12-381 base | 256 | 1,066 (4.2×) | 369 (1.4×) | 1,678 (6.6×) | 918 (3.6×) |
+| mul_uint, constant time | P-521 base | 427 | 1,989 (4.7×) | 975 (2.3×) | 2,921 (6.8×) | 1,477 (3.5×) |
+| add_u64, constant time | Mersenne-31 | 4.6 | 8.2 (1.8×) | 8.1 (1.8×) | 9.1 (2.0×) | 9.2 (2.0×) |
+| add_u64, constant time | BabyBear | 5.9 | 10.9 (1.8×) | 8.6 (1.5×) | 13.0 (2.2×) | 12.6 (2.1×) |
+| add_u64, constant time | Goldilocks | 4.7 | 9.9 (2.1×) | 7.7 (1.6×) | 11.1 (2.4×) | 12.0 (2.6×) |
+| add_u64, constant time | BN254 scalar | 26.9 | 136 (5.1×) | 78.3 (2.9×) | 163 (6.1×) | 81.4 (3.0×) |
+| add_u64, constant time | secp256k1 base | 5.9 | 20.5 (3.5×) | 16.1 (2.7×) | 19.5 (3.3×) | 25.1 (4.3×) |
+| add_u64, constant time | P-256 base | 25.7 | 90.4 (3.5×) | 57.7 (2.2×) | 103 (4.0×) | 73.0 (2.8×) |
+| add_u64, constant time | P-256 scalar | 27.1 | 90.2 (3.3×) | 56.4 (2.1×) | 100 (3.7×) | 93.4 (3.4×) |
+| add_u64, constant time | Tom-256 base | 27.4 | 116 (4.2×) | 61.5 (2.2×) | 132 (4.8×) | 93.8 (3.4×) |
+| add_u64, constant time | BLS12-381 base | 43.8 | 211 (4.8×) | 92.1 (2.1×) | 268 (6.1×) | 125 (2.9×) |
+| add_u64, constant time | P-521 base | 10.8 | 64.3 (6.0×) | 44.3 (4.1×) | 65.7 (6.1×) | 64.1 (5.9×) |
+| add_uint, constant time | Mersenne-31 | 4.6 | 8.1 (1.8×) | 8.2 (1.8×) | 9.1 (2.0×) | 9.1 (2.0×) |
+| add_uint, constant time | BabyBear | 6.0 | 10.9 (1.8×) | 8.6 (1.4×) | 13.0 (2.2×) | 12.6 (2.1×) |
+| add_uint, constant time | Goldilocks | 4.8 | 9.9 (2.1×) | 7.7 (1.6×) | 11.1 (2.3×) | 12.0 (2.5×) |
+| add_uint, constant time | BN254 scalar | 92.8 | 249 (2.7×) | 99.1 (1.1×) | 344 (3.7×) | 182 (2.0×) |
+| add_uint, constant time | secp256k1 base | 9.3 | 41.7 (4.5×) | 29.4 (3.2×) | 37.6 (4.0×) | 44.5 (4.8×) |
+| add_uint, constant time | P-256 base | 70.3 | 177 (2.5×) | 98.7 (1.4×) | 286 (4.1×) | 150 (2.1×) |
+| add_uint, constant time | P-256 scalar | 95.8 | 256 (2.7×) | 106 (1.1×) | 316 (3.3×) | 202 (2.1×) |
+| add_uint, constant time | Tom-256 base | 84.3 | 251 (3.0×) | 102 (1.2×) | 329 (3.9×) | 187 (2.2×) |
+| add_uint, constant time | BLS12-381 base | 176 | 770 (4.4×) | 209 (1.2×) | 949 (5.4×) | 411 (2.3×) |
+| add_uint, constant time | P-521 base | 22.4 | 138 (6.2×) | 105 (4.7×) | 155 (6.9×) | 138 (6.2×) |
+| sub_u64, constant time | Mersenne-31 | 4.7 | 6.2 (1.3×) | 6.2 (1.3×) | 7.0 (1.5×) | 7.0 (1.5×) |
+| sub_u64, constant time | BabyBear | 6.0 | 10.8 (1.8×) | 8.4 (1.4×) | 13.0 (2.2×) | 12.5 (2.1×) |
+| sub_u64, constant time | Goldilocks | 4.3 | 9.9 (2.3×) | 7.0 (1.6×) | 11.4 (2.7×) | 11.0 (2.6×) |
+| sub_u64, constant time | BN254 scalar | 27.9 | 126 (4.5×) | 60.0 (2.2×) | 155 (5.6×) | 80.0 (2.9×) |
+| sub_u64, constant time | secp256k1 base | 4.2 | 15.5 (3.7×) | 12.3 (2.9×) | 14.6 (3.5×) | 18.5 (4.4×) |
+| sub_u64, constant time | P-256 base | 23.3 | 84.8 (3.6×) | 51.9 (2.2×) | 97.8 (4.2×) | 67.7 (2.9×) |
+| sub_u64, constant time | P-256 scalar | 26.5 | 80.6 (3.0×) | 52.7 (2.0×) | 93.6 (3.5×) | 79.2 (3.0×) |
+| sub_u64, constant time | Tom-256 base | 28.1 | 113 (4.0×) | 58.9 (2.1×) | 124 (4.4×) | 80.1 (2.9×) |
+| sub_u64, constant time | BLS12-381 base | 42.6 | 187 (4.4×) | 87.6 (2.1×) | 250 (5.9×) | 118 (2.8×) |
+| sub_u64, constant time | P-521 base | 9.6 | 42.4 (4.4×) | 34.4 (3.6×) | 52.4 (5.5×) | 44.5 (4.6×) |
+| sub_uint, constant time | Mersenne-31 | 4.7 | 6.2 (1.3×) | 6.2 (1.3×) | 7.0 (1.5×) | 7.0 (1.5×) |
+| sub_uint, constant time | BabyBear | 6.1 | 10.9 (1.8×) | 8.5 (1.4×) | 13.0 (2.1×) | 12.5 (2.0×) |
+| sub_uint, constant time | Goldilocks | 4.3 | 9.9 (2.3×) | 7.0 (1.6×) | 11.4 (2.7×) | 11.0 (2.6×) |
+| sub_uint, constant time | BN254 scalar | 91.4 | 262 (2.9×) | 101 (1.1×) | 347 (3.8×) | 188 (2.1×) |
+| sub_uint, constant time | secp256k1 base | 7.2 | 33.5 (4.7×) | 26.1 (3.6×) | 34.4 (4.8×) | 38.5 (5.3×) |
+| sub_uint, constant time | P-256 base | 64.8 | 178 (2.7×) | 86.4 (1.3×) | 275 (4.2×) | 139 (2.1×) |
+| sub_uint, constant time | P-256 scalar | 90.8 | 250 (2.8×) | 106 (1.2×) | 328 (3.6×) | 184 (2.0×) |
+| sub_uint, constant time | Tom-256 base | 91.4 | 253 (2.8×) | 101 (1.1×) | 317 (3.5×) | 188 (2.1×) |
+| sub_uint, constant time | BLS12-381 base | 175 | 762 (4.4×) | 207 (1.2×) | 942 (5.4×) | 375 (2.1×) |
+| sub_uint, constant time | P-521 base | 19.1 | 127 (6.6×) | 86.8 (4.5×) | 126 (6.6×) | 113 (5.9×) |
+| from_u64, constant time | Mersenne-31 | 3.3 | 4.7 (1.4×) | 4.7 (1.4×) | 5.2 (1.6×) | 5.3 (1.6×) |
+| from_u64, constant time | BabyBear | 10.3 | 13.5 (1.3×) | 10.3 (1.0×) | 14.0 (1.4×) | 12.7 (1.2×) |
+| from_u64, constant time | Goldilocks | 3.4 | 15.0 (4.4×) | 9.3 (2.7×) | 17.4 (5.1×) | 12.5 (3.7×) |
+| from_u64, constant time | BN254 scalar | 60.6 | 201 (3.3×) | 80.9 (1.3×) | 275 (4.5×) | 119 (2.0×) |
+| from_u64, constant time | secp256k1 base | 2.2 | 3.4 (1.5×) | 3.4 (1.5×) | 3.4 (1.5×) | 3.4 (1.5×) |
+| from_u64, constant time | P-256 base | 30.6 | 178 (5.8×) | 50.0 (1.6×) | 210 (6.9×) | 84.1 (2.7×) |
+| from_u64, constant time | P-256 scalar | 62.7 | 255 (4.1×) | 81.8 (1.3×) | 268 (4.3×) | 118 (1.9×) |
+| from_u64, constant time | Tom-256 base | 55.8 | 253 (4.5×) | 79.1 (1.4×) | 271 (4.9×) | 114 (2.0×) |
+| from_u64, constant time | BLS12-381 base | 142 | 431 (3.0×) | 155 (1.1×) | 607 (4.3×) | 273 (1.9×) |
+| from_u64, constant time | P-521 base | 5.0 | 6.1 (1.2×) | 6.0 (1.2×) | 6.1 (1.2×) | 6.0 (1.2×) |
+| div_u64, constant time | BN254 scalar | 6,930 | 12,376 (1.8×) | 9,508 (1.4×) | 17,577 (2.5×) | 12,966 (1.9×) |
+| div_u64, constant time | secp256k1 base | 6,782 | 11,879 (1.8×) | 9,055 (1.3×) | 17,081 (2.5×) | 12,739 (1.9×) |
+| div_u64, constant time | P-256 base | 6,695 | 11,796 (1.8×) | 9,146 (1.4×) | 17,486 (2.6×) | 12,560 (1.9×) |
+| div_u64, constant time | P-256 scalar | 6,905 | 12,320 (1.8×) | 9,427 (1.4×) | 17,554 (2.5×) | 13,160 (1.9×) |
+| div_u64, constant time | Tom-256 base | 7,409 | 12,206 (1.6×) | 9,479 (1.3×) | 16,908 (2.3×) | 12,938 (1.7×) |
+| div_u64, constant time | BLS12-381 base | 12,404 | 24,806 (2.0×) | 17,035 (1.4×) | 35,168 (2.8×) | 24,433 (2.0×) |
+| div_u64, constant time | P-521 base | 20,372 | 42,369 (2.1×) | 25,993 (1.3×) | 64,051 (3.1×) | 42,942 (2.1×) |
+| div_uint, constant time | Mersenne-31 | 267 | 455 (1.7×) | 455 (1.7×) | 469 (1.8×) | 465 (1.7×) |
+| div_uint, constant time | BabyBear | 408 | 546 (1.3×) | 466 (1.1×) | 612 (1.5×) | 460 (1.1×) |
+| div_uint, constant time | Goldilocks | 707 | 1,308 (1.9×) | 950 (1.3×) | 1,576 (2.2×) | 1,211 (1.7×) |
+| div_uint, constant time | BN254 scalar | 7,010 | 12,579 (1.8×) | 9,691 (1.4×) | 17,813 (2.5×) | 13,321 (1.9×) |
+| div_uint, constant time | secp256k1 base | 6,807 | 11,955 (1.8×) | 9,092 (1.3×) | 17,052 (2.5×) | 12,806 (1.9×) |
+| div_uint, constant time | P-256 base | 6,719 | 12,024 (1.8×) | 9,118 (1.4×) | 17,545 (2.6×) | 12,681 (1.9×) |
+| div_uint, constant time | P-256 scalar | 6,954 | 12,378 (1.8×) | 9,541 (1.4×) | 17,746 (2.6×) | 13,496 (1.9×) |
+| div_uint, constant time | Tom-256 base | 7,337 | 12,457 (1.7×) | 9,428 (1.3×) | 17,276 (2.4×) | 13,089 (1.8×) |
+| div_uint, constant time | BLS12-381 base | 12,513 | 25,374 (2.0×) | 17,063 (1.4×) | 35,743 (2.9×) | 24,870 (2.0×) |
+| div_uint, constant time | P-521 base | 20,756 | 42,567 (2.1×) | 26,008 (1.3×) | 65,187 (3.1×) | 43,336 (2.1×) |
+
+### Against native, latency
+
+Cycles per operation of `prime-field` in each build, then its ratio to the native figure.
+
+| Operation | Field | Native | Chrome | Chrome, wide arithmetic | Firefox | Firefox, wide arithmetic |
+|---|---|---:|---:|---:|---:|---:|
+| add | Mersenne-31 | 2.9 | 7.5 (2.6×) | 7.5 (2.6×) | 7.7 (2.7×) | 7.7 (2.7×) |
+| add | BabyBear | 3.0 | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) |
+| add | Goldilocks | 2.9 | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) |
+| add | BN254 scalar | 6.8 | 14.6 (2.1×) | 10.9 (1.6×) | 15.6 (2.3×) | 17.4 (2.6×) |
+| add | secp256k1 base | 6.9 | 13.7 (2.0×) | 10.7 (1.6×) | 13.3 (1.9×) | 18.1 (2.6×) |
+| add | P-256 base | 6.9 | 12.9 (1.9×) | 11.2 (1.6×) | 13.8 (2.0×) | 17.9 (2.6×) |
+| add | P-256 scalar | 7.0 | 14.4 (2.1×) | 11.1 (1.6×) | 15.4 (2.2×) | 18.9 (2.7×) |
+| add | Tom-256 base | 6.9 | 14.3 (2.1×) | 11.2 (1.6×) | 15.0 (2.2×) | 18.4 (2.7×) |
+| add | BLS12-381 base | 8.9 | 24.9 (2.8×) | 18.7 (2.1×) | 24.7 (2.8×) | 29.8 (3.3×) |
+| add | P-521 base | 15.1 | 42.4 (2.8×) | 27.7 (1.8×) | 47.5 (3.1×) | 47.5 (3.1×) |
+| sub | Mersenne-31 | 2.9 | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) |
+| sub | BabyBear | 3.0 | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) |
+| sub | Goldilocks | 2.9 | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) |
+| sub | BN254 scalar | 6.8 | 14.5 (2.1×) | 10.7 (1.6×) | 13.8 (2.0×) | 18.5 (2.7×) |
+| sub | secp256k1 base | 8.0 | 16.4 (2.0×) | 10.7 (1.3×) | 13.1 (1.6×) | 17.8 (2.2×) |
+| sub | P-256 base | 7.0 | 14.2 (2.0×) | 10.4 (1.5×) | 12.9 (1.8×) | 17.4 (2.5×) |
+| sub | P-256 scalar | 7.0 | 15.3 (2.2×) | 10.7 (1.5×) | 13.7 (2.0×) | 17.9 (2.6×) |
+| sub | Tom-256 base | 8.1 | 15.0 (1.9×) | 10.8 (1.3×) | 14.0 (1.7×) | 18.5 (2.3×) |
+| sub | BLS12-381 base | 9.9 | 25.3 (2.6×) | 17.5 (1.8×) | 24.4 (2.5×) | 30.6 (3.1×) |
+| sub | P-521 base | 12.5 | 44.9 (3.6×) | 26.8 (2.1×) | 43.3 (3.5×) | 45.5 (3.6×) |
+| mul | Mersenne-31 | 7.0 | 12.0 (1.7×) | 12.0 (1.7×) | 12.0 (1.7×) | 12.0 (1.7×) |
+| mul | BabyBear | 10.9 | 13.0 (1.2×) | 11.0 (1.0×) | 14.5 (1.3×) | 11.0 (1.0×) |
+| mul | Goldilocks | 9.0 | 18.0 (2.0×) | 14.4 (1.6×) | 21.0 (2.3×) | 14.0 (1.6×) |
+| mul | BN254 scalar | 72.4 | 227 (3.1×) | 90.9 (1.3×) | 368 (5.1×) | 152 (2.1×) |
+| mul | secp256k1 base | 54.8 | 173 (3.2×) | 77.6 (1.4×) | 250 (4.6×) | 106 (1.9×) |
+| mul | P-256 base | 60.0 | 190 (3.2×) | 72.3 (1.2×) | 315 (5.2×) | 121 (2.0×) |
+| mul | P-256 scalar | 84.0 | 239 (2.8×) | 93.4 (1.1×) | 325 (3.9×) | 164 (2.0×) |
+| mul | Tom-256 base | 76.0 | 239 (3.1×) | 84.9 (1.1×) | 332 (4.4×) | 159 (2.1×) |
+| mul | BLS12-381 base | 141 | 719 (5.1×) | 185 (1.3×) | 917 (6.5×) | 337 (2.4×) |
+| mul | P-521 base | 189 | 686 (3.6×) | 247 (1.3×) | 1,292 (6.8×) | 446 (2.4×) |
+| square | Mersenne-31 | 7.0 | 12.0 (1.7×) | 12.0 (1.7×) | 12.0 (1.7×) | 12.0 (1.7×) |
+| square | BabyBear | 11.0 | 13.0 (1.2×) | 11.0 (1.0×) | 14.0 (1.3×) | 11.0 (1.0×) |
+| square | Goldilocks | 9.0 | 17.3 (1.9×) | 12.0 (1.3×) | 21.3 (2.4×) | 14.4 (1.6×) |
+| square | BN254 scalar | 66.5 | 208 (3.1×) | 89.9 (1.4×) | 365 (5.5×) | 142 (2.1×) |
+| square | secp256k1 base | 42.9 | 154 (3.6×) | 69.9 (1.6×) | 183 (4.3×) | 95.5 (2.2×) |
+| square | P-256 base | 44.0 | 155 (3.5×) | 62.2 (1.4×) | 213 (4.8×) | 114 (2.6×) |
+| square | P-256 scalar | 73.0 | 223 (3.1×) | 89.1 (1.2×) | 240 (3.3×) | 150 (2.1×) |
+| square | Tom-256 base | 64.5 | 201 (3.1×) | 83.0 (1.3×) | 236 (3.7×) | 142 (2.2×) |
+| square | BLS12-381 base | 137 | 609 (4.4×) | 179 (1.3×) | 870 (6.4×) | 294 (2.1×) |
+| square | P-521 base | 133 | 571 (4.3×) | 210 (1.6×) | 913 (6.9×) | 390 (2.9×) |
+| mul_u64 | Mersenne-31 | 8.9 | 14.0 (1.6×) | 14.0 (1.6×) | 14.0 (1.6×) | 14.0 (1.6×) |
+| mul_u64 | BabyBear | 11.0 | 17.0 (1.5×) | 11.1 (1.0×) | 19.3 (1.8×) | 13.1 (1.2×) |
+| mul_u64 | Goldilocks | 9.1 | 20.4 (2.2×) | 12.0 (1.3×) | 25.0 (2.7×) | 17.2 (1.9×) |
+| mul_u64 | BN254 scalar | 25.9 | 91.3 (3.5×) | 34.5 (1.3×) | 120 (4.6×) | 45.4 (1.8×) |
+| mul_u64 | secp256k1 base | 14.9 | 49.0 (3.3×) | 16.0 (1.1×) | 65.1 (4.4×) | 23.0 (1.5×) |
+| mul_u64 | P-256 base | 24.9 | 74.9 (3.0×) | 33.0 (1.3×) | 89.1 (3.6×) | 42.4 (1.7×) |
+| mul_u64 | P-256 scalar | 27.8 | 82.2 (3.0×) | 34.6 (1.2×) | 106 (3.8×) | 48.1 (1.7×) |
+| mul_u64 | Tom-256 base | 27.9 | 84.9 (3.0×) | 32.9 (1.2×) | 105 (3.8×) | 45.4 (1.6×) |
+| mul_u64 | BLS12-381 base | 34.5 | 125 (3.6×) | 47.9 (1.4×) | 183 (5.3×) | 62.1 (1.8×) |
+| mul_u64 | P-521 base | 32.8 | 95.7 (2.9×) | 39.5 (1.2×) | 191 (5.8×) | 51.8 (1.6×) |
+| mul_uint | Mersenne-31 | 9.0 | 14.0 (1.6×) | 14.0 (1.6×) | 14.0 (1.6×) | 14.0 (1.6×) |
+| mul_uint | BabyBear | 10.9 | 17.0 (1.6×) | 11.0 (1.0×) | 19.3 (1.8×) | 13.1 (1.2×) |
+| mul_uint | Goldilocks | 8.8 | 20.5 (2.3×) | 12.1 (1.4×) | 25.0 (2.8×) | 17.2 (2.0×) |
+| mul_uint | BN254 scalar | 114 | 439 (3.9×) | 173 (1.5×) | 533 (4.7×) | 294 (2.6×) |
+| mul_uint | secp256k1 base | 68.3 | 265 (3.9×) | 117 (1.7×) | 319 (4.7×) | 164 (2.4×) |
+| mul_uint | P-256 base | 110 | 356 (3.2×) | 138 (1.3×) | 424 (3.9×) | 233 (2.1×) |
+| mul_uint | P-256 scalar | 116 | 425 (3.7×) | 178 (1.5×) | 474 (4.1×) | 301 (2.6×) |
+| mul_uint | Tom-256 base | 114 | 411 (3.6×) | 172 (1.5×) | 497 (4.4×) | 324 (2.8×) |
+| mul_uint | BLS12-381 base | 222 | 956 (4.3×) | 357 (1.6×) | 1,134 (5.1×) | 832 (3.7×) |
+| mul_uint | P-521 base | 407 | 1,566 (3.8×) | 643 (1.6×) | 2,382 (5.9×) | 989 (2.4×) |
+| add_u64 | Mersenne-31 | 4.5 | 8.7 (1.9×) | 8.7 (1.9×) | 9.3 (2.1×) | 9.3 (2.1×) |
+| add_u64 | BabyBear | 7.4 | 12.2 (1.6×) | 8.2 (1.1×) | 12.7 (1.7×) | 11.0 (1.5×) |
+| add_u64 | Goldilocks | 4.4 | 9.1 (2.1×) | 7.3 (1.7×) | 10.8 (2.5×) | 10.0 (2.3×) |
+| add_u64 | BN254 scalar | 24.9 | 117 (4.7×) | 44.3 (1.8×) | 142 (5.7×) | 65.5 (2.6×) |
+| add_u64 | secp256k1 base | 7.4 | 7.0 (0.9×) | 6.0 (0.8×) | 7.0 (0.9×) | 10.0 (1.4×) |
+| add_u64 | P-256 base | 22.1 | 68.6 (3.1×) | 34.9 (1.6×) | 77.7 (3.5×) | 55.7 (2.5×) |
+| add_u64 | P-256 scalar | 22.7 | 69.3 (3.1×) | 38.4 (1.7×) | 72.9 (3.2×) | 65.1 (2.9×) |
+| add_u64 | Tom-256 base | 26.0 | 88.0 (3.4×) | 39.8 (1.5×) | 98.4 (3.8×) | 65.8 (2.5×) |
+| add_u64 | BLS12-381 base | 38.7 | 160 (4.1×) | 62.4 (1.6×) | 270 (7.0×) | 89.0 (2.3×) |
+| add_u64 | P-521 base | 12.8 | 21.2 (1.7×) | 12.5 (1.0×) | 19.4 (1.5×) | 27.7 (2.2×) |
+| add_uint | Mersenne-31 | 4.5 | 8.6 (1.9×) | 8.6 (1.9×) | 9.3 (2.1×) | 9.3 (2.1×) |
+| add_uint | BabyBear | 7.0 | 12.2 (1.7×) | 8.2 (1.2×) | 12.7 (1.8×) | 11.0 (1.6×) |
+| add_uint | Goldilocks | 4.4 | 9.1 (2.1×) | 7.3 (1.7×) | 10.8 (2.5×) | 10.1 (2.3×) |
+| add_uint | BN254 scalar | 83.8 | 230 (2.7×) | 104 (1.2×) | 382 (4.6×) | 174 (2.1×) |
+| add_uint | secp256k1 base | 8.5 | 17.0 (2.0×) | 12.5 (1.5×) | 16.7 (2.0×) | 23.4 (2.8×) |
+| add_uint | P-256 base | 62.2 | 181 (2.9×) | 78.1 (1.3×) | 328 (5.3×) | 149 (2.4×) |
+| add_uint | P-256 scalar | 89.8 | 258 (2.9×) | 106 (1.2×) | 342 (3.8×) | 201 (2.2×) |
+| add_uint | Tom-256 base | 83.3 | 245 (2.9×) | 108 (1.3×) | 332 (4.0×) | 196 (2.4×) |
+| add_uint | BLS12-381 base | 166 | 763 (4.6×) | 196 (1.2×) | 955 (5.8×) | 375 (2.3×) |
+| add_uint | P-521 base | 23.6 | 62.6 (2.7×) | 42.1 (1.8×) | 85.0 (3.6×) | 67.2 (2.8×) |
+| sub_u64 | Mersenne-31 | 4.5 | 5.3 (1.2×) | 5.3 (1.2×) | 6.5 (1.4×) | 6.7 (1.5×) |
+| sub_u64 | BabyBear | 6.4 | 11.9 (1.9×) | 8.2 (1.3×) | 12.7 (2.0×) | 11.1 (1.7×) |
+| sub_u64 | Goldilocks | 4.2 | 8.9 (2.1×) | 6.6 (1.6×) | 10.7 (2.5×) | 9.4 (2.2×) |
+| sub_u64 | BN254 scalar | 24.9 | 113 (4.5×) | 45.8 (1.8×) | 137 (5.5×) | 67.1 (2.7×) |
+| sub_u64 | secp256k1 base | 6.9 | 7.0 (1.0×) | 6.1 (0.9×) | 7.0 (1.0×) | 9.0 (1.3×) |
+| sub_u64 | P-256 base | 21.5 | 71.3 (3.3×) | 34.7 (1.6×) | 79.8 (3.7×) | 55.6 (2.6×) |
+| sub_u64 | P-256 scalar | 23.6 | 68.7 (2.9×) | 37.9 (1.6×) | 73.5 (3.1×) | 64.8 (2.7×) |
+| sub_u64 | Tom-256 base | 25.0 | 91.6 (3.7×) | 39.3 (1.6×) | 105 (4.2×) | 66.6 (2.7×) |
+| sub_u64 | BLS12-381 base | 38.7 | 155 (4.0×) | 62.2 (1.6×) | 266 (6.9×) | 92.1 (2.4×) |
+| sub_u64 | P-521 base | 11.1 | 21.1 (1.9×) | 15.3 (1.4×) | 21.7 (2.0×) | 21.9 (2.0×) |
+| sub_uint | Mersenne-31 | 4.5 | 5.3 (1.2×) | 5.4 (1.2×) | 6.5 (1.4×) | 6.6 (1.5×) |
+| sub_uint | BabyBear | 7.0 | 12.0 (1.7×) | 8.2 (1.2×) | 13.1 (1.9×) | 11.2 (1.6×) |
+| sub_uint | Goldilocks | 4.2 | 8.9 (2.1×) | 6.6 (1.6×) | 10.7 (2.5×) | 9.4 (2.2×) |
+| sub_uint | BN254 scalar | 83.9 | 228 (2.7×) | 103 (1.2×) | 367 (4.4×) | 177 (2.1×) |
+| sub_uint | secp256k1 base | 6.8 | 18.9 (2.8×) | 12.4 (1.8×) | 16.5 (2.4×) | 21.9 (3.2×) |
+| sub_uint | P-256 base | 61.4 | 185 (3.0×) | 78.9 (1.3×) | 372 (6.1×) | 145 (2.4×) |
+| sub_uint | P-256 scalar | 86.1 | 257 (3.0×) | 109 (1.3×) | 340 (3.9×) | 202 (2.3×) |
+| sub_uint | Tom-256 base | 81.5 | 246 (3.0×) | 105 (1.3×) | 332 (4.1×) | 196 (2.4×) |
+| sub_uint | BLS12-381 base | 169 | 755 (4.5×) | 194 (1.1×) | 934 (5.5×) | 379 (2.2×) |
+| sub_uint | P-521 base | 15.6 | 67.1 (4.3×) | 38.7 (2.5×) | 76.9 (4.9×) | 67.7 (4.3×) |
+| div_u64 | BN254 scalar | 605 | 1,213 (2.0×) | 819 (1.4×) | 1,421 (2.3×) | 1,046 (1.7×) |
+| div_u64 | secp256k1 base | 567 | 1,019 (1.8×) | 777 (1.4×) | 1,216 (2.1×) | 871 (1.5×) |
+| div_u64 | P-256 base | 603 | 1,094 (1.8×) | 798 (1.3×) | 1,342 (2.2×) | 982 (1.6×) |
+| div_u64 | P-256 scalar | 619 | 1,179 (1.9×) | 861 (1.4×) | 1,400 (2.3×) | 1,132 (1.8×) |
+| div_u64 | Tom-256 base | 612 | 1,183 (1.9×) | 859 (1.4×) | 1,486 (2.4×) | 1,082 (1.8×) |
+| div_u64 | BLS12-381 base | 754 | 1,802 (2.4×) | 1,031 (1.4×) | 2,484 (3.3×) | 1,753 (2.3×) |
+| div_u64 | P-521 base | 922 | 2,454 (2.7×) | 1,373 (1.5×) | 3,629 (3.9×) | 1,867 (2.0×) |
+| div_uint | Mersenne-31 | 219 | 276 (1.3×) | 277 (1.3×) | 287 (1.3×) | 281 (1.3×) |
+| div_uint | BabyBear | 218 | 278 (1.3×) | 278 (1.3×) | 286 (1.3×) | 283 (1.3×) |
+| div_uint | Goldilocks | 438 | 553 (1.3×) | 543 (1.2×) | 593 (1.4×) | 579 (1.3×) |
+| div_uint | BN254 scalar | 4,997 | 9,042 (1.8×) | 6,541 (1.3×) | 12,999 (2.6×) | 8,439 (1.7×) |
+| div_uint | secp256k1 base | 4,867 | 8,481 (1.7×) | 6,033 (1.2×) | 12,094 (2.5×) | 8,085 (1.7×) |
+| div_uint | P-256 base | 5,079 | 8,763 (1.7×) | 6,170 (1.2×) | 12,245 (2.4×) | 7,914 (1.6×) |
+| div_uint | P-256 scalar | 4,934 | 9,221 (1.9×) | 6,605 (1.3×) | 12,426 (2.5×) | 8,667 (1.8×) |
+| div_uint | Tom-256 base | 5,043 | 8,984 (1.8×) | 6,489 (1.3×) | 12,329 (2.4×) | 8,467 (1.7×) |
+| div_uint | BLS12-381 base | 9,060 | 20,824 (2.3×) | 12,045 (1.3×) | 26,517 (2.9×) | 16,955 (1.9×) |
+| div_uint | P-521 base | 14,914 | 34,490 (2.3×) | 18,121 (1.2×) | 50,364 (3.4×) | 30,006 (2.0×) |
+| add, constant time | Mersenne-31 | 3.0 | 7.5 (2.5×) | 7.5 (2.5×) | 7.7 (2.6×) | 7.7 (2.6×) |
+| add, constant time | BabyBear | 3.0 | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) |
+| add, constant time | Goldilocks | 3.0 | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) |
+| add, constant time | BN254 scalar | 6.9 | 24.8 (3.6×) | 19.4 (2.8×) | 23.1 (3.3×) | 25.7 (3.7×) |
+| add, constant time | secp256k1 base | 6.9 | 28.1 (4.1×) | 22.6 (3.3×) | 27.0 (3.9×) | 29.8 (4.3×) |
+| add, constant time | P-256 base | 7.0 | 26.8 (3.8×) | 22.7 (3.2×) | 24.9 (3.6×) | 28.1 (4.0×) |
+| add, constant time | P-256 scalar | 6.7 | 26.6 (4.0×) | 23.7 (3.5×) | 26.9 (4.0×) | 30.1 (4.5×) |
+| add, constant time | Tom-256 base | 7.0 | 27.9 (4.0×) | 23.8 (3.4×) | 27.1 (3.9×) | 29.1 (4.2×) |
+| add, constant time | BLS12-381 base | 8.9 | 41.4 (4.7×) | 28.3 (3.2×) | 35.5 (4.0×) | 41.1 (4.6×) |
+| add, constant time | P-521 base | 14.9 | 76.7 (5.1×) | 47.2 (3.2×) | 80.0 (5.4×) | 74.1 (5.0×) |
+| sub, constant time | Mersenne-31 | 3.0 | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) |
+| sub, constant time | BabyBear | 3.0 | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) |
+| sub, constant time | Goldilocks | 3.0 | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) | 3.0 (1.0×) |
+| sub, constant time | BN254 scalar | 7.0 | 26.4 (3.8×) | 16.9 (2.4×) | 27.0 (3.9×) | 25.0 (3.6×) |
+| sub, constant time | secp256k1 base | 8.0 | 21.4 (2.7×) | 15.5 (1.9×) | 20.5 (2.6×) | 21.5 (2.7×) |
+| sub, constant time | P-256 base | 7.0 | 19.1 (2.7×) | 15.6 (2.2×) | 18.6 (2.7×) | 20.0 (2.9×) |
+| sub, constant time | P-256 scalar | 6.8 | 21.6 (3.2×) | 15.7 (2.3×) | 18.7 (2.8×) | 22.0 (3.2×) |
+| sub, constant time | Tom-256 base | 8.2 | 21.2 (2.6×) | 17.1 (2.1×) | 19.8 (2.4×) | 23.0 (2.8×) |
+| sub, constant time | BLS12-381 base | 9.9 | 37.4 (3.8×) | 24.2 (2.4×) | 36.9 (3.7×) | 36.3 (3.7×) |
+| sub, constant time | P-521 base | 12.6 | 57.1 (4.5×) | 37.2 (3.0×) | 60.3 (4.8×) | 53.1 (4.2×) |
+| mul, constant time | Mersenne-31 | 7.0 | 12.0 (1.7×) | 12.0 (1.7×) | 12.0 (1.7×) | 12.0 (1.7×) |
+| mul, constant time | BabyBear | 11.0 | 13.0 (1.2×) | 11.0 (1.0×) | 14.5 (1.3×) | 11.0 (1.0×) |
+| mul, constant time | Goldilocks | 8.9 | 18.1 (2.0×) | 14.4 (1.6×) | 21.0 (2.4×) | 14.0 (1.6×) |
+| mul, constant time | BN254 scalar | 79.0 | 242 (3.1×) | 94.8 (1.2×) | 415 (5.3×) | 154 (1.9×) |
+| mul, constant time | secp256k1 base | 55.0 | 173 (3.1×) | 77.6 (1.4×) | 276 (5.0×) | 106 (1.9×) |
+| mul, constant time | P-256 base | 60.0 | 189 (3.1×) | 72.2 (1.2×) | 316 (5.3×) | 120 (2.0×) |
+| mul, constant time | P-256 scalar | 84.0 | 233 (2.8×) | 94.4 (1.1×) | 335 (4.0×) | 158 (1.9×) |
+| mul, constant time | Tom-256 base | 76.0 | 237 (3.1×) | 88.2 (1.2×) | 336 (4.4×) | 151 (2.0×) |
+| mul, constant time | BLS12-381 base | 154 | 720 (4.7×) | 189 (1.2×) | 930 (6.0×) | 337 (2.2×) |
+| mul, constant time | P-521 base | 188 | 687 (3.7×) | 247 (1.3×) | 1,300 (6.9×) | 445 (2.4×) |
+| square, constant time | Mersenne-31 | 7.0 | 12.0 (1.7×) | 12.0 (1.7×) | 12.0 (1.7×) | 12.0 (1.7×) |
+| square, constant time | BabyBear | 11.0 | 13.0 (1.2×) | 11.0 (1.0×) | 14.0 (1.3×) | 11.0 (1.0×) |
+| square, constant time | Goldilocks | 9.0 | 17.3 (1.9×) | 12.0 (1.3×) | 21.1 (2.3×) | 14.4 (1.6×) |
+| square, constant time | BN254 scalar | 66.9 | 219 (3.3×) | 83.7 (1.3×) | 329 (4.9×) | 138 (2.1×) |
+| square, constant time | secp256k1 base | 43.0 | 153 (3.6×) | 69.9 (1.6×) | 168 (3.9×) | 97.4 (2.3×) |
+| square, constant time | P-256 base | 44.0 | 155 (3.5×) | 62.6 (1.4×) | 227 (5.2×) | 113 (2.6×) |
+| square, constant time | P-256 scalar | 73.0 | 206 (2.8×) | 89.8 (1.2×) | 242 (3.3×) | 149 (2.0×) |
+| square, constant time | Tom-256 base | 64.5 | 200 (3.1×) | 83.1 (1.3×) | 290 (4.5×) | 142 (2.2×) |
+| square, constant time | BLS12-381 base | 145 | 608 (4.2×) | 169 (1.2×) | 867 (6.0×) | 297 (2.0×) |
+| square, constant time | P-521 base | 133 | 571 (4.3×) | 208 (1.6×) | 907 (6.8×) | 392 (2.9×) |
+| mul_u64, constant time | Mersenne-31 | 8.9 | 14.0 (1.6×) | 14.0 (1.6×) | 14.0 (1.6×) | 14.0 (1.6×) |
+| mul_u64, constant time | BabyBear | 10.9 | 17.0 (1.6×) | 11.0 (1.0×) | 19.3 (1.8×) | 13.0 (1.2×) |
+| mul_u64, constant time | Goldilocks | 8.9 | 20.4 (2.3×) | 12.1 (1.4×) | 25.0 (2.8×) | 17.2 (1.9×) |
+| mul_u64, constant time | BN254 scalar | 30.3 | 108 (3.6×) | 50.9 (1.7×) | 132 (4.4×) | 58.0 (1.9×) |
+| mul_u64, constant time | secp256k1 base | 19.9 | 68.9 (3.5×) | 39.0 (2.0×) | 85.1 (4.3×) | 44.3 (2.2×) |
+| mul_u64, constant time | P-256 base | 31.9 | 87.6 (2.7×) | 53.2 (1.7×) | 105 (3.3×) | 59.5 (1.9×) |
+| mul_u64, constant time | P-256 scalar | 33.5 | 105 (3.1×) | 55.0 (1.6×) | 133 (4.0×) | 65.5 (2.0×) |
+| mul_u64, constant time | Tom-256 base | 32.9 | 99.7 (3.0×) | 52.0 (1.6×) | 122 (3.7×) | 61.4 (1.9×) |
+| mul_u64, constant time | BLS12-381 base | 42.1 | 154 (3.7×) | 70.8 (1.7×) | 195 (4.6×) | 88.5 (2.1×) |
+| mul_u64, constant time | P-521 base | 45.1 | 139 (3.1×) | 78.0 (1.7×) | 170 (3.8×) | 94.9 (2.1×) |
+| mul_uint, constant time | Mersenne-31 | 9.0 | 14.0 (1.6×) | 14.0 (1.6×) | 14.0 (1.6×) | 14.0 (1.6×) |
+| mul_uint, constant time | BabyBear | 11.0 | 17.0 (1.5×) | 11.0 (1.0×) | 19.4 (1.8×) | 13.1 (1.2×) |
+| mul_uint, constant time | Goldilocks | 9.1 | 20.4 (2.2×) | 12.1 (1.3×) | 25.0 (2.7×) | 17.2 (1.9×) |
+| mul_uint, constant time | BN254 scalar | 141 | 481 (3.4×) | 167 (1.2×) | 593 (4.2×) | 312 (2.2×) |
+| mul_uint, constant time | secp256k1 base | 83.8 | 317 (3.8×) | 193 (2.3×) | 380 (4.5×) | 253 (3.0×) |
+| mul_uint, constant time | P-256 base | 134 | 406 (3.0×) | 137 (1.0×) | 489 (3.6×) | 235 (1.8×) |
+| mul_uint, constant time | P-256 scalar | 146 | 478 (3.3×) | 178 (1.2×) | 540 (3.7×) | 314 (2.2×) |
+| mul_uint, constant time | Tom-256 base | 135 | 467 (3.5×) | 172 (1.3×) | 554 (4.1×) | 300 (2.2×) |
+| mul_uint, constant time | BLS12-381 base | 266 | 1,082 (4.1×) | 370 (1.4×) | 1,699 (6.4×) | 912 (3.4×) |
+| mul_uint, constant time | P-521 base | 472 | 2,017 (4.3×) | 997 (2.1×) | 2,901 (6.1×) | 1,465 (3.1×) |
+| add_u64, constant time | Mersenne-31 | 4.6 | 8.6 (1.9×) | 8.7 (1.9×) | 9.3 (2.0×) | 9.3 (2.0×) |
+| add_u64, constant time | BabyBear | 7.0 | 12.2 (1.7×) | 8.2 (1.2×) | 12.7 (1.8×) | 11.0 (1.6×) |
+| add_u64, constant time | Goldilocks | 4.4 | 9.1 (2.1×) | 7.3 (1.7×) | 10.7 (2.4×) | 10.0 (2.3×) |
+| add_u64, constant time | BN254 scalar | 28.8 | 132 (4.6×) | 55.9 (1.9×) | 151 (5.2×) | 81.8 (2.8×) |
+| add_u64, constant time | secp256k1 base | 7.4 | 25.4 (3.4×) | 23.0 (3.1×) | 25.1 (3.4×) | 29.0 (3.9×) |
+| add_u64, constant time | P-256 base | 24.0 | 89.1 (3.7×) | 55.6 (2.3×) | 94.9 (4.0×) | 74.6 (3.1×) |
+| add_u64, constant time | P-256 scalar | 26.0 | 85.7 (3.3×) | 58.6 (2.3×) | 98.4 (3.8×) | 89.6 (3.4×) |
+| add_u64, constant time | Tom-256 base | 27.1 | 119 (4.4×) | 59.6 (2.2×) | 133 (4.9×) | 85.1 (3.1×) |
+| add_u64, constant time | BLS12-381 base | 44.9 | 182 (4.1×) | 96.1 (2.1×) | 233 (5.2×) | 124 (2.8×) |
+| add_u64, constant time | P-521 base | 12.7 | 65.6 (5.2×) | 47.0 (3.7×) | 69.0 (5.4×) | 64.9 (5.1×) |
+| add_uint, constant time | Mersenne-31 | 4.6 | 8.7 (1.9×) | 8.6 (1.9×) | 9.3 (2.0×) | 9.3 (2.0×) |
+| add_uint, constant time | BabyBear | 7.1 | 12.4 (1.7×) | 8.2 (1.2×) | 12.7 (1.8×) | 11.0 (1.5×) |
+| add_uint, constant time | Goldilocks | 4.4 | 9.0 (2.0×) | 7.3 (1.7×) | 10.7 (2.4×) | 10.0 (2.3×) |
+| add_uint, constant time | BN254 scalar | 91.8 | 230 (2.5×) | 98.1 (1.1×) | 297 (3.2×) | 181 (2.0×) |
+| add_uint, constant time | secp256k1 base | 8.7 | 38.3 (4.4×) | 29.4 (3.4×) | 36.3 (4.2×) | 44.2 (5.1×) |
+| add_uint, constant time | P-256 base | 68.9 | 178 (2.6×) | 84.7 (1.2×) | 255 (3.7×) | 144 (2.1×) |
+| add_uint, constant time | P-256 scalar | 89.8 | 260 (2.9×) | 107 (1.2×) | 311 (3.5×) | 197 (2.2×) |
+| add_uint, constant time | Tom-256 base | 86.6 | 255 (2.9×) | 104 (1.2×) | 332 (3.8×) | 182 (2.1×) |
+| add_uint, constant time | BLS12-381 base | 179 | 764 (4.3×) | 206 (1.2×) | 941 (5.3×) | 369 (2.1×) |
+| add_uint, constant time | P-521 base | 22.7 | 138 (6.1×) | 93.5 (4.1×) | 147 (6.5×) | 134 (5.9×) |
+| sub_u64, constant time | Mersenne-31 | 4.5 | 5.3 (1.2×) | 5.4 (1.2×) | 6.6 (1.5×) | 6.6 (1.5×) |
+| sub_u64, constant time | BabyBear | 7.0 | 11.9 (1.7×) | 8.2 (1.2×) | 13.1 (1.9×) | 11.2 (1.6×) |
+| sub_u64, constant time | Goldilocks | 4.2 | 8.8 (2.1×) | 6.6 (1.6×) | 10.7 (2.5×) | 9.4 (2.2×) |
+| sub_u64, constant time | BN254 scalar | 28.3 | 125 (4.4×) | 56.9 (2.0×) | 153 (5.4×) | 80.0 (2.8×) |
+| sub_u64, constant time | secp256k1 base | 6.9 | 18.0 (2.6×) | 15.1 (2.2×) | 17.0 (2.5×) | 17.3 (2.5×) |
+| sub_u64, constant time | P-256 base | 22.9 | 85.7 (3.7×) | 50.6 (2.2×) | 88.2 (3.9×) | 67.2 (2.9×) |
+| sub_u64, constant time | P-256 scalar | 22.2 | 81.3 (3.7×) | 50.8 (2.3×) | 93.2 (4.2×) | 79.8 (3.6×) |
+| sub_u64, constant time | Tom-256 base | 28.1 | 113 (4.0×) | 56.2 (2.0×) | 125 (4.4×) | 80.5 (2.9×) |
+| sub_u64, constant time | BLS12-381 base | 44.5 | 181 (4.1×) | 90.0 (2.0×) | 223 (5.0×) | 120 (2.7×) |
+| sub_u64, constant time | P-521 base | 11.1 | 45.5 (4.1×) | 36.1 (3.3×) | 49.8 (4.5×) | 46.3 (4.2×) |
+| sub_uint, constant time | Mersenne-31 | 4.6 | 5.3 (1.2×) | 5.3 (1.2×) | 6.6 (1.4×) | 6.6 (1.4×) |
+| sub_uint, constant time | BabyBear | 7.1 | 11.9 (1.7×) | 8.2 (1.2×) | 13.0 (1.8×) | 11.2 (1.6×) |
+| sub_uint, constant time | Goldilocks | 4.2 | 8.9 (2.1×) | 6.5 (1.5×) | 10.7 (2.5×) | 9.4 (2.2×) |
+| sub_uint, constant time | BN254 scalar | 93.1 | 242 (2.6×) | 99.0 (1.1×) | 283 (3.0×) | 180 (1.9×) |
+| sub_uint, constant time | secp256k1 base | 7.7 | 32.2 (4.2×) | 25.0 (3.2×) | 31.8 (4.1×) | 38.3 (5.0×) |
+| sub_uint, constant time | P-256 base | 68.0 | 176 (2.6×) | 80.3 (1.2×) | 251 (3.7×) | 138 (2.0×) |
+| sub_uint, constant time | P-256 scalar | 96.0 | 253 (2.6×) | 102 (1.1×) | 331 (3.4×) | 189 (2.0×) |
+| sub_uint, constant time | Tom-256 base | 86.3 | 248 (2.9×) | 98.4 (1.1×) | 333 (3.9×) | 177 (2.1×) |
+| sub_uint, constant time | BLS12-381 base | 172 | 754 (4.4×) | 204 (1.2×) | 946 (5.5×) | 376 (2.2×) |
+| sub_uint, constant time | P-521 base | 19.6 | 124 (6.3×) | 85.4 (4.4×) | 121 (6.2×) | 113 (5.8×) |
+| div_u64, constant time | BN254 scalar | 6,950 | 12,371 (1.8×) | 9,487 (1.4×) | 17,513 (2.5×) | 12,967 (1.9×) |
+| div_u64, constant time | secp256k1 base | 6,790 | 11,948 (1.8×) | 8,999 (1.3×) | 17,024 (2.5×) | 12,708 (1.9×) |
+| div_u64, constant time | P-256 base | 6,707 | 11,856 (1.8×) | 9,177 (1.4×) | 17,369 (2.6×) | 12,549 (1.9×) |
+| div_u64, constant time | P-256 scalar | 6,903 | 12,313 (1.8×) | 9,442 (1.4×) | 17,333 (2.5×) | 13,173 (1.9×) |
+| div_u64, constant time | Tom-256 base | 7,295 | 12,164 (1.7×) | 9,294 (1.3×) | 16,956 (2.3×) | 12,902 (1.8×) |
+| div_u64, constant time | BLS12-381 base | 12,417 | 24,774 (2.0×) | 16,947 (1.4×) | 35,027 (2.8×) | 24,420 (2.0×) |
+| div_u64, constant time | P-521 base | 20,361 | 43,048 (2.1×) | 26,016 (1.3×) | 64,693 (3.2×) | 43,074 (2.1×) |
+| div_uint, constant time | Mersenne-31 | 269 | 451 (1.7×) | 451 (1.7×) | 459 (1.7×) | 462 (1.7×) |
+| div_uint, constant time | BabyBear | 405 | 545 (1.3×) | 436 (1.1×) | 607 (1.5×) | 450 (1.1×) |
+| div_uint, constant time | Goldilocks | 664 | 1,308 (2.0×) | 947 (1.4×) | 1,577 (2.4×) | 1,207 (1.8×) |
+| div_uint, constant time | BN254 scalar | 6,863 | 12,397 (1.8×) | 9,514 (1.4×) | 17,589 (2.6×) | 13,298 (1.9×) |
+| div_uint, constant time | secp256k1 base | 6,807 | 11,902 (1.7×) | 9,074 (1.3×) | 16,852 (2.5×) | 12,843 (1.9×) |
+| div_uint, constant time | P-256 base | 6,719 | 11,985 (1.8×) | 9,149 (1.4×) | 17,590 (2.6×) | 12,643 (1.9×) |
+| div_uint, constant time | P-256 scalar | 6,965 | 12,486 (1.8×) | 9,436 (1.4×) | 17,771 (2.6×) | 13,263 (1.9×) |
+| div_uint, constant time | Tom-256 base | 7,280 | 12,377 (1.7×) | 9,442 (1.3×) | 17,138 (2.4×) | 13,092 (1.8×) |
+| div_uint, constant time | BLS12-381 base | 12,518 | 25,361 (2.0×) | 16,780 (1.3×) | 35,352 (2.8×) | 24,779 (2.0×) |
+| div_uint, constant time | P-521 base | 20,372 | 42,851 (2.1×) | 25,984 (1.3×) | 65,678 (3.2×) | 43,052 (2.1×) |
 
 ## Reproduce
 
