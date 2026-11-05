@@ -40,9 +40,18 @@ const fn row_timing(op: Op, bits: u32) -> Timing {
         | Op::ModCt
         | Op::MulModCt
         | Op::AddModCt
-        | Op::SubModCt => Timing::Fixed,
+        | Op::SubModCt
+        | Op::AddModReducedCt
+        | Op::SubModReducedCt => Timing::Fixed,
         Op::Mul if bits <= 1024 => Timing::Fixed,
-        Op::Mul | Op::Div | Op::Mod | Op::MulMod | Op::AddMod | Op::SubMod => Timing::Variable,
+        Op::Mul
+        | Op::Div
+        | Op::Mod
+        | Op::MulMod
+        | Op::AddMod
+        | Op::SubMod
+        | Op::AddModReduced
+        | Op::SubModReduced => Timing::Variable,
     }
 }
 
@@ -102,6 +111,25 @@ trait Timed<V> {
 
     /// Records the absent cells of `op` in both tables, for `reason`.
     fn missing(self, op: Op, reason: &'static str) -> Self;
+
+    /// Offers a modular sum or difference `function` of the class `timing` as
+    /// [`timed`](Self::timed) does, twice: on the rows of `any`, whose operands may take any
+    /// value, deviating as `reduced_only` says when the function takes only operands below the
+    /// modulus; and on the rows of `reduced`, whose operands lie below it.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the arguments of `timed`, for two rows"
+    )]
+    fn timed_modular<B: Base, BR: Base, I, R: ToLimbs>(
+        self,
+        any: B,
+        reduced: BR,
+        reduced_only: Option<&'static str>,
+        timing: Timing,
+        function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I + Copy,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self;
 }
 
 impl<V: Visitor<Op, Width>> Timed<V> for Crate<V> {
@@ -170,7 +198,48 @@ impl<V: Visitor<Op, Width>> Timed<V> for Crate<V> {
     fn missing(self, op: Op, reason: &'static str) -> Self {
         self.absent(op, reason).absent(op.constant_time(), reason)
     }
+
+    fn timed_modular<B: Base, BR: Base, I, R: ToLimbs>(
+        self,
+        any: B,
+        reduced: BR,
+        reduced_only: Option<&'static str>,
+        timing: Timing,
+        function: &'static str,
+        prepare: impl Fn(&[Limbs]) -> I + Copy,
+        run: impl Fn(&I) -> R + Copy,
+    ) -> Self {
+        let deviating = |cells: Self| match reduced_only {
+            Some(deviation) => cells.deviating(deviation),
+            None => cells,
+        };
+        let cells = match mismatch(B::OP, self.key().bits, timing) {
+            None => deviating(self).case(Plain(any), function, prepare, run),
+            Some(reason) => self.absent(B::OP, reason),
+        };
+        let cells = match timing {
+            Timing::Fixed => deviating(cells).case(Ct(any), function, prepare, run),
+            Timing::Variable => cells.absent(B::OP.constant_time(), VARIABLE_TIME),
+        };
+        cells.timed(reduced, timing, function, prepare, run)
+    }
 }
+
+/// The deviation of a composition of a sum or difference and one correction, which brings only
+/// operands below the modulus below it.
+const COMPOSITION_FOR_REDUCED: &str = "unchecked precondition: operands must be below m; other inputs \
+     give a wrong result (one subtraction or addition of m)";
+
+/// The deviation of `crypto-bigint`'s `add_mod`, whose documentation assumes that `self + rhs` as
+/// an unbounded integer is below `2p`.
+const CRYPTO_BIGINT_ADD_MOD: &str = "unchecked precondition: operands must be below m; other inputs \
+     give a wrong result (`Uint::add_mod`: \"Assumes `self + rhs` as unbounded integer is `< 2p`\")";
+
+/// The deviation of `crypto-bigint`'s `sub_mod`, whose documentation assumes that `self - rhs` as
+/// an unbounded signed integer lies in `[-p, p)`.
+const CRYPTO_BIGINT_SUB_MOD: &str = "unchecked precondition: operands must be below m; other inputs \
+     give a wrong result (`Uint::sub_mod`: \"Assumes `self - rhs` as unbounded signed integer is in \
+     `[-p, p)`\")";
 
 /// The reason for an absent constant-time cell of a function whose time depends on the values.
 const VARIABLE_TIME: &str = "variable time";
@@ -359,6 +428,73 @@ where
             #[inline(always)]
             |&(a, b, modulus)| a.sub_mod(b, modulus),
         )
+        .residues::<N>()
+}
+
+/// Offers `biguint`'s residues, whose sums and differences take operands below the modulus by
+/// their type: `Residue` and `ConstantTimeResidue` of the width's one modulus, in one scope that
+/// encloses the cases.
+trait Residues {
+    /// Offers the residue cases at `N` bits.
+    fn residues<N: Bits>(self) -> Self
+    where
+        Uint<N>: Copy;
+}
+
+impl<V: Visitor<Op, Width>> Residues for Crate<V> {
+    fn residues<N: Bits>(self) -> Self
+    where
+        Uint<N>: Copy,
+    {
+        let bits = self.key().bits as usize;
+        let modulus =
+            biguint::Modulus::from(NonZeroUint::<N>::from_limbs(&super::reduced_modulus(bits)));
+        modulus.scope(|ring| {
+            let plain = move |set: &[Limbs]| {
+                let (a, b, _) = three::<Uint<N>, Uint<N>>(set);
+                (ring.reduce(a), ring.reduce(b))
+            };
+            let masked = move |set: &[Limbs]| {
+                let (a, b, _) = three::<Uint<N>, Uint<N>>(set);
+                (
+                    ring.reduce_constant_time(ConstantTime::new(a)),
+                    ring.reduce_constant_time(ConstantTime::new(b)),
+                )
+            };
+            self.chain(
+                Plain(op::AddModReduced),
+                "Residue +",
+                plain,
+                #[inline(always)]
+                |&(a, b)| a + b,
+                |result| result.get().to_limbs(),
+            )
+            .chain(
+                Plain(op::SubModReduced),
+                "Residue -",
+                plain,
+                #[inline(always)]
+                |&(a, b)| a - b,
+                |result| result.get().to_limbs(),
+            )
+            .chain(
+                Ct(op::AddModReduced),
+                "ConstantTimeResidue +",
+                masked,
+                #[inline(always)]
+                |&(a, b)| a + b,
+                |result| result.get().reveal().to_limbs(),
+            )
+            .chain(
+                Ct(op::SubModReduced),
+                "ConstantTimeResidue -",
+                masked,
+                #[inline(always)]
+                |&(a, b)| a - b,
+                |result| result.get().reveal().to_limbs(),
+            )
+        })
+    }
 }
 
 /// Offers add, mul, div and mod of the primitive `$t`. The divisor is a `NonZero<$t>`; the
@@ -382,8 +518,10 @@ macro_rules! primitive {
             )
             // The plain compositions that a user writes, for operands below `m`; they branch on
             // the values.
-            .timed(
+            .timed_modular(
                 op::AddMod,
+                op::AddModReduced,
+                Some(COMPOSITION_FOR_REDUCED),
                 Timing::Variable,
                 "overflowing_add, then - m",
                 three::<$t, $t>,
@@ -393,8 +531,10 @@ macro_rules! primitive {
                     if c || s >= m { s.wrapping_sub(m) } else { s }
                 },
             )
-            .timed(
+            .timed_modular(
                 op::SubMod,
+                op::SubModReduced,
+                Some(COMPOSITION_FOR_REDUCED),
                 Timing::Variable,
                 "-, else wrapping_sub then + m",
                 three::<$t, $t>,
@@ -470,6 +610,22 @@ fn ruint<const B: usize, const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>)
         #[inline(always)]
         |&(a, b, modulus)| a.add_mod(modulus - b.reduce_mod(modulus), modulus),
     )
+    .timed_chained(
+        op::AddModReduced,
+        Timing::Variable,
+        "add_mod",
+        three::<ruint::Uint<B, L>, ruint::Uint<B, L>>,
+        #[inline(always)]
+        |&(a, b, modulus)| a.add_mod(b, modulus),
+    )
+    .timed_chained(
+        op::SubModReduced,
+        Timing::Variable,
+        "a.add_mod(m - b, m)",
+        three::<ruint::Uint<B, L>, ruint::Uint<B, L>>,
+        #[inline(always)]
+        |&(a, b, modulus)| a.add_mod(modulus - b, modulus),
+    )
 }
 
 /// `crypto-bigint` at `L` limbs, constant-time: its sum, product, `add_mod` and `sub_mod` take a
@@ -535,16 +691,20 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
             #[inline(always)]
             |(a, b, modulus)| a.mul_mod(b, modulus),
         )
-        .timed(
+        .timed_modular(
             op::AddMod,
+            op::AddModReduced,
+            Some(CRYPTO_BIGINT_ADD_MOD),
             Timing::Fixed,
             "add_mod",
             three::<Uint<L>, NonZero<Uint<L>>>,
             #[inline(always)]
             |(a, b, modulus)| a.add_mod(b, modulus),
         )
-        .timed(
+        .timed_modular(
             op::SubMod,
+            op::SubModReduced,
+            Some(CRYPTO_BIGINT_SUB_MOD),
             Timing::Fixed,
             "sub_mod",
             three::<Uint<L>, NonZero<Uint<L>>>,
@@ -558,8 +718,10 @@ fn crypto_bigint<const L: usize, V: Visitor<Op, Width>>(cells: Crate<V>) -> Crat
 macro_rules! modular_sums {
     ($cells:expr, $t:ty) => {
         $cells
-            .timed(
+            .timed_modular(
                 op::AddMod,
+                op::AddModReduced,
+                Some(COMPOSITION_FOR_REDUCED),
                 Timing::Variable,
                 "overflowing_add, then - m",
                 three::<$t, $t>,
@@ -573,8 +735,10 @@ macro_rules! modular_sums {
                     }
                 },
             )
-            .timed(
+            .timed_modular(
                 op::SubMod,
+                op::SubModReduced,
+                Some(COMPOSITION_FOR_REDUCED),
                 Timing::Variable,
                 "-, else overflowing_sub then + m",
                 three::<$t, $t>,
@@ -653,16 +817,20 @@ fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
             #[inline(always)]
             |(a, b, modulus)| (a * b) % modulus,
         )
-        .timed(
+        .timed_modular(
             op::AddMod,
+            op::AddModReduced,
+            None,
             Timing::Variable,
             "(&a + &b) % &m",
             three::<BigUint, BigUint>,
             #[inline(always)]
             |(a, b, modulus)| (a + b) % modulus,
         )
-        .timed(
+        .timed_modular(
             op::SubMod,
+            op::SubModReduced,
+            None,
             Timing::Variable,
             "(&a + &m - &b) % &m",
             three::<BigUint, BigUint>,
@@ -681,7 +849,9 @@ fn num_bigint<V: Visitor<Op, Width>>(cells: Crate<V>) -> Crate<V> {
 mod parity {
     use bench_compare::{Limbs, Visitor};
 
-    use super::{Crate, NO_WIDE_PRODUCT, Op, Timed, Timing, Width, op, pair, three};
+    use super::{
+        COMPOSITION_FOR_REDUCED, Crate, NO_WIDE_PRODUCT, Op, Timed, Timing, Width, op, pair, three,
+    };
     use crate::suite::limbs::{FromLimbs, ToLimbs};
 
     /// The `construct_uint!` type `$t` of `$words` words, with its limb conversions.

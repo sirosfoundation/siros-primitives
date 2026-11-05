@@ -94,6 +94,10 @@ pub enum Op {
     AddMod,
     /// `(a - b) mod m`.
     SubMod,
+    /// `(a + b) mod m` by functions that take operands below `m`.
+    AddModReduced,
+    /// `(a - b) mod m` by functions that take operands below `m`.
+    SubModReduced,
     /// [`Add`](Self::Add) by functions whose time depends on no value.
     AddCt,
     /// [`Mul`](Self::Mul) in constant time.
@@ -108,11 +112,15 @@ pub enum Op {
     AddModCt,
     /// [`SubMod`](Self::SubMod) in constant time.
     SubModCt,
+    /// [`AddModReduced`](Self::AddModReduced) in constant time.
+    AddModReducedCt,
+    /// [`SubModReduced`](Self::SubModReduced) in constant time.
+    SubModReducedCt,
 }
 
 impl Op {
     /// Every operation, in measurement order.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 18] = [
         Self::Add,
         Self::Mul,
         Self::Div,
@@ -120,6 +128,8 @@ impl Op {
         Self::MulMod,
         Self::AddMod,
         Self::SubMod,
+        Self::AddModReduced,
+        Self::SubModReduced,
         Self::AddCt,
         Self::MulCt,
         Self::DivCt,
@@ -127,6 +137,8 @@ impl Op {
         Self::MulModCt,
         Self::AddModCt,
         Self::SubModCt,
+        Self::AddModReducedCt,
+        Self::SubModReducedCt,
     ];
 
     /// The operation that this one computes: itself, or the operation of a constant-time one.
@@ -139,6 +151,8 @@ impl Op {
             Self::MulMod | Self::MulModCt => Self::MulMod,
             Self::AddMod | Self::AddModCt => Self::AddMod,
             Self::SubMod | Self::SubModCt => Self::SubMod,
+            Self::AddModReduced | Self::AddModReducedCt => Self::AddModReduced,
+            Self::SubModReduced | Self::SubModReducedCt => Self::SubModReduced,
         }
     }
 
@@ -152,6 +166,8 @@ impl Op {
             Self::MulMod | Self::MulModCt => Self::MulModCt,
             Self::AddMod | Self::AddModCt => Self::AddModCt,
             Self::SubMod | Self::SubModCt => Self::SubModCt,
+            Self::AddModReduced | Self::AddModReducedCt => Self::AddModReducedCt,
+            Self::SubModReduced | Self::SubModReducedCt => Self::SubModReducedCt,
         }
     }
 
@@ -159,12 +175,21 @@ impl Op {
     /// - add, mul: two uniform `bits`-bit values;
     /// - div, mod: a dividend of exactly `bits` bits and a divisor of exactly `bits / 2` bits;
     /// - mulmod, add_mod, sub_mod: a modulus `m` of exactly `bits` bits and two uniform values
-    ///   below `m`, as `[a, b, m]`.
+    ///   below `m`, as `[a, b, m]`;
+    /// - add_mod and sub_mod of reduced operands: as add_mod, under the one modulus of the width
+    ///   ([`reduced_modulus`]), which a ring of residues prepares once.
     ///
     /// "Exactly `n` bits" means that bit `n - 1` is set.
     fn operands(self, bits: usize, rng: &mut Rng) -> Vec<Limbs> {
         let limbs = bits / 64;
         match self {
+            Self::AddModReduced
+            | Self::SubModReduced
+            | Self::AddModReducedCt
+            | Self::SubModReducedCt => {
+                let modulus = reduced_modulus(bits);
+                vec![rng.below(&modulus), rng.below(&modulus), modulus]
+            }
             Self::Add | Self::Mul | Self::AddCt | Self::MulCt => {
                 vec![rng.uniform(limbs), rng.uniform(limbs)]
             }
@@ -191,11 +216,17 @@ impl Op {
             (Self::Div, [a, b]) => a / b,
             (Self::Mod, [a, b]) => a % b,
             (Self::MulMod, [a, b, modulus]) => a * b % modulus,
-            (Self::AddMod, [a, b, modulus]) => (a + b) % modulus,
-            (Self::SubMod, [a, b, modulus]) => (a + modulus - b) % modulus,
+            (Self::AddMod | Self::AddModReduced, [a, b, modulus]) => (a + b) % modulus,
+            (Self::SubMod | Self::SubModReduced, [a, b, modulus]) => (a + modulus - b) % modulus,
             (op, operands) => panic!("{op} on {} operands", operands.len()),
         }
     }
+}
+
+/// The modulus of the rows of reduced operands at width `bits`: exactly `bits` bits, the same in
+/// every operand set, from a seed of the width alone.
+pub fn reduced_modulus(bits: usize) -> Limbs {
+    Rng(bits as u64).exact(bits / 64, bits)
 }
 
 /// Whether this bench measures the computation of the plain operation `op`: it is in the bench's
@@ -239,7 +270,17 @@ pub mod op {
         };
     }
 
-    bases!(Add, Mul, Div, Mod, MulMod, AddMod, SubMod);
+    bases!(
+        Add,
+        Mul,
+        Div,
+        Mod,
+        MulMod,
+        AddMod,
+        SubMod,
+        AddModReduced,
+        SubModReduced
+    );
 }
 
 /// The plain operation of the computation `B`.
@@ -283,6 +324,10 @@ impl fmt::Display for Op {
             Self::MulModCt => "mulmod_ct",
             Self::AddModCt => "add_mod_ct",
             Self::SubModCt => "sub_mod_ct",
+            Self::AddModReduced => "add_mod_reduced",
+            Self::SubModReduced => "sub_mod_reduced",
+            Self::AddModReducedCt => "add_mod_reduced_ct",
+            Self::SubModReducedCt => "sub_mod_reduced_ct",
         })
     }
 }
