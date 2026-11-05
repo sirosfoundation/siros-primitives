@@ -17,9 +17,9 @@ use typenum::Unsigned;
 
 use crate::field::Modulus;
 use crate::kernel::{equal, fits, is_zero, limb, low_limb, set, shifted_limb, widening_mul};
-use crate::limb::{adc, mac, sbb, select};
+use crate::limb::{SignedPowers, adc, mac, sbb, select};
 use crate::params::{ExtendedLimbs, Limbs, Shape, WideLimbs};
-use crate::unrolled::unroll;
+use crate::unrolled::{UNROLLED, unroll};
 use crate::width::Width;
 
 impl<M: Modulus> Shape<M> {
@@ -131,7 +131,7 @@ impl<M: Modulus> Shape<M> {
             return out;
         }
         if Self::SEPARATED {
-            Self::montgomery_reduce::<CT>(Self::product(a, b))
+            Self::montgomery_reduce::<CT, true>(Self::product(a, b))
         } else {
             Self::montgomery_interleaved::<CT>(a, b)
         }
@@ -160,7 +160,7 @@ impl<M: Modulus> Shape<M> {
         if Self::PSEUDO_MERSENNE {
             Self::fold::<CT>(&wide)
         } else {
-            Self::montgomery_reduce::<CT>(wide)
+            Self::montgomery_reduce::<CT, false>(wide)
         }
     }
 
@@ -207,6 +207,49 @@ impl<M: Modulus> Shape<M> {
     /// Montgomery products reduce the full product row by row, where the modulus folds its
     /// reduction rows: `-p^-1 = 1 mod 2^64` makes each row's multiplier a limb of the product.
     pub(crate) const SEPARATED: bool = Self::INV == 1;
+
+    /// Whether the one-chain reduction of a full product multiplies by each limb of `p` of three
+    /// signed powers of two by shifts, additions and subtractions, which leaves the multiplier to
+    /// the `L^2` products of the operands: P-256's product takes 16 multiplications instead of 20, and
+    /// measured 52.5 cycles of latency against 59.8 at the same throughput. A square, of
+    /// `L (L + 1) / 2` products, measured 3.8 cycles more latency this way, and the interleaved
+    /// product of Tom-256 2.5 cycles more throughput; with the limbs of one or two terms as well,
+    /// which LLVM folds into the sums around them, the P-256 product measured 6 cycles more
+    /// throughput. WebAssembly keeps its multiplications.
+    const P_BY_SHIFTS: bool = !cfg!(target_arch = "wasm32");
+
+    /// The forms of the limbs of `p` that [`unroll!`] copies; a limb past them, or of more than
+    /// three terms, is `None`.
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "const evaluation, with every index below the length"
+    )]
+    const P_FORMS: [Option<SignedPowers>; UNROLLED] = {
+        let mut forms = [None; UNROLLED];
+        let mut j = 0;
+        while j < UNROLLED && j < Self::LIMBS {
+            forms[j] = SignedPowers::of(limb(Self::P.as_slice(), j));
+            j += 1;
+        }
+        forms
+    };
+
+    /// `m p_j + c + d` as `(low, high)`, for the limb `p_j` of `p`, by shifts where `SHIFTS` and
+    /// [`Self::P_BY_SHIFTS`] hold and the limb has a form of three terms.
+    #[inline(always)]
+    fn mac_p<const SHIFTS: bool>(m: u64, j: usize, c: u64, d: u64) -> (u64, u64) {
+        if SHIFTS
+            && Self::P_BY_SHIFTS
+            && let Some(Some(form)) = Self::P_FORMS.get(j)
+            && form.terms() == 3
+        {
+            let (low, high) = form.mul(m);
+            let (low, first) = adc(0, low, c);
+            let (low, second) = adc(0, low, d);
+            return (low, high + u64::from(first) + u64::from(second));
+        }
+        mac(m, limb(Self::P.as_slice(), j), c, d)
+    }
 
     /// Runs `body` on each limb index of an element, as [`Self::each`] runs indices.
     #[inline(always)]
@@ -814,7 +857,7 @@ impl<M: Modulus> Shape<M> {
     /// Montgomery reduction of the full product `wide < p 2^(64 L)`, row by row: `wide / 2^(64
     /// L) mod p`.
     #[inline(always)]
-    fn montgomery_reduce<const CT: bool>(mut wide: WideLimbs<M>) -> Limbs<M> {
+    fn montgomery_reduce<const CT: bool, const SHIFTS: bool>(mut wide: WideLimbs<M>) -> Limbs<M> {
         if Self::TWO_CHAINS {
             return Self::montgomery_reduce_two_chains::<CT>(wide);
         }
@@ -826,14 +869,11 @@ impl<M: Modulus> Shape<M> {
             |i, j| {
                 if j == 0 {
                     m = limb(wide.as_slice(), i).wrapping_mul(Self::INV);
+                    // The low half cancels limb `i`: LLVM folds the product by `p0` into the sum.
                     carry = mac(m, Self::P0, limb(wide.as_slice(), i), 0).1;
                 } else {
-                    let (low, high) = mac(
-                        m,
-                        limb(Self::P.as_slice(), j),
-                        limb(wide.as_slice(), i + j),
-                        carry,
-                    );
+                    let (low, high) =
+                        Self::mac_p::<SHIFTS>(m, j, limb(wide.as_slice(), i + j), carry);
                     set(wide.as_mut_slice(), i + j, low);
                     carry = high;
                 }
