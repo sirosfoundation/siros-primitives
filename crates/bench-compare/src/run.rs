@@ -62,17 +62,9 @@ const WASM_FLAGS: &str = "-C codegen-units=1";
 /// `i64.add128`, `i64.sub128`, `i64.mul_wide_s` and `i64.mul_wide_u`.
 const WASM_WIDE_FLAGS: &str = "-C codegen-units=1 -C target-feature=+wide-arithmetic";
 
-/// The flags of the WebAssembly builds with the 128-bit SIMD instructions, which LLVM's
-/// vectorizers and `core::arch::wasm32` use.
-const WASM_SIMD_FLAGS: &str = "-C codegen-units=1 -C target-feature=+simd128";
-
-/// The flags of the WebAssembly builds with SIMD and wide arithmetic.
-const WASM_SIMD_WIDE_FLAGS: &str = "-C codegen-units=1 -C target-feature=+simd128,+wide-arithmetic";
-
 /// The WebAssembly builds of every comparison, which `bench-wasm` measures: with and without the
-/// instructions of the wide-arithmetic proposal and of SIMD, in Chrome and in Firefox. Both
-/// browsers run SIMD by default.
-pub const WASM: [Build; 8] = [
+/// instructions of the wide-arithmetic proposal, in Chrome and in Firefox.
+pub const WASM: [Build; 4] = [
     Build {
         name: "in WebAssembly, Chrome",
         slug: "wasm",
@@ -86,18 +78,6 @@ pub const WASM: [Build; 8] = [
         runner: Runner::Browser(CHROME_WIDE),
     },
     Build {
-        name: "in WebAssembly with SIMD, Chrome",
-        slug: "wasm-simd",
-        rustflags: WASM_SIMD_FLAGS,
-        runner: Runner::Browser(CHROME),
-    },
-    Build {
-        name: "in WebAssembly with SIMD and wide arithmetic, Chrome",
-        slug: "wasm-simd-wide",
-        rustflags: WASM_SIMD_WIDE_FLAGS,
-        runner: Runner::Browser(CHROME_WIDE),
-    },
-    Build {
         name: "in WebAssembly, Firefox",
         slug: "wasm",
         rustflags: WASM_FLAGS,
@@ -107,18 +87,6 @@ pub const WASM: [Build; 8] = [
         name: "in WebAssembly with wide arithmetic, Firefox",
         slug: "wasm-wide",
         rustflags: WASM_WIDE_FLAGS,
-        runner: Runner::Browser(FIREFOX_WIDE),
-    },
-    Build {
-        name: "in WebAssembly with SIMD, Firefox",
-        slug: "wasm-simd",
-        rustflags: WASM_SIMD_FLAGS,
-        runner: Runner::Browser(FIREFOX),
-    },
-    Build {
-        name: "in WebAssembly with SIMD and wide arithmetic, Firefox",
-        slug: "wasm-simd-wide",
-        rustflags: WASM_SIMD_WIDE_FLAGS,
         runner: Runner::Browser(FIREFOX_WIDE),
     },
 ];
