@@ -36,10 +36,12 @@ impl<M: Modulus> Shape<M> {
     /// without the branch against 108.3 with it, Tom-256 97.9 against 114.1.
     pub(crate) const INTEGER_DIFFERENCE_SELECT: bool = Self::BRANCHES && Self::MONTGOMERY;
 
-    /// [`Self::INTEGER_DIFFERENCE_SELECT`] for the sum, over a modulus with a spare bit: without
-    /// one, the branch-free sum keeps the carry out of the top limb, and the P-256 `a + k` took
-    /// Chrome with wide arithmetic 99.7 cycles without the branch against 79.6 with it.
-    pub(crate) const INTEGER_SUM_SELECT: bool = Self::INTEGER_DIFFERENCE_SELECT && Self::SPARE;
+    /// [`Self::INTEGER_DIFFERENCE_SELECT`] for the sum, except over a modulus without a spare bit
+    /// whose products reduce separated (P-256 base): its `a + k` took Chrome with wide arithmetic
+    /// 99.7 cycles without the branch against 79.6 with it. The Tom-256 `a + k` took Firefox with
+    /// wide arithmetic 185 cycles without it against 197.
+    pub(crate) const INTEGER_SUM_SELECT: bool =
+        Self::INTEGER_DIFFERENCE_SELECT && (Self::SPARE || !Self::SEPARATED);
 
     /// Whether Montgomery products of [`LOOPED_LIMBS`] limbs or more run the loops of
     /// [`looped`]. On WebAssembly without wide arithmetic the unrolled kernels of such widths
