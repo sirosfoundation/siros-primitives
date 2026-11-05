@@ -536,7 +536,12 @@ impl<P: Polynomial, const T: usize> BitTable<P, T> {
         // The index of this power among the nibble tables.
         let plan = Frobenius::<P>::POWERS;
         let mut index = 0;
-        while index < plan.tables && plan.tabulated[index] != Self::POWER {
+        while index < plan.tables {
+            if let [power, ..] = plan.tabulated.split_at(index).1
+                && *power == Self::POWER
+            {
+                break;
+            }
             index += 1;
         }
         match index {
