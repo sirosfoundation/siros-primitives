@@ -10,9 +10,50 @@ pub(crate) struct Counts {
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) use linux::{Counters, pin};
-#[cfg(not(target_os = "linux"))]
+pub(crate) use linux::{Counters, pin, pin_thread};
+#[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
 pub(crate) use other::{Counters, pin};
+#[cfg(target_arch = "wasm32")]
+pub(crate) use page::Counters;
+
+/// The counters of a WebAssembly bench: the driver counts the thread that runs the module, and
+/// the page passes each read to it.
+#[cfg(target_arch = "wasm32")]
+mod page {
+    use super::Counts;
+    use crate::error::Error;
+    use crate::host;
+
+    /// The driver's counters, which the module reaches through its imports.
+    pub(crate) struct Counters;
+
+    impl Counters {
+        /// The driver opened the counters before the module started.
+        #[expect(
+            clippy::unnecessary_wraps,
+            reason = "the native counters fail to open; the sweep takes either"
+        )]
+        pub(crate) fn open() -> Result<Self, Error> {
+            Ok(Self)
+        }
+
+        /// The value of `region` and the events that it counts. The driver fails the page's call
+        /// on a region during which the kernel shared the counters with other groups.
+        #[expect(
+            clippy::unnecessary_wraps,
+            clippy::unused_self,
+            reason = "the native counters fail a read; the sweep takes either"
+        )]
+        pub(crate) fn count(
+            &mut self,
+            region: &mut dyn FnMut() -> usize,
+        ) -> Result<(usize, Counts), Error> {
+            host::begin();
+            let value = region();
+            Ok((value, host::end()))
+        }
+    }
+}
 
 #[cfg(target_os = "linux")]
 mod linux {
@@ -29,17 +70,22 @@ mod linux {
 
     /// Pins the calling thread to `cpu`.
     pub(crate) fn pin(cpu: usize) -> Result<(), Error> {
+        // Tid 0 is the calling thread.
+        pin_thread(0, cpu)
+    }
+
+    /// Pins the thread `tid` to `cpu`.
+    pub(crate) fn pin_thread(tid: i32, cpu: usize) -> Result<(), Error> {
         let failure = |source: nix::Error| Error::Pin {
             cpu,
             source: io::Error::from(source),
         };
         let mut set = CpuSet::new();
         set.set(cpu).map_err(failure)?;
-        // Pid 0 is the calling thread.
-        sched_setaffinity(Pid::from_raw(0), &set).map_err(failure)
+        sched_setaffinity(Pid::from_raw(tid), &set).map_err(failure)
     }
 
-    /// One perf_event group on the calling thread and any CPU, which counts user-mode cycles,
+    /// One perf_event group on one thread and any CPU, which counts user-mode cycles,
     /// instructions and branch misses.
     pub(crate) struct Counters {
         group: Group,
@@ -51,14 +97,32 @@ mod linux {
     }
 
     impl Counters {
-        /// Opens the group. A builder of `perf-event2` counts the calling thread on any CPU in
-        /// user mode, without kernel and hypervisor.
+        /// Opens the group on the calling thread.
         pub(crate) fn open() -> Result<Self, Error> {
+            // Pid 0 is the calling thread.
+            Self::build(0)
+        }
+
+        /// Opens the group on the thread `tid` of another process, which this process may trace.
+        pub(crate) fn observe(tid: i32) -> Result<Self, Error> {
+            Self::build(tid)
+        }
+
+        /// Opens the group on the thread `tid`. A builder of `perf-event2` counts on any
+        /// CPU in user mode, without kernel and hypervisor.
+        fn build(tid: i32) -> Result<Self, Error> {
             let failure = |source: io::Error| Error::Counters { source };
-            let mut leader = Group::builder();
             // A pinned group counts whenever its thread runs, or fails its read.
-            let mut group = leader.pinned(true).build_group().map_err(failure)?;
-            let mut add = |event: Hardware| group.add(&Builder::new(event)).map_err(failure);
+            let mut group = Group::builder()
+                .observe_pid(tid)
+                .pinned(true)
+                .build_group()
+                .map_err(failure)?;
+            let mut add = |event: Hardware| {
+                group
+                    .add(Builder::new(event).observe_pid(tid))
+                    .map_err(failure)
+            };
             let cycles = add(Hardware::CPU_CYCLES)?;
             let instructions = add(Hardware::INSTRUCTIONS)?;
             let branch_misses = add(Hardware::BRANCH_MISSES)?;
@@ -77,10 +141,23 @@ mod linux {
             &mut self,
             region: &mut dyn FnMut() -> usize,
         ) -> Result<(usize, Counts), Error> {
+            self.begin()?;
+            let value = region();
+            Ok((value, self.end()?))
+        }
+
+        /// Resets and enables the group.
+        pub(crate) fn begin(&mut self) -> Result<(), Error> {
             let failure = |source: io::Error| Error::Counters { source };
             self.group.reset().map_err(failure)?;
-            self.group.enable().map_err(failure)?;
-            let value = region();
+            self.group.enable().map_err(failure)
+        }
+
+        /// Disables the group and returns what it counted since [`begin`](Self::begin). A span
+        /// during which the kernel shared the counters with other groups is a
+        /// [`Error::Multiplexed`].
+        pub(crate) fn end(&mut self) -> Result<Counts, Error> {
+            let failure = |source: io::Error| Error::Counters { source };
             self.group.disable().map_err(failure)?;
             let data = self.group.read().map_err(failure)?;
             let times = data
@@ -101,19 +178,16 @@ mod linux {
                     .map(|entry| entry.value())
                     .ok_or_else(|| failure(io::Error::other("a read without a member")))
             };
-            Ok((
-                value,
-                Counts {
-                    cycles: value_of(&self.cycles)?,
-                    instructions: value_of(&self.instructions)?,
-                    branch_misses: value_of(&self.branch_misses)?,
-                },
-            ))
+            Ok(Counts {
+                cycles: value_of(&self.cycles)?,
+                instructions: value_of(&self.instructions)?,
+                branch_misses: value_of(&self.branch_misses)?,
+            })
         }
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
 mod other {
     use super::Counts;
     use crate::error::Error;

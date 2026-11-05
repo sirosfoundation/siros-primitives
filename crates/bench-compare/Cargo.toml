@@ -17,6 +17,7 @@ thiserror.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 nix.workspace = true
 perf-event2.workspace = true
+tiny_http.workspace = true
 
 # A chain barrier is inline assembly, which takes `unsafe`. `unsafe_code` is `deny` here, and the
 # module of the barriers `expect`s it. A manifest cannot inherit `[workspace.lints]` and change one

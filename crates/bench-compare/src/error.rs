@@ -8,7 +8,11 @@ use std::time::Duration;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// The arguments name no command.
-    #[error("usage: {tool} bench [--cpu <cpu>] [--machine <description>] | report")]
+    #[error(
+        "usage: {tool} bench [--cpu <cpu>] [--machine <description>] | bench-wasm --chrome \
+         <executable> --firefox <executable> [--cpu <cpu>] [--browser-cpu <cpu>] [--machine \
+         <description>] | report"
+    )]
     Usage {
         /// The tool.
         tool: String,
@@ -111,6 +115,18 @@ pub enum Error {
         /// The time counted.
         running: Duration,
     },
+    /// The browser of a WebAssembly bench, or its page, failed.
+    #[error("the browser: {reason}")]
+    Browser {
+        /// What failed.
+        reason: String,
+    },
+    /// A WebAssembly bench stopped.
+    #[error("the WebAssembly bench: {reason}")]
+    Bench {
+        /// The reason that it sent, or the error that its page caught.
+        reason: String,
+    },
     /// The target has no perf_event.
     #[error("measuring needs the perf_event counters of Linux")]
     NoPerfEvent,
@@ -146,6 +162,25 @@ pub enum Error {
         case: String,
         /// The operations of a short run.
         operations: usize,
+    },
+    /// The fewest count of a WebAssembly case's long runs less the fewest of its short runs
+    /// counts fewer cycles than 50 times the noise of the fixed cost of a count.
+    #[error(
+        "{case}: the long runs count {cycles:.0} cycles more than the short runs, within 50 times \
+         the noise of the cost of a count, {noise:.0}: other work ran on the counted threads. Short \
+         runs: {short}; long runs: {long}"
+    )]
+    Noisy {
+        /// The case and its form.
+        case: String,
+        /// The difference.
+        cycles: f64,
+        /// The noise of the fixed cost of a count.
+        noise: f64,
+        /// The spread of the cycles of the short runs.
+        short: String,
+        /// The spread of the cycles of the long runs.
+        long: String,
     },
     /// The bench of a build lacks a feature that the build enables.
     #[error("the bench of {package} was built without its feature {feature}")]
@@ -199,6 +234,7 @@ impl Error {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn number(what: &str, text: &str, source: ParseIntError) -> Self {
         Self::Number {
             what: what.to_owned(),

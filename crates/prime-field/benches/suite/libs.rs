@@ -1530,7 +1530,7 @@ fn rust_crypto<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             use p256::elliptic_curve::ops::{Invert, Reduce};
             type Scalar = p256::Scalar;
             let element = <Scalar as FromLimbs>::from_limbs;
-            let words = |limbs: &[u64]| p256::U256::from_words(array::<4>(limbs));
+            let words = |limbs: &[u64]| p256::U256::from_le_slice(&le_bytes(limbs));
             let reduce = <Scalar as Reduce<p256::U256>>::reduce;
             let read = <Scalar as ToLimbs>::to_limbs;
             let cells = word_ops(
@@ -2174,44 +2174,94 @@ fn winter_math<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
 // ---------------------------------------------------------------------------------------------
 // longfellow-zk runtime-algebra
 
+/// The limbs of a `runtime-algebra` element of `words` 64-bit words: two per word on a 32-bit
+/// target.
+const fn runtime_limbs(words: usize) -> usize {
+    words * runtime_algebra::LIMBS_PER_U64
+}
+
+/// The most limbs of an element that the Montgomery product of `runtime-algebra`'s
+/// `FpGenericField` takes: it asserts as much.
+const RUNTIME_PRODUCT_LIMBS: usize = 16;
+
+/// The limbs of a `runtime-algebra` accumulator of elements of `words` 64-bit words.
+const fn accumulator(words: usize) -> usize {
+    2 * runtime_limbs(words) + 1
+}
+
 /// `runtime-algebra`: `P256Field` and `Q256Field` for P-256, `FpGenericField` elsewhere.
 fn runtime_algebra<V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
     use runtime_algebra::fp_generic::FpGenericField;
     match cells.key().field.as_str() {
-        "Mersenne-31" => runtime::<1, _, V>(
-            FpGenericField::<1, 1, 3>::new_generic(words::<Mersenne31, 1>()),
-            cells,
-        ),
-        "BabyBear" => runtime::<1, _, V>(
-            FpGenericField::<1, 1, 3>::new_generic(words::<BabyBear, 1>()),
-            cells,
-        ),
-        "Goldilocks" => runtime::<1, _, V>(
-            FpGenericField::<1, 1, 3>::new_generic(words::<Goldilocks, 1>()),
-            cells,
-        ),
-        "BN254 scalar" => runtime::<4, _, V>(
-            FpGenericField::<4, 4, 9>::new_generic(words::<Bn254Scalar, 4>()),
-            cells,
-        ),
-        "secp256k1 base" => runtime::<4, _, V>(
-            FpGenericField::<4, 4, 9>::new_generic(words::<Secp256k1Base, 4>()),
-            cells,
-        ),
+        "Mersenne-31" => {
+            runtime::<1, _, V>(
+                FpGenericField::<1, { runtime_limbs(1) }, { accumulator(1) }>::new_generic(
+                    words::<Mersenne31, 1>(),
+                ),
+                cells,
+            )
+        }
+        "BabyBear" => {
+            runtime::<1, _, V>(
+                FpGenericField::<1, { runtime_limbs(1) }, { accumulator(1) }>::new_generic(
+                    words::<BabyBear, 1>(),
+                ),
+                cells,
+            )
+        }
+        "Goldilocks" => {
+            runtime::<1, _, V>(
+                FpGenericField::<1, { runtime_limbs(1) }, { accumulator(1) }>::new_generic(
+                    words::<Goldilocks, 1>(),
+                ),
+                cells,
+            )
+        }
+        "BN254 scalar" => {
+            runtime::<4, _, V>(
+                FpGenericField::<4, { runtime_limbs(4) }, { accumulator(4) }>::new_generic(
+                    words::<Bn254Scalar, 4>(),
+                ),
+                cells,
+            )
+        }
+        "secp256k1 base" => {
+            runtime::<4, _, V>(
+                FpGenericField::<4, { runtime_limbs(4) }, { accumulator(4) }>::new_generic(
+                    words::<Secp256k1Base, 4>(),
+                ),
+                cells,
+            )
+        }
         "P-256 base" => runtime::<4, _, V>(runtime_algebra::p256::P256Field::new(), cells),
         "P-256 scalar" => runtime::<4, _, V>(runtime_algebra::Q256Field::new(), cells),
-        "Tom-256 base" => runtime::<4, _, V>(
-            FpGenericField::<4, 4, 9>::new_generic(words::<Tom256Base, 4>()),
-            cells,
+        "Tom-256 base" => {
+            runtime::<4, _, V>(
+                FpGenericField::<4, { runtime_limbs(4) }, { accumulator(4) }>::new_generic(
+                    words::<Tom256Base, 4>(),
+                ),
+                cells,
+            )
+        }
+        "BLS12-381 base" => {
+            runtime::<6, _, V>(
+                FpGenericField::<6, { runtime_limbs(6) }, { accumulator(6) }>::new_generic(
+                    words::<Bls12381Base, 6>(),
+                ),
+                cells,
+            )
+        }
+        "P-521 base" if runtime_limbs(9) > RUNTIME_PRODUCT_LIMBS => cells.none(
+            "on a 32-bit target P-521 takes 18 limbs, over the 16 of runtime-algebra's product",
         ),
-        "BLS12-381 base" => runtime::<6, _, V>(
-            FpGenericField::<6, 6, 13>::new_generic(words::<Bls12381Base, 6>()),
-            cells,
-        ),
-        "P-521 base" => runtime::<9, _, V>(
-            FpGenericField::<9, 9, 19>::new_generic(words::<P521Base, 9>()),
-            cells,
-        ),
+        "P-521 base" => {
+            runtime::<9, _, V>(
+                FpGenericField::<9, { runtime_limbs(9) }, { accumulator(9) }>::new_generic(
+                    words::<P521Base, 9>(),
+                ),
+                cells,
+            )
+        }
         field => panic!("no field {field}"),
     }
 }

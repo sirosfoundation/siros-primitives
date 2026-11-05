@@ -7,8 +7,9 @@
 //! each register filled by one word of `x`, and can only add moves between classes: a chain runs
 //! once per class that holds its value, and the faster run counts. [`Memory`] keeps `x` in one
 //! place on the stack, whose address a block takes after each step: one store and one load per
-//! word and step. Off x86-64, every chain runs through [`Memory`] and `core::hint::black_box`
-//! does the hiding.
+//! word and step. Off x86-64, `core::hint::black_box` does the hiding, and every chain runs
+//! through [`Memory`]; a WebAssembly chain also runs through `Locals`, which keeps `x` in locals
+//! and stores a copy of it after each step.
 #![expect(
     unsafe_code,
     reason = "a barrier is inline assembly, and `touch` reads padding bytes"
@@ -27,9 +28,11 @@ const GPR_BYTES: usize = 64;
 
 /// The bytes of one `xmm` register. A value of more bytes is the smallest that the `ymm`
 /// registers hold.
+#[cfg(target_arch = "x86_64")]
 const XMM_WORD: usize = 16;
 
 /// The most bytes that the `xmm` registers hold: eight words of 16 bytes.
+#[cfg(target_arch = "x86_64")]
 const XMM_BYTES: usize = 128;
 
 /// The most bytes that the `ymm` registers hold: eight words of 32 bytes.
@@ -86,6 +89,57 @@ impl Barrier for Memory {
         sink(&x);
         runs
     }
+}
+
+/// The locals of WebAssembly, which the engine keeps in registers: after each step, a copy of `x`
+/// goes to one place on the stack, whose address `core::hint::black_box` takes. The optimizer
+/// computes every intermediate `x` and keeps `x` itself in locals, so the chain runs one store
+/// per word and step beside it and no load. This is the `DoNotOptimize` of Google Benchmark on
+/// a compiler without inline assembly: a store of the value that the optimizer cannot skip.
+#[cfg(target_arch = "wasm32")]
+pub struct Locals;
+
+#[cfg(target_arch = "wasm32")]
+impl Barrier for Locals {
+    const CLASS: Class = Class::Locals;
+
+    const LEAST: usize = 0;
+    const MOST: usize = usize::MAX;
+
+    #[inline(always)]
+    fn chain<I: Chain<R>, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
+        let Some((first, rest)) = batch.split_first() else {
+            return 0;
+        };
+        let mut x = run(opaque(first));
+        let mut runs = 1;
+        for input in rest {
+            show(&x);
+            x = run(&input.chain(x));
+            runs += 1;
+        }
+        // A sink of `x` itself would keep `x` in memory, with one store and one load per step.
+        show(&x);
+        runs
+    }
+}
+
+/// Stores a copy of the bytes of `value` where an empty block may read it. `value` itself keeps
+/// its place: the block can neither read nor rewrite it.
+#[cfg(target_arch = "wasm32")]
+#[inline(always)]
+fn show<T>(value: &T) {
+    // SAFETY: a `MaybeUninit<T>` has the layout of a `T`, and `value` is a valid `T`; the copy, a
+    // `MaybeUninit`, drops nothing, so it duplicates no ownership.
+    let copy =
+        unsafe { core::ptr::read(core::ptr::from_ref(value).cast::<core::mem::MaybeUninit<T>>()) };
+    // `black_box` stores its argument and passes the block its address; nothing reads the value
+    // that it returns, so the optimizer drops its load.
+    #[expect(
+        unused_results,
+        reason = "the value that `black_box` returns is the copy"
+    )]
+    core::hint::black_box(copy);
 }
 
 /// An empty block that may read and rewrite the memory of `value`: every store to it happens
@@ -147,6 +201,13 @@ pub(crate) fn opaque<T>(value: &T) -> &T {
 pub(crate) fn sink<T>(value: &T) {
     #[cfg(target_arch = "x86_64")]
     registers::sink(value);
+    // A value of up to two words stays in locals: a copy of it takes one store per word, where
+    // its address takes as many and one more for the address.
+    #[cfg(target_arch = "wasm32")]
+    if size_of::<T>() <= WASM_WORDS {
+        show(value);
+        return;
+    }
     #[cfg(not(target_arch = "x86_64"))]
     #[expect(
         unused_results,
@@ -154,6 +215,10 @@ pub(crate) fn sink<T>(value: &T) {
     )]
     core::hint::black_box(value);
 }
+
+/// The bytes of the two `i64` locals that hold a value of WebAssembly.
+#[cfg(target_arch = "wasm32")]
+const WASM_WORDS: usize = 16;
 
 #[cfg(target_arch = "x86_64")]
 mod registers {

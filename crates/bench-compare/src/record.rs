@@ -85,6 +85,8 @@ pub enum Class {
     Ymm,
     /// One place on the stack, for a value of more than 64 bytes.
     Memory,
+    /// The locals of a WebAssembly build, with a copy in memory after each step.
+    Locals,
 }
 
 impl fmt::Display for Class {
@@ -94,6 +96,7 @@ impl fmt::Display for Class {
             Self::Xmm => "xmm registers",
             Self::Ymm => "ymm registers",
             Self::Memory => "memory",
+            Self::Locals => "WebAssembly locals",
         })
     }
 }
@@ -140,14 +143,31 @@ pub struct Sweep {
     pub siblings: Vec<Sibling>,
 }
 
-/// A line that the bench prints: every cell, then the sweep.
+/// A line that the bench prints: every cell, then the sweep. A WebAssembly bench sends the cost
+/// of a count first, and its driver adds the sweep.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Line<K> {
+    /// The cost of a count of a WebAssembly bench.
+    Overhead(Overhead),
     /// A cell.
     Cell(Cell<K>),
     /// The sweep.
     Sweep(Sweep),
+}
+
+/// The cost of a count of a WebAssembly bench, from empty counts before its sweep: the requests
+/// to the driver and the wake-up of the measuring thread.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct Overhead {
+    /// The median cycles of an empty count.
+    pub cycles: f64,
+    /// The median instructions of an empty count.
+    pub instructions: f64,
+    /// The noise of the fixed cost of a count in a figure: the largest difference of the fewest
+    /// counts of two sets of [`REPETITIONS`](crate::REPETITIONS) empty counts, among four pairs of
+    /// sets.
+    pub noise: f64,
 }
 
 /// A crate and the version that `Cargo.lock` resolves.
@@ -204,10 +224,26 @@ pub struct Measurement<K> {
     pub rustflags: String,
     /// The target features that `rustc --print cfg` reports under these flags.
     pub target_features: Vec<String>,
+    /// The browser that ran a WebAssembly build; `None` for a native build.
+    pub browser: Option<Engine>,
+    /// The cost of a count in each bench of a WebAssembly build, in the order of the benches.
+    #[serde(default)]
+    pub overheads: Vec<Overhead>,
     /// The sweep that measured the build.
     pub sweep: Sweep,
     /// Every cell of the comparison.
     pub cells: Vec<Cell<K>>,
+}
+
+/// The browser that ran a WebAssembly build.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Engine {
+    /// The browser, such as `Chrome`.
+    pub name: String,
+    /// The version that the browser reports.
+    pub version: String,
+    /// The flags or preferences of the build, as the setup of the document shows them.
+    pub settings: String,
 }
 
 impl<K: Key> Record<K> {

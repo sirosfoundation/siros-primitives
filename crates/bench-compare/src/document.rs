@@ -82,18 +82,22 @@ pub struct Layout<'a, K> {
     pub method: &'a [&'a str],
 }
 
-/// Writes the document from `record`, and prints to the terminal every odd cell: a crate's figure
-/// on a row that exceeds its figure on a row of more bits, in the same table, by more than 10%.
-/// Then it prints every trailing cell: a figure of the subject 0.5 cycles or more above the fewest
-/// figure of its row and part among the functions that keep the row's definition.
+/// Writes the document from `record` and from `wasm`, the record of the WebAssembly builds when
+/// there is one, and prints to the terminal every odd cell: a crate's figure on a row that exceeds
+/// its figure on a row of more bits, in the same table, by more than 10%. Then it prints every
+/// trailing cell of the native and the WebAssembly builds: a figure of the subject 0.5 cycles or
+/// more above the fewest figure of its row and part among the functions that keep the row's
+/// definition.
 pub fn report<K: Key>(
     paths: &Paths,
     layout: &Layout<'_, K>,
     record: &Record<K>,
+    wasm: Option<&Record<K>>,
 ) -> Result<(), Error> {
     let tables = record
         .builds
         .iter()
+        .chain(wasm.iter().flat_map(|wasm| wasm.builds.iter()))
         .map(|build| Ok((build, Table::new(&build.cells, layout)?)))
         .collect::<Result<Vec<_>, Error>>()?;
     let [(_, first), ..] = tables.as_slice() else {
@@ -103,18 +107,25 @@ pub fn report<K: Key>(
         if table.ops != first.ops || table.keys != first.keys || table.crates != first.crates {
             return Err(Error::missing(
                 &format!("the cells of the first build in the build {}", build.name),
-                "the run record",
+                "the run records",
             ));
         }
     }
+    let (native, browsers) = tables.split_at(record.builds.len());
     let mut lines = header(record, layout, first);
-    lines.extend(setup(record));
+    lines.extend(setup(record, "## Setup"));
     lines.extend(method(layout, record));
     lines.extend(functions(layout, first));
-    for (build, table) in &tables {
+    for (build, table) in native {
         lines.extend(results(layout, table, build));
     }
-    lines.extend(reproduce(layout.tool));
+    if let Some(wasm) = wasm {
+        lines.extend(webassembly(wasm, layout, first));
+        for (build, table) in browsers {
+            lines.extend(results(layout, table, build));
+        }
+    }
+    lines.extend(reproduce(layout.tool, wasm.is_some()));
     let path = paths.library.join("BENCHMARKS.md");
     fs::write(&path, lines.join("\n") + "\n").map_err(|source| Error::io(&path, source))?;
     let odd: Vec<String> = tables
@@ -402,6 +413,22 @@ pub fn markdown_table(header: &[String], rows: &[Vec<String>], align: &str) -> V
 }
 
 fn header<K: Key>(record: &Record<K>, layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String> {
+    vec![
+        "# Benchmarks".to_owned(),
+        String::new(),
+        summary(record, layout, table, ""),
+        String::new(),
+    ]
+}
+
+/// The sentence that names what `record` measured: the commit, the compared crates, `how` and the
+/// date.
+fn summary<K: Key>(
+    record: &Record<K>,
+    layout: &Layout<'_, K>,
+    table: &Table<'_, K>,
+    how: &str,
+) -> String {
     let others: Vec<String> = table
         .crates
         .iter()
@@ -413,26 +440,61 @@ fn header<K: Key>(record: &Record<K>, layout: &Layout<'_, K>, table: &Table<'_, 
     } else {
         ""
     };
-    vec![
-        "# Benchmarks".to_owned(),
+    format!(
+        "`{}` at commit `{}` against {}{how}, in cycles per operation, measured on {}.{state}",
+        layout.subject,
+        short(&record.library_commit),
+        sentence(&others),
+        record.date
+    )
+}
+
+/// The section of the WebAssembly builds of `record`, before their results: how they ran and
+/// their setup.
+fn webassembly<K: Key>(
+    record: &Record<K>,
+    layout: &Layout<'_, K>,
+    table: &Table<'_, K>,
+) -> Vec<String> {
+    let mut lines = vec![
+        "## WebAssembly".to_owned(),
         String::new(),
-        format!(
-            "`{}` at commit `{}` against {}, in cycles per operation, measured on {}.{state}",
-            layout.subject,
-            short(&record.library_commit),
-            sentence(&others),
-            record.date
+        summary(
+            record,
+            layout,
+            table,
+            ", built for `wasm32-unknown-unknown` and run in headless browsers",
         ),
         String::new(),
-    ]
+    ];
+    lines.extend(WEBASSEMBLY.iter().map(|line| format!("- {line}")));
+    lines.push(String::new());
+    lines.extend(setup(record, "### Setup, WebAssembly"));
+    lines
 }
+
+/// How the WebAssembly builds ran, one short line each.
+const WEBASSEMBLY: &[&str] = &[
+    "The bench module runs in a dedicated worker of the browser, on the measuring CPU. A driver \
+     counts that thread with perf_event, and holds the CPU while the thread sleeps.",
+    "A second worker carries the start and the end of each count to the driver while the \
+     measuring worker sleeps.",
+    "The browser's flags compile every function with its optimizing tier when the module loads.",
+    "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count 4 \
+     million instructions.",
+    "A case whose difference counts under 50 times the noise of the fixed cost of a count stops \
+     the sweep.",
+    "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \
+     whichever is faster.",
+];
 
 /// The first seven characters of a commit hash.
 fn short(commit: &str) -> &str {
     commit.get(..7).unwrap_or(commit)
 }
 
-fn setup<K>(record: &Record<K>) -> Vec<String> {
+/// The setup table of `record` under `heading`.
+fn setup<K>(record: &Record<K>, heading: &str) -> Vec<String> {
     let mut cpu = format!("{} (`{}`)", record.cpu_model, record.native_cpu);
     if let Some(machine) = &record.machine {
         cpu += &format!("; {machine}");
@@ -468,13 +530,46 @@ fn setup<K>(record: &Record<K>) -> Vec<String> {
         ]);
     }
     for build in &record.builds {
+        if let Some(browser) = &build.browser {
+            rows.push(vec![
+                label("Browser", build),
+                format!("{}; {}", browser.version, browser.settings),
+            ]);
+            rows.push(vec![
+                label("Target features", build),
+                format!("`{}`", build.target_features.join("`, `")),
+            ]);
+            rows.push(vec![label("Cost of a count", build), overheads(build)]);
+        }
+    }
+    for build in &record.builds {
         rows.push(vec![label("Load", build), load(&build.sweep)]);
     }
     rows.push(vec!["Crates".to_owned(), crates.join(", ")]);
-    let mut lines = vec!["## Setup".to_owned(), String::new()];
+    let mut lines = vec![heading.to_owned(), String::new()];
     lines.extend(markdown_table(&[String::new(), String::new()], &rows, "ll"));
     lines.push(String::new());
     lines
+}
+
+/// The cost of an empty count in the benches of `build`, from the fewest to the most of them.
+fn overheads<K>(build: &Measurement<K>) -> String {
+    let range = |part: fn(&crate::record::Overhead) -> f64| {
+        let values: Vec<f64> = build.overheads.iter().map(part).collect();
+        let least = values.iter().copied().fold(f64::INFINITY, f64::min);
+        let most = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        if value(least) == value(most) {
+            value(least)
+        } else {
+            format!("{} to {}", value(least), value(most))
+        }
+    };
+    format!(
+        "{} cycles and {} instructions; its noise in a figure, {} cycles",
+        range(|overhead| overhead.cycles),
+        range(|overhead| overhead.instructions),
+        range(|overhead| overhead.noise)
+    )
 }
 
 /// The features that the builds enable beside the default ones of the measured package.
@@ -803,13 +898,22 @@ fn deviations<K: Key>(layout: &Layout<'_, K>, starred: &[(&str, &str, &K)]) -> V
         .collect()
 }
 
-fn reproduce(tool: &str) -> Vec<String> {
-    vec![
+fn reproduce(tool: &str, wasm: bool) -> Vec<String> {
+    let mut lines = vec![
         "## Reproduce".to_owned(),
         String::new(),
         "```sh".to_owned(),
         format!("cargo run -p {tool} -- bench    # the CPU's counts of the native build"),
+    ];
+    if wasm {
+        lines.push(format!(
+            "cargo run -p {tool} -- bench-wasm --chrome <chrome> --firefox <firefox>   # the \
+             WebAssembly builds"
+        ));
+    }
+    lines.extend([
         format!("cargo run -p {tool} -- report   # this file"),
         "```".to_owned(),
-    ]
+    ]);
+    lines
 }

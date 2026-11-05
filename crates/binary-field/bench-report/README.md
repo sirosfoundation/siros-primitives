@@ -5,6 +5,8 @@ and without carry-less multiplication, and writes `crates/binary-field/BENCHMARK
 
 ```sh
 cargo run -p binary-field-bench-report -- bench [--cpu <cpu>] [--machine <description>]
+cargo run -p binary-field-bench-report -- bench-wasm --chrome <executable> --firefox <executable> \
+  [--cpu <cpu>] [--browser-cpu <cpu>] [--machine <description>]
 cargo run -p binary-field-bench-report -- report
 ```
 
@@ -16,3 +18,7 @@ counts in `benchmarks/record.json` of the crate. `report` writes the document fr
 prints every cell more than 10% above the same crate's cell on a field of higher degree in the same
 table. `bench` needs Linux with `kernel.perf_event_paranoid` at 2 or below; a unit built with
 `not-precomputed` stops it.
+
+`bench-wasm` builds the benches for `wasm32-unknown-unknown`, with and without wide arithmetic,
+runs each build in Chrome and in Firefox, and records the counts in `benchmarks/record-wasm.json`;
+`report` adds their tables. [`bench-compare`](../../bench-compare) describes the browser driver.

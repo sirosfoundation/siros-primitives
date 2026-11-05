@@ -1,5 +1,7 @@
 //! The bench executable: it checks every case of a [`Suite`], measures every case with the
-//! counters of one pinned CPU, and prints every cell as one JSON line, then the sweep.
+//! counters of one pinned CPU, and prints every cell as one JSON line, then the sweep. A
+//! WebAssembly bench sends its lines to the driver that runs it in a browser, which counts and
+//! adds the sweep.
 //!
 //! A sweep first checks every case and sizes its runs: `n` starts at 16 operations and doubles
 //! until a run of `n` operations, counted after an uncounted run of as many, takes [`TARGET`]
@@ -18,11 +20,10 @@
 //! median of paired differences fell to 0.06 cycles where the two runs of a pair met different
 //! siblings. The latency of a case is its chain with the fewest cycles. A case
 //! whose `2n` runs count no more cycles than its `n` runs stops the sweep, and so does a chain
-//! step under [`FEWEST_STEP_CYCLES`].
+//! step under [`FEWEST_STEP_CYCLES`]. A WebAssembly bench sizes and repeats its runs by its own
+//! [`Protocol`].
 
-use std::fs;
 use std::mem::size_of;
-use std::path::Path;
 use std::process::ExitCode;
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
@@ -30,9 +31,11 @@ use crate::barrier::Ymm;
 use crate::barrier::{Barrier, Memory, touch};
 #[cfg(target_arch = "x86_64")]
 use crate::barrier::{Gpr, Xmm};
-use crate::counters::{Counters, Counts, pin};
+use crate::counters::{Counters, Counts};
 use crate::error::Error;
-use crate::record::{Cell, Class, Count, Events, Latency, Line, Load, Outcome, Sibling, Sweep};
+#[cfg(target_arch = "wasm32")]
+use crate::record::Overhead;
+use crate::record::{Cell, Class, Count, Events, Latency, Line, Outcome};
 use crate::suite::{
     Call, CaseId, Chain, Function, Inputs, Rng, Suite, Visitor, run_batch, run_chain, visit,
 };
@@ -40,7 +43,7 @@ use crate::suite::{
 /// The counted repetitions of every case.
 pub const REPETITIONS: usize = 31;
 
-/// The cycles that a short run takes at least, unless its operations reach their cap.
+/// The cycles that a native short run takes at least, unless its operations reach their cap.
 pub const TARGET: u64 = 1 << 20;
 
 /// The fewest cycles that a chain step may count. A step of one instruction takes one cycle, and
@@ -49,7 +52,7 @@ pub const TARGET: u64 = 1 << 20;
 pub const FEWEST_STEP_CYCLES: f64 = 0.75;
 
 /// The CPU of the measuring thread, unless `--cpu` names another.
-pub(crate) const CPU: usize = 15;
+pub const CPU: usize = 15;
 
 /// The seed of the operand sets of a sweep.
 const SEED: u64 = 0x5eed_0fc0_ffee;
@@ -57,17 +60,84 @@ const SEED: u64 = 0x5eed_0fc0_ffee;
 /// The most memory that the operand sets of a long run take.
 const FOOTPRINT: usize = 256 * 1024;
 
+/// How a sweep sizes its runs.
+struct Protocol {
+    /// Whether a run passes several times over its operand sets once they fill [`FOOTPRINT`],
+    /// until it is long enough.
+    passes: bool,
+    /// The counted runs of each size that sizes a case, whose fewest count.
+    sizing: usize,
+    /// The count from which a run is long enough.
+    long: Length,
+}
+
+/// The count from which a run is long enough.
+#[derive(Clone, Copy)]
+enum Length {
+    /// Core cycles.
+    Cycles(u64),
+    /// Retired instructions, whatever the cycles that other work adds.
+    Instructions(u64),
+}
+
+/// The native protocol: one pass over the operand sets, sized until a run takes [`TARGET`]
+/// cycles.
+const NATIVE_PROTOCOL: Protocol = Protocol {
+    passes: false,
+    sizing: 1,
+    long: Length::Cycles(TARGET),
+};
+
+/// The protocol of a WebAssembly bench. A count in a browser costs two requests to the driver,
+/// whose cycles varied by 4,000 to 8,000 between counts on a loaded machine, against the 8,192
+/// cycles of a long run of 8,192 one-cycle `add`s: a run passes over its operand sets, which stay
+/// in the L2 cache as natively, until it counts 4 million instructions, a million cycles at 4
+/// instructions per cycle. Cycles sized it badly: at a load of 65 a sizing run of a GF(2⁶⁴) add
+/// chain counted 2.3 times the cycles of the runs that followed, and the fewest of nine such runs
+/// ended the sizing early.
+const WASM_PROTOCOL: Protocol = Protocol {
+    passes: true,
+    sizing: 3,
+    long: Length::Instructions(4 << 20),
+};
+
+/// The protocol of this build.
+const PROTOCOL: Protocol = if cfg!(target_arch = "wasm32") {
+    WASM_PROTOCOL
+} else {
+    NATIVE_PROTOCOL
+};
+
+impl Length {
+    /// Whether the fewest of a run's counts reach this length.
+    const fn reached(self, fewest: &Counts) -> bool {
+        match self {
+            Self::Cycles(cycles) => fewest.cycles >= cycles,
+            Self::Instructions(instructions) => fewest.instructions >= instructions,
+        }
+    }
+}
+
+/// The fewest times the noise of the fixed cost of a count that a difference of a case counts,
+/// where the counts reach the counters through requests: its figure then moves by at most 2%
+/// with that cost.
+const SIGNAL: f64 = 50.0;
+
 /// The operations of the first sizing run, and the fewest of a short run.
 const FEWEST: usize = 16;
 
-/// The load average of the machine.
-const LOADAVG: &str = "/proc/loadavg";
+/// The empty counts of a WebAssembly bench before its sweep.
+#[cfg(target_arch = "wasm32")]
+const GLUE_COUNTS: usize = 1000;
 
-/// The time that each CPU spent in each state, in ticks.
-const STAT: &str = "/proc/stat";
+/// The sets of [`REPETITIONS`] empty counts whose fewest counts give the noise of a figure, in
+/// pairs.
+#[cfg(target_arch = "wasm32")]
+const NOISE_SETS: usize = 8;
 
 /// Runs the bench executable of `S`, named `name` in its messages, with the process arguments:
 /// `--cpu <cpu>` names the CPU of the measuring thread.
+#[cfg(not(target_arch = "wasm32"))]
 #[must_use]
 pub fn main<S: Suite>(name: &str) -> ExitCode {
     // `cargo bench` passes `--bench`.
@@ -98,15 +168,93 @@ pub fn main<S: Suite>(name: &str) -> ExitCode {
     }
 }
 
+/// Runs the WebAssembly bench of `S`, named `name` in its messages, in the page of the driver:
+/// it sends the line of every cell to the driver, or the reason for which it stops. A panic sends
+/// its message before the module traps.
+#[cfg(target_arch = "wasm32")]
+#[must_use]
+pub fn main<S: Suite>(name: &str) -> ExitCode {
+    std::panic::set_hook(Box::new(|info| crate::host::fail(&info.to_string())));
+    let measured = Counters::open().and_then(|mut counters| {
+        let overhead = overhead(&mut counters)?;
+        let line = Line::<S::Key>::Overhead(overhead);
+        let mut lines = vec![serde_json::to_string(&line).map_err(Error::Cells)?];
+        lines.extend(cells::<S>(&mut counters, Some(overhead.noise))?);
+        Ok(lines)
+    });
+    match measured {
+        Ok(lines) => {
+            for line in lines {
+                crate::host::emit(&line);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            crate::host::fail(&format!("{name}: {error}"));
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// The cost of a count of an empty region in the page, from the last [`NOISE_SETS`] sets of
+/// [`REPETITIONS`] of [`GLUE_COUNTS`] counts. The earlier counts bring the page's code of a count
+/// to the engine's optimizing tier: its first count took 1.5 million cycles, its later ones 5,000.
+#[cfg(target_arch = "wasm32")]
+fn overhead(counters: &mut Counters) -> Result<Overhead, Error> {
+    let mut counts = Vec::with_capacity(GLUE_COUNTS);
+    for _ in 0..GLUE_COUNTS {
+        let (runs, counted) = counters.count(&mut || 0)?;
+        ran("an empty count", runs, 0)?;
+        counts.push(counted);
+    }
+    let last = &counts[GLUE_COUNTS - NOISE_SETS * REPETITIONS..];
+    let median = |event: fn(&Counts) -> u64| {
+        let mut values: Vec<u64> = last.iter().map(event).collect();
+        let middle = values.len() / 2;
+        let (_, median, _) = values.select_nth_unstable(middle);
+        *median as f64
+    };
+    // A figure takes the fewest counts of two sets of runs; the fixed cost of a count moves it by
+    // the difference of the fewest counts of two sets of empty counts.
+    let fewest: Vec<f64> = last
+        .as_chunks::<REPETITIONS>()
+        .0
+        .iter()
+        .map(|set| set.iter().map(|counts| counts.cycles).min().unwrap_or(0) as f64)
+        .collect();
+    let noise = fewest
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|[first, second]| (second - first).abs())
+        .fold(0.0, f64::max);
+    Ok(Overhead {
+        cycles: median(|counts| counts.cycles),
+        instructions: median(|counts| counts.instructions),
+        noise,
+    })
+}
+
 /// Checks and measures every case on `cpu`; returns the line of every cell, in the order of
 /// [`visit`], then the line of the sweep.
+#[cfg(not(target_arch = "wasm32"))]
 fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
-    pin(cpu)?;
+    crate::counters::pin(cpu)?;
     let mut counters = Counters::open()?;
-    let window = Window::open(cpu)?;
+    let window = crate::window::Window::open(cpu)?;
+    let mut lines = cells::<S>(&mut counters, None)?;
+    let line = Line::<S::Key>::Sweep(window.close()?);
+    lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
+    Ok(lines)
+}
+
+/// Checks and measures every case with `counters`; returns the line of every cell, in the order
+/// of [`visit`]. `noise` is the noise of the fixed cost of a count where the counts reach the
+/// counters through requests; such a difference counts at least [`SIGNAL`] times as many cycles.
+fn cells<S: Suite>(counters: &mut Counters, noise: Option<f64>) -> Result<Vec<String>, Error> {
     // Pass 0 checks and sizes the cases; pass `r` runs repetition `r`.
     let mut measuring = Measuring {
-        counters: &mut counters,
+        counters,
         pass: 0,
         rng: Rng(SEED),
         cells: Vec::new(),
@@ -124,7 +272,6 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
             return Err(error);
         }
     }
-    let sweep = window.close()?;
     let Measuring { cells, cases, .. } = measuring;
     let mut lines = Vec::with_capacity(cells.len() + 1);
     for (id, call) in &cells {
@@ -135,7 +282,7 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
                     .iter()
                     .find(|case| case.id == name)
                     .ok_or_else(|| Error::missing(&name, "the measured cases"))?;
-                Outcome::Counted(case.count(function)?)
+                Outcome::Counted(case.count(function, noise)?)
             }
             Call::Absent(reason) => Outcome::Absent((*reason).to_owned()),
         };
@@ -147,146 +294,42 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
         });
         lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
     }
-    let line = Line::<S::Key>::Sweep(sweep);
-    lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
     Ok(lines)
 }
 
-/// The span of a sweep on one CPU: the load at its start, and the ticks of the CPU's SMT siblings.
-pub(crate) struct Window {
-    cpu: usize,
-    before: f64,
-    siblings: Vec<(usize, Ticks)>,
-}
-
-impl Window {
-    /// Starts the span of a sweep on `cpu`.
-    pub(crate) fn open(cpu: usize) -> Result<Self, Error> {
-        let siblings = siblings(cpu)?
-            .into_iter()
-            .map(|sibling| Ok((sibling, ticks(sibling)?)))
-            .collect::<Result<Vec<_>, Error>>()?;
-        Ok(Self {
-            cpu,
-            before: load()?,
-            siblings,
-        })
-    }
-
-    /// Ends the span: the sweep with the load around it and the busy share of each sibling.
-    pub(crate) fn close(self) -> Result<Sweep, Error> {
-        let after = load()?;
-        let siblings = self
-            .siblings
-            .into_iter()
-            .map(|(sibling, before)| {
-                Ok(Sibling {
-                    cpu: sibling,
-                    busy: ticks(sibling)?.busy_since(&before, sibling)?,
-                })
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        Ok(Sweep {
-            cpu: self.cpu,
-            load: Load {
-                before: self.before,
-                after,
-            },
-            siblings,
-        })
-    }
-}
-
-/// The 1-minute load average.
-fn load() -> Result<f64, Error> {
-    let path = Path::new(LOADAVG);
-    let text = fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
-    let field = text
-        .split_whitespace()
-        .next()
-        .ok_or_else(|| Error::missing("load average", LOADAVG))?;
-    field.parse::<f64>().map_err(|source| Error::Load {
-        text: field.to_owned(),
-        source,
-    })
-}
-
-/// The SMT siblings of `cpu`, which share its core.
-fn siblings(cpu: usize) -> Result<Vec<usize>, Error> {
-    let path = format!("/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list");
-    let text = fs::read_to_string(&path).map_err(|source| Error::io(Path::new(&path), source))?;
-    let mut siblings = Vec::new();
-    // A list such as `15,31` or `14-15`.
-    for item in text.trim().split(',') {
-        let (first, last) = item.split_once('-').unwrap_or((item, item));
-        let parse = |text: &str| {
-            text.parse::<usize>()
-                .map_err(|source| Error::number("CPU", text, source))
-        };
-        siblings.extend((parse(first)?..=parse(last)?).filter(|sibling| *sibling != cpu));
-    }
-    Ok(siblings)
-}
-
-/// The ticks of one CPU in `/proc/stat`.
-struct Ticks {
-    busy: u64,
-    total: u64,
-}
-
-/// The ticks of `cpu` so far.
-fn ticks(cpu: usize) -> Result<Ticks, Error> {
-    let path = Path::new(STAT);
-    let text = fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
-    let name = format!("cpu{cpu}");
-    let fields = text
-        .lines()
-        .find_map(|line| {
-            let mut words = line.split_whitespace();
-            (words.next() == Some(name.as_str())).then(|| words.collect::<Vec<_>>())
-        })
-        .ok_or_else(|| Error::missing(&name, STAT))?;
-    let numbers = fields
-        .iter()
-        .map(|field| {
-            field
-                .parse::<u64>()
-                .map_err(|source| Error::number(&name, field, source))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    // user, nice, system, idle, iowait, irq, softirq, steal; guest time is part of user time.
-    let [user, nice, system, idle, iowait, irq, softirq, steal, ..] = numbers.as_slice() else {
-        return Err(Error::missing("eight states", &name));
-    };
-    let busy = user + nice + system + irq + softirq + steal;
-    Ok(Ticks {
-        busy,
-        total: busy + idle + iowait,
-    })
-}
-
-impl Ticks {
-    /// The busy share of `cpu` since `before`.
-    fn busy_since(&self, before: &Self, cpu: usize) -> Result<f64, Error> {
-        let missing = || Error::missing("ticks during the sweep", &format!("CPU {cpu}"));
-        let busy = self.busy.checked_sub(before.busy).ok_or_else(missing)?;
-        match self.total.checked_sub(before.total) {
-            None | Some(0) => Err(missing()),
-            Some(total) => Ok(busy as f64 / total as f64),
-        }
-    }
-}
-
-/// The most operations of a short run of a case whose operand sets are `I`: as many as fill
+/// The most operand sets of a short run of a case whose operand sets are `I`: as many as fill
 /// [`FOOTPRINT`] with the operand sets of a long run, and at least [`FEWEST`].
 fn cap<I>() -> usize {
     (FOOTPRINT / (2 * size_of::<I>().max(1))).max(FEWEST)
 }
 
+/// The shape of a short run: `passes` passes over `sets` fresh operand sets. A long run passes as
+/// many times over twice as many sets.
+#[derive(Clone, Copy, Debug)]
+struct Run {
+    sets: usize,
+    passes: usize,
+}
+
+impl Run {
+    /// The operations of the run.
+    const fn operations(self) -> usize {
+        self.sets * self.passes
+    }
+
+    /// The long run of this short run.
+    const fn long(self) -> Self {
+        Self {
+            sets: 2 * self.sets,
+            passes: self.passes,
+        }
+    }
+}
+
 /// The counted runs of one form of a case.
 struct Form {
-    /// The operations of a short run.
-    operations: usize,
+    /// The shape of a short run.
+    run: Run,
     /// The counts of the short run and of the long run of every repetition.
     repetitions: Vec<[Counts; 2]>,
 }
@@ -294,8 +337,9 @@ struct Form {
 impl Form {
     /// The events per operation of the form `name`: the fewest that a long run counts less the
     /// fewest that a short run counts, over the operations of a short run. Long runs whose fewest
-    /// cycles are no more than the short runs' are an [`Error::Flat`].
-    fn events(&self, name: &str) -> Result<Events, Error> {
+    /// cycles are no more than the short runs' are an [`Error::Flat`], and a difference under
+    /// [`SIGNAL`] times `noise` an [`Error::Noisy`].
+    fn events(&self, name: &str, noise: Option<f64>) -> Result<Events, Error> {
         let fewest = |value: &dyn Fn(&[Counts; 2]) -> u64| -> Result<u64, Error> {
             self.repetitions
                 .iter()
@@ -303,21 +347,46 @@ impl Form {
                 .min()
                 .ok_or_else(|| Error::missing("repetitions", name))
         };
-        let per = |event: fn(&Counts) -> u64| -> Result<f64, Error> {
+        let difference = |event: fn(&Counts) -> u64| -> Result<f64, Error> {
             let long = fewest(&|[_, long]| event(long))?;
             let short = fewest(&|[short, _]| event(short))?;
-            let difference = long as f64 - short as f64;
-            Ok(difference / self.operations as f64)
+            Ok(long as f64 - short as f64)
         };
-        let cycles = per(|counts| counts.cycles)?;
+        let operations = self.run.operations();
+        let per = |event| Ok::<f64, Error>(difference(event)? / operations as f64);
+        let cycles = difference(|counts| counts.cycles)?;
         if cycles <= 0.0 {
             return Err(Error::Flat {
                 case: name.to_owned(),
-                operations: self.operations,
+                operations,
             });
         }
+        if let Some(noise) = noise.filter(|noise| cycles < SIGNAL * noise) {
+            let spread = |run: usize| {
+                let mut values: Vec<u64> = self
+                    .repetitions
+                    .iter()
+                    .map(|counts| counts[run].cycles)
+                    .collect();
+                values.sort_unstable();
+                format!(
+                    "fewest {}, median {}, most {}",
+                    values[0],
+                    values[values.len() / 2],
+                    values[values.len() - 1]
+                )
+            };
+            return Err(Error::Noisy {
+                case: name.to_owned(),
+                cycles,
+                noise,
+                short: spread(0),
+                long: spread(1),
+            });
+        }
+        let cycles = cycles / operations as f64;
         Ok(Events {
-            operations: self.operations,
+            operations,
             cycles,
             instructions: per(|counts| counts.instructions)?,
             branch_misses: per(|counts| counts.branch_misses)?,
@@ -344,13 +413,13 @@ impl Case {
     /// The cell of the case, which runs `function`: its latency is its chain form with the fewest
     /// cycles per step. A chain step under [`FEWEST_STEP_CYCLES`], in any form, is an
     /// [`Error::Reassociated`].
-    fn count(&self, function: &Function) -> Result<Count, Error> {
+    fn count(&self, function: &Function, noise: Option<f64>) -> Result<Count, Error> {
         let latencies = self
             .chains
             .iter()
             .map(|chain| {
                 let name = format!("{} chain in {}", self.id, chain.class);
-                let events = chain.form.events(&name)?;
+                let events = chain.form.events(&name, noise)?;
                 if events.cycles < FEWEST_STEP_CYCLES {
                     return Err(Error::Reassociated {
                         case: name,
@@ -366,7 +435,7 @@ impl Case {
         Ok(Count {
             function: function.name.to_owned(),
             deviation: function.deviation.map(str::to_owned),
-            batch: self.batch.events(&self.id)?,
+            batch: self.batch.events(&self.id, noise)?,
             chain: latencies
                 .into_iter()
                 .min_by(|a, b| a.events.cycles.total_cmp(&b.events.cycles)),
@@ -406,14 +475,14 @@ fn ran(id: &str, runs: usize, count: usize) -> Result<(), Error> {
 /// One form of a case: the code that each case compiles. The rest of a sweep reaches it through
 /// `dyn`, so it compiles once.
 trait Trial {
-    /// Runs the form on `count` fresh inputs that `rng` draws, counted by `counters`, right after
-    /// an uncounted run on `warm` other fresh inputs; returns the number of uncounted and counted
-    /// runs and the counts.
+    /// Runs the form in the shape `run` on fresh inputs that `rng` draws, counted by `counters`,
+    /// right after an uncounted run in the shape `warm` on other fresh inputs; returns the number
+    /// of uncounted and counted runs and the counts.
     fn counted(
         &self,
         rng: &mut Rng,
-        count: usize,
-        warm: usize,
+        run: Run,
+        warm: Run,
         counters: &mut Counters,
     ) -> Result<([usize; 2], Counts), Error>;
 }
@@ -424,6 +493,13 @@ struct Region<'a, I, F> {
     region: F,
 }
 
+impl<I, F: Fn(&[I]) -> usize> Region<'_, I, F> {
+    /// Runs `region` `passes` times over `batch`; returns the number of runs.
+    fn passes(&self, batch: &[I], passes: usize) -> usize {
+        (0..passes).map(|_| (self.region)(batch)).sum()
+    }
+}
+
 impl<I, F: Fn(&[I]) -> usize> Trial for Region<'_, I, F> {
     /// The uncounted run follows both draws, so the tables and the code of the form are as warm
     /// for every counted run. A GF(2¹⁶) inverse by a 128 KiB table takes 1.7 cycles; when the
@@ -432,63 +508,78 @@ impl<I, F: Fn(&[I]) -> usize> Trial for Region<'_, I, F> {
     fn counted(
         &self,
         rng: &mut Rng,
-        count: usize,
-        warm: usize,
+        run: Run,
+        warm: Run,
         counters: &mut Counters,
     ) -> Result<([usize; 2], Counts), Error> {
-        let warming = self.inputs.draw(rng, warm);
-        let batch = self.inputs.draw(rng, count);
-        let warmed = (self.region)(&warming);
+        let warming = self.inputs.draw(rng, warm.sets);
+        let batch = self.inputs.draw(rng, run.sets);
+        let warmed = self.passes(&warming, warm.passes);
         touch(&batch);
-        let (runs, counts) = counters.count(&mut || (self.region)(&batch))?;
+        let (runs, counts) = counters.count(&mut || self.passes(&batch, run.passes))?;
         Ok(([warmed, runs], counts))
     }
 }
 
 impl<O, K> Measuring<'_, O, K> {
-    /// The counts of `trial` on `count` fresh inputs, right after an uncounted run on `warm`
-    /// others.
+    /// The counts of `trial` in the shape `run` on fresh inputs, right after an uncounted run in
+    /// the shape `warm` on others.
     fn counted(
         &mut self,
         trial: &dyn Trial,
-        count: usize,
-        warm: usize,
+        run: Run,
+        warm: Run,
         id: &str,
     ) -> Result<Counts, Error> {
-        let ([warmed, runs], counts) = trial.counted(&mut self.rng, count, warm, self.counters)?;
-        ran(id, warmed, warm)?;
-        ran(id, runs, count)?;
+        let ([warmed, runs], counts) = trial.counted(&mut self.rng, run, warm, self.counters)?;
+        ran(id, warmed, warm.operations())?;
+        ran(id, runs, run.operations())?;
         Ok(counts)
     }
 
-    /// The form of a case that `trial` runs, with the operations of its short run: 16, doubled
-    /// until a counted run after an uncounted run of as many operations counts [`TARGET`] cycles,
-    /// or until `cap`.
+    /// The form of a case that `trial` runs, with the shape of its short run: one pass over 16
+    /// operand sets, doubled until the fewest counts of the protocol's sizing runs, each after an
+    /// uncounted run of the same shape, reach its length, or until `cap` sets. A protocol with
+    /// passes then doubles the passes over `cap` sets until the run reaches that length.
     fn size(&mut self, trial: &dyn Trial, cap: usize, id: &str) -> Result<Form, Error> {
-        let mut operations = FEWEST;
+        let mut run = Run {
+            sets: FEWEST,
+            passes: 1,
+        };
         loop {
-            let counts = self.counted(trial, operations, operations, id)?;
-            if counts.cycles >= TARGET || operations >= cap {
+            let mut fewest = Counts {
+                cycles: u64::MAX,
+                instructions: u64::MAX,
+                branch_misses: u64::MAX,
+            };
+            for _ in 0..PROTOCOL.sizing {
+                let counts = self.counted(trial, run, run, id)?;
+                fewest = Counts {
+                    cycles: fewest.cycles.min(counts.cycles),
+                    instructions: fewest.instructions.min(counts.instructions),
+                    branch_misses: fewest.branch_misses.min(counts.branch_misses),
+                };
+            }
+            if PROTOCOL.long.reached(&fewest) || (run.sets >= cap && !PROTOCOL.passes) {
                 return Ok(Form {
-                    operations,
+                    run,
                     repetitions: Vec::new(),
                 });
             }
-            operations = (2 * operations).min(cap);
+            if run.sets < cap {
+                run.sets = (2 * run.sets).min(cap);
+            } else {
+                run.passes *= 2;
+            }
         }
     }
 
-    /// Runs one repetition of a form through `trial`: its operations and twice as many counted,
-    /// each run on fresh inputs right after an uncounted run of its operations.
-    fn repetition(
-        &mut self,
-        trial: &dyn Trial,
-        operations: usize,
-        id: &str,
-    ) -> Result<[Counts; 2], Error> {
+    /// Runs one repetition of a form through `trial`: a run of the shape `run` and one of its
+    /// long shape counted, each on fresh inputs right after an uncounted run of the shape `run`.
+    fn repetition(&mut self, trial: &dyn Trial, run: Run, id: &str) -> Result<[Counts; 2], Error> {
         Ok([
-            self.counted(trial, operations, operations, id)?,
-            self.counted(trial, 2 * operations, operations, id)?,
+            self.counted(trial, run, run, id)?,
+            self.counted(trial, run.long(), run, id)?,
         ])
     }
 
@@ -526,8 +617,8 @@ impl<O, K> Measuring<'_, O, K> {
             return Ok(());
         }
         let index = self.case(&id)?;
-        let operations = self.cases[index].batch.operations;
-        let counts = self.repetition(trial, operations, &id)?;
+        let run = self.cases[index].batch.run;
+        let counts = self.repetition(trial, run, &id)?;
         self.cases[index].batch.repetitions.push(counts);
         Ok(())
     }
@@ -559,13 +650,13 @@ impl<O, K> Measuring<'_, O, K> {
             return Ok(());
         }
         let missing = || Error::missing(&format!("chain in {class}"), id);
-        let operations = self.cases[index]
+        let run = self.cases[index]
             .chains
             .iter()
             .find(|chain| chain.class == class)
-            .map(|chain| chain.form.operations)
+            .map(|chain| chain.form.run)
             .ok_or_else(missing)?;
-        let counts = self.repetition(trial, operations, id)?;
+        let counts = self.repetition(trial, run, id)?;
         self.cases[index]
             .chains
             .iter_mut()
@@ -643,6 +734,8 @@ impl<O, K> Measuring<'_, O, K> {
         }
         #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
         self.chain::<I, R, Ymm>(index, inputs, run, name)?;
+        #[cfg(target_arch = "wasm32")]
+        self.chain::<I, R, crate::barrier::Locals>(index, inputs, run, name)?;
         self.chain::<I, R, Memory>(index, inputs, run, name)?;
         if self.cases[index].chains.is_empty() {
             return Err(Error::missing(
