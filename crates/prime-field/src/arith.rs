@@ -17,7 +17,7 @@ use typenum::Unsigned;
 
 use crate::field::Modulus;
 use crate::kernel::{equal, fits, is_zero, limb, low_limb, set, shifted_limb, widening_mul};
-use crate::limb::{adc, adc_constant, mac, sbb, sbb_constant, select};
+use crate::limb::{adc, adc_constant, adc_sum, mac, sbb, sbb_constant, select};
 use crate::params::{ExtendedLimbs, Limbs, Shape, WideLimbs};
 use crate::unrolled::unroll;
 use crate::width::Width;
@@ -402,7 +402,18 @@ impl<M: Modulus> Shape<M> {
     /// overflow flags it.
     #[inline(always)]
     fn mersenne_fold(x: u64, y: u64) -> u64 {
-        if Self::BITS == 31 {
+        if Self::BITS == 31 && cfg!(target_arch = "wasm32") {
+            // WebAssembly has no overflow flag: the sum of the two values below `2^31` reaches
+            // `2^31` exactly when its sign bit is set, one comparison against three for the
+            // signed overflow: the Mersenne-31 product took Chrome 3.6 cycles, 7 of latency, against
+            // 5.2 and 12, and its square root 159 against 329.
+            let sum = (x as u32).wrapping_add(y as u32);
+            u64::from(select(
+                (sum as i32) < 0,
+                sum.wrapping_sub(Self::P0 as u32),
+                sum,
+            ))
+        } else if Self::BITS == 31 {
             // On 32 bits, so that one addition yields both the sum and its flag.
             let (sum, above) = (x as i32).overflowing_add(y as i32);
             let sum = sum as u32;
@@ -491,7 +502,7 @@ impl<M: Modulus> Shape<M> {
     /// come from the four products of 32-bit halves before the low limb is assembled. The sum of
     /// `low` and `low << 32` otherwise compiles to a product by `2^32 + 1`, and the carry chains to
     /// `i64.add128` and `i64.sub128` with wide arithmetic: the product took Chrome 10.0 cycles
-    /// against 12.2 without wide arithmetic, and with it Chrome 6.3 against 7.0 and Firefox 7.3
+    /// against 12.1 without wide arithmetic, and with it Chrome 6.3 against 7.0 and Firefox 7.0
     /// against 9.0.
     #[inline(always)]
     fn shift_redc_split(a: u64, b: u64) -> u64 {
@@ -737,7 +748,9 @@ impl<M: Modulus> Shape<M> {
     /// A product's final subtraction is a branch in the variable-time form: a Montgomery product
     /// reaches `p` with probability about `p / 4R` (Walter, *Montgomery exponentiation needs no
     /// final subtractions*, 1999), at most a sixteenth when `p < R / 4`. With wide arithmetic the
-    /// product runs without the branch: the BN254 product took Chrome 80.8 cycles against 95.4.
+    /// product runs without the branch: the BN254 product took Chrome 80.6 cycles against 95.0. A
+    /// chain of products then waits for each reduction: the BN254 square root took 55,300 cycles
+    /// against 47,000.
     pub(crate) const FINAL_BRANCH: bool =
         Self::MONTGOMERY && Self::LIMBS > 1 && Self::P_TOP >> 62 == 0 && !cfg!(wide_arithmetic);
 
@@ -814,6 +827,18 @@ impl<M: Modulus> Shape<M> {
         (top, u64::from(low_carry) + u64::from(high_carry))
     }
 
+    /// A carry of [`Self::square_product`]: [`adc_sum`] up to six limbs, [`adc`] beyond, where the
+    /// extra live value of [`adc_sum`] spilled in Firefox: the P-521 square took 980 cycles against
+    /// 903 with it.
+    #[inline(always)]
+    fn square_adc(carry: u8, a: u64, b: u64) -> (u64, u8) {
+        if Self::LIMBS <= 6 {
+            adc_sum(carry, a, b)
+        } else {
+            adc(carry, a, b)
+        }
+    }
+
     /// The full square `a a` in `2 L` limbs: each cross product once, doubled, plus the squares
     /// on the diagonal. Beyond four limbs its rows run two carry chains on every target: on
     /// WebAssembly a 381-bit square took Chrome 580 cycles this way against 700 with one.
@@ -834,8 +859,11 @@ impl<M: Modulus> Shape<M> {
                             |j| {
                                 if j > i {
                                     let product = widening_mul(limb(a, j), multiplier);
-                                    let (sum, carry_out) =
-                                        adc(carry, limb(wide.as_slice(), i + j), product as u64);
+                                    let (sum, carry_out) = Self::square_adc(
+                                        carry,
+                                        limb(wide.as_slice(), i + j),
+                                        product as u64,
+                                    );
                                     set(wide.as_mut_slice(), i + j, sum);
                                     set(highs.as_mut_slice(), j, (product >> 64) as u64);
                                     carry = carry_out;
@@ -848,7 +876,7 @@ impl<M: Modulus> Shape<M> {
                             #[inline(always)]
                             |j| {
                                 if j > i {
-                                    let (sum, carry_out) = adc(
+                                    let (sum, carry_out) = Self::square_adc(
                                         carry,
                                         limb(wide.as_slice(), i + j + 1),
                                         limb(highs.as_slice(), j),
@@ -883,8 +911,9 @@ impl<M: Modulus> Shape<M> {
         // The cross products sum below `2^(128 L - 1)`: doubling loses no bit.
         if cfg!(target_arch = "wasm32") {
             // By shifts, independent per limb, where the carry chain costs a comparison per limb
-            // without wide arithmetic and an `i64.add128` per limb with it: the P-256 square took
-            // Firefox with wide arithmetic 116.5 cycles against 132.8.
+            // without wide arithmetic and an `i64.add128` per limb with it: with wide arithmetic
+            // the P-256 square took Chrome 56.4 cycles of latency against 62.6, and Firefox 603
+            // instructions against 651.
             let mut below = 0;
             Self::each_wide(
                 #[inline(always)]
@@ -914,8 +943,9 @@ impl<M: Modulus> Shape<M> {
             |i| {
                 let value = limb(a, i);
                 let square = widening_mul(value, value);
-                let (low, carry_low) = adc(carry, limb(wide.as_slice(), 2 * i), square as u64);
-                let (high, carry_high) = adc(
+                let (low, carry_low) =
+                    Self::square_adc(carry, limb(wide.as_slice(), 2 * i), square as u64);
+                let (high, carry_high) = Self::square_adc(
                     carry_low,
                     limb(wide.as_slice(), 2 * i + 1),
                     (square >> 64) as u64,

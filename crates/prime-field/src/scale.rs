@@ -34,7 +34,13 @@ impl<M: Modulus> Shape<M> {
     /// the top of `k`.
     #[inline(always)]
     pub(crate) fn scale<const CT: bool>(a: &Limbs<M>, k: &[u64]) -> Limbs<M> {
-        let residue = if k.len() <= 1 && Self::LIMBS == 1 {
+        let residue = if k.len() <= 1 && Self::SHIFT_REDC && cfg!(wide_arithmetic) {
+            // `a k < p 2^64` reduced by the folds of `2^64 = 2^32 - 1`: MEASURE.
+            Self::one_limb(Self::goldilocks_reduce(widening_mul(
+                limb(a, 0),
+                limb(k, 0),
+            )))
+        } else if k.len() <= 1 && Self::LIMBS == 1 {
             // The residue of `k`, off the path of `a`, then the product of two elements.
             Self::one_limb(Self::mul1::<CT>(limb(a, 0), Self::word1::<CT>(limb(k, 0))))
         } else if k.len() <= 1 {

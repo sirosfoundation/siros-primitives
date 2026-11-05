@@ -80,6 +80,20 @@ pub(crate) fn adc_constant(carry: u8, a: u64, b: u64) -> (u64, u8) {
     }
 }
 
+/// [`adc`] as `a` plus the sum `b + carry`, on WebAssembly without wide arithmetic: that sum wraps
+/// to zero only for `b = 2^64 - 1` and a carry, which the second comparison adds; elsewhere
+/// [`adc`]. MEASURE.
+#[inline(always)]
+pub(crate) fn adc_sum(carry: u8, a: u64, b: u64) -> (u64, u8) {
+    if cfg!(all(target_arch = "wasm32", not(wide_arithmetic))) {
+        let addend = b.wrapping_add(u64::from(carry));
+        let (sum, out) = a.overflowing_add(addend);
+        (sum, u8::from(out) + u8::from(addend < b))
+    } else {
+        adc(carry, a, b)
+    }
+}
+
 /// [`sbb`] for a constant `b`: `a` less `b + borrow`, as [`adc_constant`] adds.
 #[inline(always)]
 pub(crate) fn sbb_constant(borrow: u8, a: u64, b: u64) -> (u64, u8) {
