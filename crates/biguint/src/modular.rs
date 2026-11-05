@@ -7,6 +7,7 @@ use crate::kernel::{
     add_unless_carry, add_unless_carry_masked, reduced, subtract_when_above_in_place,
     subtract_when_above_masked,
 };
+use crate::limb::rare_call;
 use crate::nonzero::NonZeroUint;
 use generic_array::GenericArray;
 
@@ -76,13 +77,21 @@ fn below_modulus<N: Bits>(
 ) -> Uint<N> {
     let m = &modulus.get();
     if N::LIMBS <= SELECTED_LIMBS {
-        let a = if below(&a, m) { a } else { a % modulus };
-        let b = if below(&b, m) { b } else { b % modulus };
+        let a = if below(&a, m) {
+            a
+        } else {
+            remainder(a, modulus)
+        };
+        let b = if below(&b, m) {
+            b
+        } else {
+            remainder(b, modulus)
+        };
         sum(&a, &b, m)
     } else if below(&a, m) && below(&b, m) {
         sum(&a, &b, m)
     } else {
-        sum(&(a % modulus), &(b % modulus), m)
+        sum(&remainder(a, modulus), &remainder(b, modulus), m)
     }
 }
 
@@ -179,4 +188,13 @@ pub(crate) fn sum_mod_masked<N: Bits, B: Addend>(
     let mut out = Uint::<N>::ZERO;
     B::correct_masked(&mut out.limbs, &limbs, carry, &modulus.limbs);
     out
+}
+
+/// `value mod modulus`, for an operand whose top limb reaches the modulus's: a path that
+/// [`rare_call`] lays out of the loop, so that the operands below the modulus run without a taken
+/// branch.
+#[inline(always)]
+fn remainder<N: Bits>(value: Uint<N>, modulus: NonZeroUint<N>) -> Uint<N> {
+    rare_call();
+    value % modulus
 }

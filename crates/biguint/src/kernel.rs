@@ -207,7 +207,8 @@ pub(crate) fn subtract_when_above_in_place(part: &mut [u64], divisor: &[u64], ca
     let mut difference = [0u64; BRANCH_FREE_LIMBS];
     let (difference, _) = split_mut(&mut difference, part.len());
     let borrow = sub_into(difference, part, divisor);
-    let take = (carry != 0) | (borrow == 0);
+    // `carry >= borrow`: one comparison of two bits, which LLVM fuses with the subtraction.
+    let take = carry >= borrow;
     for (slot, &limb) in part.iter_mut().zip(difference.iter()) {
         // A conditional move: the unpredictable select keeps LLVM from branching inside a loop.
         *slot = select_unpredictable(take, limb, *slot);
