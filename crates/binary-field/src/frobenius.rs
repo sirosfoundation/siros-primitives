@@ -139,12 +139,12 @@ impl<P: Polynomial> Frobenius<P> {
         if degree <= 16 || degree > TABLE_DEGREE || clmul::HARDWARE {
             powers(chain, 0, degree, 0)
         } else if degree > 128 {
-            // The powers of the nibble tables, whose images [`QuadImages`] computes once for both.
-            let mut plan = Self::POWERS;
-            if plan.window > 0 {
-                plan.window = 1;
+            // Among the powers of the nibble tables, whose images [`QuadImages`] computes once for
+            // both.
+            match TIER {
+                Tier::Full => powers_among(chain, 1, degree, usize::MAX, Some(&Self::POWERS)),
+                Tier::Budget | Tier::None => powers(chain, 0, degree, 0),
             }
-            plan
         } else {
             let used = Self::POWERS.tables * table_bytes(Self::POWERS.window, degree);
             match TIER {
@@ -204,11 +204,22 @@ impl Powers {
 
 /// The plan of `chain` with tables of `window` bits in a field of degree `degree`: the set of its
 /// distinct powers of the least cost within `budget` bytes. A window of 0 plans no table.
+const fn powers(chain: &Chain, window: usize, degree: usize, budget: usize) -> Powers {
+    powers_among(chain, window, degree, budget, None)
+}
+
+/// [`powers`] that tabulates only powers that `among` tabulates, when given.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its array's length"
 )]
-const fn powers(chain: &Chain, window: usize, degree: usize, budget: usize) -> Powers {
+const fn powers_among(
+    chain: &Chain,
+    window: usize,
+    degree: usize,
+    budget: usize,
+    among: Option<&Powers>,
+) -> Powers {
     let mut plan = Powers {
         window,
         tabulated: [0; MAX_TABLES],
@@ -227,6 +238,15 @@ const fn powers(chain: &Chain, window: usize, degree: usize, budget: usize) -> P
     while step < len {
         let power = chain.steps[step].power;
         let mut seen = power < 2;
+        if let Some(among) = among {
+            let mut found = false;
+            let mut index = 0;
+            while index < among.tables {
+                found |= among.tabulated[index] == power;
+                index += 1;
+            }
+            seen |= !found;
+        }
         let mut index = 0;
         while index < count {
             if distinct[index] == power {
@@ -512,7 +532,26 @@ impl<P: Polynomial, const T: usize> BitTable<P, T> {
     /// Whether an image is four words.
     const QUAD: bool = Plan::<P>::DEGREE > 128;
     /// The images of the bits of a field of three or four words; zero for the other fields.
-    const QUAD_IMAGES: &'static [[u64; 4]; 256] = QuadImages::<P, T>::IMAGES;
+    const QUAD_IMAGES: &'static [[u64; 4]; 256] = {
+        // The index of this power among the nibble tables.
+        let plan = Frobenius::<P>::POWERS;
+        let mut index = 0;
+        while index < plan.tables && plan.tabulated[index] != Self::POWER {
+            index += 1;
+        }
+        match index {
+            _ if Self::POWER == 0 => &[[0; 4]; 256],
+            0 => QuadImages::<P, 0>::IMAGES,
+            1 => QuadImages::<P, 1>::IMAGES,
+            2 => QuadImages::<P, 2>::IMAGES,
+            3 => QuadImages::<P, 3>::IMAGES,
+            4 => QuadImages::<P, 4>::IMAGES,
+            5 => QuadImages::<P, 5>::IMAGES,
+            6 => QuadImages::<P, 6>::IMAGES,
+            7 => QuadImages::<P, 7>::IMAGES,
+            _ => &[[0; 4]; 256],
+        }
+    };
 
     /// `x^(2^POWER)`: the sum of the images of the set bits of `x`, each under the mask of its
     /// bit, in four sums. No address and no branch depends on `x`.
