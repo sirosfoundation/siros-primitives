@@ -55,7 +55,7 @@ pub use convert::OutOfRange;
 pub use field::Field;
 pub use modulus::{ConstantTimeResidue, Modulus, NotReduced, Residue, Ring};
 pub use mul::WideningMul;
-pub use nonzero::{IsZero, NonZero, NonZeroUint};
+pub use nonzero::{Divisor, IsZero, NonZero, NonZeroUint};
 pub use num::{Exponent, One, Pow, Square};
 pub use shift::ShiftAmount;
 pub use uint::{U8, U16, U32, U64, U128, U256, U384, U512, Uint};

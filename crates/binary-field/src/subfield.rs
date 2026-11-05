@@ -15,7 +15,7 @@ use biguint::Uint;
 use clmul::{Lane, Poly};
 use const_default::ConstDefault;
 use generic_array::GenericArray;
-use typenum::U128;
+use typenum::{U64, U128};
 
 use crate::arith::{Element, Field, Lanes};
 use crate::element::Limbs;
@@ -23,7 +23,6 @@ use crate::frobenius::{add_lane_rows, add_word_rows, images, square_mod};
 use crate::plan::{Plan, Polynomial, TIER, Tier};
 use crate::representation::Storage;
 use crate::standard::Poly64;
-
 
 /// The degree of `L`.
 const DEGREE: usize = 128;
@@ -73,8 +72,9 @@ impl<P: Polynomial> Subfield<P> {
     pub(crate) fn invert(a: Lanes<P>) -> Lanes<P> {
         let s = Self::frobenius(a);
         let norm = Field::<P>::lanes_mul(a, s);
-        let inverse = Field::<Poly64>::invert(Element::<Poly64>::from_word(Self::down(norm)));
-        Field::<P>::lanes_mul(s, Self::up(inverse.word()))
+        let norm = <Element<Poly64> as Storage<U64>>::from_word(Self::down(norm));
+        let inverse = <Element<Poly64> as Storage<U64>>::word(Field::<Poly64>::invert(norm));
+        Field::<P>::lanes_mul(s, Self::up(inverse))
     }
 
     /// `a^(2^64)`.
@@ -119,7 +119,6 @@ fn lane_sum<P: Polynomial>(sums: [Poly<U128>; 4]) -> Lanes<P> {
         .into_array();
     polynomial::<P>([low, high])
 }
-
 
 /// The two low words of `a`.
 #[inline(always)]
@@ -378,8 +377,9 @@ const fn lane_table<const POSITIONS: usize, const ENTRIES: usize>(
     while position < POSITIONS {
         let mut value = 0;
         while value < ENTRIES {
-            table[position][value] =
-                Lane::from_poly(Poly::<U128>::from_uint(Uint::from_u128(sums[position][value])));
+            table[position][value] = Lane::from_poly(Poly::<U128>::from_uint(Uint::from_u128(
+                sums[position][value],
+            )));
             value += 1;
         }
         position += 1;
@@ -409,4 +409,3 @@ const fn word_table<const POSITIONS: usize, const ENTRIES: usize>(
     }
     table
 }
-

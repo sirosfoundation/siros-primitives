@@ -328,6 +328,21 @@ impl<P: Polynomial> From<Gf2<P>> for Uint<P::Degree> {
     }
 }
 
+/// A nonzero element holds itself.
+impl<P: Polynomial> biguint::Divisor for Gf2<P> {
+    type Stored = Self;
+
+    #[inline(always)]
+    fn store(self) -> Option<Self> {
+        (!num_traits::Zero::is_zero(&self)).then_some(self)
+    }
+
+    #[inline(always)]
+    fn load(stored: Self) -> Self {
+        stored
+    }
+}
+
 impl<P: Polynomial> biguint::Field for Gf2<P> {
     #[inline(always)]
     fn invert_nonzero(self) -> Self {

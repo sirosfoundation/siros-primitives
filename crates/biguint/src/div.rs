@@ -159,7 +159,7 @@ pub(crate) fn divide<W: ArrayLength, M: Bits>(
         return native(dividend, divisor, quotient);
     }
     let limbs = divisor.limbs();
-    long::<_, W, M>(dividend, limbs, significant_len(limbs), top, quotient)
+    long::<_, W, M>(dividend, &limbs, significant_len(&limbs), top, quotient)
 }
 
 /// Whether a dividend in a `W`-limb window and an `L`-limb divisor both fit in `u128`, or on

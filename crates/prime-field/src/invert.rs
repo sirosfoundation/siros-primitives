@@ -41,6 +41,21 @@ const MASKED_BATCH: usize = 2 * HALF;
 /// The mask of the low `BATCH` bits.
 const LOW: u64 = (1 << BATCH) - 1;
 
+/// A nonzero element holds itself.
+impl<M: Modulus> biguint::Divisor for Fp<M> {
+    type Stored = Self;
+
+    #[inline(always)]
+    fn store(self) -> Option<Self> {
+        (!num_traits::Zero::is_zero(&self)).then_some(self)
+    }
+
+    #[inline(always)]
+    fn load(stored: Self) -> Self {
+        stored
+    }
+}
+
 impl<M: Modulus> biguint::Field for Fp<M> {
     // As a call, the P-256 base inverse measured 2.5% more cycles.
     #[inline(always)]

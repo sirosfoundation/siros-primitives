@@ -1,14 +1,42 @@
 use core::ops::{Add, Div, Mul, Rem};
 
 use const_default::ConstDefault;
-use generic_array::ArrayLength;
-use typenum::{Gr, IsGreater, Mod, NonZero, Prod, Quot, Sum, U0, U1, U2, U3, U4, U8, Unsigned};
+use generic_array::{ArrayLength, GenericArray};
+use typenum::{
+    B0, B1, Gr, IsGreater, IsLessOrEqual, LeEq, Mod, NonZero, Prod, Quot, Sum, U0, U1, U2, U3, U4,
+    U8, U64, U128, Unsigned,
+};
+
+use crate::nonzero::Stored;
 
 type DivUp<A, B> = Sum<Quot<A, B>, Gr<Mod<A, B>, U0>>;
 type LimbsFor<N> = DivUp<N, typenum::U64>;
 type BytesFor<N> = DivUp<N, typenum::U8>;
 /// `k * limbs + 8`.
 type ScratchFor<N, K> = Sum<Prod<LimbsFor<N>, K>, U8>;
+
+// Without a niche type the compiler adds a zero test before the division on its own: the storage
+// of a nonzero value of one or two limbs is `core::num::NonZero`, which tells it the divisor is
+// nonzero.
+/// The storage of a nonzero value above 64 bits: `NonZero<u128>` up to 128 bits, the limbs above.
+type Wider<N> =
+    <LeEq<N, U128> as Pick<core::num::NonZero<u128>, GenericArray<u64, LimbsFor<N>>>>::Output;
+/// The storage of a nonzero `N`-bit value.
+type NonZeroFor<N> = <LeEq<N, U64> as Pick<core::num::NonZero<u64>, Wider<N>>>::Output;
+
+/// `Yes` for `B1`, `No` for `B0`.
+pub trait Pick<Yes, No> {
+    /// The choice.
+    type Output;
+}
+
+impl<Yes, No> Pick<Yes, No> for B1 {
+    type Output = Yes;
+}
+
+impl<Yes, No> Pick<Yes, No> for B0 {
+    type Output = No;
+}
 
 pub(crate) mod sealed {
     use generic_array::ArrayLength;
@@ -67,6 +95,9 @@ where
     type Limbs: ArrayLength;
     /// `ceil(N / 8)`: the bytes of an encoded `Uint<N>`.
     type Bytes: ArrayLength;
+    /// The storage of a nonzero `Uint<N>`: `core::num::NonZero<u64>` up to 64 bits,
+    /// `core::num::NonZero<u128>` up to 128 bits, the limbs above.
+    type NonZeroLimbs: Stored;
 
     /// `N`.
     const BITS: usize;
@@ -89,9 +120,14 @@ where
     Mod<N, typenum::U8>: IsGreater<U0>,
     Quot<N, typenum::U8>: Add<Gr<Mod<N, typenum::U8>, U0>>,
     BytesFor<N>: ArrayLength,
+    N: IsLessOrEqual<U64> + IsLessOrEqual<U128>,
+    LeEq<N, U128>: Pick<core::num::NonZero<u128>, GenericArray<u64, LimbsFor<N>>>,
+    LeEq<N, U64>: Pick<core::num::NonZero<u64>, Wider<N>>,
+    NonZeroFor<N>: Stored,
 {
     type Limbs = LimbsFor<N>;
     type Bytes = BytesFor<N>;
+    type NonZeroLimbs = NonZeroFor<N>;
 
     const BITS: usize = N::USIZE;
     const LIMBS: usize = LimbsFor::<N>::USIZE;

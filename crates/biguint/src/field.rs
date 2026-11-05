@@ -4,14 +4,16 @@
 use core::ops::Mul;
 
 use constant_time::{CtInvert, CtNonZero, declassify};
-use num_traits::{Inv, Zero};
+use num_traits::Inv;
 
-use crate::nonzero::NonZero;
+use crate::nonzero::{Divisor, NonZero};
 
 /// A field element type, through which [`NonZero`] inverts it. `Zero::is_zero` runs in time
 /// independent of the value.
 #[doc(hidden)]
-pub trait Field: Zero + Copy + Mul<Output = Self> + CtNonZero<NonZero = NonZero<Self>> {
+pub trait Field:
+    Divisor<Stored = Self> + Mul<Output = Self> + CtNonZero<NonZero = NonZero<Self>>
+{
     /// `self^-1`; never called on `0`.
     #[must_use]
     fn invert_nonzero(self) -> Self;
@@ -30,7 +32,7 @@ impl<T: Field> NonZero<T> {
     }
 }
 
-impl<T: Zero> NonZero<T> {
+impl<T: Divisor<Stored = T>> NonZero<T> {
     /// `value`, or `None` when it is zero, for a `T` whose `is_zero` runs in time independent of
     /// the value: only the `Option` depends on it, built in [`declassify`]. The implementations of
     /// [`CtNonZero`] call it.

@@ -74,7 +74,7 @@ fn below_modulus<N: Bits>(
     modulus: NonZeroUint<N>,
     sum: impl Fn(&Uint<N>, &Uint<N>, &Uint<N>) -> Uint<N>,
 ) -> Uint<N> {
-    let m = modulus.as_ref();
+    let m = &modulus.get();
     if N::LIMBS <= SELECTED_LIMBS {
         let a = if below(&a, m) { a } else { a % modulus };
         let b = if below(&b, m) { b } else { b % modulus };

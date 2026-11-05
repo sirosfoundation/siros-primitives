@@ -22,7 +22,9 @@ allocation, no panics.
   `count_ones`, `leading_zeros`, `trailing_zeros` and `swap_bytes`.
 - Conversions: `resize` and `try_resize` between widths, limbs, little- and big-endian bytes,
   `u64`, `u128`, floats, and `From` and `TryFrom` for the primitive integers.
-- `NonZero<T>`: a value checked nonzero once, for divisors and moduli.
+- `NonZero<T>`: a value checked nonzero once, for divisors and moduli. A `NonZeroUint` of up to
+  128 bits is a `core::num::NonZero`, so a division by it has no zero test. `Divisor` names the
+  types it holds.
 - Constant time: `ConstantTime<Uint>` and `ConstantTimeResidue` run every operation with no
   branch and no memory address that depends on the wrapped values.
 - `num-traits`: every integer trait that needs no `Div<Self>` or `Rem<Self>`.

@@ -25,14 +25,14 @@ use crate::kernel::{
 };
 use crate::modular::sum_mod_masked;
 use crate::mul::{full_product, truncated_product};
-use crate::nonzero::{NonZero, NonZeroUint};
+use crate::nonzero::{Divisor, NonZero, NonZeroUint};
 use crate::shift::ShiftAmount;
 use crate::stream::TwosComplement;
 use crate::uint::Uint;
 
 impl<N: Bits> Public for Uint<N> {}
 
-impl<T: Public> Public for NonZero<T> {}
+impl<T: Public + Divisor> Public for NonZero<T> {}
 
 /// `(a * b) mod 2^N`, with the corrections under masks.
 #[inline(always)]
@@ -57,11 +57,11 @@ enum Reduction<'a, N: Bits> {
 
 impl<'a, N: Bits> Reduction<'a, N> {
     #[inline(always)]
-    fn new(modulus: &'a NonZeroUint<N>) -> Self {
-        if bit(modulus.as_ref(), N::BITS - 1) == 1 {
-            Self::Subtract(modulus.as_ref())
+    fn new(modulus: &'a Uint<N>) -> Self {
+        if bit(modulus, N::BITS - 1) == 1 {
+            Self::Subtract(modulus)
         } else {
-            Self::Divide(MaskedDivisor::new(modulus.limbs()))
+            Self::Divide(MaskedDivisor::new(&modulus.limbs))
         }
     }
 
@@ -171,9 +171,10 @@ impl<N: Bits, E: Bits> CtPow<ConstantTime<Uint<E>>> for Uint<N> {
 impl<N: Bits> CtAddMod<NonZeroUint<N>> for Uint<N> {
     #[inline(always)]
     fn ct_add_mod(self, rhs: Self, modulus: NonZeroUint<N>) -> Self {
+        let modulus = modulus.get();
         let reduction = Reduction::new(&modulus);
         let (a, b) = (reduction.reduce(&self), reduction.reduce(&rhs));
-        sum_mod_masked(&a, b.source(), modulus.as_ref())
+        sum_mod_masked(&a, b.source(), &modulus)
     }
 }
 
@@ -181,14 +182,15 @@ impl<N: Bits> CtAddMod<NonZeroUint<N>> for Uint<N> {
 impl<N: Bits> CtSubMod<NonZeroUint<N>> for Uint<N> {
     #[inline(always)]
     fn ct_sub_mod(self, rhs: Self, modulus: NonZeroUint<N>) -> Self {
+        let modulus = modulus.get();
         let reduction = Reduction::new(&modulus);
         let b = reduction.reduce(&rhs);
         match reduction {
-            Reduction::Subtract(modulus) => difference_mod_masked(&self, &b, modulus),
+            Reduction::Subtract(subtracted) => difference_mod_masked(&self, &b, subtracted),
             Reduction::Divide(_) => sum_mod_masked(
                 &reduction.reduce(&self),
                 TwosComplement(b.source()),
-                modulus.as_ref(),
+                &modulus,
             ),
         }
     }
@@ -217,8 +219,9 @@ fn difference_mod_masked<N: Bits>(a: &Uint<N>, b: &Uint<N>, modulus: &Uint<N>) -
 impl<N: Bits> CtNegMod<NonZeroUint<N>> for Uint<N> {
     #[inline(always)]
     fn ct_neg_mod(self, modulus: NonZeroUint<N>) -> Self {
+        let modulus = modulus.get();
         let a = Reduction::new(&modulus).reduce(&self);
-        sum_mod_masked(&Self::ZERO, TwosComplement(a.source()), modulus.as_ref())
+        sum_mod_masked(&Self::ZERO, TwosComplement(a.source()), &modulus)
     }
 }
 
@@ -236,7 +239,7 @@ where
     #[inline(always)]
     fn ct_mul_mod(self, rhs: Uint<RhsN>, modulus: NonZeroUint<ModN>) -> Uint<ModN> {
         let full = full_product::<Sum<N, RhsN>, _, _, true>(&self.limbs, &rhs.limbs);
-        MaskedDivisor::new(modulus.limbs())
+        MaskedDivisor::new(&modulus.limbs())
             .remainder::<<Sum<N, RhsN> as Sealed>::Window, ModN>(&full, &mut DiscardQuotient)
     }
 }
@@ -248,7 +251,7 @@ impl<N: Bits, M: Bits> CtDivRem<NonZeroUint<M>> for Uint<N> {
     #[inline(always)]
     fn ct_div_rem(self, divisor: NonZeroUint<M>) -> (Self, Uint<M>) {
         let mut quotient = GenericArray::<u64, N::Limbs>::default();
-        let remainder = MaskedDivisor::new(divisor.limbs())
+        let remainder = MaskedDivisor::new(&divisor.limbs())
             .remainder::<N::Window, M>(&self.limbs, &mut quotient);
         (Uint::from_generic_limbs(quotient), remainder)
     }
