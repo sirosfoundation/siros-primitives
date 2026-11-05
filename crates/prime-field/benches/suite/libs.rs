@@ -908,12 +908,14 @@ fn ours<M: Modulus, V: Visitor<Op, Field>>(cells: Crate<V>) -> Crate<V> {
             #[inline(always)]
             |&(a, k)| a - k,
         )
+        // `from_u64` is a `const fn`, whose encoding runs the generic constant-time product; the
+        // sum with zero runs the tuned constant-time reduction of a word.
         .case(
             ct(kind::FromU64),
-            "ConstantTime::new(from_u64)",
+            "ConstantTime::new(Fp::ZERO) + ConstantTime<Uint<U64>>",
             one::<u64>,
             #[inline(always)]
-            |&k| ConstantTime::new(Fp::<M>::from_u64(k)),
+            |&k| ConstantTime::new(Fp::<M>::ZERO) + ConstantTime::new(Uint::<U64>::from_u64(k)),
         )
 }
 
