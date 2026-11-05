@@ -29,6 +29,13 @@ impl<M: Modulus> Shape<M> {
     /// branch in Chrome. Elsewhere the flags of the carry chain feed conditional moves.
     const BRANCHES: bool = cfg!(target_arch = "wasm32");
 
+    /// Whether Montgomery products of [`LOOPED_LIMBS`] limbs or more run the loops of
+    /// [`looped`]. On WebAssembly the unrolled kernels of such widths outgrow the registers that
+    /// the browsers allocate: a 381-bit product took Firefox 1,637 cycles unrolled against 923 in
+    /// loops, and Chrome 880 against 726.
+    const LOOPED: bool =
+        cfg!(target_arch = "wasm32") && Self::MONTGOMERY && Self::LIMBS >= LOOPED_LIMBS;
+
     /// `a + b`, in constant time for `CT`.
     #[inline(always)]
     pub(crate) fn add<const CT: bool>(a: &Limbs<M>, b: &Limbs<M>) -> Limbs<M> {
@@ -113,6 +120,17 @@ impl<M: Modulus> Shape<M> {
         if Self::PSEUDO_MERSENNE {
             return Self::fold::<CT>(&Self::product(a, b));
         }
+        if Self::LOOPED {
+            let mut out = M::Width::ZERO;
+            let (p, inv, spare) = (&Self::P, Self::INV, Self::SPARE);
+            if cfg!(wide_arithmetic) {
+                looped::cios(out.as_mut_slice(), a, b, p, inv, spare);
+            } else {
+                let mut wide = M::Width::WIDE_ZERO;
+                looped::sos(out.as_mut_slice(), wide.as_mut_slice(), a, b, p, inv, spare);
+            }
+            return out;
+        }
         if Self::SEPARATED {
             Self::montgomery_reduce::<CT>(Self::product(a, b))
         } else {
@@ -128,7 +146,13 @@ impl<M: Modulus> Shape<M> {
             let value = limb(a, 0);
             return Self::single(Self::mul1::<CT>(value, value));
         }
-        let wide = Self::square_product(a);
+        let mut wide = Self::square_product(a);
+        if Self::LOOPED {
+            let mut out = M::Width::ZERO;
+            let (p, inv, spare) = (&Self::P, Self::INV, Self::SPARE);
+            looped::redc(out.as_mut_slice(), wide.as_mut_slice(), p, inv, spare);
+            return out;
+        }
         if Self::PSEUDO_MERSENNE {
             Self::fold::<CT>(&wide)
         } else {
@@ -994,5 +1018,43 @@ impl<M: Modulus> Shape<M> {
             set(out.as_mut_slice(), j, sum);
             carry = high;
         });
+    }
+}
+
+/// The fewest limbs of a [`Shape::LOOPED`] product.
+const LOOPED_LIMBS: usize = 6;
+
+/// The Montgomery kernels as calls on slices, whose lengths the compiler does not know, so that
+/// their loops stay loops.
+mod looped {
+    /// [`kernel::cios`](crate::kernel::cios): the wide-arithmetic builds, whose products and sums
+    /// of two limbs are one instruction each, run the interleaved form fastest.
+    #[inline(never)]
+    pub(super) fn cios(out: &mut [u64], a: &[u64], b: &[u64], p: &[u64], inv: u64, spare: bool) {
+        crate::kernel::cios(out, a, b, p, inv, spare);
+    }
+
+    /// The product into `wide`, then its reduction into `out`, by
+    /// [`kernel::mul_wide`](crate::kernel::mul_wide) and [`redc`]: the other WebAssembly builds
+    /// run the separated form fastest.
+    #[inline(never)]
+    pub(super) fn sos(
+        out: &mut [u64],
+        wide: &mut [u64],
+        a: &[u64],
+        b: &[u64],
+        p: &[u64],
+        inv: u64,
+        spare: bool,
+    ) {
+        crate::kernel::mul_wide(wide, a, b);
+        crate::kernel::redc(out, wide, p, inv, spare);
+    }
+
+    /// [`kernel::redc`](crate::kernel::redc), of the unrolled square: a square runs fastest with
+    /// its symmetric product unrolled and its reduction looped.
+    #[inline(never)]
+    pub(super) fn redc(out: &mut [u64], wide: &mut [u64], p: &[u64], inv: u64, spare: bool) {
+        crate::kernel::redc(out, wide, p, inv, spare);
     }
 }
