@@ -122,9 +122,34 @@ impl<P: Polynomial> Tables<P> {
     const WORD_INVERSES: &'static [u16; WORDS] =
         &inverses(Self::WORD_ELEMENTS, Plan::<P>::DEGREE, Plan::<P>::TAPS);
 
+    /// The composite form of the field, for even degrees from 10 to 16.
+    const COMPOSITE: &'static Composite = &composite(
+        Plan::<P>::MUL_BY_SUBFIELD_PRODUCTS,
+        Plan::<P>::MUL_BY_SUBFIELD_LOGARITHMS,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+    );
+
+    /// `u v x^(8 k)` reduced, at `u + 256 v`, for `k` from 0 to 2.
+    const SPLIT: &'static [[u16; WORDS]; 3] = &split_tables(
+        Plan::<P>::MUL_BY_SUBFIELD_PRODUCTS,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+    );
+
+    /// `t v x^(4 k)` reduced, at `256 t + v`, for nibbles `t`, bytes `v` and `k` from 0 to 5.
+    const NIBBLE_SPLIT: &'static [[u16; 16 * BYTES]; 6] = &nibble_split_tables(
+        Plan::<P>::MUL_BY_SUBFIELD_PRODUCTS,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+    );
+
     /// The fold of the part of a product at and above `x^n` by bytes, for degrees 9 to 16.
-    const FOLDS: &'static ByteMap =
-        &fold_map(Plan::<P>::MUL_BY_FOLDS, Plan::<P>::DEGREE, Plan::<P>::TAPS);
+    const FOLDS: &'static ByteMap = &fold_map(
+        Plan::<P>::MUL_BY_FOLDS || Plan::<P>::MUL_BY_SUBFIELD_PRODUCTS,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+    );
 
     /// The square by bytes, for degrees 9 to 16.
     const SQUARE_BYTES: &'static ByteMap =
@@ -195,6 +220,101 @@ impl<P: Polynomial> Tables<P> {
                 .map_or(0, u64::from)
         };
         if a == 0 || b == 0 { 0 } else { power }
+    }
+
+    /// `a b = a0 b0 + (a0 b1 + a1 b0) x^8 + a1 b1 x^16` for the bytes of `a` and `b`, each term from a
+    /// table of the products of two bytes times `x^(8 k)`, reduced.
+    #[inline(always)]
+    pub(crate) fn split_mul(a: u64, b: u64) -> u64 {
+        let [low, middle, high] = Self::SPLIT;
+        let entry = |table: &[u16; WORDS], u: u64, v: u64| {
+            table
+                .get((((v & 0xFF) << 8) | (u & 0xFF)) as usize)
+                .copied()
+                .map_or(0, u64::from)
+        };
+        entry(low, a, b)
+            ^ entry(middle, a, b >> 8)
+            ^ entry(middle, a >> 8, b)
+            ^ entry(high, a >> 8, b >> 8)
+    }
+
+    /// `a b` as the sum over the nibbles `a_i` of `a` and the bytes `b_j` of `b` of the reduced
+    /// `a_i b_j x^(4 i + 8 j)`, each from the table of its shift.
+    #[inline(always)]
+    pub(crate) fn nibble_split_mul(a: u64, b: u64) -> u64 {
+        let tables = Self::NIBBLE_SPLIT;
+        let entry = |k: usize, nibble: u64, byte: u64| {
+            tables
+                .get(k)
+                .and_then(|table| table.get((((nibble & 0xF) << 8) | (byte & 0xFF)) as usize))
+                .copied()
+                .map_or(0, u64::from)
+        };
+        let (b0, b1) = (b, b >> 8);
+        (entry(0, a, b0) ^ entry(1, a >> 4, b0))
+            ^ (entry(2, a >> 8, b0) ^ entry(3, a >> 12, b0))
+            ^ ((entry(2, a, b1) ^ entry(3, a >> 4, b1))
+                ^ (entry(4, a >> 8, b1) ^ entry(5, a >> 12, b1)))
+    }
+
+    /// `a b` from the carry-less products of bytes, by Karatsuba's three, folded by bytes.
+    #[inline(always)]
+    pub(crate) fn byte_product_mul(a: u64, b: u64) -> u64 {
+        let [products, _, _] = Self::SPLIT;
+        let entry = |u: u64, v: u64| {
+            products
+                .get((((v & 0xFF) << 8) | (u & 0xFF)) as usize)
+                .copied()
+                .map_or(0, u64::from)
+        };
+        let low = entry(a, b);
+        let high = entry(a >> 8, b >> 8);
+        let middle = entry(a ^ (a >> 8), b ^ (b >> 8)) ^ low ^ high;
+        Self::fold(low ^ (middle << 8) ^ (high << 16))
+    }
+
+    /// `a b` in the composite form, for even degrees from 10 to 16: the words of `a` and `b` split
+    /// into their subfield coordinates `a0 + a1 w` and `b0 + b1 w`, and with `w^2 = w + l`,
+    /// `a b = (a0 b0 + l a1 b1) + ((a0 + a1)(b0 + b1) + a0 b0) w`. The three subfield products
+    /// index the tables of every product, or add subfield logarithms.
+    #[inline(always)]
+    pub(crate) fn composite_mul(a: u64, b: u64) -> u64 {
+        let form = Self::COMPOSITE;
+        let half = Plan::<P>::DEGREE / 2;
+        let mask = (1 << half) - 1;
+        let (a, b) = (map_by_bytes(&form.into, a), map_by_bytes(&form.into, b));
+        let (a0, a1, b0, b1) = (a & mask, a >> half, b & mask, b >> half);
+        let low = Self::subfield_mul(a0, b0, false);
+        let middle = Self::subfield_mul(a0 ^ a1, b0 ^ b1, false);
+        let high = Self::subfield_mul(a1, b1, true);
+        map_by_bytes(&form.out, (low ^ high) | ((middle ^ low) << half))
+    }
+
+    /// The subfield product `u v`, times `l` when `scaled`.
+    #[inline(always)]
+    fn subfield_mul(u: u64, v: u64, scaled: bool) -> u64 {
+        let form = Self::COMPOSITE;
+        if Plan::<P>::MUL_BY_SUBFIELD_PRODUCTS {
+            let table = if scaled { &form.scaled } else { &form.products };
+            return table
+                .get(((v << 8) | u) as usize)
+                .copied()
+                .map_or(0, u64::from);
+        }
+        let log = |value: u64| {
+            form.logarithms
+                .get(value as usize)
+                .copied()
+                .map_or(0, usize::from)
+        };
+        let shift = if scaled { usize::from(form.scale) } else { 0 };
+        let power = form
+            .exponentials
+            .get(log(u) + log(v) + shift)
+            .copied()
+            .map_or(0, u64::from);
+        if u == 0 || v == 0 { 0 } else { power }
     }
 
     /// `a^2` by the table of squares.
@@ -720,6 +840,225 @@ const fn fold_map(used: bool, degree: usize, taps: &[usize]) -> ByteMap {
             let low = value & value.wrapping_neg();
             let bit = 8 * half + low.trailing_zeros() as usize;
             map[half][value] = map[half][value ^ low] ^ images[bit];
+            value += 1;
+        }
+        half += 1;
+    }
+    map
+}
+
+/// A field of even degree `n` from 10 to 16 as the quadratic extension `GF(2^h)[w]/(w^2 + w + l)`
+/// of its subfield of degree `h = n / 2`: the element `a0 + a1 w` is the word `a0 + 2^h a1` of the
+/// subfield coordinates of `a0` and `a1` in the basis `1, c, ..., c^(h-1)`, `c` a generator of the
+/// subfield. The maps into and out of the composite words are linear, by bytes.
+pub(crate) struct Composite {
+    /// The map of an element to its composite word.
+    into: ByteMap,
+    /// The map of a composite word to its element.
+    out: ByteMap,
+    /// The subfield product `u v` at `u + 256 v`.
+    products: [u8; WORDS],
+    /// The subfield product `l u v` at `u + 256 v`.
+    scaled: [u8; WORDS],
+    /// The subfield logarithm of every nonzero coordinate word to `c`.
+    logarithms: [u8; BYTES],
+    /// The powers of `c` as coordinate words, three times over: the sum of two logarithms and the
+    /// logarithm of `l` indexes it.
+    exponentials: [u8; 3 * BYTES],
+    /// The logarithm of `l`.
+    scale: u8,
+}
+
+/// The [`Composite`] form of a field of even degree from 10 to 16, with the product tables when
+/// `products` holds and the subfield logarithms when `logarithms` holds. Zero unless one holds.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its table's length"
+)]
+const fn composite(products: bool, logarithms: bool, degree: usize, taps: &[usize]) -> Composite {
+    let mut form = Composite {
+        into: [[0; BYTES]; 2],
+        out: [[0; BYTES]; 2],
+        products: [0; WORDS],
+        scaled: [0; WORDS],
+        logarithms: [0; BYTES],
+        exponentials: [0; 3 * BYTES],
+        scale: 0,
+    };
+    if !(products || logarithms) || degree > 16 || degree < 10 || degree % 2 == 1 {
+        return form;
+    }
+    let half = degree / 2;
+    let order = (1u64 << degree) - 1;
+    let sub_order = (1u64 << half) - 1;
+    // A generator of the subfield: a generator of the field to the power `q / (2^h - 1)`.
+    let c = small_pow(generator(degree, taps), order / sub_order, degree, taps);
+    // `w = v / t` for an element `v` outside the subfield and the trace `t = v + v^(2^h)` of its
+    // conjugates: `w^2 + w = l` with `l = v v^(2^h) / t^2`, in the subfield.
+    let mut v = 2;
+    while small_pow(v, 1 << half, degree, taps) == v {
+        v += 1;
+    }
+    let conjugate = small_pow(v, 1 << half, degree, taps);
+    let inverse_trace = small_pow(v ^ conjugate, order - 1, degree, taps);
+    let w = small_mul(v, inverse_trace, degree, taps);
+    let l = small_mul(
+        small_mul(v, conjugate, degree, taps),
+        small_mul(inverse_trace, inverse_trace, degree, taps),
+        degree,
+        taps,
+    );
+    // The elements of the bits of a composite word: `c^j`, then `c^j w`.
+    let mut images = [0u64; 16];
+    let mut power = 1;
+    let mut j = 0;
+    while j < half {
+        images[j] = power;
+        images[j + half] = small_mul(power, w, degree, taps);
+        power = small_mul(power, c, degree, taps);
+        j += 1;
+    }
+    form.out = bit_byte_map(&images, degree);
+    // The inverse map, through the image of every composite word.
+    let mut words = [0u16; WORDS];
+    let mut word: usize = 0;
+    while word < 1 << degree {
+        let element = form.out[0][word & 0xFF] ^ form.out[1][word >> 8];
+        words[element as usize] = word as u16;
+        word += 1;
+    }
+    let mut into = [0u64; 16];
+    j = 0;
+    while j < degree {
+        into[j] = words[1 << j] as u64;
+        j += 1;
+    }
+    form.into = bit_byte_map(&into, degree);
+    // The subfield logarithms of the coordinate words.
+    power = 1;
+    let mut index = 0;
+    while index < sub_order {
+        let coordinates = (words[power as usize] as u64 & sub_order) as u8;
+        form.logarithms[coordinates as usize] = index as u8;
+        form.exponentials[index as usize] = coordinates;
+        form.exponentials[(index + sub_order) as usize] = coordinates;
+        form.exponentials[(index + 2 * sub_order) as usize] = coordinates;
+        power = small_mul(power, c, degree, taps);
+        index += 1;
+    }
+    form.scale = form.logarithms[(words[l as usize] as u64 & sub_order) as usize];
+    if products {
+        let mut a: usize = 1;
+        while a <= sub_order as usize {
+            let mut b: usize = 1;
+            while b <= sub_order as usize {
+                let sum = form.logarithms[a] as usize + form.logarithms[b] as usize;
+                form.products[(b << 8) | a] = form.exponentials[sum];
+                form.scaled[(b << 8) | a] = form.exponentials[sum + form.scale as usize];
+                b += 1;
+            }
+            a += 1;
+        }
+    }
+    form
+}
+
+/// `u v x^(8 k)` reduced, at `u + 256 v`, for `k` from 0 to 2 and bytes `u` and `v`, in a field of
+/// degree 9 to 16. Zero unless `used`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its table's length"
+)]
+const fn split_tables(used: bool, degree: usize, taps: &[usize]) -> [[u16; WORDS]; 3] {
+    let mut tables = [[0; WORDS]; 3];
+    if !used || degree > 16 || degree < 9 {
+        return tables;
+    }
+    let mut k = 0;
+    while k < 3 {
+        let shift = small_pow(2, 8 * k as u64, degree, taps);
+        let mut v: usize = 0;
+        while v < BYTES {
+            // `u v x^(8 k)` is linear in `u`: the images of its bits are `v x^(8 k + i)`, and each
+            // `u` adds its lowest bit's image to a smaller one.
+            let mut images = [0u64; 8];
+            let mut power = small_mul(v as u64 & ((1 << degree) - 1), shift, degree, taps);
+            let mut bit = 0;
+            while bit < 8 {
+                images[bit] = power;
+                power = small_mul(power, 2, degree, taps);
+                bit += 1;
+            }
+            let mut u: usize = 1;
+            while u < BYTES {
+                let low = u & u.wrapping_neg();
+                let image = images[low.trailing_zeros() as usize];
+                tables[k][(v << 8) | u] = tables[k][(v << 8) | (u ^ low)] ^ image as u16;
+                u += 1;
+            }
+            v += 1;
+        }
+        k += 1;
+    }
+    tables
+}
+
+/// `t v x^(4 k)` reduced, at `256 t + v`, for nibbles `t`, bytes `v` and `k` from 0 to 5, in a field
+/// of degree 9 to 16. Zero unless `used`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its table's length"
+)]
+const fn nibble_split_tables(used: bool, degree: usize, taps: &[usize]) -> [[u16; 16 * BYTES]; 6] {
+    let mut tables = [[0; 16 * BYTES]; 6];
+    if !used || degree > 16 || degree < 9 {
+        return tables;
+    }
+    let mut k = 0;
+    while k < 6 {
+        let shift = small_pow(2, 4 * k as u64, degree, taps);
+        let mut t: usize = 0;
+        while t < 16 {
+            let scaled = small_mul(t as u64, shift, degree, taps);
+            // Linear in `v`: the images of its bits are `t x^(4 k + i)`.
+            let mut images = [0u64; 8];
+            let mut power = scaled;
+            let mut bit = 0;
+            while bit < 8 {
+                images[bit] = power;
+                power = small_mul(power, 2, degree, taps);
+                bit += 1;
+            }
+            let mut v: usize = 1;
+            while v < BYTES {
+                let low = v & v.wrapping_neg();
+                let image = images[low.trailing_zeros() as usize];
+                tables[k][(t << 8) | v] = tables[k][(t << 8) | (v ^ low)] ^ image as u16;
+                v += 1;
+            }
+            t += 1;
+        }
+        k += 1;
+    }
+    tables
+}
+
+/// The linear map of 16-bit words that takes bit `j` to `images[j]`, for the bits below `degree`,
+/// by bytes.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its table's length"
+)]
+const fn bit_byte_map(images: &[u64; 16], degree: usize) -> ByteMap {
+    let mut map = [[0; BYTES]; 2];
+    let mut half = 0;
+    while half < 2 {
+        let mut value: usize = 1;
+        while value < BYTES {
+            let low = value & value.wrapping_neg();
+            let bit = 8 * half + low.trailing_zeros() as usize;
+            let image = if bit < degree { images[bit] as u16 } else { 0 };
+            map[half][value] = map[half][value ^ low] ^ image;
             value += 1;
         }
         half += 1;

@@ -147,6 +147,18 @@ impl<P: Polynomial> Plan<P> {
         Tier::Full => Self::DEGREE > 8 && Self::SMALL && !clmul::HARDWARE,
         Tier::None => false,
     };
+    /// The default product of an even degree from 10 to 16 without hardware word products runs in
+    /// the composite form over the subfield of half the degree, by the tables of every subfield
+    /// product: `precomputed`.
+    pub(crate) const MUL_BY_SUBFIELD_PRODUCTS: bool =
+        matches!(TIER, Tier::Full) && Self::COMPOSITE_DEGREE && !clmul::HARDWARE;
+    /// [`Self::MUL_BY_SUBFIELD_PRODUCTS`] by subfield logarithms: the default tables.
+    pub(crate) const MUL_BY_SUBFIELD_LOGARITHMS: bool =
+        matches!(TIER, Tier::Budget) && Self::COMPOSITE_DEGREE && !clmul::HARDWARE;
+    /// An even degree from 10 to 16, whose field is a quadratic extension of a subfield of at most
+    /// 8 bits.
+    const COMPOSITE_DEGREE: bool =
+        Self::DEGREE >= 10 && Self::DEGREE <= 16 && Self::DEGREE.is_multiple_of(2);
     /// The default product of degrees 9 to 16 with hardware word products folds its part at and
     /// above `x^n` by a table of each of its two bytes, 1 KiB in all.
     pub(crate) const MUL_BY_FOLDS: bool =

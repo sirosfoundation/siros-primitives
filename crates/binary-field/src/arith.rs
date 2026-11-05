@@ -633,6 +633,10 @@ impl<P: Polynomial> Field<P> {
     pub(crate) fn mul(a: Element<P>, b: Element<P>) -> Element<P> {
         if Plan::<P>::MUL_BY_PRODUCTS {
             Element::<P>::from_word(Tables::<P>::mul(a.word(), b.word()))
+        } else if Plan::<P>::MUL_BY_SUBFIELD_PRODUCTS {
+            Element::<P>::from_word(Tables::<P>::nibble_split_mul(a.word(), b.word()))
+        } else if Plan::<P>::MUL_BY_SUBFIELD_LOGARITHMS {
+            Element::<P>::from_word(Tables::<P>::composite_mul(a.word(), b.word()))
         } else if Plan::<P>::MUL_BY_LOGARITHMS {
             Element::<P>::from_word(Tables::<P>::log_mul(a.word(), b.word()))
         } else if Plan::<P>::MUL_BY_FOLDS {
