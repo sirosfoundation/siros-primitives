@@ -328,6 +328,8 @@ impl<P: Polynomial> From<Gf2<P>> for Uint<P::Degree> {
     }
 }
 
+impl<P: Polynomial> biguint::seal::Sealed for Gf2<P> {}
+
 /// A nonzero element holds itself.
 impl<P: Polynomial> biguint::Divisor for Gf2<P> {
     type Stored = Self;

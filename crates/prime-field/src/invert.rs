@@ -41,6 +41,8 @@ const MASKED_BATCH: usize = 2 * HALF;
 /// The mask of the low `BATCH` bits.
 const LOW: u64 = (1 << BATCH) - 1;
 
+impl<M: Modulus> biguint::seal::Sealed for Fp<M> {}
+
 /// A nonzero element holds itself.
 impl<M: Modulus> biguint::Divisor for Fp<M> {
     type Stored = Self;
