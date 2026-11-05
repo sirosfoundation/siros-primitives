@@ -7,7 +7,7 @@ use biguint::generic_array::GenericArray;
 use biguint::typenum::{IsLess, True};
 use biguint::{Bits, NonZeroUint, OutOfRange, Uint};
 
-use crate::kernel::{bit, bit_len, equal, limb};
+use crate::kernel::{bit, bit_len, equal};
 use crate::params::{Limbs, Shape};
 use crate::width::Width;
 
@@ -75,19 +75,11 @@ impl<M: Modulus> Fp<M> {
         &self.limbs
     }
 
-    /// `value mod p`.
+    /// `value mod p`, in constant time.
     #[inline]
     #[must_use]
     pub const fn from_u64(value: u64) -> Self {
-        // The one Montgomery step of `p = 2^64 - 2^32 + 1` reduces any `u64`.
-        let reduced = if Shape::<M>::LIMBS == 1 && !Shape::<M>::SHIFT_ENCODE {
-            value % limb(Shape::<M>::P.as_slice(), 0)
-        } else {
-            value
-        };
-        Self::from_limbs(Shape::<M>::encode(
-            Uint::<M::Width>::from_u64(reduced).as_limbs(),
-        ))
+        Self::from_limbs(Shape::<M>::encode_word(value))
     }
 
     /// The element `value`.
