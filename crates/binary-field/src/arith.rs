@@ -15,6 +15,7 @@ use crate::invert::{Inversion, inverse};
 use crate::kernel::{clmul8, clmul16, spread_half};
 use crate::plan::{Half, Plan, Polynomial, Shape, Wide};
 use crate::representation::{Representation, Storage};
+use crate::subfield::Subfield;
 use crate::table::Tables;
 
 /// The registers of an element of the field with the polynomial `P`.
@@ -705,6 +706,8 @@ impl<P: Polynomial> Field<P> {
     pub(crate) fn invert(a: Element<P>) -> Element<P> {
         if Plan::<P>::ELEMENT_TABLES {
             Element::<P>::from_word(Tables::<P>::invert(a.word()))
+        } else if Subfield::<P>::USED {
+            Element::<P>::from_poly(Subfield::<P>::invert(a.poly()))
         } else if Plan::<P>::FROBENIUS_WINDOW > 0 {
             Element::<P>::from_poly(inverse::<P, Tabulated<P>>(a.poly()))
         } else {

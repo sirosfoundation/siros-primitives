@@ -527,7 +527,7 @@ fn word_sum<const POSITIONS: usize, const ENTRIES: usize>(
 /// Adds the images that the windows of `word` select in `rows` to four sums, a row to each in
 /// turn: four rows at a time, so that the sums stay in registers when the loop stays rolled.
 #[inline(always)]
-fn add_word_rows<const ENTRIES: usize>(
+pub(crate) fn add_word_rows<const ENTRIES: usize>(
     sums: &mut [u64; 4],
     rows: &[[u64; ENTRIES]],
     word: u64,
@@ -573,7 +573,7 @@ fn lane_sum<const POSITIONS: usize, const ENTRIES: usize>(
 
 /// Adds the images that the windows of `word` select in `rows` to four sums, as `add_word_rows`.
 #[inline(always)]
-fn add_lane_rows<const ENTRIES: usize>(
+pub(crate) fn add_lane_rows<const ENTRIES: usize>(
     sums: &mut [Poly<U128>; 4],
     rows: &[[Lane<U128>; ENTRIES]],
     word: u64,
@@ -617,7 +617,7 @@ fn polynomial<P: Polynomial>(words: [u64; 2]) -> Poly<P::Degree> {
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its array's length"
 )]
-const fn images(degree: usize, taps: &[usize], power: usize) -> [u128; 128] {
+pub(crate) const fn images(degree: usize, taps: &[usize], power: usize) -> [u128; 128] {
     let mut images = [0u128; 128];
     let mut bit = 0;
     while bit < degree && bit < 128 {
@@ -714,7 +714,7 @@ const fn lane_table<const POSITIONS: usize, const ENTRIES: usize>(
 
 /// `a^2 mod x^degree + r` for `a` below `x^degree`, a degree up to 128: the square spreads the
 /// bits, and the part at and above `x^degree` folds down by `r` until none is left.
-const fn square_mod(a: u128, degree: usize, taps: &[usize]) -> u128 {
+pub(crate) const fn square_mod(a: u128, degree: usize, taps: &[usize]) -> u128 {
     let (mut low, mut high) = (spread(a as u64), spread((a >> 64) as u64));
     loop {
         let (top_low, top_high) = shift_right(low, high, degree);

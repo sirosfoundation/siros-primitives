@@ -28,6 +28,7 @@ mod plan;
 mod reduce;
 mod representation;
 mod standard;
+mod subfield;
 mod table;
 
 /// The integers that hold the polynomials of the elements, and the traits of the exponents.
