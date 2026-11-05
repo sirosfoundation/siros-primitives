@@ -32,6 +32,27 @@ use crate::uint::Uint;
 use barrett::Barrett;
 pub use ct::ConstantTimeResidue;
 
+/// The product of the residues `$a` and `$b` of the ring `$ring`, reduced: the body of
+/// [`Ring::product`] in each of its forms.
+macro_rules! residue_product {
+    ($ring:expr, $a:expr, $b:expr) => {{
+        let mut t = GenericArray::<u64, N::ProductWindow>::default();
+        if N::LIMBS < karatsuba::THRESHOLD {
+            basecase::product(&mut t, &$a.limbs, &$b.limbs);
+        } else {
+            let (product, _) = split_mut(&mut t, 2 * N::LIMBS);
+            let mut scratch = GenericArray::<u64, N::ProductScratch>::default();
+            Halvings::entry_product::<Width<N::Limbs>, false>(
+                product,
+                &$a.limbs,
+                &$b.limbs,
+                &mut scratch,
+            );
+        }
+        $ring.reduce_product(&mut t)
+    }};
+}
+
 /// A nonzero modulus with its reduction prepared: [`Modulus::scope`] computes with its residues.
 pub struct Modulus<N: Bits> {
     /// `m`.
@@ -230,24 +251,30 @@ impl<'id, N: Bits> Ring<'id, N> {
         }
     }
 
-    /// The product of the residues `a` and `b`. A call at the widths where its copy is
-    /// large.
+    /// The product of the residues `a` and `b`. Natively, up to [`INLINE_PRODUCT_LIMBS`] limbs it
+    /// inlines, and its limbs go straight to their place; longer, it is a call.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[inline(always)]
+    fn product(self, a: &Uint<N>, b: &Uint<N>) -> Uint<N> {
+        if const { N::LIMBS <= INLINE_PRODUCT_LIMBS } {
+            residue_product!(self, a, b)
+        } else {
+            self.product_call(a, b)
+        }
+    }
+
+    /// [`Self::product`] as a call: inlined at 1024 bits, it ran 400 more instructions.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[inline(never)]
+    fn product_call(self, a: &Uint<N>, b: &Uint<N>) -> Uint<N> {
+        residue_product!(self, a, b)
+    }
+
+    /// The product of the residues `a` and `b`. A call at the widths where its copy is large.
+    #[cfg(target_arch = "wasm32")]
     #[inline]
     fn product(self, a: &Uint<N>, b: &Uint<N>) -> Uint<N> {
-        let mut t = GenericArray::<u64, N::ProductWindow>::default();
-        if N::LIMBS < karatsuba::THRESHOLD {
-            basecase::product(&mut t, &a.limbs, &b.limbs);
-        } else {
-            let (product, _) = split_mut(&mut t, 2 * N::LIMBS);
-            let mut scratch = GenericArray::<u64, N::ProductScratch>::default();
-            Halvings::entry_product::<Width<N::Limbs>, false>(
-                product,
-                &a.limbs,
-                &b.limbs,
-                &mut scratch,
-            );
-        }
-        self.reduce_product(&mut t)
+        residue_product!(self, a, b)
     }
 
     /// The square of the residue `a`. A call at the widths where its copy is large.
@@ -425,6 +452,11 @@ impl<'id, N: Bits> Add for Residue<'id, N> {
         }
     }
 }
+
+/// The most limbs whose residue products inline natively. As a call, a product wrote its limbs to a
+/// copy that the caller read back with vector loads, which waited for the scalar stores to retire.
+#[cfg(not(target_arch = "wasm32"))]
+const INLINE_PRODUCT_LIMBS: usize = 8;
 
 /// The lengths whose residue sums take their correction under a mask. There LLVM turns the selects
 /// of [`sum_mod`] into a branch, which mispredicts on half the sums of uniform residues.
