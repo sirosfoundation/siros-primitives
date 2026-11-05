@@ -290,15 +290,12 @@ fn check<M: Modulus>(rng: &mut Rng) {
         u64::MAX,
         rng.next_u64(),
     ] {
-        let expected = BigUint::from(word) % &p;
+        // Equal elements hold equal limbs: a Mersenne field holds `0` as `p` alone.
+        let expected = element::<M>(&(BigUint::from(word) % &p));
+        assert_eq!(Fp::<M>::from_u64(word), expected, "from_u64 of {word}");
+        assert_eq!(Fp::<M>::from(word), expected, "From<u64> of {word}");
         assert_eq!(
-            value(Fp::<M>::from_u64(word)),
-            expected,
-            "from_u64 of {word}"
-        );
-        assert_eq!(value(Fp::<M>::from(word)), expected, "From<u64> of {word}");
-        assert_eq!(
-            value(Fp::<M>::ONE * Uint::<biguint::typenum::U64>::from_u64(word)),
+            Fp::<M>::ONE * Uint::<biguint::typenum::U64>::from_u64(word),
             expected,
             "1 * {word}"
         );

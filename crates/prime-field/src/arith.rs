@@ -17,7 +17,7 @@ use typenum::Unsigned;
 
 use crate::field::Modulus;
 use crate::kernel::{equal, fits, is_zero, limb, low_limb, set, shifted_limb, widening_mul};
-use crate::limb::{adc, mac, sbb, select};
+use crate::limb::{adc, adc_constant, mac, sbb, sbb_constant, select};
 use crate::params::{ExtendedLimbs, Limbs, Shape, WideLimbs};
 use crate::unrolled::unroll;
 use crate::width::Width;
@@ -28,6 +28,18 @@ impl<M: Modulus> Shape<M> {
     /// more than a branch: the 254-bit sum took 24.7 cycles branch-free against 16.0 with the
     /// branch in Chrome. Elsewhere the flags of the carry chain feed conditional moves.
     const BRANCHES: bool = cfg!(target_arch = "wasm32");
+
+    /// Whether the variable-time difference with an integer of several limbs takes the reduction
+    /// of the constant-time form where [`Self::BRANCHES`] holds, over a Montgomery modulus: the
+    /// integer arrives from a product, and the branch on the borrow missed 0.17 to 0.37 times per
+    /// operation in Firefox. The BN254 `a - k` took Chrome with wide arithmetic 94.6 cycles
+    /// without the branch against 108.3 with it, Tom-256 97.9 against 114.1.
+    pub(crate) const INTEGER_DIFFERENCE_SELECT: bool = Self::BRANCHES && Self::MONTGOMERY;
+
+    /// [`Self::INTEGER_DIFFERENCE_SELECT`] for the sum, over a modulus with a spare bit: without
+    /// one, the branch-free sum keeps the carry out of the top limb, and the P-256 `a + k` took
+    /// Chrome with wide arithmetic 99.7 cycles without the branch against 79.6 with it.
+    pub(crate) const INTEGER_SUM_SELECT: bool = Self::INTEGER_DIFFERENCE_SELECT && Self::SPARE;
 
     /// Whether Montgomery products of [`LOOPED_LIMBS`] limbs or more run the loops of
     /// [`looped`]. On WebAssembly without wide arithmetic the unrolled kernels of such widths
@@ -51,7 +63,7 @@ impl<M: Modulus> Shape<M> {
             return if (Self::SPARE || carry == 0) && Self::below_p_vartime(&sum) {
                 sum
             } else {
-                Self::sub_limbs(&sum, &Self::P).0
+                Self::modulus_off(&sum)
             };
         }
         Self::reduce_select(sum, if Self::SPARE { 0 } else { carry })
@@ -84,7 +96,7 @@ impl<M: Modulus> Shape<M> {
             return if borrow == 0 {
                 difference
             } else {
-                Self::add_limbs(&difference, &Self::P).0
+                Self::modulus_on(&difference)
             };
         }
         let spread = 0u64.wrapping_sub(u64::from(borrow));
@@ -414,8 +426,15 @@ impl<M: Modulus> Shape<M> {
             // when `x` is a nonzero multiple of `p`, which a prime modulus rules out.
             let product = a * b;
             let m = product.wrapping_mul(Self::INV);
-            let high = (widening_mul(m, Self::P0) >> 64) as u64;
-            let result = high + u64::from(product != 0);
+            let result = if Self::HALVED_REDC {
+                // `(product + m p) / 2^32 = y + (m >> 32) p` for `y = (product + (m mod 2^32) p)
+                // / 2^32`, a multiple of `2^32`. `y < 2^32` is the complement of `(m >> 32) p`
+                // modulo `2^32`, so the result rounds `(m >> 32) p / 2^32` up: one product of
+                // halves where the high limb of `m p` takes two without wide arithmetic.
+                ((m >> 32) * Self::P0 + 0xffff_ffff) >> 32
+            } else {
+                (widening_mul(m, Self::P0) >> 64) as u64 + u64::from(product != 0)
+            };
             if Self::PRIME_LIMB {
                 result
             } else {
@@ -426,6 +445,9 @@ impl<M: Modulus> Shape<M> {
             // `(m p) >> 64 = m - (m >> 32) - e` for the carry `e` of that sum, as in winter-math's
             // `mont_red_cst`. `m >> 32` is the 32-bit sum of the halves of `low`, which does not
             // wait for `m`. The result `high - (m p >> 64)` lies in `(-p, p)`.
+            if cfg!(target_arch = "wasm32") {
+                return Self::shift_redc_split(a, b);
+            }
             let product = widening_mul(a, b);
             let (low, high) = (product as u64, (product >> 64) as u64);
             let (m, e) = adc(0, low, low << 32);
@@ -448,10 +470,51 @@ impl<M: Modulus> Shape<M> {
         Self::reduce1::<CT>(result, carry)
     }
 
+    /// A one-limb Montgomery product, on WebAssembly without wide arithmetic, takes the high limb
+    /// of `m p` from the high half of `m`: [`Self::PRODUCT_FITS_LIMB`] and `(p - 1)^2 + (2^32 -
+    /// 1) p < 2^64`, which keeps the sum of the product and the multiple of `p` of the low half of
+    /// `m` within a limb. The BabyBear product took Chrome 5.2 cycles against 7.8 for the split
+    /// high limb; with wide arithmetic, `i64.mul_wide_u` keeps one cycle less of latency.
+    const HALVED_REDC: bool = cfg!(all(target_arch = "wasm32", not(wide_arithmetic)))
+        && Self::PRODUCT_FITS_LIMB
+        && ((Self::P0 - 1) as u128 * (Self::P0 - 1) as u128 + 0xffff_ffff * Self::P0 as u128)
+            < 1 << 64;
+
     /// One limb with `p^-1 = 1 + 2^32 mod 2^64`, that is `p = 2^64 - 2^32 + 1`: the Montgomery
     /// multiplier is a shift and an addition, and the multiple of `p` its shift and subtractions.
     pub(crate) const SHIFT_REDC: bool =
         Self::LIMBS == 1 && Self::INV == (1u64 << 32).wrapping_add(1).wrapping_neg();
+
+    /// The [`Self::SHIFT_REDC`] product on WebAssembly, from the 32-bit halves `l0` and `l1` of the
+    /// low limb of `a b`: `m = low + (low << 32)` is `l0 + (s << 32) mod 2^64` for `s = l0 + l1`,
+    /// its carry `e` is `s >> 32`, and `m >> 32` is `s mod 2^32`. Without wide arithmetic the halves
+    /// come from the four products of 32-bit halves before the low limb is assembled. The sum of
+    /// `low` and `low << 32` otherwise compiles to a product by `2^32 + 1`, and the carry chains to
+    /// `i64.add128` and `i64.sub128` with wide arithmetic: the product took Chrome 10.0 cycles
+    /// against 12.2 without wide arithmetic, and with it Chrome 6.3 against 7.0 and Firefox 7.3
+    /// against 9.0.
+    #[inline(always)]
+    fn shift_redc_split(a: u64, b: u64) -> u64 {
+        const HALF: u64 = 0xffff_ffff;
+        let (l0, l1, high) = if cfg!(wide_arithmetic) {
+            let product = widening_mul(a, b);
+            let low = product as u64;
+            (low & HALF, low >> 32, (product >> 64) as u64)
+        } else {
+            let (a0, a1, b0, b1) = (a & HALF, a >> 32, b & HALF, b >> 32);
+            let (p00, p01, p10, p11) = (a0 * b0, a0 * b1, a1 * b0, a1 * b1);
+            // The column of `2^32`, below `3 * 2^32`.
+            let middle = (p00 >> 32) + (p01 & HALF) + (p10 & HALF);
+            let high = p11 + (p01 >> 32) + (p10 >> 32) + (middle >> 32);
+            (p00 & HALF, middle & HALF, high)
+        };
+        let s = l0 + l1;
+        let (shifted, e) = (s & HALF, s >> 32);
+        let m = l0 | (s << 32);
+        let quotient = m.wrapping_sub(shifted + e);
+        let (result, borrow) = high.overflowing_sub(quotient);
+        select(borrow, result.wrapping_add(Self::P0), result)
+    }
 
     /// `carry 2^64 + t mod p` for `carry 2^64 + t < 2 p`, on one limb.
     #[inline(always)]
@@ -492,6 +555,39 @@ impl<M: Modulus> Shape<M> {
             },
         );
         (out, borrow)
+    }
+
+    /// `value - p` modulo `2^(64 L)`, by the carry chain of a constant subtrahend.
+    #[inline(always)]
+    fn modulus_off(value: &Limbs<M>) -> Limbs<M> {
+        let mut out = M::Width::ZERO;
+        let mut borrow = 0;
+        Self::each_limb(
+            #[inline(always)]
+            |j| {
+                let (difference, borrow_out) =
+                    sbb_constant(borrow, limb(value, j), limb(&Self::P, j));
+                set(out.as_mut_slice(), j, difference);
+                borrow = borrow_out;
+            },
+        );
+        out
+    }
+
+    /// `value + p` modulo `2^(64 L)`, by the carry chain of a constant addend.
+    #[inline(always)]
+    fn modulus_on(value: &Limbs<M>) -> Limbs<M> {
+        let mut out = M::Width::ZERO;
+        let mut carry = 0;
+        Self::each_limb(
+            #[inline(always)]
+            |j| {
+                let (sum, carry_out) = adc_constant(carry, limb(value, j), limb(&Self::P, j));
+                set(out.as_mut_slice(), j, sum);
+                carry = carry_out;
+            },
+        );
+        out
     }
 
     /// `t + (p & mask)` modulo `2^(64 L)`. The limbs of `p` that are zero or all ones fold the
@@ -629,15 +725,21 @@ impl<M: Modulus> Shape<M> {
     /// with its `sbb` and `adc` that keep the borrow without a spare bit, and beyond four limbs,
     /// where the conditional form's `3 L` live values (both chains and the limbs of `p`) spill:
     /// on BLS12-381 the masked form measures half a cycle to a cycle below it in throughput and
-    /// latency. Only BN254, of arbitrary limbs with a spare bit, keeps the conditional form.
-    pub(crate) const SUB_MASKED: bool =
-        Self::MASK_COST + 1 < 2 * Self::LIMBS + if Self::SPARE { 0 } else { 2 } || Self::LIMBS > 4;
+    /// latency. Only BN254, of arbitrary limbs with a spare bit, keeps the conditional form, except
+    /// on WebAssembly, where the masked form takes one carry chain against two: the BN254
+    /// difference took Firefox 20.9 cycles of latency against 27.0, and Chrome with wide arithmetic
+    /// 15.4 cycles against 16.5.
+    pub(crate) const SUB_MASKED: bool = Self::MASK_COST + 1
+        < 2 * Self::LIMBS + if Self::SPARE { 0 } else { 2 }
+        || Self::LIMBS > 4
+        || cfg!(target_arch = "wasm32");
 
     /// A product's final subtraction is a branch in the variable-time form: a Montgomery product
     /// reaches `p` with probability about `p / 4R` (Walter, *Montgomery exponentiation needs no
-    /// final subtractions*, 1999), at most a sixteenth when `p < R / 4`.
+    /// final subtractions*, 1999), at most a sixteenth when `p < R / 4`. With wide arithmetic the
+    /// product runs without the branch: the BN254 product took Chrome 80.8 cycles against 95.4.
     pub(crate) const FINAL_BRANCH: bool =
-        Self::MONTGOMERY && Self::LIMBS > 1 && Self::P_TOP >> 62 == 0;
+        Self::MONTGOMERY && Self::LIMBS > 1 && Self::P_TOP >> 62 == 0 && !cfg!(wide_arithmetic);
 
     /// Beyond four limbs, a row of products adds the low halves of its products in one carry
     /// chain and the high halves, one limb up, in a second ([`Self::add_row`]): a BLS12-381
@@ -779,18 +881,33 @@ impl<M: Modulus> Shape<M> {
             );
         }
         // The cross products sum below `2^(128 L - 1)`: doubling loses no bit.
-        let mut carry = 0;
-        Self::each_wide(
-            #[inline(always)]
-            |k| {
-                if k >= 1 {
+        if cfg!(target_arch = "wasm32") {
+            // By shifts, independent per limb, where the carry chain costs a comparison per limb
+            // without wide arithmetic and an `i64.add128` per limb with it: the P-256 square took
+            // Firefox with wide arithmetic 116.5 cycles against 132.8.
+            let mut below = 0;
+            Self::each_wide(
+                #[inline(always)]
+                |k| {
                     let value = limb(wide.as_slice(), k);
-                    let (doubled, carry_out) = adc(carry, value, value);
-                    set(wide.as_mut_slice(), k, doubled);
-                    carry = carry_out;
-                }
-            },
-        );
+                    set(wide.as_mut_slice(), k, (value << 1) | (below >> 63));
+                    below = value;
+                },
+            );
+        } else {
+            let mut carry = 0;
+            Self::each_wide(
+                #[inline(always)]
+                |k| {
+                    if k >= 1 {
+                        let value = limb(wide.as_slice(), k);
+                        let (doubled, carry_out) = adc(carry, value, value);
+                        set(wide.as_mut_slice(), k, doubled);
+                        carry = carry_out;
+                    }
+                },
+            );
+        }
         let mut carry = 0;
         Self::each_limb(
             #[inline(always)]

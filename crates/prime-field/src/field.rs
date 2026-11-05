@@ -498,7 +498,11 @@ impl<M: Modulus, K: Bits> Add<Uint<K>> for Fp<M> {
 
     #[inline(always)]
     fn add(self, rhs: Uint<K>) -> Self {
-        self.add_with::<false>(Self::integer_with::<false>(rhs.as_limbs()))
+        if K::LIMBS > 1 && Shape::<M>::INTEGER_SUM_SELECT {
+            self.add_with::<true>(Self::integer_with::<false>(rhs.as_limbs()))
+        } else {
+            self.add_with::<false>(Self::integer_with::<false>(rhs.as_limbs()))
+        }
     }
 }
 
@@ -508,7 +512,11 @@ impl<M: Modulus, K: Bits> Sub<Uint<K>> for Fp<M> {
 
     #[inline(always)]
     fn sub(self, rhs: Uint<K>) -> Self {
-        self.sub_with::<false>(Self::integer_with::<false>(rhs.as_limbs()))
+        if K::LIMBS > 1 && Shape::<M>::INTEGER_DIFFERENCE_SELECT {
+            self.sub_with::<true>(Self::integer_with::<false>(rhs.as_limbs()))
+        } else {
+            self.sub_with::<false>(Self::integer_with::<false>(rhs.as_limbs()))
+        }
     }
 }
 

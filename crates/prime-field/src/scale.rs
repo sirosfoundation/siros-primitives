@@ -39,10 +39,12 @@ impl<M: Modulus> Shape<M> {
             Self::one_limb(Self::mul1::<CT>(limb(a, 0), Self::word1::<CT>(limb(k, 0))))
         } else if k.len() <= 1 {
             Self::reduce_wide::<CT>(Self::row(a, limb(k, 0)))
-        } else if cfg!(wide_arithmetic) && Self::MONTGOMERY && k.len() <= Self::LIMBS {
-            // The encoding of `k` and one Montgomery product: with wide arithmetic, two products
-            // of four limbs took Chrome 127 cycles over P-256 against 286 for the rows of Horner's
-            // rule. Natively the rows run faster: 110 cycles over P-256 scalar against 159.
+        } else if cfg!(wide_arithmetic) && k.len() <= Self::LIMBS {
+            // The representation of `k` and one product: with wide arithmetic, two Montgomery
+            // products of four limbs took Chrome 127 cycles over P-256 against 286 for the rows of
+            // Horner's rule, and the fold of `k` and a product 88 cycles over secp256k1 in constant
+            // time against 192. Natively the rows run faster: 110 cycles over P-256 scalar against
+            // 159.
             return Self::mul::<CT>(a, &Self::integer::<CT>(k));
         } else {
             Self::horner::<CT>(a, k)
@@ -62,6 +64,11 @@ impl<M: Modulus> Shape<M> {
                 |j| set(out.as_mut_slice(), j, limb(k, j)),
             );
             return out;
+        }
+        if k.len() <= 1 && Self::MERSENNE && cfg!(target_arch = "wasm32") {
+            // Folds into `[1, p]`: 4.0 cycles over Mersenne-31 in Chrome and in Firefox, against
+            // 4.7 and 5.2 for the division by the constant and the selection of `p` for zero.
+            return Self::one_limb(Self::mersenne_representation(limb(k, 0)));
         }
         if k.len() <= 1 && Self::LIMBS == 1 {
             // A Mersenne word converts by the compiler's division by the constant: 3.2 cycles over
