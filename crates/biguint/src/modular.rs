@@ -1,6 +1,6 @@
-//! Modular addition, subtraction and negation, with one kernel: `a - b` is `a + TwosComplement(b)`
-//! with a carry of one into the bottom limb, and `-a` is `0 - a`. The addend's type selects the
-//! correction that brings the sum below the modulus.
+//! Modular addition, subtraction and negation, with one kernel: `a - b` is `a + TwosComplement(b)`,
+//! and `-a` is `0 - a`. The addend's type selects the carry chain and the correction that brings
+//! the sum below the modulus.
 
 use crate::bits::Bits;
 use crate::kernel::{
@@ -8,7 +8,11 @@ use crate::kernel::{
     subtract_when_above_masked,
 };
 use crate::nonzero::NonZeroUint;
-use crate::stream::{AddOp, LimbSource, Op2CarryIter, TwosComplement, ZeroExtended, pull_limbs};
+use generic_array::GenericArray;
+
+use crate::stream::{
+    AddOp, LimbSource, Op2CarryIter, SubOp, TwosComplement, ZeroExtended, pull_limbs,
+};
 use crate::uint::Uint;
 
 impl<N: Bits> Uint<N> {
@@ -97,20 +101,24 @@ pub(crate) fn top<N: Bits>(value: &Uint<N>) -> u64 {
 
 /// The second operand of [`sum_mod`], with the correction that brings the sum below the modulus.
 pub(crate) trait Addend: LimbSource {
-    /// The carry into the bottom limb of the sum.
-    const CARRY_IN: u64;
+    /// The limbs of `a + addend` in `N` bits, and the carry out of the top limb.
+    fn sum<N: Bits>(a: &Uint<N>, addend: Self) -> (GenericArray<u64, N::Limbs>, u64);
 
     /// Brings `sum`, whose carry out of the top limb is `carry`, below `modulus`.
     fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]);
 
-    /// [`Self::correct`] under masks at every length.
-    fn correct_masked(sum: &mut [u64], carry: u64, modulus: &[u64]);
+    /// [`Self::correct`] under masks at every length: writes the corrected `sum` to `out`.
+    fn correct_masked(out: &mut [u64], sum: &[u64], carry: u64, modulus: &[u64]);
 }
 
 /// The limbs of `b`: `a + b` is below twice the modulus, which a carry out or a sum at or above
 /// the modulus subtracts once.
 impl Addend for ZeroExtended<'_> {
-    const CARRY_IN: u64 = 0;
+    #[inline(always)]
+    fn sum<N: Bits>(a: &Uint<N>, addend: Self) -> (GenericArray<u64, N::Limbs>, u64) {
+        let mut sum = Op2CarryIter::<_, _, AddOp>::new(a.source().pull(), addend.pull());
+        (pull_limbs::<N::Limbs>(&mut sum), sum.carry())
+    }
 
     #[inline(always)]
     fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]) {
@@ -118,16 +126,24 @@ impl Addend for ZeroExtended<'_> {
     }
 
     #[inline(always)]
-    fn correct_masked(sum: &mut [u64], carry: u64, modulus: &[u64]) {
-        subtract_when_above_masked(sum, modulus, carry);
+    fn correct_masked(out: &mut [u64], sum: &[u64], carry: u64, modulus: &[u64]) {
+        subtract_when_above_masked(out, sum, modulus, carry);
     }
 }
 
-/// `2^(64 * k) - b`: the sum is `a - b + 2^(64 * k)`, which carries out exactly when `a >= b`.
-/// Without the carry, `a - b` borrowed, and the modulus is added back; the carry out of that
-/// addition cancels the borrow.
+/// `2^(64 * k) - b`: the sum is `a - b + 2^(64 * k)`, which carries out exactly when `a >= b`. It
+/// runs as the subtraction `a - b`, whose borrow is the opposite of that carry. Without the carry,
+/// `a - b` borrowed, and the modulus is added back; the carry out of that addition cancels the
+/// borrow.
 impl<S: LimbSource> Addend for TwosComplement<S> {
-    const CARRY_IN: u64 = 1;
+    #[inline(always)]
+    fn sum<N: Bits>(a: &Uint<N>, addend: Self) -> (GenericArray<u64, N::Limbs>, u64) {
+        let mut difference = Op2CarryIter::<_, _, SubOp>::new(a.source().pull(), addend.0.pull());
+        (
+            pull_limbs::<N::Limbs>(&mut difference),
+            difference.carry() ^ 1,
+        )
+    }
 
     #[inline(always)]
     fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]) {
@@ -135,8 +151,8 @@ impl<S: LimbSource> Addend for TwosComplement<S> {
     }
 
     #[inline(always)]
-    fn correct_masked(sum: &mut [u64], carry: u64, modulus: &[u64]) {
-        add_unless_carry_masked(sum, modulus, carry);
+    fn correct_masked(out: &mut [u64], sum: &[u64], carry: u64, modulus: &[u64]) {
+        add_unless_carry_masked(out, sum, modulus, carry);
     }
 }
 
@@ -144,34 +160,23 @@ impl<S: LimbSource> Addend for TwosComplement<S> {
 /// correction in place.
 #[inline(always)]
 pub(crate) fn sum_mod<N: Bits, B: Addend>(a: &Uint<N>, addend: B, modulus: &Uint<N>) -> Uint<N> {
-    sum_corrected(a, addend, modulus, B::correct)
+    let (limbs, carry) = B::sum(a, addend);
+    let mut out = Uint::<N> { limbs };
+    B::correct(&mut out.limbs, carry, &modulus.limbs);
+    // Below the modulus, the bits above `N` are zero.
+    out
 }
 
 /// [`sum_mod`] with the correction under masks: no branch and no memory address depends on `a` or
-/// the addend.
+/// the addend. The sum runs into registers or a copy, and the correction writes the result.
 #[inline(always)]
 pub(crate) fn sum_mod_masked<N: Bits, B: Addend>(
     a: &Uint<N>,
     addend: B,
     modulus: &Uint<N>,
 ) -> Uint<N> {
-    sum_corrected(a, addend, modulus, B::correct_masked)
-}
-
-/// `a + addend`, brought below `modulus` by `correct`.
-#[inline(always)]
-fn sum_corrected<N: Bits, B: Addend>(
-    a: &Uint<N>,
-    addend: B,
-    modulus: &Uint<N>,
-    correct: impl FnOnce(&mut [u64], u64, &[u64]),
-) -> Uint<N> {
-    let mut sum =
-        Op2CarryIter::<_, _, AddOp>::with_carry(a.source().pull(), addend.pull(), B::CARRY_IN);
-    let mut out = Uint::<N> {
-        limbs: pull_limbs::<N::Limbs>(&mut sum),
-    };
-    correct(&mut out.limbs, sum.carry(), &modulus.limbs);
-    // Below the modulus, the bits above `N` are zero.
+    let (limbs, carry) = B::sum(a, addend);
+    let mut out = Uint::<N>::ZERO;
+    B::correct_masked(&mut out.limbs, &limbs, carry, &modulus.limbs);
     out
 }

@@ -1,8 +1,8 @@
 //! The checked operations of `ConstantTime`: over `Uint` and its residues at 64, 256, 521 and 4096
-//! bits under an odd and an even modulus, and over the fields of the comparison benches of
-//! `prime-field` and `binary-field`. Each runs once through [`run_batch`], which keeps a symbol of
-//! its own for every operation and hides the address of the operands and of the result from the
-//! compiler. Only the wrapped operands are marked undefined.
+//! bits under an odd modulus, an even one and one with its top bit set, and over the fields of the
+//! comparison benches of `prime-field` and `binary-field`. Each runs once through [`run_batch`],
+//! which keeps a symbol of its own for every operation and hides the address of the operands and
+//! of the result from the compiler. Only the wrapped operands are marked undefined.
 
 use core::ops::Add;
 use std::process::ExitCode;
@@ -171,7 +171,12 @@ where
     let public = b;
     // `b` has bits set above its lowest two.
     let nonzero = |value| NonZeroUint::new(value).expect("a value with bits set");
-    let moduli = [nonzero(b | Uint::<N>::ONE), nonzero(b & !Uint::<N>::ONE)];
+    // The third modulus has its top bit set, which reduces an operand by one subtraction.
+    let moduli = [
+        nonzero(b | Uint::<N>::ONE),
+        nonzero(b & !Uint::<N>::ONE),
+        nonzero(b | Uint::<N>::ONE << (N::BITS - 1)),
+    ];
     let limb = NonZeroUint::new(Uint::<U64>::from_u64(B)).expect("a nonzero constant");
     let mut count = operators!(&pair, public; + +=, - -=, * *=, & &=, | |=, ^ ^=)
         + run_batch(&pair, |&(a, _)| !a)
