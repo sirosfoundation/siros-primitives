@@ -174,17 +174,31 @@ pub(crate) const fn truncate(acc: &mut [u64], degree: usize) {
 }
 
 /// The carry-less product of `a` and `b`, each below `2^8`: the low 6 bits of `a` in two lanes of
-/// spacing 2, 3 bits each, by the two lanes of `b`, four integer products in which at most 3 terms
+/// spacing 2, 3 bits each, by the two lanes of `b`, four lane products in which at most 3 terms
 /// meet at a position, so their count fits the 2 bits up to the next position of the lane. Each of
 /// the top two bits of `a` times `b` is one more integer product: a shifted copy of `b` or zero,
 /// one term per position.
+///
+/// Off WebAssembly the two lanes of `b` lie 32 bits apart in one word, so that two integer
+/// products give the four lane products, each below `2^14`: the multiplier bounds the throughput
+/// of the product of the AES field, 12.1 cycles this way against 14.0 with four integer products.
+/// WebAssembly keeps the four.
 #[inline(always)]
 pub(crate) const fn clmul8(a: u64, b: u64) -> u64 {
     let (x0, x1) = (a & 0x15, a & 0x2A);
     let (y0, y1) = (b & 0x55, b & 0xAA);
-    let even = (x0.wrapping_mul(y0) ^ x1.wrapping_mul(y1)) & 0x5555;
-    let odd = (x0.wrapping_mul(y1) ^ x1.wrapping_mul(y0)) & 0xAAAA;
-    (even | odd) ^ (a & 0x40).wrapping_mul(b) ^ (a & 0x80).wrapping_mul(b)
+    let (even, odd) = if cfg!(target_arch = "wasm32") {
+        (
+            x0.wrapping_mul(y0) ^ x1.wrapping_mul(y1),
+            x0.wrapping_mul(y1) ^ x1.wrapping_mul(y0),
+        )
+    } else {
+        // `[x0 y0, x0 y1]` and `[x1 y0, x1 y1]`.
+        let lanes = y0 | (y1 << 32);
+        let (low, high) = (x0.wrapping_mul(lanes), x1.wrapping_mul(lanes));
+        (low ^ (high >> 32), (low >> 32) ^ high)
+    };
+    ((even & 0x5555) | (odd & 0xAAAA)) ^ (a & 0x40).wrapping_mul(b) ^ (a & 0x80).wrapping_mul(b)
 }
 
 /// The bits below `2^32` at the positions congruent to 0, 1 and 2 modulo 3.
