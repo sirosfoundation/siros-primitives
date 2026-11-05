@@ -21,7 +21,8 @@ use crate::bits::sealed::Sealed;
 use crate::div::DiscardQuotient;
 use crate::div::ct::MaskedDivisor;
 use crate::kernel::{
-    add_flipped_into, mask_of, select_masked, sub_into, subtract_when_above_masked,
+    add_flipped, add_flipped_into, add_masked, fits, mask_of, select_masked, sub_into,
+    subtract_when_above_masked,
 };
 use crate::modular::sum_mod_masked;
 use crate::mul::{full_product, truncated_product};
@@ -184,6 +185,11 @@ impl<N: Bits> CtSubMod<NonZeroUint<N>> for Uint<N> {
     fn ct_sub_mod(self, rhs: Self, modulus: NonZeroUint<N>) -> Self {
         let modulus = modulus.get();
         let reduction = Reduction::new(&modulus);
+        if CHAINED_DIFFERENCE_LIMBS.contains(&N::LIMBS)
+            && let Reduction::Subtract(subtracted) = reduction
+        {
+            return difference_mod_chained(&self, &rhs, subtracted);
+        }
         let b = reduction.reduce(&rhs);
         match reduction {
             Reduction::Subtract(subtracted) => difference_mod_masked(&self, &b, subtracted),
@@ -194,6 +200,40 @@ impl<N: Bits> CtSubMod<NonZeroUint<N>> for Uint<N> {
             ),
         }
     }
+}
+
+/// The lengths of [`difference_mod_chained`], whose three carry chains run in place. Longer, the
+/// chains through memory take more cycles on Zen 3 than [`difference_mod_masked`], whose select
+/// vectorizes: at 4096 bits 489 against 445 per operation. At one limb, the reduction of `b` in
+/// [`difference_mod_masked`] runs beside the chain of `a`, whose latency is 8.9 cycles there against
+/// 16 here.
+const CHAINED_DIFFERENCE_LIMBS: core::ops::RangeInclusive<usize> = 2..=16;
+
+/// `(a - b) mod modulus` under masks, for `a` and `b` below twice the modulus: the difference `d`
+/// lies strictly between `-2 * modulus` and `2 * modulus`. A borrow puts `d` below zero, and
+/// `d + modulus` follows; without one, `d - modulus` does. Either lies between `-modulus` and
+/// `modulus`, and is below zero exactly when its correction does not carry out of the top limb;
+/// there, adding the modulus gives the result.
+///
+/// The flip of the first correction is the borrow less one: it feeds the complement and the carry
+/// into the chain, which LLVM keeps arithmetic, where [`mask_of`] would add a store and a load to
+/// its latency. The mask of the second correction selects limbs, and LLVM turns it into a
+/// conditional move without [`mask_of`].
+#[inline(always)]
+fn difference_mod_chained<N: Bits>(a: &Uint<N>, b: &Uint<N>, modulus: &Uint<N>) -> Uint<N> {
+    let mut difference = Uint::<N>::ZERO;
+    let borrow = sub_into(&mut difference.limbs, &a.limbs, &b.limbs);
+    let carry = add_flipped(
+        &mut difference.limbs,
+        &modulus.limbs,
+        borrow.wrapping_sub(1),
+    );
+    fits(add_masked(
+        &mut difference.limbs,
+        &modulus.limbs,
+        mask_of(carry ^ 1),
+    ));
+    difference
 }
 
 /// `(a - b) mod modulus` under masks, for `a` below twice the modulus and `b` below it: the

@@ -62,6 +62,15 @@ const fn mul_add_halves(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
 #[inline(always)]
 pub(crate) const fn rare() {}
 
+/// [`rare`] as a call that stays: LLVM also lays the path that calls it out of the loop, after the
+/// loop's own blocks. An inlined [`rare`] leaves a division on the path of a modular sum's operand
+/// at or above the modulus between the blocks of the sum, which then runs two taken branches.
+#[cold]
+#[inline(never)]
+pub(crate) fn rare_call() {
+    core::hint::black_box(());
+}
+
 /// Add-with-carry on a `u64` limb.
 pub(crate) trait CarryingAdd: Sized {
     /// `self + rhs + carry` as `(sum mod 2^64, carry_out)`, with carries in `{0, 1}`.
