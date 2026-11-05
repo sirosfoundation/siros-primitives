@@ -312,853 +312,386 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | Load, in WebAssembly with wide arithmetic, Firefox | CPU 12; 1-minute load 11.55 before, 11.29 after; its SMT sibling, CPU 28, 4% busy |
 | Crates | ruint 1.21.1, crypto-bigint 0.7.10, bnum 0.14.4, uint 0.10.2, num-bigint 0.5.1 |
 
-## Results in WebAssembly, Chrome
 
-### add: a + b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | 2.2 / **1.1** | **2.1** / **1.1** | 2.2 / **1.1** | **2.1** / **1.1** | **2.1** / **1.1** | **2.1** / **1.1** |
-| 128 | **4.0** / 3.0 | **4.0** / **2.8** | **4.0** / 2.9 | **4.0** / **2.8** | **4.0** / **2.8** | – |
-| 256 | **10.2** / 9.8 | – | 10.3 / 9.4 | **10.2** / 9.8 | 10.3 / **8.1** | – |
-| 384 | **16.3** / **15.4** | – | 16.4 / **15.4** | 18.0 / 17.1 | 17.1 / 16.6 | – |
-| 512 | 27.4 / 25.7 | – | 27.1 / 26.0 | 33.1 / 33.2 | **24.7** / **22.3** | – |
-| 1024 | 64.1 / 64.0 | – | 63.8 / 63.7 | 85.5 / 84.5 | **61.6** / **62.1** | – |
-| 2048 | **157** / **160** | – | 202 / 208 | 191 / 232 | 206 / 244 | – |
-| 4096 | 430 / 424 | – | 406 / **404** | **389** / 457 | 411 / 468 | – |
-
-### mul: a × b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **2.1** / – | 2.2 / **3.0** | **2.1** / – | **2.1** / – | **2.1** / – | **2.1** / – | – |
-| 128 | **10.0** / – | 11.6 / **11.8** | 11.0 / – | 24.4 / – | 11.1 / – | 11.0 / – | – |
-| 256 | **47.7** / – | – | 66.6 / – | 95.9 / – | 119 / – | 68.8 / – | – |
-| 384 | 181 / – | – | 168 / – | 206 / – | 242 / – | **154** / – | – |
-| 512 | **295** / – | – | 320 / – | 376 / – | 425 / – | – | – |
-| 1024 | **1,340** / – | – | – | 2,083 / – | 1,544 / – | 2,055 / – | – |
-| 2048 | **5,613** / – | – | 6,360 / – | 8,050 / – | 6,288 / – | 9,871 / – | 11,774 / – |
-| 4096 | **17,687** / – | – | 38,989 / – | 29,248 / – | 23,616 / – | 43,185 / – | 39,585 / – |
-
-### div: a / b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **7.0** / – | **7.0** / – | **7.0** / – | 507 / – | **7.0** / – | **7.0** / – | 125 / – |
-| 128 | **60.1** / – | 171 / – | 93.8 / – | 568 / – | 208 / – | 211 / – | 325 / – |
-| 256 | **216** / – | – | 320 / – | 1,288 / – | 804 / – | 855 / – | 454 / – |
-| 384 | **351** / – | – | 604 / – | 1,701 / – | 1,305 / – | 1,282 / – | 612 / – |
-| 512 | **509** / – | – | 828 / – | 2,088 / – | 1,846 / – | 1,811 / – | 807 / – |
-| 1024 | **1,196** / – | – | 2,121 / – | 4,131 / – | 4,575 / – | 4,565 / – | 1,940 / – |
-| 2048 | **3,242** / – | – | 6,508 / – | 11,143 / – | 15,391 / – | 14,283 / – | 5,774 / – |
-| 4096 | **12,603** / – | – | 23,239 / – | 36,609 / – | 48,955 / – | 52,015 / – | 20,046 / – |
-
-### mod: a mod b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **7.0** / – | **7.0** / – | **7.0** / – | 505 / – | **7.0** / – | **7.0** / – | 33.5 / – |
-| 128 | **52.8** / – | 174 / – | 87.3 / – | 568 / – | 213 / – | 214 / – | 331 / – |
-| 256 | **217** / – | – | 321 / – | 1,286 / – | 801 / – | 852 / – | 459 / – |
-| 384 | **351** / – | – | 581 / – | 1,704 / – | 1,298 / – | 1,284 / – | 619 / – |
-| 512 | **486** / – | – | 798 / – | 2,087 / – | 1,836 / – | 1,810 / – | 812 / – |
-| 1024 | **1,217** / – | – | 2,102 / – | 4,129 / – | 4,580 / – | 4,541 / – | 1,940 / – |
-| 2048 | **3,347** / – | – | 6,496 / – | 11,152 / – | 15,406 / – | 14,271 / – | 5,774 / – |
-| 4096 | **12,491** / – | – | 23,093 / – | 36,555 / – | 49,848 / – | 51,799 / – | 20,253 / – |
-
-### mulmod: a × b mod m, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | num-bigint |
-|---|---:|---:|---:|---:|---:|
-| 64 | **61.0** / **68.8** | 138 / 132 | 84.7 / 85.0 | 546 / 544 | 439 / – |
-| 128 | **197** / **206** | – | 325 / 339 | 1,271 / 1,261 | 600 / – |
-| 256 | **579** / **586** | – | 818 / 809 | 2,267 / 2,287 | 1,115 / – |
-| 384 | **1,041** / **1,038** | – | 1,614 / 1,600 | 3,582 / 3,487 | 1,853 / – |
-| 512 | **1,652** / **1,647** | – | 2,867 / 2,873 | 5,029 / 5,074 | 2,815 / – |
-| 1024 | **5,332** / **5,319** | – | 11,122 / 11,113 | 15,264 / 15,295 | 8,902 / – |
-| 2048 | **17,381** / **17,414** | – | 34,947 / 34,951 | 49,752 / 49,808 | 32,084 / – |
-| 4096 | **55,642** / **55,558** | – | 162,484 / 160,647 | 175,006 / 174,907 | 112,933 / – |
-
-### add_mod: a + b mod m, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 5.0 / **7.3** | **3.3** / – | 43.5 / 39.5 | 12.9 / – | 7.8 / – | **3.3** / – | 298 / – |
-| 128 | 15.0 / **33.7** | **9.5** / – | 23.3 / 40.1 | 23.7 / – | 11.0 / – | 9.6 / – | 304 / – |
-| 256 | 27.4 / **36.3** | – | 43.0 / 74.0 | 47.4 / – | 22.6 / – | **22.1** / – | 337 / – |
-| 384 | 62.2 / **79.1** | – | 62.0 / 100 | 96.7 / – | 45.5 / – | **34.5** / – | 372 / – |
-| 512 | 73.8 / **87.9** | – | 90.7 / 129 | 108 / – | 64.4 / – | **46.9** / – | 401 / – |
-| 1024 | 148 / **170** | – | 198 / 272 | 377 / – | 118 / – | **106** / – | 554 / – |
-| 2048 | 291 / **329** | – | 790 / 856 | 573 / – | 362 / – | **250** / – | 888 / – |
-| 4096 | 634 / **720** | – | 1,553 / 1,701 | 1,159 / – | 666 / – | **618** / – | 2,134 / – |
-
-### sub_mod: a − b mod m, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 5.0 / **7.9** | **3.0** / – | 53.1 / 46.1 | 5.0 / – | 4.8 / – | 4.3 / – | 395 / – |
-| 128 | 14.0 / **34.5** | **6.8** / – | 31.1 / 45.3 | 10.3 / – | 8.8 / – | 9.2 / – | 414 / – |
-| 256 | 32.8 / **46.5** | – | 59.8 / 95.8 | 28.1 / – | **18.6** / – | 18.7 / – | 472 / – |
-| 384 | 53.1 / **70.2** | – | 84.6 / 129 | 48.9 / – | 40.1 / – | **31.3** / – | 535 / – |
-| 512 | 80.4 / **116** | – | 120 / 168 | 71.2 / – | **46.9** / – | 61.6 / – | 592 / – |
-| 1024 | 150 / **192** | – | 344 / 430 | 177 / – | 141 / – | **134** / – | 814 / – |
-| 2048 | 382 / **393** | – | 1,109 / 1,214 | 519 / – | 372 / – | **301** / – | 1,347 / – |
-| 4096 | **656** / **744** | – | 2,110 / 2,312 | 941 / – | 672 / – | 707 / – | 2,839 / – |
-
-### add, constant time: a + b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | 2.2 / **1.1** | 2.2 / **1.1** | 2.2 / **1.1** | **2.1** / **1.1** | 2.2 / **1.1** | 2.2 / **1.1** |
-| 128 | **4.0** / 3.0 | **4.0** / **2.8** | **4.0** / 2.9 | **4.0** / **2.8** | **4.0** / **2.8** | – |
-| 256 | **10.2** / 9.8 | – | 10.3 / 9.4 | 10.3 / 9.8 | 10.3 / **8.1** | – |
-| 384 | **16.3** / **15.4** | – | **16.3** / **15.4** | 18.0 / 17.1 | 17.1 / 16.6 | – |
-| 512 | 27.5 / 25.7 | – | 27.1 / 26.1 | 33.2 / 33.2 | **24.7** / **22.3** | – |
-| 1024 | 64.0 / 64.0 | – | 63.7 / 63.6 | 85.7 / 84.1 | **61.6** / **62.1** | – |
-| 2048 | **157** / **160** | – | 202 / 208 | 191 / 231 | 206 / 244 | – |
-| 4096 | 429 / 423 | – | 405 / **405** | **395** / 456 | 410 / 467 | – |
-
-### mul, constant time: a × b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | **2.1** / – | **2.1** / **3.0** | **2.1** / – | 2.2 / – | 2.2 / – | **2.1** / – |
-| 128 | **10.0** / – | 11.6 / **11.8** | 11.0 / – | 24.4 / – | 11.1 / – | 11.0 / – |
-| 256 | **47.8** / – | – | 66.7 / – | 95.8 / – | 120 / – | 69.2 / – |
-| 384 | 164 / – | – | 165 / – | 206 / – | 241 / – | **160** / – |
-| 512 | **298** / – | – | 320 / – | 377 / – | 425 / – | – |
-| 1024 | **1,344** / – | – | – | 2,091 / – | 1,544 / – | 2,052 / – |
-| 2048 | **5,787** / – | – | – | 8,050 / – | 6,288 / – | 9,871 / – |
-| 4096 | **18,263** / – | – | – | 29,248 / – | 23,616 / – | 43,185 / – |
-
-### div, constant time: a / b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **83.6** / – | 389 / – |
-| 128 | **220** / – | 901 / – |
-| 256 | **509** / – | 1,696 / – |
-| 384 | **632** / – | 2,516 / – |
-| 512 | **990** / – | 3,541 / – |
-| 1024 | **2,424** / – | 8,493 / – |
-| 2048 | **7,350** / – | 22,487 / – |
-| 4096 | **25,331** / – | 67,208 / – |
-
-### mod, constant time: a mod b, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **85.1** / – | 380 / – |
-| 128 | **216** / – | 885 / – |
-| 256 | **513** / – | 1,629 / – |
-| 384 | **734** / – | 2,531 / – |
-| 512 | **1,060** / – | 3,515 / – |
-| 1024 | **2,507** / – | 8,475 / – |
-| 2048 | **7,625** / – | 22,423 / – |
-| 4096 | **25,923** / – | 67,693 / – |
-
-### mulmod, constant time: a × b mod m, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **174** / **178** | 475 / – |
-| 128 | **561** / **568** | 1,285 / – |
-| 256 | **1,212** / **1,160** | 2,845 / – |
-| 384 | **1,994** / **1,989** | 4,905 / – |
-| 512 | **3,064** / **3,039** | 7,624 / – |
-| 1024 | **9,559** / **9,494** | 21,365 / – |
-| 2048 | **32,879** / **32,786** | 65,260 / – |
-| 4096 | **119,268** / **120,120** | 259,181 / – |
-
-### add_mod, constant time: a + b mod m, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | 178 / **139** | **12.9** / – |
-| 128 | 397 / **392** | **23.7** / – |
-| 256 | 551 / **542** | **47.4** / – |
-| 384 | 679 / **665** | **96.7** / – |
-| 512 | 807 / **792** | **108** / – |
-| 1024 | 1,441 / **1,401** | **377** / – |
-| 2048 | 2,677 / **2,723** | **573** / – |
-| 4096 | 5,234 / **5,282** | **1,159** / – |
-
-### sub_mod, constant time: a − b mod m, in WebAssembly, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | 183 / **91.1** | **5.0** / – |
-| 128 | 396 / **390** | **10.3** / – |
-| 256 | 523 / **518** | **28.1** / – |
-| 384 | 652 / **641** | **48.9** / – |
-| 512 | 774 / **786** | **71.2** / – |
-| 1024 | 1,389 / **1,374** | **177** / – |
-| 2048 | 2,660 / **2,714** | **519** / – |
-| 4096 | 4,951 / **5,006** | **941** / – |
-
-## Results in WebAssembly with wide arithmetic, Chrome
-
-### add: a + b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | 2.2 / **1.1** | 2.2 / **1.1** | **2.1** / **1.1** | 2.2 / **1.1** | **2.1** / **1.1** | 2.2 / **1.1** |
-| 128 | 3.8 / 2.5 | **3.7** / 2.1 | 3.8 / 2.5 | 3.9 / 2.7 | 4.0 / **2.0** | – |
-| 256 | **8.7** / 6.8 | – | 9.0 / 8.0 | 9.1 / 7.1 | 9.0 / **6.3** | – |
-| 384 | 12.3 / **12.2** | – | 13.0 / 13.6 | **12.2** / 12.4 | 16.0 / 14.3 | – |
-| 512 | **20.7** / **17.3** | – | 23.1 / 18.9 | 20.8 / 18.2 | 22.1 / 23.0 | – |
-| 1024 | 45.3 / **43.6** | – | 49.1 / 44.7 | **45.1** / 44.2 | 60.2 / 59.7 | – |
-| 2048 | **109** / **106** | – | 177 / 178 | 148 / 185 | 210 / 228 | – |
-| 4096 | 382 / 364 | – | 304 / **292** | **283** / 332 | 404 / 422 | – |
-
-### mul: a × b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 2.2 / – | 2.2 / **3.0** | **2.1** / – | 2.2 / – | 2.2 / – | 2.2 / – | – |
-| 128 | 6.5 / – | **4.1** / **5.2** | 6.5 / – | 5.5 / – | 4.3 / – | 6.9 / – | – |
-| 256 | **16.8** / – | – | **16.8** / – | 18.4 / – | 22.3 / – | 22.3 / – | – |
-| 384 | 52.3 / – | – | 52.2 / – | **39.6** / – | 75.4 / – | 64.1 / – | – |
-| 512 | 70.7 / – | – | **69.2** / – | 84.0 / – | 209 / – | – | – |
-| 1024 | 691 / – | – | – | 590 / – | 700 / – | **505** / – | – |
-| 2048 | 2,500 / – | – | **2,115** / – | 2,753 / – | 2,603 / – | 3,306 / – | 11,735 / – |
-| 4096 | 8,430 / – | – | **8,001** / – | 11,621 / – | 10,109 / – | 14,667 / – | 39,769 / – |
-
-### div: a / b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **7.0** / – | **7.0** / – | **7.0** / – | 448 / – | **7.0** / – | **7.0** / – | 125 / – |
-| 128 | **28.3** / – | 170 / – | 43.3 / – | 492 / – | 184 / – | 197 / – | 326 / – |
-| 256 | **87.0** / – | – | 156 / – | 1,038 / – | 594 / – | 569 / – | 450 / – |
-| 384 | **203** / – | – | 349 / – | 1,287 / – | 906 / – | 864 / – | 608 / – |
-| 512 | **295** / – | – | 422 / – | 1,542 / – | 1,252 / – | 1,150 / – | 804 / – |
-| 1024 | **696** / – | – | 899 / – | 3,065 / – | 2,756 / – | 2,442 / – | 1,929 / – |
-| 2048 | **2,005** / – | – | 2,358 / – | 7,827 / – | 7,414 / – | 6,054 / – | 5,768 / – |
-| 4096 | **6,829** / – | – | 7,695 / – | 20,032 / – | 22,650 / – | 19,805 / – | 20,059 / – |
-
-### mod: a mod b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **7.0** / – | **7.0** / – | **7.0** / – | 449 / – | **7.0** / – | **7.0** / – | 33.4 / – |
-| 128 | **30.0** / – | 171 / – | 40.5 / – | 493 / – | 186 / – | 198 / – | 332 / – |
-| 256 | **82.0** / – | – | 157 / – | 1,041 / – | 588 / – | 564 / – | 457 / – |
-| 384 | **195** / – | – | 320 / – | 1,278 / – | 912 / – | 865 / – | 615 / – |
-| 512 | **279** / – | – | 403 / – | 1,540 / – | 1,252 / – | 1,162 / – | 816 / – |
-| 1024 | **720** / – | – | 961 / – | 3,067 / – | 2,765 / – | 2,413 / – | 1,943 / – |
-| 2048 | **1,955** / – | – | 2,277 / – | 7,832 / – | 7,427 / – | 6,068 / – | 5,796 / – |
-| 4096 | **6,494** / – | – | 7,790 / – | 20,028 / – | 22,485 / – | 19,932 / – | 19,947 / – |
-
-### mulmod: a × b mod m, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | num-bigint |
-|---|---:|---:|---:|---:|---:|
-| 64 | **31.6** / **34.6** | 116 / 113 | 39.9 / 42.5 | 439 / 436 | 416 / – |
-| 128 | **81.7** / **86.1** | – | 137 / 138 | 952 / 976 | 606 / – |
-| 256 | **281** / **287** | – | 307 / 309 | 1,566 / 1,569 | 1,111 / – |
-| 384 | **507** / **503** | – | 538 / 536 | 2,305 / 2,318 | 1,843 / – |
-| 512 | **849** / **845** | – | 855 / 857 | 3,150 / 3,160 | 2,822 / – |
-| 1024 | 2,764 / 2,778 | – | **2,632** / **2,631** | 8,375 / 8,597 | 8,911 / – |
-| 2048 | **9,432** / **9,459** | – | 10,666 / 10,685 | 23,594 / 24,109 | 32,017 / – |
-| 4096 | **29,321** / **29,343** | – | 41,180 / 41,173 | 74,538 / 73,953 | 113,225 / – |
-
-### add_mod: a + b mod m, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 6.0 / **11.1** | **4.0** / – | 44.0 / 40.4 | 12.2 / – | 7.9 / – | **4.0** / – | 296 / – |
-| 128 | 13.0 / **15.5** | 9.0 / – | 21.7 / 30.8 | 21.2 / – | 11.2 / – | **8.9** / – | 301 / – |
-| 256 | 26.6 / **31.0** | – | 44.0 / 60.1 | 42.3 / – | 21.8 / – | **21.4** / – | 336 / – |
-| 384 | 66.2 / **70.2** | – | 60.3 / 83.3 | 105 / – | 40.3 / – | **38.5** / – | 372 / – |
-| 512 | **44.5** / **60.1** | – | 85.6 / 101 | 93.1 / – | 57.8 / – | 44.6 / – | 401 / – |
-| 1024 | 128 / **134** | – | 184 / 203 | 345 / – | 118 / – | **104** / – | 548 / – |
-| 2048 | **218** / **251** | – | 752 / 778 | 505 / – | 352 / – | 242 / – | 904 / – |
-| 4096 | **489** / **586** | – | 1,405 / 1,454 | 993 / – | 647 / – | 585 / – | 1,950 / – |
-
-### sub_mod: a − b mod m, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 6.0 / **9.3** | **3.0** / – | 50.5 / 45.3 | 5.0 / – | 4.8 / – | 4.3 / – | 409 / – |
-| 128 | 12.0 / **13.9** | **5.4** / – | 30.1 / 40.7 | 11.0 / – | 7.2 / – | 10.2 / – | 420 / – |
-| 256 | 27.3 / **33.4** | – | 61.4 / 79.3 | 23.5 / – | **16.5** / – | 19.4 / – | 468 / – |
-| 384 | 33.1 / **47.9** | – | 82.6 / 107 | 39.1 / – | 39.3 / – | **32.1** / – | 513 / – |
-| 512 | 50.1 / **65.6** | – | 114 / 138 | 53.7 / – | **44.4** / – | 62.6 / – | 567 / – |
-| 1024 | **104** / **122** | – | 329 / 351 | 142 / – | 135 / – | 132 / – | 781 / – |
-| 2048 | **231** / **236** | – | 1,061 / 1,103 | 459 / – | 414 / – | 299 / – | 1,345 / – |
-| 4096 | **492** / **590** | – | 1,984 / 2,052 | 773 / – | 706 / – | 679 / – | 2,733 / – |
-
-### add, constant time: a + b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | 2.2 / **1.1** | 2.2 / **1.1** | **2.1** / **1.1** | **2.1** / **1.1** | 2.2 / **1.1** | **2.1** / **1.1** |
-| 128 | 3.8 / 2.5 | **3.7** / 2.1 | 3.8 / 2.5 | 3.9 / 2.7 | 4.0 / **2.0** | – |
-| 256 | **8.7** / 6.8 | – | 9.0 / 8.0 | 9.1 / 7.1 | 9.0 / **6.3** | – |
-| 384 | 12.3 / 12.2 | – | 13.0 / 13.6 | **12.2** / **12.0** | 16.0 / 14.3 | – |
-| 512 | **20.8** / **17.3** | – | 23.1 / 18.9 | **20.8** / 18.2 | 22.1 / 23.0 | – |
-| 1024 | 45.4 / **43.6** | – | 49.1 / 44.6 | **45.2** / 44.2 | 60.2 / 59.5 | – |
-| 2048 | **108** / **106** | – | 177 / 178 | 148 / 185 | 210 / 228 | – |
-| 4096 | 379 / 364 | – | 304 / **292** | **284** / 332 | 402 / 422 | – |
-
-### mul, constant time: a × b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | **2.2** / – | **2.2** / **3.0** | **2.2** / – | **2.2** / – | **2.2** / – | **2.2** / – |
-| 128 | 6.5 / – | **4.2** / **5.3** | 6.5 / – | 5.5 / – | 4.3 / – | 6.9 / – |
-| 256 | **16.8** / – | – | **16.8** / – | 18.4 / – | 22.3 / – | 22.3 / – |
-| 384 | 52.3 / – | – | 52.2 / – | **39.5** / – | 75.5 / – | 64.2 / – |
-| 512 | 72.3 / – | – | **69.2** / – | 84.0 / – | 209 / – | – |
-| 1024 | 693 / – | – | – | 592 / – | 698 / – | **503** / – |
-| 2048 | **2,558** / – | – | – | 2,753 / – | 2,603 / – | 3,306 / – |
-| 4096 | **8,862** / – | – | – | 11,621 / – | 10,109 / – | 14,667 / – |
-
-### div, constant time: a / b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **47.0** / – | 322 / – |
-| 128 | **183** / – | 751 / – |
-| 256 | **246** / – | 1,362 / – |
-| 384 | **524** / – | 2,016 / – |
-| 512 | **714** / – | 2,768 / – |
-| 1024 | **1,796** / – | 7,043 / – |
-| 2048 | **5,079** / – | 16,909 / – |
-| 4096 | **16,113** / – | 43,448 / – |
-
-### mod, constant time: a mod b, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **47.2** / – | 327 / – |
-| 128 | **177** / – | 741 / – |
-| 256 | **339** / – | 1,341 / – |
-| 384 | **529** / – | 1,971 / – |
-| 512 | **698** / – | 2,751 / – |
-| 1024 | **1,822** / – | 7,021 / – |
-| 2048 | **5,045** / – | 16,892 / – |
-| 4096 | **16,265** / – | 46,956 / – |
-
-### mulmod, constant time: a × b mod m, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **97.4** / **94.0** | 351 / – |
-| 128 | **358** / **328** | 998 / – |
-| 256 | **738** / **734** | 1,975 / – |
-| 384 | **1,202** / **1,199** | 3,226 / – |
-| 512 | **1,829** / **1,813** | 4,663 / – |
-| 1024 | **5,951** / **6,015** | 13,268 / – |
-| 2048 | **19,574** / **19,863** | 35,265 / – |
-| 4096 | **69,939** / **69,404** | 110,710 / – |
-
-### add_mod, constant time: a + b mod m, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | 110 / **86.6** | **12.2** / – |
-| 128 | 283 / **285** | **21.2** / – |
-| 256 | 404 / **395** | **42.3** / – |
-| 384 | 507 / **491** | **105** / – |
-| 512 | 594 / **580** | **93.1** / – |
-| 1024 | 1,066 / **1,074** | **345** / – |
-| 2048 | 2,050 / **1,984** | **505** / – |
-| 4096 | 3,868 / **3,835** | **993** / – |
-
-### sub_mod, constant time: a − b mod m, in WebAssembly with wide arithmetic, Chrome
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | 106 / **78.8** | **5.0** / – |
-| 128 | 277 / **288** | **11.0** / – |
-| 256 | 438 / **366** | **23.5** / – |
-| 384 | 461 / **473** | **39.1** / – |
-| 512 | 543 / **542** | **53.7** / – |
-| 1024 | 973 / **979** | **142** / – |
-| 2048 | 1,896 / **1,861** | **459** / – |
-| 4096 | 3,652 / **3,615** | **773** / – |
-
-## Results in WebAssembly, Firefox
-
-### add: a + b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | 2.2 / **1.0** | 2.2 / **1.0** | 2.2 / **1.0** | 2.2 / 1.1 | **2.1** / **1.0** | 2.2 / **1.0** |
-| 128 | 4.0 / 2.8 | **3.7** / 3.0 | 4.0 / 3.1 | 4.3 / **2.7** | **3.7** / 2.9 | – |
-| 256 | **10.0** / **8.9** | – | 10.1 / 9.0 | 10.5 / 9.2 | 10.1 / 9.0 | – |
-| 384 | **15.9** / 15.4 | – | 16.0 / **15.2** | 17.4 / 17.3 | 17.5 / 16.8 | – |
-| 512 | 25.9 / **27.8** | – | 27.6 / 30.0 | 37.9 / 37.1 | **23.4** / 29.5 | – |
-| 1024 | **69.2** / 71.1 | – | 73.7 / **68.9** | 130 / 81.3 | 79.8 / 70.0 | – |
-| 2048 | **185** / **177** | – | 213 / 214 | 207 / 251 | 217 / 251 | – |
-| 4096 | 429 / **426** | – | 414 / 429 | 410 / 474 | **407** / 465 | – |
-
-### mul: a × b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **2.2** / – | **2.2** / **3.0** | **2.2** / – | **2.2** / – | **2.2** / – | **2.2** / – | – |
-| 128 | **12.3** / – | 13.5 / **12.3** | 17.0 / – | 37.1 / – | 14.0 / – | 17.0 / – | – |
-| 256 | **66.6** / – | – | 82.3 / – | 122 / – | 128 / – | 81.7 / – | – |
-| 384 | 228 / – | – | **219** / – | 299 / – | 365 / – | 237 / – | – |
-| 512 | **363** / – | – | 443 / – | 502 / – | 678 / – | – | – |
-| 1024 | **1,594** / – | – | – | 2,610 / – | 2,403 / – | 2,848 / – | – |
-| 2048 | **6,696** / – | – | 10,819 / – | 9,965 / – | 8,648 / – | 14,178 / – | 11,927 / – |
-| 4096 | **21,172** / – | – | 39,287 / – | 35,694 / – | 33,252 / – | 66,508 / – | 39,520 / – |
-
-### div: a / b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **7.0** / – | **7.0** / – | **7.0** / – | 565 / – | **7.0** / – | **7.0** / – | 160 / – |
-| 128 | **103** / – | 239 / – | 104 / – | 652 / – | 255 / – | 270 / – | 443 / – |
-| 256 | **221** / – | – | 411 / – | 1,502 / – | 931 / – | 918 / – | 617 / – |
-| 384 | **402** / – | – | 772 / – | 1,987 / – | 1,449 / – | 1,395 / – | 810 / – |
-| 512 | **575** / – | – | 1,029 / – | 2,421 / – | 2,032 / – | 1,942 / – | 1,026 / – |
-| 1024 | **1,493** / – | – | 2,707 / – | 4,980 / – | 4,960 / – | 4,718 / – | 2,204 / – |
-| 2048 | **4,377** / – | – | 7,254 / – | 12,534 / – | 15,995 / – | 13,763 / – | 6,105 / – |
-| 4096 | **15,027** / – | – | 24,768 / – | 38,668 / – | 51,591 / – | 47,991 / – | 20,074 / – |
-
-### mod: a mod b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **7.0** / – | **7.0** / – | **7.0** / – | 564 / – | **7.0** / – | **7.0** / – | 31.4 / – |
-| 128 | **96.3** / – | 239 / – | 99.4 / – | 651 / – | 257 / – | 269 / – | 448 / – |
-| 256 | **245** / – | – | 406 / – | 1,497 / – | 951 / – | 923 / – | 619 / – |
-| 384 | **412** / – | – | 716 / – | 1,985 / – | 1,437 / – | 1,378 / – | 807 / – |
-| 512 | **569** / – | – | 998 / – | 2,424 / – | 2,025 / – | 1,942 / – | 1,029 / – |
-| 1024 | **1,498** / – | – | 2,594 / – | 4,966 / – | 4,880 / – | 4,749 / – | 2,217 / – |
-| 2048 | **4,274** / – | – | 7,488 / – | 12,559 / – | 16,043 / – | 13,810 / – | 6,169 / – |
-| 4096 | **14,884** / – | – | 25,736 / – | 38,704 / – | 51,401 / – | 48,139 / – | 20,215 / – |
-
-### mulmod: a × b mod m, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | num-bigint |
-|---|---:|---:|---:|---:|---:|
-| 64 | **104** / **122** | 226 / 206 | 194 / 203 | 660 / 620 | 527 / – |
-| 128 | **247** / **255** | – | 428 / 432 | 1,595 / 1,466 | 766 / – |
-| 256 | **701** / **687** | – | 1,022 / 899 | 2,946 / 2,530 | 1,330 / – |
-| 384 | **1,414** / **1,409** | – | 1,716 / 1,697 | 4,125 / 3,926 | 2,119 / – |
-| 512 | **2,158** / **2,152** | – | 3,326 / 3,301 | 6,146 / 5,933 | 3,095 / – |
-| 1024 | **7,741** / **6,879** | – | 12,426 / 12,229 | 16,628 / 16,652 | 9,313 / – |
-| 2048 | **22,251** / **22,195** | – | 44,588 / 44,565 | 54,289 / 54,298 | 32,100 / – |
-| 4096 | **68,366** / **68,359** | – | 166,259 / 166,433 | 183,347 / 183,817 | 113,388 / – |
-
-### add_mod: a + b mod m, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 6.2 / **8.0** | **3.7** / – | 81.1 / 78.1 | 11.8 / – | 7.8 / – | **3.7** / – | 356 / – |
-| 128 | 19.9 / **46.4** | **9.8** / – | 22.8 / 51.4 | 23.0 / – | 10.0 / – | 10.1 / – | 384 / – |
-| 256 | 53.7 / **50.6** | – | 59.6 / 91.1 | 57.1 / – | 25.6 / – | **21.4** / – | 414 / – |
-| 384 | 104 / **119** | – | 96.2 / 140 | 86.1 / – | 43.9 / – | **31.2** / – | 448 / – |
-| 512 | 120 / **130** | – | 123 / 175 | 142 / – | 60.7 / – | **47.3** / – | 492 / – |
-| 1024 | 190 / **220** | – | 261 / 365 | 461 / – | 164 / – | **139** / – | 617 / – |
-| 2048 | 328 / **368** | – | 1,020 / 1,121 | 882 / – | 376 / – | **288** / – | 1,019 / – |
-| 4096 | **687** / **759** | – | 1,784 / 1,933 | 1,600 / – | 754 / – | 714 / – | 2,387 / – |
-
-### sub_mod: a − b mod m, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 8.0 / **10.0** | **3.0** / – | 79.7 / 76.3 | 5.0 / – | 6.4 / – | 5.0 / – | 453 / – |
-| 128 | 21.0 / **47.6** | **7.4** / – | 37.0 / 65.5 | 11.0 / – | 8.3 / – | 9.1 / – | 481 / – |
-| 256 | 53.6 / **63.7** | – | 91.4 / 131 | 34.4 / – | 21.9 / – | **20.1** / – | 529 / – |
-| 384 | 87.6 / **102** | – | 137 / 193 | 55.2 / – | **32.5** / – | 34.8 / – | 584 / – |
-| 512 | 107 / **136** | – | 177 / 250 | 91.6 / – | **54.3** / – | 72.3 / – | 636 / – |
-| 1024 | 192 / **263** | – | 583 / 667 | 348 / – | 185 / – | **152** / – | 849 / – |
-| 2048 | 578 / **677** | – | 1,370 / 1,469 | 563 / – | 415 / – | **373** / – | 1,360 / – |
-| 4096 | **666** / **794** | – | 2,397 / 2,534 | 1,474 / – | 673 / – | 738 / – | 2,776 / – |
-
-### add, constant time: a + b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | 2.2 / **1.0** | 2.2 / **1.0** | 2.2 / **1.0** | **2.1** / 1.1 | **2.1** / **1.0** | **2.1** / **1.0** |
-| 128 | 4.0 / 2.8 | **3.7** / 3.0 | 4.0 / 3.1 | 4.3 / **2.7** | **3.7** / 2.9 | – |
-| 256 | **10.0** / **8.9** | – | 10.1 / 9.0 | 10.5 / 9.2 | 10.1 / 9.0 | – |
-| 384 | **15.9** / 15.4 | – | 16.0 / **15.2** | 17.4 / 17.3 | 17.5 / 16.8 | – |
-| 512 | 26.0 / 27.5 | – | 27.6 / 29.9 | 37.9 / 36.9 | **23.3** / **25.3** | – |
-| 1024 | **69.3** / 71.1 | – | 74.5 / **68.9** | 131 / 81.0 | 79.7 / 70.1 | – |
-| 2048 | **185** / **178** | – | 214 / 214 | 207 / 251 | 217 / 251 | – |
-| 4096 | 428 / **427** | – | 414 / 429 | 410 / 475 | **407** / 466 | – |
-
-### mul, constant time: a × b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | **2.2** / – | **2.2** / **3.0** | **2.2** / – | **2.2** / – | **2.2** / – | **2.2** / – |
-| 128 | **12.3** / – | 13.5 / **12.3** | 17.0 / – | 37.1 / – | 14.0 / – | 17.0 / – |
-| 256 | **67.3** / – | – | 82.3 / – | 122 / – | 128 / – | 81.7 / – |
-| 384 | **217** / – | – | 220 / – | 301 / – | 367 / – | 237 / – |
-| 512 | **357** / – | – | 443 / – | 503 / – | 676 / – | – |
-| 1024 | **1,580** / – | – | – | 2,612 / – | 2,406 / – | 2,994 / – |
-| 2048 | **6,752** / – | – | – | 9,965 / – | 8,648 / – | 14,178 / – |
-| 4096 | **21,877** / – | – | – | 35,694 / – | 33,252 / – | 66,508 / – |
-
-### div, constant time: a / b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **144** / – | 429 / – |
-| 128 | **362** / – | 1,080 / – |
-| 256 | **623** / – | 1,972 / – |
-| 384 | **842** / – | 3,049 / – |
-| 512 | **1,148** / – | 4,284 / – |
-| 1024 | **2,897** / – | 10,435 / – |
-| 2048 | **8,549** / – | 27,542 / – |
-| 4096 | **28,855** / – | 85,172 / – |
-
-### mod, constant time: a mod b, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **149** / – | 422 / – |
-| 128 | **335** / – | 1,068 / – |
-| 256 | **587** / – | 1,964 / – |
-| 384 | **797** / – | 2,989 / – |
-| 512 | **1,092** / – | 4,288 / – |
-| 1024 | **2,771** / – | 10,387 / – |
-| 2048 | **8,592** / – | 28,028 / – |
-| 4096 | **28,828** / – | 85,218 / – |
-
-### mulmod, constant time: a × b mod m, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **263** / **252** | 536 / – |
-| 128 | **636** / **618** | 1,581 / – |
-| 256 | **1,429** / **1,382** | 3,292 / – |
-| 384 | **2,676** / **2,433** | 5,797 / – |
-| 512 | **3,648** / **3,664** | 8,785 / – |
-| 1024 | **10,446** / **10,972** | 25,045 / – |
-| 2048 | **36,270** / **35,622** | 76,479 / – |
-| 4096 | **132,124** / **130,197** | 256,735 / – |
-
-### add_mod, constant time: a + b mod m, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | 222 / **198** | **11.8** / – |
-| 128 | 425 / **427** | **23.0** / – |
-| 256 | 680 / **636** | **57.1** / – |
-| 384 | 787 / **798** | **86.1** / – |
-| 512 | 923 / **915** | **142** / – |
-| 1024 | 1,594 / **1,574** | **461** / – |
-| 2048 | 2,976 / **2,902** | **882** / – |
-| 4096 | 5,589 / **5,603** | **1,600** / – |
-
-### sub_mod, constant time: a − b mod m, in WebAssembly, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | 221 / **198** | **5.0** / – |
-| 128 | 432 / **445** | **11.0** / – |
-| 256 | 611 / **608** | **34.4** / – |
-| 384 | 745 / **735** | **55.2** / – |
-| 512 | 906 / **905** | **91.6** / – |
-| 1024 | 1,611 / **1,601** | **348** / – |
-| 2048 | 3,041 / **2,981** | **563** / – |
-| 4096 | 5,321 / **5,260** | **1,474** / – |
-
-## Results in WebAssembly with wide arithmetic, Firefox
-
-### add: a + b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | **2.2** / 1.1 | **2.2** / **1.0** | **2.2** / **1.0** | **2.2** / **1.0** | **2.2** / **1.0** | **2.2** / **1.0** |
-| 128 | 4.4 / 3.2 | **3.4** / 2.6 | 4.3 / 3.3 | 4.3 / 3.2 | 3.5 / **2.5** | – |
-| 256 | 11.5 / 11.4 | – | 13.0 / 11.7 | 11.5 / 11.0 | **11.0** / **7.7** | – |
-| 384 | **18.0** / **18.1** | – | 20.1 / 19.6 | 18.1 / **18.1** | 20.8 / 19.1 | – |
-| 512 | **32.1** / **31.1** | – | 40.5 / 33.3 | 38.1 / 31.8 | 34.4 / 39.9 | – |
-| 1024 | 74.0 / 71.4 | – | 72.2 / 64.5 | **68.7** / **63.8** | 71.9 / 70.9 | – |
-| 2048 | **147** / **141** | – | 205 / 206 | 179 / 221 | 206 / 259 | – |
-| 4096 | 405 / 400 | – | 380 / **391** | **337** / 393 | 417 / 478 | – |
-
-### mul: a × b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 2.2 / – | 2.2 / **3.0** | **2.1** / – | 2.2 / – | 2.2 / – | 2.2 / – | – |
-| 128 | 5.6 / – | 5.4 / **5.5** | 5.6 / – | **5.0** / – | 5.5 / – | 5.8 / – | – |
-| 256 | **26.0** / – | – | **26.0** / – | 27.0 / – | 34.5 / – | 36.2 / – | – |
-| 384 | 70.3 / – | – | 69.4 / – | **65.9** / – | 112 / – | 105 / – | – |
-| 512 | **131** / – | – | **131** / – | **131** / – | 242 / – | – | – |
-| 1024 | **846** / – | – | – | 918 / – | 1,024 / – | 1,092 / – | – |
-| 2048 | 3,697 / – | – | **3,194** / – | 4,033 / – | 3,404 / – | 5,334 / – | 11,868 / – |
-| 4096 | 12,443 / – | – | **11,657** / – | 16,323 / – | 12,865 / – | 22,761 / – | 39,591 / – |
-
-### div: a / b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **7.0** / – | **7.0** / – | **7.0** / – | 492 / – | **7.0** / – | **7.0** / – | 158 / – |
-| 128 | **36.4** / – | 239 / – | 55.7 / – | 549 / – | 240 / – | 250 / – | 415 / – |
-| 256 | **157** / – | – | 177 / – | 1,084 / – | 737 / – | 712 / – | 593 / – |
-| 384 | **295** / – | – | 411 / – | 1,359 / – | 1,115 / – | 1,053 / – | 780 / – |
-| 512 | **395** / – | – | 567 / – | 1,637 / – | 1,498 / – | 1,536 / – | 1,009 / – |
-| 1024 | **877** / – | – | 1,120 / – | 3,318 / – | 3,527 / – | 3,055 / – | 2,179 / – |
-| 2048 | **2,459** / – | – | 2,691 / – | 8,499 / – | 10,578 / – | 7,590 / – | 6,107 / – |
-| 4096 | **7,306** / – | – | 8,985 / – | 23,324 / – | 33,087 / – | 24,714 / – | 20,159 / – |
-
-### mod: a mod b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | **7.0** / – | **7.0** / – | **7.0** / – | 491 / – | **7.0** / – | **7.0** / – | 31.3 / – |
-| 128 | **33.1** / – | 239 / – | 51.4 / – | 548 / – | 241 / – | 254 / – | 429 / – |
-| 256 | **138** / – | – | 175 / – | 1,081 / – | 733 / – | 702 / – | 581 / – |
-| 384 | **273** / – | – | 342 / – | 1,357 / – | 1,113 / – | 1,098 / – | 761 / – |
-| 512 | **353** / – | – | 468 / – | 1,629 / – | 1,515 / – | 1,492 / – | 1,009 / – |
-| 1024 | **948** / – | – | 1,079 / – | 3,312 / – | 3,526 / – | 3,268 / – | 2,180 / – |
-| 2048 | **2,223** / – | – | 2,649 / – | 8,518 / – | 10,607 / – | 7,637 / – | 6,119 / – |
-| 4096 | **6,911** / – | – | 8,929 / – | 23,332 / – | 32,931 / – | 24,959 / – | 20,140 / – |
-
-### mulmod: a × b mod m, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | num-bigint |
-|---|---:|---:|---:|---:|---:|
-| 64 | **35.8** / **42.0** | 187 / 183 | 66.6 / 54.8 | 477 / 477 | 521 / – |
-| 128 | **158** / **167** | – | 209 / 208 | 1,098 / 1,094 | 752 / – |
-| 256 | **352** / **345** | – | 383 / 382 | 1,640 / 1,642 | 1,346 / – |
-| 384 | **669** / **661** | – | 696 / 690 | 2,375 / 2,402 | 2,171 / – |
-| 512 | 1,176 / **1,105** | – | **1,116** / 1,118 | 2,977 / 2,998 | 3,123 / – |
-| 1024 | 4,219 / 4,174 | – | **3,632** / **3,629** | 8,694 / 8,752 | 9,362 / – |
-| 2048 | **12,708** / **12,727** | – | 13,701 / 13,702 | 28,243 / 28,176 | 32,277 / – |
-| 4096 | **42,732** / **42,867** | – | 53,236 / 53,324 | 99,075 / 99,532 | 115,285 / – |
-
-### add_mod: a + b mod m, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 9.0 / **12.3** | **5.0** / – | 82.3 / 76.9 | 13.1 / – | 8.4 / – | **5.0** / – | 356 / – |
-| 128 | 20.2 / **26.2** | **9.2** / – | 25.1 / 38.8 | 22.9 / – | 10.4 / – | 12.3 / – | 367 / – |
-| 256 | 47.3 / **51.4** | – | 59.0 / 77.8 | 54.8 / – | 33.9 / – | **23.9** / – | 410 / – |
-| 384 | 107 / 117 | – | 87.7 / **106** | 82.7 / – | 53.4 / – | **40.4** / – | 440 / – |
-| 512 | 88.8 / **102** | – | 122 / 140 | 127 / – | 80.7 / – | **61.3** / – | 473 / – |
-| 1024 | 191 / **214** | – | 247 / 294 | 383 / – | 161 / – | **139** / – | 599 / – |
-| 2048 | 319 / **356** | – | 911 / 952 | 769 / – | 404 / – | **270** / – | 999 / – |
-| 4096 | 729 / **770** | – | 1,638 / 1,686 | 1,404 / – | 700 / – | **681** / – | 2,154 / – |
-
-### sub_mod: a − b mod m, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint | num-bigint |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 10.0 / **11.7** | **3.0** / – | 78.9 / 78.3 | 5.0 / – | 5.8 / – | 7.0 / – | 463 / – |
-| 128 | 20.1 / **25.5** | **7.3** / – | 38.0 / 52.1 | 11.0 / – | 8.8 / – | 9.4 / – | 493 / – |
-| 256 | 55.4 / **53.7** | – | 89.6 / 119 | 33.5 / – | 24.5 / – | **21.7** / – | 534 / – |
-| 384 | 66.4 / **84.2** | – | 141 / 174 | 55.1 / – | 47.9 / – | **44.3** / – | 587 / – |
-| 512 | 89.8 / **110** | – | 182 / 219 | 105 / – | **63.0** / – | 71.5 / – | 638 / – |
-| 1024 | **144** / **164** | – | 601 / 635 | 275 / – | 232 / – | 156 / – | 831 / – |
-| 2048 | **295** / **340** | – | 1,254 / 1,341 | 512 / – | 437 / – | 390 / – | 1,338 / – |
-| 4096 | **643** / **763** | – | 2,274 / 2,334 | 1,351 / – | 740 / – | 767 / – | 2,870 / – |
-
-### add, constant time: a + b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | **2.2** / 1.1 | **2.2** / **1.0** | **2.2** / **1.0** | **2.2** / **1.0** | **2.2** / **1.0** | **2.2** / **1.0** |
-| 128 | 4.4 / 3.2 | **3.4** / 2.6 | 4.3 / 3.3 | 4.3 / 3.2 | 3.5 / **2.5** | – |
-| 256 | 11.5 / 11.4 | – | 13.0 / 11.7 | 11.5 / 11.0 | **11.0** / **7.7** | – |
-| 384 | **18.0** / **18.1** | – | 20.1 / 19.6 | **18.0** / **18.1** | 20.8 / 19.1 | – |
-| 512 | **32.1** / **31.1** | – | 40.4 / 33.3 | 38.1 / 31.8 | 34.4 / 40.1 | – |
-| 1024 | 74.0 / 71.3 | – | 72.2 / 64.5 | **68.7** / **63.7** | 71.4 / 71.4 | – |
-| 2048 | **146** / **141** | – | 204 / 206 | 179 / 222 | 206 / 258 | – |
-| 4096 | 405 / **386** | – | 381 / 391 | **338** / 391 | 419 / 471 | – |
-
-### mul, constant time: a × b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | native | ruint | crypto-bigint | bnum | uint |
-|---|---:|---:|---:|---:|---:|---:|
-| 64 | **2.2** / – | **2.2** / **3.0** | **2.2** / – | **2.2** / – | **2.2** / – | **2.2** / – |
-| 128 | 5.6 / – | 5.4 / **5.5** | 5.6 / – | **5.0** / – | 5.4 / – | 5.8 / – |
-| 256 | **26.0** / – | – | **26.0** / – | 27.0 / – | 34.2 / – | 36.2 / – |
-| 384 | 70.2 / – | – | 70.2 / – | **64.5** / – | 113 / – | 105 / – |
-| 512 | 131 / – | – | **129** / – | 131 / – | 244 / – | – |
-| 1024 | **862** / – | – | – | 919 / – | 1,019 / – | 1,090 / – |
-| 2048 | 3,888 / – | – | – | 4,033 / – | **3,404** / – | 5,334 / – |
-| 4096 | **12,853** / – | – | – | 16,323 / – | 12,865 / – | 22,761 / – |
-
-### div, constant time: a / b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **59.5** / – | 338 / – |
-| 128 | **229** / – | 903 / – |
-| 256 | **478** / – | 1,518 / – |
-| 384 | **555** / – | 2,257 / – |
-| 512 | **841** / – | 3,098 / – |
-| 1024 | **2,255** / – | 7,764 / – |
-| 2048 | **6,940** / – | 18,805 / – |
-| 4096 | **21,125** / – | 50,685 / – |
-
-### mod, constant time: a mod b, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **66.8** / – | 339 / – |
-| 128 | **223** / – | 870 / – |
-| 256 | **399** / – | 1,498 / – |
-| 384 | **564** / – | 2,233 / – |
-| 512 | **785** / – | 3,101 / – |
-| 1024 | **1,991** / – | 7,488 / – |
-| 2048 | **6,107** / – | 18,784 / – |
-| 4096 | **20,263** / – | 50,546 / – |
-
-### mulmod, constant time: a × b mod m, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | **125** / **115** | 381 / – |
-| 128 | **375** / **378** | 1,145 / – |
-| 256 | **857** / **879** | 2,273 / – |
-| 384 | **1,478** / **1,524** | 3,654 / – |
-| 512 | **2,354** / **2,291** | 5,506 / – |
-| 1024 | **7,670** / **7,625** | 14,056 / – |
-| 2048 | **25,158** / **25,208** | 45,423 / – |
-| 4096 | **88,748** / **89,535** | 144,747 / – |
-
-### add_mod, constant time: a + b mod m, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | 137 / **130** | **13.1** / – |
-| 128 | 292 / **296** | **22.9** / – |
-| 256 | 473 / **462** | **54.8** / – |
-| 384 | 625 / **605** | **82.7** / – |
-| 512 | 715 / **705** | **127** / – |
-| 1024 | 1,252 / **1,297** | **383** / – |
-| 2048 | 2,528 / **2,478** | **769** / – |
-| 4096 | 4,640 / **4,699** | **1,404** / – |
-
-### sub_mod, constant time: a − b mod m, in WebAssembly with wide arithmetic, Firefox
-
-Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of the row, every tie bold. –: no such function or no chain form.
-
-| Bits | biguint | crypto-bigint |
-|---|---:|---:|
-| 64 | 108 / **118** | **5.0** / – |
-| 128 | 297 / **300** | **11.0** / – |
-| 256 | 465 / **430** | **33.5** / – |
-| 384 | 584 / **573** | **55.1** / – |
-| 512 | 617 / **718** | **105** / – |
-| 1024 | 1,256 / **1,141** | **275** / – |
-| 2048 | 2,356 / **2,279** | **512** / – |
-| 4096 | 4,230 / **4,216** | **1,351** / – |
+### Against the best competitor, throughput
+
+Cycles per operation of `biguint` against the fewest of the crates whose functions keep the row's definition. Δ: ours − best, then ours ÷ best; below 1 we lead.
+
+| Operation | Bits | Chrome | Δ | Chrome, wide arithmetic | Δ | Firefox | Δ | Firefox, wide arithmetic | Δ |
+|---|---|---|---:|---|---:|---|---:|---|---:|
+| add | 64 | 2.2 vs native 2.1 | +0.1 (1.05×) | 2.2 vs ruint 2.1 | +0.1 (1.05×) | 2.2 vs bnum 2.1 | +0.1 (1.05×) | 2.2 vs native 2.2 | +0.0 (1.00×) |
+| add | 128 | 4.0 vs native 4.0 | +0.0 (1.00×) | 3.8 vs native 3.7 | +0.1 (1.03×) | 4.0 vs native 3.7 | +0.3 (1.08×) | 4.4 vs native 3.4 | +1.0 (1.29×) |
+| add | 256 | 10.2 vs crypto-bigint 10.2 | +0.0 (1.00×) | 8.7 vs ruint 9.0 | −0.3 (0.97×) | 10.0 vs ruint 10.1 | −0.1 (0.99×) | 11.5 vs bnum 11.0 | +0.5 (1.05×) |
+| add | 384 | 16.3 vs ruint 16.4 | −0.1 (0.99×) | 12.3 vs crypto-bigint 12.2 | +0.1 (1.01×) | 15.9 vs ruint 16.0 | −0.1 (0.99×) | 18.0 vs crypto-bigint 18.1 | −0.1 (0.99×) |
+| add | 512 | 27.4 vs bnum 24.7 | +2.7 (1.11×) | 20.7 vs crypto-bigint 20.8 | −0.1 (1.00×) | 25.9 vs bnum 23.4 | +2.5 (1.11×) | 32.1 vs bnum 34.4 | −2.3 (0.93×) |
+| add | 1024 | 64.1 vs bnum 61.6 | +2.5 (1.04×) | 45.3 vs crypto-bigint 45.1 | +0.2 (1.00×) | 69.2 vs ruint 73.7 | −4.5 (0.94×) | 74.0 vs crypto-bigint 68.7 | +5.3 (1.08×) |
+| add | 2048 | 157 vs crypto-bigint 191 | −34.0 (0.82×) | 109 vs crypto-bigint 148 | −39.0 (0.74×) | 185 vs crypto-bigint 207 | −22.0 (0.89×) | 147 vs crypto-bigint 179 | −32.0 (0.82×) |
+| add | 4096 | 430 vs crypto-bigint 389 | +41.0 (1.11×) | 382 vs crypto-bigint 283 | +99.0 (1.35×) | 429 vs bnum 407 | +22.0 (1.05×) | 405 vs crypto-bigint 337 | +68.0 (1.20×) |
+| mul | 64 | 2.1 vs ruint 2.1 | +0.0 (1.00×) | 2.2 vs ruint 2.1 | +0.1 (1.05×) | 2.2 vs native 2.2 | +0.0 (1.00×) | 2.2 vs ruint 2.1 | +0.1 (1.05×) |
+| mul | 128 | 10.0 vs ruint 11.0 | −1.0 (0.91×) | 6.5 vs native 4.1 | +2.4 (1.59×) | 12.3 vs native 13.5 | −1.2 (0.91×) | 5.6 vs crypto-bigint 5.0 | +0.6 (1.12×) |
+| mul | 256 | 47.7 vs ruint 66.6 | −18.9 (0.72×) | 16.8 vs ruint 16.8 | +0.0 (1.00×) | 66.6 vs uint 81.7 | −15.1 (0.82×) | 26.0 vs ruint 26.0 | +0.0 (1.00×) |
+| mul | 384 | 181 vs uint 154 | +27.0 (1.18×) | 52.3 vs crypto-bigint 39.6 | +12.7 (1.32×) | 228 vs ruint 219 | +9.0 (1.04×) | 70.3 vs crypto-bigint 65.9 | +4.4 (1.07×) |
+| mul | 512 | 295 vs ruint 320 | −25.0 (0.92×) | 70.7 vs ruint 69.2 | +1.5 (1.02×) | 363 vs ruint 443 | −80.0 (0.82×) | 131 vs ruint 131 | +0.0 (1.00×) |
+| mul | 1024 | 1,340 vs bnum 1,544 | −204 (0.87×) | 691 vs uint 505 | +186 (1.37×) | 1,594 vs bnum 2,403 | −809 (0.66×) | 846 vs crypto-bigint 918 | −72.0 (0.92×) |
+| mul | 2048 | 5,613 vs bnum 6,288 | −675 (0.89×) | 2,500 vs ruint 2,115 | +385 (1.18×) | 6,696 vs bnum 8,648 | −1,952 (0.77×) | 3,697 vs ruint 3,194 | +503 (1.16×) |
+| mul | 4096 | 17,687 vs bnum 23,616 | −5,929 (0.75×) | 8,430 vs ruint 8,001 | +429 (1.05×) | 21,172 vs bnum 33,252 | −12,080 (0.64×) | 12,443 vs ruint 11,657 | +786 (1.07×) |
+| div | 64 | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) |
+| div | 128 | 60.1 vs ruint 93.8 | −33.7 (0.64×) | 28.3 vs ruint 43.3 | −15.0 (0.65×) | 103 vs ruint 104 | −1.0 (0.99×) | 36.4 vs ruint 55.7 | −19.3 (0.65×) |
+| div | 256 | 216 vs ruint 320 | −104 (0.68×) | 87.0 vs ruint 156 | −69.0 (0.56×) | 221 vs ruint 411 | −190 (0.54×) | 157 vs ruint 177 | −20.0 (0.89×) |
+| div | 384 | 351 vs ruint 604 | −253 (0.58×) | 203 vs ruint 349 | −146 (0.58×) | 402 vs ruint 772 | −370 (0.52×) | 295 vs ruint 411 | −116 (0.72×) |
+| div | 512 | 509 vs num-bigint 807 | −298 (0.63×) | 295 vs ruint 422 | −127 (0.70×) | 575 vs num-bigint 1,026 | −451 (0.56×) | 395 vs ruint 567 | −172 (0.70×) |
+| div | 1024 | 1,196 vs num-bigint 1,940 | −744 (0.62×) | 696 vs ruint 899 | −203 (0.77×) | 1,493 vs num-bigint 2,204 | −711 (0.68×) | 877 vs ruint 1,120 | −243 (0.78×) |
+| div | 2048 | 3,242 vs num-bigint 5,774 | −2,532 (0.56×) | 2,005 vs ruint 2,358 | −353 (0.85×) | 4,377 vs num-bigint 6,105 | −1,728 (0.72×) | 2,459 vs ruint 2,691 | −232 (0.91×) |
+| div | 4096 | 12,603 vs num-bigint 20,046 | −7,443 (0.63×) | 6,829 vs ruint 7,695 | −866 (0.89×) | 15,027 vs num-bigint 20,074 | −5,047 (0.75×) | 7,306 vs ruint 8,985 | −1,679 (0.81×) |
+| mod | 64 | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) |
+| mod | 128 | 52.8 vs ruint 87.3 | −34.5 (0.60×) | 30.0 vs ruint 40.5 | −10.5 (0.74×) | 96.3 vs ruint 99.4 | −3.1 (0.97×) | 33.1 vs ruint 51.4 | −18.3 (0.64×) |
+| mod | 256 | 217 vs ruint 321 | −104 (0.68×) | 82.0 vs ruint 157 | −75.0 (0.52×) | 245 vs ruint 406 | −161 (0.60×) | 138 vs ruint 175 | −37.0 (0.79×) |
+| mod | 384 | 351 vs ruint 581 | −230 (0.60×) | 195 vs ruint 320 | −125 (0.61×) | 412 vs ruint 716 | −304 (0.58×) | 273 vs ruint 342 | −69.0 (0.80×) |
+| mod | 512 | 486 vs ruint 798 | −312 (0.61×) | 279 vs ruint 403 | −124 (0.69×) | 569 vs ruint 998 | −429 (0.57×) | 353 vs ruint 468 | −115 (0.75×) |
+| mod | 1024 | 1,217 vs num-bigint 1,940 | −723 (0.63×) | 720 vs ruint 961 | −241 (0.75×) | 1,498 vs num-bigint 2,217 | −719 (0.68×) | 948 vs ruint 1,079 | −131 (0.88×) |
+| mod | 2048 | 3,347 vs num-bigint 5,774 | −2,427 (0.58×) | 1,955 vs ruint 2,277 | −322 (0.86×) | 4,274 vs num-bigint 6,169 | −1,895 (0.69×) | 2,223 vs ruint 2,649 | −426 (0.84×) |
+| mod | 4096 | 12,491 vs num-bigint 20,253 | −7,762 (0.62×) | 6,494 vs ruint 7,790 | −1,296 (0.83×) | 14,884 vs num-bigint 20,215 | −5,331 (0.74×) | 6,911 vs ruint 8,929 | −2,018 (0.77×) |
+| mulmod | 64 | 61.0 vs ruint 84.7 | −23.7 (0.72×) | 31.6 vs ruint 39.9 | −8.3 (0.79×) | 104 vs ruint 194 | −90.0 (0.54×) | 35.8 vs ruint 66.6 | −30.8 (0.54×) |
+| mulmod | 128 | 197 vs ruint 325 | −128 (0.61×) | 81.7 vs ruint 137 | −55.3 (0.60×) | 247 vs ruint 428 | −181 (0.58×) | 158 vs ruint 209 | −51.0 (0.76×) |
+| mulmod | 256 | 579 vs ruint 818 | −239 (0.71×) | 281 vs ruint 307 | −26.0 (0.92×) | 701 vs ruint 1,022 | −321 (0.69×) | 352 vs ruint 383 | −31.0 (0.92×) |
+| mulmod | 384 | 1,041 vs ruint 1,614 | −573 (0.64×) | 507 vs ruint 538 | −31.0 (0.94×) | 1,414 vs ruint 1,716 | −302 (0.82×) | 669 vs ruint 696 | −27.0 (0.96×) |
+| mulmod | 512 | 1,652 vs num-bigint 2,815 | −1,163 (0.59×) | 849 vs ruint 855 | −6.0 (0.99×) | 2,158 vs num-bigint 3,095 | −937 (0.70×) | 1,176 vs ruint 1,116 | +60.0 (1.05×) |
+| mulmod | 1024 | 5,332 vs num-bigint 8,902 | −3,570 (0.60×) | 2,764 vs ruint 2,632 | +132 (1.05×) | 7,741 vs num-bigint 9,313 | −1,572 (0.83×) | 4,219 vs ruint 3,632 | +587 (1.16×) |
+| mulmod | 2048 | 17,381 vs num-bigint 32,084 | −14,703 (0.54×) | 9,432 vs ruint 10,666 | −1,234 (0.88×) | 22,251 vs num-bigint 32,100 | −9,849 (0.69×) | 12,708 vs ruint 13,701 | −993 (0.93×) |
+| mulmod | 4096 | 55,642 vs num-bigint 112,933 | −57,291 (0.49×) | 29,321 vs ruint 41,180 | −11,859 (0.71×) | 68,366 vs num-bigint 113,388 | −45,022 (0.60×) | 42,732 vs ruint 53,236 | −10,504 (0.80×) |
+| add_mod | 64 | 5.0 vs native 3.3 | +1.7 (1.52×) | 6.0 vs native 4.0 | +2.0 (1.50×) | 6.2 vs native 3.7 | +2.5 (1.68×) | 9.0 vs native 5.0 | +4.0 (1.80×) |
+| add_mod | 128 | 15.0 vs native 9.5 | +5.5 (1.58×) | 13.0 vs uint 8.9 | +4.1 (1.46×) | 19.9 vs native 9.8 | +10.1 (2.03×) | 20.2 vs native 9.2 | +11.0 (2.20×) |
+| add_mod | 256 | 27.4 vs uint 22.1 | +5.3 (1.24×) | 26.6 vs uint 21.4 | +5.2 (1.24×) | 53.7 vs uint 21.4 | +32.3 (2.51×) | 47.3 vs uint 23.9 | +23.4 (1.98×) |
+| add_mod | 384 | 62.2 vs uint 34.5 | +27.7 (1.80×) | 66.2 vs uint 38.5 | +27.7 (1.72×) | 104 vs uint 31.2 | +72.8 (3.33×) | 107 vs uint 40.4 | +66.6 (2.65×) |
+| add_mod | 512 | 73.8 vs uint 46.9 | +26.9 (1.57×) | 44.5 vs uint 44.6 | −0.1 (1.00×) | 120 vs uint 47.3 | +72.7 (2.54×) | 88.8 vs uint 61.3 | +27.5 (1.45×) |
+| add_mod | 1024 | 148 vs uint 106 | +42.0 (1.40×) | 128 vs uint 104 | +24.0 (1.23×) | 190 vs uint 139 | +51.0 (1.37×) | 191 vs uint 139 | +52.0 (1.37×) |
+| add_mod | 2048 | 291 vs uint 250 | +41.0 (1.16×) | 218 vs uint 242 | −24.0 (0.90×) | 328 vs uint 288 | +40.0 (1.14×) | 319 vs uint 270 | +49.0 (1.18×) |
+| add_mod | 4096 | 634 vs uint 618 | +16.0 (1.03×) | 489 vs uint 585 | −96.0 (0.84×) | 687 vs uint 714 | −27.0 (0.96×) | 729 vs uint 681 | +48.0 (1.07×) |
+| sub_mod | 64 | 5.0 vs native 3.0 | +2.0 (1.67×) | 6.0 vs native 3.0 | +3.0 (2.00×) | 8.0 vs native 3.0 | +5.0 (2.67×) | 10.0 vs native 3.0 | +7.0 (3.33×) |
+| sub_mod | 128 | 14.0 vs native 6.8 | +7.2 (2.06×) | 12.0 vs native 5.4 | +6.6 (2.22×) | 21.0 vs native 7.4 | +13.6 (2.84×) | 20.1 vs native 7.3 | +12.8 (2.75×) |
+| sub_mod | 256 | 32.8 vs bnum 18.6 | +14.2 (1.76×) | 27.3 vs bnum 16.5 | +10.8 (1.65×) | 53.6 vs uint 20.1 | +33.5 (2.67×) | 55.4 vs uint 21.7 | +33.7 (2.55×) |
+| sub_mod | 384 | 53.1 vs uint 31.3 | +21.8 (1.70×) | 33.1 vs uint 32.1 | +1.0 (1.03×) | 87.6 vs bnum 32.5 | +55.1 (2.70×) | 66.4 vs uint 44.3 | +22.1 (1.50×) |
+| sub_mod | 512 | 80.4 vs bnum 46.9 | +33.5 (1.71×) | 50.1 vs bnum 44.4 | +5.7 (1.13×) | 107 vs bnum 54.3 | +52.7 (1.97×) | 89.8 vs bnum 63.0 | +26.8 (1.43×) |
+| sub_mod | 1024 | 150 vs uint 134 | +16.0 (1.12×) | 104 vs uint 132 | −28.0 (0.79×) | 192 vs uint 152 | +40.0 (1.26×) | 144 vs uint 156 | −12.0 (0.92×) |
+| sub_mod | 2048 | 382 vs uint 301 | +81.0 (1.27×) | 231 vs uint 299 | −68.0 (0.77×) | 578 vs uint 373 | +205 (1.55×) | 295 vs uint 390 | −95.0 (0.76×) |
+| sub_mod | 4096 | 656 vs bnum 672 | −16.0 (0.98×) | 492 vs uint 679 | −187 (0.72×) | 666 vs bnum 673 | −7.0 (0.99×) | 643 vs bnum 740 | −97.0 (0.87×) |
+| add, constant time | 64 | 2.2 vs crypto-bigint 2.1 | +0.1 (1.05×) | 2.2 vs ruint 2.1 | +0.1 (1.05×) | 2.2 vs crypto-bigint 2.1 | +0.1 (1.05×) | 2.2 vs native 2.2 | +0.0 (1.00×) |
+| add, constant time | 128 | 4.0 vs native 4.0 | +0.0 (1.00×) | 3.8 vs native 3.7 | +0.1 (1.03×) | 4.0 vs native 3.7 | +0.3 (1.08×) | 4.4 vs native 3.4 | +1.0 (1.29×) |
+| add, constant time | 256 | 10.2 vs ruint 10.3 | −0.1 (0.99×) | 8.7 vs ruint 9.0 | −0.3 (0.97×) | 10.0 vs ruint 10.1 | −0.1 (0.99×) | 11.5 vs bnum 11.0 | +0.5 (1.05×) |
+| add, constant time | 384 | 16.3 vs ruint 16.3 | +0.0 (1.00×) | 12.3 vs crypto-bigint 12.2 | +0.1 (1.01×) | 15.9 vs ruint 16.0 | −0.1 (0.99×) | 18.0 vs crypto-bigint 18.0 | +0.0 (1.00×) |
+| add, constant time | 512 | 27.5 vs bnum 24.7 | +2.8 (1.11×) | 20.8 vs crypto-bigint 20.8 | +0.0 (1.00×) | 26.0 vs bnum 23.3 | +2.7 (1.12×) | 32.1 vs bnum 34.4 | −2.3 (0.93×) |
+| add, constant time | 1024 | 64.0 vs bnum 61.6 | +2.4 (1.04×) | 45.4 vs crypto-bigint 45.2 | +0.2 (1.00×) | 69.3 vs ruint 74.5 | −5.2 (0.93×) | 74.0 vs crypto-bigint 68.7 | +5.3 (1.08×) |
+| add, constant time | 2048 | 157 vs crypto-bigint 191 | −34.0 (0.82×) | 108 vs crypto-bigint 148 | −40.0 (0.73×) | 185 vs crypto-bigint 207 | −22.0 (0.89×) | 146 vs crypto-bigint 179 | −33.0 (0.82×) |
+| add, constant time | 4096 | 429 vs crypto-bigint 395 | +34.0 (1.09×) | 379 vs crypto-bigint 284 | +95.0 (1.33×) | 428 vs bnum 407 | +21.0 (1.05×) | 405 vs crypto-bigint 338 | +67.0 (1.20×) |
+| mul, constant time | 64 | 2.1 vs native 2.1 | +0.0 (1.00×) | 2.2 vs native 2.2 | +0.0 (1.00×) | 2.2 vs native 2.2 | +0.0 (1.00×) | 2.2 vs native 2.2 | +0.0 (1.00×) |
+| mul, constant time | 128 | 10.0 vs ruint 11.0 | −1.0 (0.91×) | 6.5 vs native 4.2 | +2.3 (1.55×) | 12.3 vs native 13.5 | −1.2 (0.91×) | 5.6 vs crypto-bigint 5.0 | +0.6 (1.12×) |
+| mul, constant time | 256 | 47.8 vs ruint 66.7 | −18.9 (0.72×) | 16.8 vs ruint 16.8 | +0.0 (1.00×) | 67.3 vs uint 81.7 | −14.4 (0.82×) | 26.0 vs ruint 26.0 | +0.0 (1.00×) |
+| mul, constant time | 384 | 164 vs uint 160 | +4.0 (1.02×) | 52.3 vs crypto-bigint 39.5 | +12.8 (1.32×) | 217 vs ruint 220 | −3.0 (0.99×) | 70.2 vs crypto-bigint 64.5 | +5.7 (1.09×) |
+| mul, constant time | 512 | 298 vs ruint 320 | −22.0 (0.93×) | 72.3 vs ruint 69.2 | +3.1 (1.04×) | 357 vs ruint 443 | −86.0 (0.81×) | 131 vs ruint 129 | +2.0 (1.02×) |
+| mul, constant time | 1024 | 1,344 vs bnum 1,544 | −200 (0.87×) | 693 vs uint 503 | +190 (1.38×) | 1,580 vs bnum 2,406 | −826 (0.66×) | 862 vs crypto-bigint 919 | −57.0 (0.94×) |
+| mul, constant time | 2048 | 5,787 vs bnum 6,288 | −501 (0.92×) | 2,558 vs bnum 2,603 | −45.0 (0.98×) | 6,752 vs bnum 8,648 | −1,896 (0.78×) | 3,888 vs bnum 3,404 | +484 (1.14×) |
+| mul, constant time | 4096 | 18,263 vs bnum 23,616 | −5,353 (0.77×) | 8,862 vs bnum 10,109 | −1,247 (0.88×) | 21,877 vs bnum 33,252 | −11,375 (0.66×) | 12,853 vs bnum 12,865 | −12.0 (1.00×) |
+| div, constant time | 64 | 83.6 vs crypto-bigint 389 | −305 (0.21×) | 47.0 vs crypto-bigint 322 | −275 (0.15×) | 144 vs crypto-bigint 429 | −285 (0.34×) | 59.5 vs crypto-bigint 338 | −279 (0.18×) |
+| div, constant time | 128 | 220 vs crypto-bigint 901 | −681 (0.24×) | 183 vs crypto-bigint 751 | −568 (0.24×) | 362 vs crypto-bigint 1,080 | −718 (0.34×) | 229 vs crypto-bigint 903 | −674 (0.25×) |
+| div, constant time | 256 | 509 vs crypto-bigint 1,696 | −1,187 (0.30×) | 246 vs crypto-bigint 1,362 | −1,116 (0.18×) | 623 vs crypto-bigint 1,972 | −1,349 (0.32×) | 478 vs crypto-bigint 1,518 | −1,040 (0.31×) |
+| div, constant time | 384 | 632 vs crypto-bigint 2,516 | −1,884 (0.25×) | 524 vs crypto-bigint 2,016 | −1,492 (0.26×) | 842 vs crypto-bigint 3,049 | −2,207 (0.28×) | 555 vs crypto-bigint 2,257 | −1,702 (0.25×) |
+| div, constant time | 512 | 990 vs crypto-bigint 3,541 | −2,551 (0.28×) | 714 vs crypto-bigint 2,768 | −2,054 (0.26×) | 1,148 vs crypto-bigint 4,284 | −3,136 (0.27×) | 841 vs crypto-bigint 3,098 | −2,257 (0.27×) |
+| div, constant time | 1024 | 2,424 vs crypto-bigint 8,493 | −6,069 (0.29×) | 1,796 vs crypto-bigint 7,043 | −5,247 (0.26×) | 2,897 vs crypto-bigint 10,435 | −7,538 (0.28×) | 2,255 vs crypto-bigint 7,764 | −5,509 (0.29×) |
+| div, constant time | 2048 | 7,350 vs crypto-bigint 22,487 | −15,137 (0.33×) | 5,079 vs crypto-bigint 16,909 | −11,830 (0.30×) | 8,549 vs crypto-bigint 27,542 | −18,993 (0.31×) | 6,940 vs crypto-bigint 18,805 | −11,865 (0.37×) |
+| div, constant time | 4096 | 25,331 vs crypto-bigint 67,208 | −41,877 (0.38×) | 16,113 vs crypto-bigint 43,448 | −27,335 (0.37×) | 28,855 vs crypto-bigint 85,172 | −56,317 (0.34×) | 21,125 vs crypto-bigint 50,685 | −29,560 (0.42×) |
+| mod, constant time | 64 | 85.1 vs crypto-bigint 380 | −295 (0.22×) | 47.2 vs crypto-bigint 327 | −280 (0.14×) | 149 vs crypto-bigint 422 | −273 (0.35×) | 66.8 vs crypto-bigint 339 | −272 (0.20×) |
+| mod, constant time | 128 | 216 vs crypto-bigint 885 | −669 (0.24×) | 177 vs crypto-bigint 741 | −564 (0.24×) | 335 vs crypto-bigint 1,068 | −733 (0.31×) | 223 vs crypto-bigint 870 | −647 (0.26×) |
+| mod, constant time | 256 | 513 vs crypto-bigint 1,629 | −1,116 (0.31×) | 339 vs crypto-bigint 1,341 | −1,002 (0.25×) | 587 vs crypto-bigint 1,964 | −1,377 (0.30×) | 399 vs crypto-bigint 1,498 | −1,099 (0.27×) |
+| mod, constant time | 384 | 734 vs crypto-bigint 2,531 | −1,797 (0.29×) | 529 vs crypto-bigint 1,971 | −1,442 (0.27×) | 797 vs crypto-bigint 2,989 | −2,192 (0.27×) | 564 vs crypto-bigint 2,233 | −1,669 (0.25×) |
+| mod, constant time | 512 | 1,060 vs crypto-bigint 3,515 | −2,455 (0.30×) | 698 vs crypto-bigint 2,751 | −2,053 (0.25×) | 1,092 vs crypto-bigint 4,288 | −3,196 (0.25×) | 785 vs crypto-bigint 3,101 | −2,316 (0.25×) |
+| mod, constant time | 1024 | 2,507 vs crypto-bigint 8,475 | −5,968 (0.30×) | 1,822 vs crypto-bigint 7,021 | −5,199 (0.26×) | 2,771 vs crypto-bigint 10,387 | −7,616 (0.27×) | 1,991 vs crypto-bigint 7,488 | −5,497 (0.27×) |
+| mod, constant time | 2048 | 7,625 vs crypto-bigint 22,423 | −14,798 (0.34×) | 5,045 vs crypto-bigint 16,892 | −11,847 (0.30×) | 8,592 vs crypto-bigint 28,028 | −19,436 (0.31×) | 6,107 vs crypto-bigint 18,784 | −12,677 (0.33×) |
+| mod, constant time | 4096 | 25,923 vs crypto-bigint 67,693 | −41,770 (0.38×) | 16,265 vs crypto-bigint 46,956 | −30,691 (0.35×) | 28,828 vs crypto-bigint 85,218 | −56,390 (0.34×) | 20,263 vs crypto-bigint 50,546 | −30,283 (0.40×) |
+| mulmod, constant time | 64 | 174 vs crypto-bigint 475 | −301 (0.37×) | 97.4 vs crypto-bigint 351 | −254 (0.28×) | 263 vs crypto-bigint 536 | −273 (0.49×) | 125 vs crypto-bigint 381 | −256 (0.33×) |
+| mulmod, constant time | 128 | 561 vs crypto-bigint 1,285 | −724 (0.44×) | 358 vs crypto-bigint 998 | −640 (0.36×) | 636 vs crypto-bigint 1,581 | −945 (0.40×) | 375 vs crypto-bigint 1,145 | −770 (0.33×) |
+| mulmod, constant time | 256 | 1,212 vs crypto-bigint 2,845 | −1,633 (0.43×) | 738 vs crypto-bigint 1,975 | −1,237 (0.37×) | 1,429 vs crypto-bigint 3,292 | −1,863 (0.43×) | 857 vs crypto-bigint 2,273 | −1,416 (0.38×) |
+| mulmod, constant time | 384 | 1,994 vs crypto-bigint 4,905 | −2,911 (0.41×) | 1,202 vs crypto-bigint 3,226 | −2,024 (0.37×) | 2,676 vs crypto-bigint 5,797 | −3,121 (0.46×) | 1,478 vs crypto-bigint 3,654 | −2,176 (0.40×) |
+| mulmod, constant time | 512 | 3,064 vs crypto-bigint 7,624 | −4,560 (0.40×) | 1,829 vs crypto-bigint 4,663 | −2,834 (0.39×) | 3,648 vs crypto-bigint 8,785 | −5,137 (0.42×) | 2,354 vs crypto-bigint 5,506 | −3,152 (0.43×) |
+| mulmod, constant time | 1024 | 9,559 vs crypto-bigint 21,365 | −11,806 (0.45×) | 5,951 vs crypto-bigint 13,268 | −7,317 (0.45×) | 10,446 vs crypto-bigint 25,045 | −14,599 (0.42×) | 7,670 vs crypto-bigint 14,056 | −6,386 (0.55×) |
+| mulmod, constant time | 2048 | 32,879 vs crypto-bigint 65,260 | −32,381 (0.50×) | 19,574 vs crypto-bigint 35,265 | −15,691 (0.56×) | 36,270 vs crypto-bigint 76,479 | −40,209 (0.47×) | 25,158 vs crypto-bigint 45,423 | −20,265 (0.55×) |
+| mulmod, constant time | 4096 | 119,268 vs crypto-bigint 259,181 | −139,913 (0.46×) | 69,939 vs crypto-bigint 110,710 | −40,771 (0.63×) | 132,124 vs crypto-bigint 256,735 | −124,611 (0.51×) | 88,748 vs crypto-bigint 144,747 | −55,999 (0.61×) |
+| add_mod, constant time | 64 | 178 vs crypto-bigint 12.9 | +165 (13.80×) | 110 vs crypto-bigint 12.2 | +97.8 (9.02×) | 222 vs crypto-bigint 11.8 | +210 (18.81×) | 137 vs crypto-bigint 13.1 | +124 (10.46×) |
+| add_mod, constant time | 128 | 397 vs crypto-bigint 23.7 | +373 (16.75×) | 283 vs crypto-bigint 21.2 | +262 (13.35×) | 425 vs crypto-bigint 23.0 | +402 (18.48×) | 292 vs crypto-bigint 22.9 | +269 (12.75×) |
+| add_mod, constant time | 256 | 551 vs crypto-bigint 47.4 | +504 (11.62×) | 404 vs crypto-bigint 42.3 | +362 (9.55×) | 680 vs crypto-bigint 57.1 | +623 (11.91×) | 473 vs crypto-bigint 54.8 | +418 (8.63×) |
+| add_mod, constant time | 384 | 679 vs crypto-bigint 96.7 | +582 (7.02×) | 507 vs crypto-bigint 105 | +402 (4.83×) | 787 vs crypto-bigint 86.1 | +701 (9.14×) | 625 vs crypto-bigint 82.7 | +542 (7.56×) |
+| add_mod, constant time | 512 | 807 vs crypto-bigint 108 | +699 (7.47×) | 594 vs crypto-bigint 93.1 | +501 (6.38×) | 923 vs crypto-bigint 142 | +781 (6.50×) | 715 vs crypto-bigint 127 | +588 (5.63×) |
+| add_mod, constant time | 1024 | 1,441 vs crypto-bigint 377 | +1,064 (3.82×) | 1,066 vs crypto-bigint 345 | +721 (3.09×) | 1,594 vs crypto-bigint 461 | +1,133 (3.46×) | 1,252 vs crypto-bigint 383 | +869 (3.27×) |
+| add_mod, constant time | 2048 | 2,677 vs crypto-bigint 573 | +2,104 (4.67×) | 2,050 vs crypto-bigint 505 | +1,545 (4.06×) | 2,976 vs crypto-bigint 882 | +2,094 (3.37×) | 2,528 vs crypto-bigint 769 | +1,759 (3.29×) |
+| add_mod, constant time | 4096 | 5,234 vs crypto-bigint 1,159 | +4,075 (4.52×) | 3,868 vs crypto-bigint 993 | +2,875 (3.90×) | 5,589 vs crypto-bigint 1,600 | +3,989 (3.49×) | 4,640 vs crypto-bigint 1,404 | +3,236 (3.30×) |
+| sub_mod, constant time | 64 | 183 vs crypto-bigint 5.0 | +178 (36.60×) | 106 vs crypto-bigint 5.0 | +101 (21.20×) | 221 vs crypto-bigint 5.0 | +216 (44.20×) | 108 vs crypto-bigint 5.0 | +103 (21.60×) |
+| sub_mod, constant time | 128 | 396 vs crypto-bigint 10.3 | +386 (38.45×) | 277 vs crypto-bigint 11.0 | +266 (25.18×) | 432 vs crypto-bigint 11.0 | +421 (39.27×) | 297 vs crypto-bigint 11.0 | +286 (27.00×) |
+| sub_mod, constant time | 256 | 523 vs crypto-bigint 28.1 | +495 (18.61×) | 438 vs crypto-bigint 23.5 | +415 (18.64×) | 611 vs crypto-bigint 34.4 | +577 (17.76×) | 465 vs crypto-bigint 33.5 | +432 (13.88×) |
+| sub_mod, constant time | 384 | 652 vs crypto-bigint 48.9 | +603 (13.33×) | 461 vs crypto-bigint 39.1 | +422 (11.79×) | 745 vs crypto-bigint 55.2 | +690 (13.50×) | 584 vs crypto-bigint 55.1 | +529 (10.60×) |
+| sub_mod, constant time | 512 | 774 vs crypto-bigint 71.2 | +703 (10.87×) | 543 vs crypto-bigint 53.7 | +489 (10.11×) | 906 vs crypto-bigint 91.6 | +814 (9.89×) | 617 vs crypto-bigint 105 | +512 (5.88×) |
+| sub_mod, constant time | 1024 | 1,389 vs crypto-bigint 177 | +1,212 (7.85×) | 973 vs crypto-bigint 142 | +831 (6.85×) | 1,611 vs crypto-bigint 348 | +1,263 (4.63×) | 1,256 vs crypto-bigint 275 | +981 (4.57×) |
+| sub_mod, constant time | 2048 | 2,660 vs crypto-bigint 519 | +2,141 (5.13×) | 1,896 vs crypto-bigint 459 | +1,437 (4.13×) | 3,041 vs crypto-bigint 563 | +2,478 (5.40×) | 2,356 vs crypto-bigint 512 | +1,844 (4.60×) |
+| sub_mod, constant time | 4096 | 4,951 vs crypto-bigint 941 | +4,010 (5.26×) | 3,652 vs crypto-bigint 773 | +2,879 (4.72×) | 5,321 vs crypto-bigint 1,474 | +3,847 (3.61×) | 4,230 vs crypto-bigint 1,351 | +2,879 (3.13×) |
+
+### Against the best competitor, latency
+
+Cycles per operation of `biguint` against the fewest of the crates whose functions keep the row's definition. Δ: ours − best, then ours ÷ best; below 1 we lead.
+
+| Operation | Bits | Chrome | Δ | Chrome, wide arithmetic | Δ | Firefox | Δ | Firefox, wide arithmetic | Δ |
+|---|---|---|---:|---|---:|---|---:|---|---:|
+| add | 64 | 1.1 vs native 1.1 | +0.0 (1.00×) | 1.1 vs native 1.1 | +0.0 (1.00×) | 1.0 vs native 1.0 | +0.0 (1.00×) | 1.1 vs native 1.0 | +0.1 (1.10×) |
+| add | 128 | 3.0 vs native 2.8 | +0.2 (1.07×) | 2.5 vs bnum 2.0 | +0.5 (1.25×) | 2.8 vs crypto-bigint 2.7 | +0.1 (1.04×) | 3.2 vs bnum 2.5 | +0.7 (1.28×) |
+| add | 256 | 9.8 vs bnum 8.1 | +1.7 (1.21×) | 6.8 vs bnum 6.3 | +0.5 (1.08×) | 8.9 vs ruint 9.0 | −0.1 (0.99×) | 11.4 vs bnum 7.7 | +3.7 (1.48×) |
+| add | 384 | 15.4 vs ruint 15.4 | +0.0 (1.00×) | 12.2 vs crypto-bigint 12.4 | −0.2 (0.98×) | 15.4 vs ruint 15.2 | +0.2 (1.01×) | 18.1 vs crypto-bigint 18.1 | +0.0 (1.00×) |
+| add | 512 | 25.7 vs bnum 22.3 | +3.4 (1.15×) | 17.3 vs crypto-bigint 18.2 | −0.9 (0.95×) | 27.8 vs bnum 29.5 | −1.7 (0.94×) | 31.1 vs crypto-bigint 31.8 | −0.7 (0.98×) |
+| add | 1024 | 64.0 vs bnum 62.1 | +1.9 (1.03×) | 43.6 vs crypto-bigint 44.2 | −0.6 (0.99×) | 71.1 vs ruint 68.9 | +2.2 (1.03×) | 71.4 vs crypto-bigint 63.8 | +7.6 (1.12×) |
+| add | 2048 | 160 vs ruint 208 | −48.0 (0.77×) | 106 vs ruint 178 | −72.0 (0.60×) | 177 vs ruint 214 | −37.0 (0.83×) | 141 vs ruint 206 | −65.0 (0.68×) |
+| add | 4096 | 424 vs ruint 404 | +20.0 (1.05×) | 364 vs ruint 292 | +72.0 (1.25×) | 426 vs ruint 429 | −3.0 (0.99×) | 400 vs ruint 391 | +9.0 (1.02×) |
+| mulmod | 64 | 68.8 vs ruint 85.0 | −16.2 (0.81×) | 34.6 vs ruint 42.5 | −7.9 (0.81×) | 122 vs ruint 203 | −81.0 (0.60×) | 42.0 vs ruint 54.8 | −12.8 (0.77×) |
+| mulmod | 128 | 206 vs ruint 339 | −133 (0.61×) | 86.1 vs ruint 138 | −51.9 (0.62×) | 255 vs ruint 432 | −177 (0.59×) | 167 vs ruint 208 | −41.0 (0.80×) |
+| mulmod | 256 | 586 vs ruint 809 | −223 (0.72×) | 287 vs ruint 309 | −22.0 (0.93×) | 687 vs ruint 899 | −212 (0.76×) | 345 vs ruint 382 | −37.0 (0.90×) |
+| mulmod | 384 | 1,038 vs ruint 1,600 | −562 (0.65×) | 503 vs ruint 536 | −33.0 (0.94×) | 1,409 vs ruint 1,697 | −288 (0.83×) | 661 vs ruint 690 | −29.0 (0.96×) |
+| mulmod | 512 | 1,647 vs ruint 2,873 | −1,226 (0.57×) | 845 vs ruint 857 | −12.0 (0.99×) | 2,152 vs ruint 3,301 | −1,149 (0.65×) | 1,105 vs ruint 1,118 | −13.0 (0.99×) |
+| mulmod | 1024 | 5,319 vs ruint 11,113 | −5,794 (0.48×) | 2,778 vs ruint 2,631 | +147 (1.06×) | 6,879 vs ruint 12,229 | −5,350 (0.56×) | 4,174 vs ruint 3,629 | +545 (1.15×) |
+| mulmod | 2048 | 17,414 vs ruint 34,951 | −17,537 (0.50×) | 9,459 vs ruint 10,685 | −1,226 (0.89×) | 22,195 vs ruint 44,565 | −22,370 (0.50×) | 12,727 vs ruint 13,702 | −975 (0.93×) |
+| mulmod | 4096 | 55,558 vs ruint 160,647 | −105,089 (0.35×) | 29,343 vs ruint 41,173 | −11,830 (0.71×) | 68,359 vs ruint 166,433 | −98,074 (0.41×) | 42,867 vs ruint 53,324 | −10,457 (0.80×) |
+| add_mod | 64 | 7.3 vs ruint 39.5 | −32.2 (0.18×) | 11.1 vs ruint 40.4 | −29.3 (0.27×) | 8.0 vs ruint 78.1 | −70.1 (0.10×) | 12.3 vs ruint 76.9 | −64.6 (0.16×) |
+| add_mod | 128 | 33.7 vs ruint 40.1 | −6.4 (0.84×) | 15.5 vs ruint 30.8 | −15.3 (0.50×) | 46.4 vs ruint 51.4 | −5.0 (0.90×) | 26.2 vs ruint 38.8 | −12.6 (0.68×) |
+| add_mod | 256 | 36.3 vs ruint 74.0 | −37.7 (0.49×) | 31.0 vs ruint 60.1 | −29.1 (0.52×) | 50.6 vs ruint 91.1 | −40.5 (0.56×) | 51.4 vs ruint 77.8 | −26.4 (0.66×) |
+| add_mod | 384 | 79.1 vs ruint 100 | −20.9 (0.79×) | 70.2 vs ruint 83.3 | −13.1 (0.84×) | 119 vs ruint 140 | −21.0 (0.85×) | 117 vs ruint 106 | +11.0 (1.10×) |
+| add_mod | 512 | 87.9 vs ruint 129 | −41.1 (0.68×) | 60.1 vs ruint 101 | −40.9 (0.60×) | 130 vs ruint 175 | −45.0 (0.74×) | 102 vs ruint 140 | −38.0 (0.73×) |
+| add_mod | 1024 | 170 vs ruint 272 | −102 (0.62×) | 134 vs ruint 203 | −69.0 (0.66×) | 220 vs ruint 365 | −145 (0.60×) | 214 vs ruint 294 | −80.0 (0.73×) |
+| add_mod | 2048 | 329 vs ruint 856 | −527 (0.38×) | 251 vs ruint 778 | −527 (0.32×) | 368 vs ruint 1,121 | −753 (0.33×) | 356 vs ruint 952 | −596 (0.37×) |
+| add_mod | 4096 | 720 vs ruint 1,701 | −981 (0.42×) | 586 vs ruint 1,454 | −868 (0.40×) | 759 vs ruint 1,933 | −1,174 (0.39×) | 770 vs ruint 1,686 | −916 (0.46×) |
+| sub_mod | 64 | 7.9 vs ruint 46.1 | −38.2 (0.17×) | 9.3 vs ruint 45.3 | −36.0 (0.21×) | 10.0 vs ruint 76.3 | −66.3 (0.13×) | 11.7 vs ruint 78.3 | −66.6 (0.15×) |
+| sub_mod | 128 | 34.5 vs ruint 45.3 | −10.8 (0.76×) | 13.9 vs ruint 40.7 | −26.8 (0.34×) | 47.6 vs ruint 65.5 | −17.9 (0.73×) | 25.5 vs ruint 52.1 | −26.6 (0.49×) |
+| sub_mod | 256 | 46.5 vs ruint 95.8 | −49.3 (0.49×) | 33.4 vs ruint 79.3 | −45.9 (0.42×) | 63.7 vs ruint 131 | −67.3 (0.49×) | 53.7 vs ruint 119 | −65.3 (0.45×) |
+| sub_mod | 384 | 70.2 vs ruint 129 | −58.8 (0.54×) | 47.9 vs ruint 107 | −59.1 (0.45×) | 102 vs ruint 193 | −91.0 (0.53×) | 84.2 vs ruint 174 | −89.8 (0.48×) |
+| sub_mod | 512 | 116 vs ruint 168 | −52.0 (0.69×) | 65.6 vs ruint 138 | −72.4 (0.48×) | 136 vs ruint 250 | −114 (0.54×) | 110 vs ruint 219 | −109 (0.50×) |
+| sub_mod | 1024 | 192 vs ruint 430 | −238 (0.45×) | 122 vs ruint 351 | −229 (0.35×) | 263 vs ruint 667 | −404 (0.39×) | 164 vs ruint 635 | −471 (0.26×) |
+| sub_mod | 2048 | 393 vs ruint 1,214 | −821 (0.32×) | 236 vs ruint 1,103 | −867 (0.21×) | 677 vs ruint 1,469 | −792 (0.46×) | 340 vs ruint 1,341 | −1,001 (0.25×) |
+| sub_mod | 4096 | 744 vs ruint 2,312 | −1,568 (0.32×) | 590 vs ruint 2,052 | −1,462 (0.29×) | 794 vs ruint 2,534 | −1,740 (0.31×) | 763 vs ruint 2,334 | −1,571 (0.33×) |
+| add, constant time | 64 | 1.1 vs native 1.1 | +0.0 (1.00×) | 1.1 vs native 1.1 | +0.0 (1.00×) | 1.0 vs native 1.0 | +0.0 (1.00×) | 1.1 vs native 1.0 | +0.1 (1.10×) |
+| add, constant time | 128 | 3.0 vs native 2.8 | +0.2 (1.07×) | 2.5 vs bnum 2.0 | +0.5 (1.25×) | 2.8 vs crypto-bigint 2.7 | +0.1 (1.04×) | 3.2 vs bnum 2.5 | +0.7 (1.28×) |
+| add, constant time | 256 | 9.8 vs bnum 8.1 | +1.7 (1.21×) | 6.8 vs bnum 6.3 | +0.5 (1.08×) | 8.9 vs ruint 9.0 | −0.1 (0.99×) | 11.4 vs bnum 7.7 | +3.7 (1.48×) |
+| add, constant time | 384 | 15.4 vs ruint 15.4 | +0.0 (1.00×) | 12.2 vs crypto-bigint 12.0 | +0.2 (1.02×) | 15.4 vs ruint 15.2 | +0.2 (1.01×) | 18.1 vs crypto-bigint 18.1 | +0.0 (1.00×) |
+| add, constant time | 512 | 25.7 vs bnum 22.3 | +3.4 (1.15×) | 17.3 vs crypto-bigint 18.2 | −0.9 (0.95×) | 27.5 vs bnum 25.3 | +2.2 (1.09×) | 31.1 vs crypto-bigint 31.8 | −0.7 (0.98×) |
+| add, constant time | 1024 | 64.0 vs bnum 62.1 | +1.9 (1.03×) | 43.6 vs crypto-bigint 44.2 | −0.6 (0.99×) | 71.1 vs ruint 68.9 | +2.2 (1.03×) | 71.3 vs crypto-bigint 63.7 | +7.6 (1.12×) |
+| add, constant time | 2048 | 160 vs ruint 208 | −48.0 (0.77×) | 106 vs ruint 178 | −72.0 (0.60×) | 178 vs ruint 214 | −36.0 (0.83×) | 141 vs ruint 206 | −65.0 (0.68×) |
+| add, constant time | 4096 | 423 vs ruint 405 | +18.0 (1.04×) | 364 vs ruint 292 | +72.0 (1.25×) | 427 vs ruint 429 | −2.0 (1.00×) | 386 vs ruint 391 | −5.0 (0.99×) |
+| mulmod, constant time | 64 | 178 | – | 94.0 | – | 252 | – | 115 | – |
+| mulmod, constant time | 128 | 568 | – | 328 | – | 618 | – | 378 | – |
+| mulmod, constant time | 256 | 1,160 | – | 734 | – | 1,382 | – | 879 | – |
+| mulmod, constant time | 384 | 1,989 | – | 1,199 | – | 2,433 | – | 1,524 | – |
+| mulmod, constant time | 512 | 3,039 | – | 1,813 | – | 3,664 | – | 2,291 | – |
+| mulmod, constant time | 1024 | 9,494 | – | 6,015 | – | 10,972 | – | 7,625 | – |
+| mulmod, constant time | 2048 | 32,786 | – | 19,863 | – | 35,622 | – | 25,208 | – |
+| mulmod, constant time | 4096 | 120,120 | – | 69,404 | – | 130,197 | – | 89,535 | – |
+| add_mod, constant time | 64 | 139 | – | 86.6 | – | 198 | – | 130 | – |
+| add_mod, constant time | 128 | 392 | – | 285 | – | 427 | – | 296 | – |
+| add_mod, constant time | 256 | 542 | – | 395 | – | 636 | – | 462 | – |
+| add_mod, constant time | 384 | 665 | – | 491 | – | 798 | – | 605 | – |
+| add_mod, constant time | 512 | 792 | – | 580 | – | 915 | – | 705 | – |
+| add_mod, constant time | 1024 | 1,401 | – | 1,074 | – | 1,574 | – | 1,297 | – |
+| add_mod, constant time | 2048 | 2,723 | – | 1,984 | – | 2,902 | – | 2,478 | – |
+| add_mod, constant time | 4096 | 5,282 | – | 3,835 | – | 5,603 | – | 4,699 | – |
+| sub_mod, constant time | 64 | 91.1 | – | 78.8 | – | 198 | – | 118 | – |
+| sub_mod, constant time | 128 | 390 | – | 288 | – | 445 | – | 300 | – |
+| sub_mod, constant time | 256 | 518 | – | 366 | – | 608 | – | 430 | – |
+| sub_mod, constant time | 384 | 641 | – | 473 | – | 735 | – | 573 | – |
+| sub_mod, constant time | 512 | 786 | – | 542 | – | 905 | – | 718 | – |
+| sub_mod, constant time | 1024 | 1,374 | – | 979 | – | 1,601 | – | 1,141 | – |
+| sub_mod, constant time | 2048 | 2,714 | – | 1,861 | – | 2,981 | – | 2,279 | – |
+| sub_mod, constant time | 4096 | 5,006 | – | 3,615 | – | 5,260 | – | 4,216 | – |
+
+### Against native, throughput
+
+Cycles per operation of `biguint` in each build, then its ratio to the native figure.
+
+| Operation | Bits | Native | Chrome | Chrome, wide arithmetic | Firefox | Firefox, wide arithmetic |
+|---|---|---:|---:|---:|---:|---:|
+| add | 64 | 1.3 | 2.2 (1.7×) | 2.2 (1.7×) | 2.2 (1.7×) | 2.2 (1.7×) |
+| add | 128 | 2.4 | 4.0 (1.7×) | 3.8 (1.6×) | 4.0 (1.7×) | 4.4 (1.8×) |
+| add | 256 | 4.9 | 10.2 (2.1×) | 8.7 (1.8×) | 10.0 (2.0×) | 11.5 (2.3×) |
+| add | 384 | 7.2 | 16.3 (2.3×) | 12.3 (1.7×) | 15.9 (2.2×) | 18.0 (2.5×) |
+| add | 512 | 8.6 | 27.4 (3.2×) | 20.7 (2.4×) | 25.9 (3.0×) | 32.1 (3.7×) |
+| add | 1024 | 24.2 | 64.1 (2.6×) | 45.3 (1.9×) | 69.2 (2.9×) | 74.0 (3.1×) |
+| add | 2048 | 55.0 | 157 (2.9×) | 109 (2.0×) | 185 (3.4×) | 147 (2.7×) |
+| add | 4096 | 156 | 430 (2.8×) | 382 (2.4×) | 429 (2.8×) | 405 (2.6×) |
+| mul | 64 | 1.5 | 2.1 (1.4×) | 2.2 (1.5×) | 2.2 (1.5×) | 2.2 (1.5×) |
+| mul | 128 | 3.0 | 10.0 (3.3×) | 6.5 (2.2×) | 12.3 (4.1×) | 5.6 (1.9×) |
+| mul | 256 | 12.0 | 47.7 (4.0×) | 16.8 (1.4×) | 66.6 (5.5×) | 26.0 (2.2×) |
+| mul | 384 | 27.5 | 181 (6.6×) | 52.3 (1.9×) | 228 (8.3×) | 70.3 (2.6×) |
+| mul | 512 | 52.2 | 295 (5.7×) | 70.7 (1.4×) | 363 (7.0×) | 131 (2.5×) |
+| mul | 1024 | 239 | 1,340 (5.6×) | 691 (2.9×) | 1,594 (6.7×) | 846 (3.5×) |
+| mul | 2048 | 1,117 | 5,613 (5.0×) | 2,500 (2.2×) | 6,696 (6.0×) | 3,697 (3.3×) |
+| mul | 4096 | 3,853 | 17,687 (4.6×) | 8,430 (2.2×) | 21,172 (5.5×) | 12,443 (3.2×) |
+| div | 64 | 6.9 | 7.0 (1.0×) | 7.0 (1.0×) | 7.0 (1.0×) | 7.0 (1.0×) |
+| div | 128 | 16.5 | 60.1 (3.6×) | 28.3 (1.7×) | 103 (6.2×) | 36.4 (2.2×) |
+| div | 256 | 57.5 | 216 (3.8×) | 87.0 (1.5×) | 221 (3.8×) | 157 (2.7×) |
+| div | 384 | 119 | 351 (2.9×) | 203 (1.7×) | 402 (3.4×) | 295 (2.5×) |
+| div | 512 | 161 | 509 (3.2×) | 295 (1.8×) | 575 (3.6×) | 395 (2.5×) |
+| div | 1024 | 585 | 1,196 (2.0×) | 696 (1.2×) | 1,493 (2.6×) | 877 (1.5×) |
+| div | 2048 | 1,417 | 3,242 (2.3×) | 2,005 (1.4×) | 4,377 (3.1×) | 2,459 (1.7×) |
+| div | 4096 | 4,752 | 12,603 (2.7×) | 6,829 (1.4×) | 15,027 (3.2×) | 7,306 (1.5×) |
+| mod | 64 | 6.9 | 7.0 (1.0×) | 7.0 (1.0×) | 7.0 (1.0×) | 7.0 (1.0×) |
+| mod | 128 | 18.6 | 52.8 (2.8×) | 30.0 (1.6×) | 96.3 (5.2×) | 33.1 (1.8×) |
+| mod | 256 | 53.3 | 217 (4.1×) | 82.0 (1.5×) | 245 (4.6×) | 138 (2.6×) |
+| mod | 384 | 121 | 351 (2.9×) | 195 (1.6×) | 412 (3.4×) | 273 (2.3×) |
+| mod | 512 | 166 | 486 (2.9×) | 279 (1.7×) | 569 (3.4×) | 353 (2.1×) |
+| mod | 1024 | 463 | 1,217 (2.6×) | 720 (1.6×) | 1,498 (3.2×) | 948 (2.0×) |
+| mod | 2048 | 1,328 | 3,347 (2.5×) | 1,955 (1.5×) | 4,274 (3.2×) | 2,223 (1.7×) |
+| mod | 4096 | 4,774 | 12,491 (2.6×) | 6,494 (1.4×) | 14,884 (3.1×) | 6,911 (1.4×) |
+| mulmod | 64 | 11.9 | 61.0 (5.1×) | 31.6 (2.7×) | 104 (8.7×) | 35.8 (3.0×) |
+| mulmod | 128 | 61.9 | 197 (3.2×) | 81.7 (1.3×) | 247 (4.0×) | 158 (2.6×) |
+| mulmod | 256 | 178 | 579 (3.3×) | 281 (1.6×) | 701 (3.9×) | 352 (2.0×) |
+| mulmod | 384 | 361 | 1,041 (2.9×) | 507 (1.4×) | 1,414 (3.9×) | 669 (1.9×) |
+| mulmod | 512 | 567 | 1,652 (2.9×) | 849 (1.5×) | 2,158 (3.8×) | 1,176 (2.1×) |
+| mulmod | 1024 | 1,387 | 5,332 (3.8×) | 2,764 (2.0×) | 7,741 (5.6×) | 4,219 (3.0×) |
+| mulmod | 2048 | 5,893 | 17,381 (2.9×) | 9,432 (1.6×) | 22,251 (3.8×) | 12,708 (2.2×) |
+| mulmod | 4096 | 16,763 | 55,642 (3.3×) | 29,321 (1.7×) | 68,366 (4.1×) | 42,732 (2.5×) |
+| add_mod | 64 | 3.7 | 5.0 (1.4×) | 6.0 (1.6×) | 6.2 (1.7×) | 9.0 (2.4×) |
+| add_mod | 128 | 4.8 | 15.0 (3.1×) | 13.0 (2.7×) | 19.9 (4.1×) | 20.2 (4.2×) |
+| add_mod | 256 | 11.2 | 27.4 (2.4×) | 26.6 (2.4×) | 53.7 (4.8×) | 47.3 (4.2×) |
+| add_mod | 384 | 22.4 | 62.2 (2.8×) | 66.2 (3.0×) | 104 (4.6×) | 107 (4.8×) |
+| add_mod | 512 | 43.1 | 73.8 (1.7×) | 44.5 (1.0×) | 120 (2.8×) | 88.8 (2.1×) |
+| add_mod | 1024 | 102 | 148 (1.5×) | 128 (1.3×) | 190 (1.9×) | 191 (1.9×) |
+| add_mod | 2048 | 196 | 291 (1.5×) | 218 (1.1×) | 328 (1.7×) | 319 (1.6×) |
+| add_mod | 4096 | 350 | 634 (1.8×) | 489 (1.4×) | 687 (2.0×) | 729 (2.1×) |
+| sub_mod | 64 | 4.1 | 5.0 (1.2×) | 6.0 (1.5×) | 8.0 (2.0×) | 10.0 (2.4×) |
+| sub_mod | 128 | 5.8 | 14.0 (2.4×) | 12.0 (2.1×) | 21.0 (3.6×) | 20.1 (3.5×) |
+| sub_mod | 256 | 10.9 | 32.8 (3.0×) | 27.3 (2.5×) | 53.6 (4.9×) | 55.4 (5.1×) |
+| sub_mod | 384 | 19.8 | 53.1 (2.7×) | 33.1 (1.7×) | 87.6 (4.4×) | 66.4 (3.4×) |
+| sub_mod | 512 | 34.3 | 80.4 (2.3×) | 50.1 (1.5×) | 107 (3.1×) | 89.8 (2.6×) |
+| sub_mod | 1024 | 89.2 | 150 (1.7×) | 104 (1.2×) | 192 (2.2×) | 144 (1.6×) |
+| sub_mod | 2048 | 183 | 382 (2.1×) | 231 (1.3×) | 578 (3.2×) | 295 (1.6×) |
+| sub_mod | 4096 | 300 | 656 (2.2×) | 492 (1.6×) | 666 (2.2×) | 643 (2.1×) |
+| add, constant time | 64 | 1.4 | 2.2 (1.6×) | 2.2 (1.6×) | 2.2 (1.6×) | 2.2 (1.6×) |
+| add, constant time | 128 | 2.4 | 4.0 (1.7×) | 3.8 (1.6×) | 4.0 (1.7×) | 4.4 (1.8×) |
+| add, constant time | 256 | 4.5 | 10.2 (2.3×) | 8.7 (1.9×) | 10.0 (2.2×) | 11.5 (2.6×) |
+| add, constant time | 384 | 7.1 | 16.3 (2.3×) | 12.3 (1.7×) | 15.9 (2.2×) | 18.0 (2.5×) |
+| add, constant time | 512 | 9.1 | 27.5 (3.0×) | 20.8 (2.3×) | 26.0 (2.9×) | 32.1 (3.5×) |
+| add, constant time | 1024 | 23.6 | 64.0 (2.7×) | 45.4 (1.9×) | 69.3 (2.9×) | 74.0 (3.1×) |
+| add, constant time | 2048 | 63.8 | 157 (2.5×) | 108 (1.7×) | 185 (2.9×) | 146 (2.3×) |
+| add, constant time | 4096 | 216 | 429 (2.0×) | 379 (1.8×) | 428 (2.0×) | 405 (1.9×) |
+| mul, constant time | 64 | 2.5 | 2.1 (0.8×) | 2.2 (0.9×) | 2.2 (0.9×) | 2.2 (0.9×) |
+| mul, constant time | 128 | 2.9 | 10.0 (3.4×) | 6.5 (2.2×) | 12.3 (4.2×) | 5.6 (1.9×) |
+| mul, constant time | 256 | 12.4 | 47.8 (3.9×) | 16.8 (1.4×) | 67.3 (5.4×) | 26.0 (2.1×) |
+| mul, constant time | 384 | 29.6 | 164 (5.5×) | 52.3 (1.8×) | 217 (7.3×) | 70.2 (2.4×) |
+| mul, constant time | 512 | 51.4 | 298 (5.8×) | 72.3 (1.4×) | 357 (6.9×) | 131 (2.5×) |
+| mul, constant time | 1024 | 227 | 1,344 (5.9×) | 693 (3.1×) | 1,580 (7.0×) | 862 (3.8×) |
+| mul, constant time | 2048 | 1,161 | 5,787 (5.0×) | 2,558 (2.2×) | 6,752 (5.8×) | 3,888 (3.3×) |
+| mul, constant time | 4096 | 4,193 | 18,263 (4.4×) | 8,862 (2.1×) | 21,877 (5.2×) | 12,853 (3.1×) |
+| div, constant time | 64 | 25.5 | 83.6 (3.3×) | 47.0 (1.8×) | 144 (5.6×) | 59.5 (2.3×) |
+| div, constant time | 128 | 116 | 220 (1.9×) | 183 (1.6×) | 362 (3.1×) | 229 (2.0×) |
+| div, constant time | 256 | 270 | 509 (1.9×) | 246 (0.9×) | 623 (2.3×) | 478 (1.8×) |
+| div, constant time | 384 | 400 | 632 (1.6×) | 524 (1.3×) | 842 (2.1×) | 555 (1.4×) |
+| div, constant time | 512 | 363 | 990 (2.7×) | 714 (2.0×) | 1,148 (3.2×) | 841 (2.3×) |
+| div, constant time | 1024 | 1,144 | 2,424 (2.1×) | 1,796 (1.6×) | 2,897 (2.5×) | 2,255 (2.0×) |
+| div, constant time | 2048 | 3,438 | 7,350 (2.1×) | 5,079 (1.5×) | 8,549 (2.5×) | 6,940 (2.0×) |
+| div, constant time | 4096 | 12,251 | 25,331 (2.1×) | 16,113 (1.3×) | 28,855 (2.4×) | 21,125 (1.7×) |
+| mod, constant time | 64 | 25.8 | 85.1 (3.3×) | 47.2 (1.8×) | 149 (5.8×) | 66.8 (2.6×) |
+| mod, constant time | 128 | 112 | 216 (1.9×) | 177 (1.6×) | 335 (3.0×) | 223 (2.0×) |
+| mod, constant time | 256 | 297 | 513 (1.7×) | 339 (1.1×) | 587 (2.0×) | 399 (1.3×) |
+| mod, constant time | 384 | 305 | 734 (2.4×) | 529 (1.7×) | 797 (2.6×) | 564 (1.8×) |
+| mod, constant time | 512 | 492 | 1,060 (2.2×) | 698 (1.4×) | 1,092 (2.2×) | 785 (1.6×) |
+| mod, constant time | 1024 | 1,194 | 2,507 (2.1×) | 1,822 (1.5×) | 2,771 (2.3×) | 1,991 (1.7×) |
+| mod, constant time | 2048 | 4,101 | 7,625 (1.9×) | 5,045 (1.2×) | 8,592 (2.1×) | 6,107 (1.5×) |
+| mod, constant time | 4096 | 13,281 | 25,923 (2.0×) | 16,265 (1.2×) | 28,828 (2.2×) | 20,263 (1.5×) |
+| mulmod, constant time | 64 | 71.3 | 174 (2.4×) | 97.4 (1.4×) | 263 (3.7×) | 125 (1.8×) |
+| mulmod, constant time | 128 | 263 | 561 (2.1×) | 358 (1.4×) | 636 (2.4×) | 375 (1.4×) |
+| mulmod, constant time | 256 | 439 | 1,212 (2.8×) | 738 (1.7×) | 1,429 (3.3×) | 857 (2.0×) |
+| mulmod, constant time | 384 | 895 | 1,994 (2.2×) | 1,202 (1.3×) | 2,676 (3.0×) | 1,478 (1.7×) |
+| mulmod, constant time | 512 | 1,510 | 3,064 (2.0×) | 1,829 (1.2×) | 3,648 (2.4×) | 2,354 (1.6×) |
+| mulmod, constant time | 1024 | 4,334 | 9,559 (2.2×) | 5,951 (1.4×) | 10,446 (2.4×) | 7,670 (1.8×) |
+| mulmod, constant time | 2048 | 14,964 | 32,879 (2.2×) | 19,574 (1.3×) | 36,270 (2.4×) | 25,158 (1.7×) |
+| mulmod, constant time | 4096 | 51,856 | 119,268 (2.3×) | 69,939 (1.3×) | 132,124 (2.5×) | 88,748 (1.7×) |
+| add_mod, constant time | 64 | 5.8 | 178 (30.7×) | 110 (19.0×) | 222 (38.3×) | 137 (23.6×) |
+| add_mod, constant time | 128 | 21.7 | 397 (18.3×) | 283 (13.0×) | 425 (19.6×) | 292 (13.5×) |
+| add_mod, constant time | 256 | 30.4 | 551 (18.1×) | 404 (13.3×) | 680 (22.4×) | 473 (15.6×) |
+| add_mod, constant time | 384 | 58.8 | 679 (11.5×) | 507 (8.6×) | 787 (13.4×) | 625 (10.6×) |
+| add_mod, constant time | 512 | 72.9 | 807 (11.1×) | 594 (8.1×) | 923 (12.7×) | 715 (9.8×) |
+| add_mod, constant time | 1024 | 112 | 1,441 (12.9×) | 1,066 (9.5×) | 1,594 (14.2×) | 1,252 (11.2×) |
+| add_mod, constant time | 2048 | 587 | 2,677 (4.6×) | 2,050 (3.5×) | 2,976 (5.1×) | 2,528 (4.3×) |
+| add_mod, constant time | 4096 | 1,020 | 5,234 (5.1×) | 3,868 (3.8×) | 5,589 (5.5×) | 4,640 (4.5×) |
+| sub_mod, constant time | 64 | 9.8 | 183 (18.7×) | 106 (10.8×) | 221 (22.6×) | 108 (11.0×) |
+| sub_mod, constant time | 128 | 17.8 | 396 (22.2×) | 277 (15.6×) | 432 (24.3×) | 297 (16.7×) |
+| sub_mod, constant time | 256 | 29.7 | 523 (17.6×) | 438 (14.7×) | 611 (20.6×) | 465 (15.7×) |
+| sub_mod, constant time | 384 | 47.6 | 652 (13.7×) | 461 (9.7×) | 745 (15.7×) | 584 (12.3×) |
+| sub_mod, constant time | 512 | 60.8 | 774 (12.7×) | 543 (8.9×) | 906 (14.9×) | 617 (10.1×) |
+| sub_mod, constant time | 1024 | 139 | 1,389 (10.0×) | 973 (7.0×) | 1,611 (11.6×) | 1,256 (9.0×) |
+| sub_mod, constant time | 2048 | 286 | 2,660 (9.3×) | 1,896 (6.6×) | 3,041 (10.6×) | 2,356 (8.2×) |
+| sub_mod, constant time | 4096 | 557 | 4,951 (8.9×) | 3,652 (6.6×) | 5,321 (9.6×) | 4,230 (7.6×) |
+
+### Against native, latency
+
+Cycles per operation of `biguint` in each build, then its ratio to the native figure.
+
+| Operation | Bits | Native | Chrome | Chrome, wide arithmetic | Firefox | Firefox, wide arithmetic |
+|---|---|---:|---:|---:|---:|---:|
+| add | 64 | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.0 (1.0×) | 1.1 (1.1×) |
+| add | 128 | 0.8 | 3.0 (3.8×) | 2.5 (3.1×) | 2.8 (3.5×) | 3.2 (4.0×) |
+| add | 256 | 2.5 | 9.8 (3.9×) | 6.8 (2.7×) | 8.9 (3.6×) | 11.4 (4.6×) |
+| add | 384 | 3.5 | 15.4 (4.4×) | 12.2 (3.5×) | 15.4 (4.4×) | 18.1 (5.2×) |
+| add | 512 | 4.0 | 25.7 (6.4×) | 17.3 (4.3×) | 27.8 (7.0×) | 31.1 (7.8×) |
+| add | 1024 | 23.7 | 64.0 (2.7×) | 43.6 (1.8×) | 71.1 (3.0×) | 71.4 (3.0×) |
+| add | 2048 | 54.3 | 160 (2.9×) | 106 (2.0×) | 177 (3.3×) | 141 (2.6×) |
+| add | 4096 | 176 | 424 (2.4×) | 364 (2.1×) | 426 (2.4×) | 400 (2.3×) |
+| mulmod | 64 | 22.9 | 68.8 (3.0×) | 34.6 (1.5×) | 122 (5.3×) | 42.0 (1.8×) |
+| mulmod | 128 | 60.2 | 206 (3.4×) | 86.1 (1.4×) | 255 (4.2×) | 167 (2.8×) |
+| mulmod | 256 | 165 | 586 (3.6×) | 287 (1.7×) | 687 (4.2×) | 345 (2.1×) |
+| mulmod | 384 | 373 | 1,038 (2.8×) | 503 (1.3×) | 1,409 (3.8×) | 661 (1.8×) |
+| mulmod | 512 | 568 | 1,647 (2.9×) | 845 (1.5×) | 2,152 (3.8×) | 1,105 (1.9×) |
+| mulmod | 1024 | 1,373 | 5,319 (3.9×) | 2,778 (2.0×) | 6,879 (5.0×) | 4,174 (3.0×) |
+| mulmod | 2048 | 4,807 | 17,414 (3.6×) | 9,459 (2.0×) | 22,195 (4.6×) | 12,727 (2.6×) |
+| mulmod | 4096 | 17,710 | 55,558 (3.1×) | 29,343 (1.7×) | 68,359 (3.9×) | 42,867 (2.4×) |
+| add_mod | 64 | 8.5 | 7.3 (0.9×) | 11.1 (1.3×) | 8.0 (0.9×) | 12.3 (1.4×) |
+| add_mod | 128 | 11.7 | 33.7 (2.9×) | 15.5 (1.3×) | 46.4 (4.0×) | 26.2 (2.2×) |
+| add_mod | 256 | 20.7 | 36.3 (1.8×) | 31.0 (1.5×) | 50.6 (2.4×) | 51.4 (2.5×) |
+| add_mod | 384 | 32.3 | 79.1 (2.4×) | 70.2 (2.2×) | 119 (3.7×) | 117 (3.6×) |
+| add_mod | 512 | 31.8 | 87.9 (2.8×) | 60.1 (1.9×) | 130 (4.1×) | 102 (3.2×) |
+| add_mod | 1024 | 87.6 | 170 (1.9×) | 134 (1.5×) | 220 (2.5×) | 214 (2.4×) |
+| add_mod | 2048 | 190 | 329 (1.7×) | 251 (1.3×) | 368 (1.9×) | 356 (1.9×) |
+| add_mod | 4096 | 374 | 720 (1.9×) | 586 (1.6×) | 759 (2.0×) | 770 (2.1×) |
+| sub_mod | 64 | 7.4 | 7.9 (1.1×) | 9.3 (1.3×) | 10.0 (1.4×) | 11.7 (1.6×) |
+| sub_mod | 128 | 11.3 | 34.5 (3.1×) | 13.9 (1.2×) | 47.6 (4.2×) | 25.5 (2.3×) |
+| sub_mod | 256 | 16.1 | 46.5 (2.9×) | 33.4 (2.1×) | 63.7 (4.0×) | 53.7 (3.3×) |
+| sub_mod | 384 | 39.0 | 70.2 (1.8×) | 47.9 (1.2×) | 102 (2.6×) | 84.2 (2.2×) |
+| sub_mod | 512 | 43.3 | 116 (2.7×) | 65.6 (1.5×) | 136 (3.1×) | 110 (2.5×) |
+| sub_mod | 1024 | 79.6 | 192 (2.4×) | 122 (1.5×) | 263 (3.3×) | 164 (2.1×) |
+| sub_mod | 2048 | 190 | 393 (2.1×) | 236 (1.2×) | 677 (3.6×) | 340 (1.8×) |
+| sub_mod | 4096 | 435 | 744 (1.7×) | 590 (1.4×) | 794 (1.8×) | 763 (1.8×) |
+| add, constant time | 64 | 0.9 | 1.1 (1.2×) | 1.1 (1.2×) | 1.0 (1.1×) | 1.1 (1.2×) |
+| add, constant time | 128 | 1.2 | 3.0 (2.5×) | 2.5 (2.1×) | 2.8 (2.3×) | 3.2 (2.7×) |
+| add, constant time | 256 | 2.2 | 9.8 (4.5×) | 6.8 (3.1×) | 8.9 (4.0×) | 11.4 (5.2×) |
+| add, constant time | 384 | 3.5 | 15.4 (4.4×) | 12.2 (3.5×) | 15.4 (4.4×) | 18.1 (5.2×) |
+| add, constant time | 512 | 3.2 | 25.7 (8.0×) | 17.3 (5.4×) | 27.5 (8.6×) | 31.1 (9.7×) |
+| add, constant time | 1024 | 22.1 | 64.0 (2.9×) | 43.6 (2.0×) | 71.1 (3.2×) | 71.3 (3.2×) |
+| add, constant time | 2048 | 54.3 | 160 (2.9×) | 106 (2.0×) | 178 (3.3×) | 141 (2.6×) |
+| add, constant time | 4096 | 222 | 423 (1.9×) | 364 (1.6×) | 427 (1.9×) | 386 (1.7×) |
+| mulmod, constant time | 64 | 95.0 | 178 (1.9×) | 94.0 (1.0×) | 252 (2.7×) | 115 (1.2×) |
+| mulmod, constant time | 128 | 270 | 568 (2.1×) | 328 (1.2×) | 618 (2.3×) | 378 (1.4×) |
+| mulmod, constant time | 256 | 376 | 1,160 (3.1×) | 734 (2.0×) | 1,382 (3.7×) | 879 (2.3×) |
+| mulmod, constant time | 384 | 954 | 1,989 (2.1×) | 1,199 (1.3×) | 2,433 (2.6×) | 1,524 (1.6×) |
+| mulmod, constant time | 512 | 1,226 | 3,039 (2.5×) | 1,813 (1.5×) | 3,664 (3.0×) | 2,291 (1.9×) |
+| mulmod, constant time | 1024 | 4,192 | 9,494 (2.3×) | 6,015 (1.4×) | 10,972 (2.6×) | 7,625 (1.8×) |
+| mulmod, constant time | 2048 | 14,626 | 32,786 (2.2×) | 19,863 (1.4×) | 35,622 (2.4×) | 25,208 (1.7×) |
+| mulmod, constant time | 4096 | 51,232 | 120,120 (2.3×) | 69,404 (1.4×) | 130,197 (2.5×) | 89,535 (1.7×) |
+| add_mod, constant time | 64 | 18.9 | 139 (7.4×) | 86.6 (4.6×) | 198 (10.5×) | 130 (6.9×) |
+| add_mod, constant time | 128 | 22.7 | 392 (17.3×) | 285 (12.6×) | 427 (18.8×) | 296 (13.0×) |
+| add_mod, constant time | 256 | 26.2 | 542 (20.7×) | 395 (15.1×) | 636 (24.3×) | 462 (17.6×) |
+| add_mod, constant time | 384 | 46.2 | 665 (14.4×) | 491 (10.6×) | 798 (17.3×) | 605 (13.1×) |
+| add_mod, constant time | 512 | 73.1 | 792 (10.8×) | 580 (7.9×) | 915 (12.5×) | 705 (9.6×) |
+| add_mod, constant time | 1024 | 155 | 1,401 (9.0×) | 1,074 (6.9×) | 1,574 (10.2×) | 1,297 (8.4×) |
+| add_mod, constant time | 2048 | 396 | 2,723 (6.9×) | 1,984 (5.0×) | 2,902 (7.3×) | 2,478 (6.3×) |
+| add_mod, constant time | 4096 | 849 | 5,282 (6.2×) | 3,835 (4.5×) | 5,603 (6.6×) | 4,699 (5.5×) |
+| sub_mod, constant time | 64 | 9.3 | 91.1 (9.8×) | 78.8 (8.5×) | 198 (21.3×) | 118 (12.7×) |
+| sub_mod, constant time | 128 | 19.7 | 390 (19.8×) | 288 (14.6×) | 445 (22.6×) | 300 (15.2×) |
+| sub_mod, constant time | 256 | 25.6 | 518 (20.2×) | 366 (14.3×) | 608 (23.8×) | 430 (16.8×) |
+| sub_mod, constant time | 384 | 43.3 | 641 (14.8×) | 473 (10.9×) | 735 (17.0×) | 573 (13.2×) |
+| sub_mod, constant time | 512 | 57.0 | 786 (13.8×) | 542 (9.5×) | 905 (15.9×) | 718 (12.6×) |
+| sub_mod, constant time | 1024 | 124 | 1,374 (11.1×) | 979 (7.9×) | 1,601 (12.9×) | 1,141 (9.2×) |
+| sub_mod, constant time | 2048 | 300 | 2,714 (9.0×) | 1,861 (6.2×) | 2,981 (9.9×) | 2,279 (7.6×) |
+| sub_mod, constant time | 4096 | 614 | 5,006 (8.2×) | 3,615 (5.9×) | 5,260 (8.6×) | 4,216 (6.9×) |
 
 ## Reproduce
 

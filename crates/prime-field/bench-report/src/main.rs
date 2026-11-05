@@ -107,6 +107,7 @@ const LAYOUT: Layout<'static, Field> = Layout {
         "`prime-field` runs `Fp` in the tables without a label and `ConstantTime` in the \
          constant-time tables.",
     ],
+    wasm_native: "",
 };
 
 fn main() -> ExitCode {

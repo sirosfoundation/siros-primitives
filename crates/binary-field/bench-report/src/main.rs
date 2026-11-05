@@ -80,6 +80,7 @@ const LAYOUT: Layout<'static, Field> = Layout {
         "Every result matches a bit-serial reference before it is measured.",
         "The build without carry-less multiplication drops PCLMULQDQ and VPCLMULQDQ.",
     ],
+    wasm_native: "without carry-less multiplication",
 };
 
 fn main() -> ExitCode {

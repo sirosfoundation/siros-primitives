@@ -61,6 +61,7 @@ const LAYOUT: Layout<'static, u32> = Layout {
     rows_phrase: |widths| format!("at {} bits", sentence(widths)),
     bits: |bits| *bits,
     method: &["Operands at width N: uniform below 2^N."],
+    wasm_native: "",
 };
 
 fn main() -> std::process::ExitCode {
@@ -135,3 +136,7 @@ cargo run --release -p bench-compare --bin bench-browser -- \
   intermediate `x`; it also runs with `x` in memory, and the faster counts.
 - The driver needs to trace the browser: it starts the browser itself and adopts its orphans as
   their subreaper, which `kernel.yama.ptrace_scope` 1 allows.
+- The document shows the WebAssembly builds in four tables, throughput and latency each: per
+  operation and row, the subject against the fewest figure of the crates that keep the row's
+  definition, as `Δ` in cycles and as a ratio; and the subject against its native build
+  `Layout::wasm_native`, as a ratio.
