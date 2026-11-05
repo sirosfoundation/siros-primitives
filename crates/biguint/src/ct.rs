@@ -185,8 +185,12 @@ impl<N: Bits> CtSubMod<NonZeroUint<N>> for Uint<N> {
     fn ct_sub_mod(self, rhs: Self, modulus: NonZeroUint<N>) -> Self {
         let modulus = modulus.get();
         let reduction = Reduction::new(&modulus);
-        if CHAINED_DIFFERENCE_LIMBS.contains(&N::LIMBS)
-            && let Reduction::Subtract(subtracted) = reduction
+        // A `const` condition keeps the arm out of the code of every other length. Evaluated at
+        // run time, it reaches LLVM, which then allocates the registers of 2048 bits otherwise.
+        if const {
+            *CHAINED_DIFFERENCE_LIMBS.start() <= N::LIMBS
+                && N::LIMBS <= *CHAINED_DIFFERENCE_LIMBS.end()
+        } && let Reduction::Subtract(subtracted) = reduction
         {
             return difference_mod_chained(&self, &rhs, subtracted);
         }
