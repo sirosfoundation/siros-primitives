@@ -623,18 +623,6 @@ impl<P: Polynomial> Field<P> {
         Tables::<P>::frobenius(a, Plan::<P>::DEGREE - 1)
     }
 
-    /// `a^(2^k)` by `k` squarings.
-    #[inline(always)]
-    fn lanes_frobenius(a: Lanes<P>, k: usize) -> Lanes<P> {
-        let mut power = a;
-        let mut step = 0;
-        while step < k {
-            power = Self::run_square(power);
-            step += 1;
-        }
-        power
-    }
-
     // ---------------------------------------------------------------------------------------
     // The operations on elements: the defaults, and those of `ConstantTime`.
 
@@ -755,15 +743,16 @@ impl<P: Polynomial> Inversion for Words<P> {
     }
 }
 
-/// The inversion of a polynomial in constant time: squarings and carry-less products.
+/// The inversion of a polynomial in constant time: squarings or the masked tables of the
+/// Frobenius powers, and carry-less products.
 struct Squarings<P>(PhantomData<P>);
 
 impl<P: Polynomial> Inversion for Squarings<P> {
     type Value = Lanes<P>;
 
     #[inline(always)]
-    fn frobenius(x: Lanes<P>, _: usize, power: usize) -> Lanes<P> {
-        Field::<P>::lanes_frobenius(x, power)
+    fn frobenius(x: Lanes<P>, step: usize, power: usize) -> Lanes<P> {
+        Frobenius::<P>::apply_ct(x, step, power)
     }
 
     #[inline(always)]

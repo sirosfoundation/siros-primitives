@@ -3,7 +3,9 @@
 //! the images of the windows of `x`: one lookup per window of 3, 4 or 8 bits. With `precomputed`
 //! every power of the chain has a byte table. The default build has the tables of 3 or 4 bits that
 //! cost least within its budget, and composes the other powers from them and squarings.
-//! `not-precomputed` squares. The lookups index the tables by the value, so `ConstantTime` squares.
+//! `not-precomputed` squares. The lookups index the tables by the value. Without hardware word
+//! products, `ConstantTime` sums the images of the single bits of `x` under masks instead, from
+//! tables that it plans the same way; with them, it squares.
 
 use core::marker::PhantomData;
 
@@ -32,6 +34,9 @@ const fn apply_cost(window: usize, degree: usize) -> usize {
     let lookups = words * 64usize.div_ceil(window);
     lookups
         * match window {
+            // A masked image per bit, in WebAssembly cycles against the squarings there, which
+            // take about twice those of Zen 3.
+            1 => 8,
             3 => 21,
             4 => 25,
             _ => 30,
@@ -53,6 +58,22 @@ pub(crate) struct Powers {
     squarings: [usize; MAX_STEPS],
     /// The cost of the chain's Frobenius powers, in quarter squarings.
     cost: usize,
+}
+
+/// Applies each table `$table::<P, T>` to `$x` `$counts[T]` times.
+macro_rules! tables {
+    ($x:ident, $counts:ident, $table:ident) => {
+        tables!(@ $x, $counts, $table; 0 1 2 3 4 5 6 7)
+    };
+    (@ $x:ident, $counts:ident, $table:ident; $($index:literal)*) => {$(
+        if let Some(&count) = $counts.get($index) {
+            let mut applied = 0;
+            while applied < count {
+                $x = $table::<P, $index>::apply($x);
+                applied += 1;
+            }
+        }
+    )*};
 }
 
 /// The table plan of the field with the polynomial `P`.
@@ -83,36 +104,64 @@ impl<P: Polynomial> Frobenius<P> {
         }
     };
 
+    /// The plan of the constant-time inverse: tables of the images of single bits, within the
+    /// budget that [`Self::POWERS`] leaves, for builds without hardware word products.
+    pub(crate) const CT_POWERS: Powers = {
+        let chain = &Chains::<P>::CHAIN;
+        let degree = Plan::<P>::DEGREE;
+        if degree <= 16 || degree > 128 || clmul::HARDWARE {
+            powers(chain, 0, degree, 0)
+        } else {
+            let used = Self::POWERS.tables * table_bytes(Self::POWERS.window, degree);
+            match TIER {
+                Tier::Full => powers(chain, 1, degree, usize::MAX),
+                Tier::Budget => powers(chain, 1, degree, TABLE_BUDGET.saturating_sub(used)),
+                Tier::None => powers(chain, 0, degree, 0),
+            }
+        }
+    };
+
     /// `x^(2^power)` for step `step` of the chain: the step's table applications, then squarings.
     /// A `step` past the chain squares `power` times.
     #[inline(always)]
     pub(crate) fn apply(x: Poly<P::Degree>, step: usize, power: usize) -> Poly<P::Degree> {
         let mut x = x;
-        let (counts, squarings) = match (
-            Self::POWERS.applications.get(step),
-            Self::POWERS.squarings.get(step),
-        ) {
-            (Some(counts), Some(&squarings)) if Self::POWERS.window > 0 => (*counts, squarings),
-            _ => ([0; MAX_TABLES], power),
-        };
-        macro_rules! tables {
-            ($($table:literal)*) => {$(
-                if let Some(&count) = counts.get($table) {
-                    let mut applied = 0;
-                    while applied < count {
-                        x = Table::<P, $table>::apply(x);
-                        applied += 1;
-                    }
-                }
-            )*};
-        }
-        tables!(0 1 2 3 4 5 6 7);
+        let (counts, squarings) = Self::POWERS.step(step, power);
+        tables!(x, counts, Table);
+        Self::square(x, squarings)
+    }
+
+    /// [`Self::apply`] in constant time, with the tables of [`Self::CT_POWERS`].
+    #[inline(always)]
+    pub(crate) fn apply_ct(x: Poly<P::Degree>, step: usize, power: usize) -> Poly<P::Degree> {
+        let mut x = x;
+        let (counts, squarings) = Self::CT_POWERS.step(step, power);
+        tables!(x, counts, BitTable);
+        Self::square(x, squarings)
+    }
+
+    /// `x^(2^squarings)` by squarings.
+    #[inline(always)]
+    fn square(x: Poly<P::Degree>, squarings: usize) -> Poly<P::Degree> {
+        let mut x = x;
         let mut squared = 0;
         while squared < squarings {
             x = Field::<P>::run_square(x);
             squared += 1;
         }
         x
+    }
+}
+
+impl Powers {
+    /// The table applications and the squarings of step `step` of `power`; `power` squarings
+    /// past the chain or without tables.
+    #[inline(always)]
+    fn step(&self, step: usize, power: usize) -> ([usize; MAX_TABLES], usize) {
+        match (self.applications.get(step), self.squarings.get(step)) {
+            (Some(counts), Some(&squarings)) if self.window > 0 => (*counts, squarings),
+            _ => ([0; MAX_TABLES], power),
+        }
     }
 }
 
@@ -266,6 +315,10 @@ const fn table_bytes(window: usize, degree: usize) -> usize {
         return 0;
     }
     let words = if degree <= 64 { 1 } else { 2 };
+    if window == 1 {
+        // One image per bit.
+        return words * 64 * 8 * words;
+    }
     words * 64usize.div_ceil(window) * (1 << window) * 8 * words
 }
 
@@ -363,6 +416,96 @@ impl<P: Polynomial, const T: usize> Table<P, T> {
             sum.into_poly().resize()
         }
     }
+}
+
+/// The table of the tabulated power `T` of [`Frobenius::CT_POWERS`]: the image of each bit of an
+/// element, which [`Self::apply`] adds under the mask of the bit.
+struct BitTable<P, const T: usize>(PhantomData<P>);
+
+impl<P: Polynomial, const T: usize> BitTable<P, T> {
+    /// The power, or 0 past the tabulated ones.
+    const POWER: usize = {
+        let plan = Frobenius::<P>::CT_POWERS;
+        if T < plan.tables {
+            match plan.tabulated.split_at(T).1 {
+                [power, ..] => *power,
+                [] => 0,
+            }
+        } else {
+            0
+        }
+    };
+    /// Whether an image is one word.
+    const WORD: bool = Plan::<P>::DEGREE <= 64;
+    /// The images of the bits of a field of one word; zero for the other fields.
+    const WORD_IMAGES: &'static [u64; 64] =
+        &word_images(Self::WORD, Plan::<P>::DEGREE, Plan::<P>::TAPS, Self::POWER);
+    /// The images of the bits of a field of two words; zero for the other fields.
+    const LANE_IMAGES: &'static [u128; 128] = &if Self::WORD || Self::POWER == 0 {
+        [0; 128]
+    } else {
+        images(Plan::<P>::DEGREE, Plan::<P>::TAPS, Self::POWER)
+    };
+
+    /// `x^(2^POWER)`: the sum of the images of the set bits of `x`, each under the mask of its
+    /// bit, in four sums. No address and no branch depends on `x`.
+    #[inline(always)]
+    fn apply(x: Poly<P::Degree>) -> Poly<P::Degree> {
+        let limbs = x.to_uint().into_limbs();
+        let low = limbs.first().copied().unwrap_or(0);
+        let high = limbs.get(1).copied().unwrap_or(0);
+        if Self::WORD {
+            let mask = |bits: u64, bit: u32| ((bits >> bit) & 1).wrapping_neg();
+            let [mut first, mut second, mut third, mut fourth] = [0u64; 4];
+            let (chunks, _) = Self::WORD_IMAGES.as_chunks::<4>();
+            for (index, [a, b, c, d]) in chunks.iter().enumerate() {
+                let bits = low >> (4 * index);
+                first ^= a & mask(bits, 0);
+                second ^= b & mask(bits, 1);
+                third ^= c & mask(bits, 2);
+                fourth ^= d & mask(bits, 3);
+            }
+            polynomial::<P>([(first ^ second) ^ (third ^ fourth), 0])
+        } else {
+            let mask = |bits: u64, bit: u32| ((bits >> bit) & 1).wrapping_neg();
+            let mut sums = [[0u64; 2]; 4];
+            let (chunks, _) = Self::LANE_IMAGES.as_chunks::<4>();
+            for (index, images) in chunks.iter().enumerate() {
+                let bits = if index < 16 { low } else { high } >> (4 * (index % 16));
+                for (bit, (sum, image)) in sums.iter_mut().zip(images).enumerate() {
+                    let mask = mask(bits, bit as u32);
+                    let [low_sum, high_sum] = sum;
+                    *low_sum ^= (*image as u64) & mask;
+                    *high_sum ^= ((*image >> 64) as u64) & mask;
+                }
+            }
+            let [first, second, third, fourth] = sums;
+            polynomial::<P>([
+                (first[0] ^ second[0]) ^ (third[0] ^ fourth[0]),
+                (first[1] ^ second[1]) ^ (third[1] ^ fourth[1]),
+            ])
+        }
+    }
+}
+
+/// The images of the bits of an element of a field of one word, as [`images`]; zero unless
+/// `used`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn word_images(used: bool, degree: usize, taps: &[usize], power: usize) -> [u64; 64] {
+    let mut words = [0; 64];
+    if !used || power == 0 {
+        return words;
+    }
+    let images = images(degree, taps, power);
+    let mut bit = 0;
+    while bit < 64 {
+        words[bit] = images[bit] as u64;
+        bit += 1;
+    }
+    words
 }
 
 /// The sum of the rows of `table` that the windows of `word` select.
