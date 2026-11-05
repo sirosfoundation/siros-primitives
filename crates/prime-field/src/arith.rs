@@ -30,11 +30,14 @@ impl<M: Modulus> Shape<M> {
     const BRANCHES: bool = cfg!(target_arch = "wasm32");
 
     /// Whether Montgomery products of [`LOOPED_LIMBS`] limbs or more run the loops of
-    /// [`looped`]. On WebAssembly the unrolled kernels of such widths outgrow the registers that
-    /// the browsers allocate: a 381-bit product took Firefox 1,637 cycles unrolled against 923 in
-    /// loops, and Chrome 880 against 726.
-    const LOOPED: bool =
-        cfg!(target_arch = "wasm32") && Self::MONTGOMERY && Self::LIMBS >= LOOPED_LIMBS;
+    /// [`looped`]. On WebAssembly without wide arithmetic the unrolled kernels of such widths
+    /// outgrow the registers that the browsers allocate: a 381-bit product took Firefox 1,637
+    /// cycles unrolled against 923 in loops, and Chrome 880 against 726. With wide arithmetic the
+    /// unrolled interleaved product runs fastest: 190 cycles in Chrome against 248 in loops.
+    const LOOPED: bool = cfg!(target_arch = "wasm32")
+        && !cfg!(wide_arithmetic)
+        && Self::MONTGOMERY
+        && Self::LIMBS >= LOOPED_LIMBS;
 
     /// `a + b`, in constant time for `CT`.
     #[inline(always)]
@@ -123,12 +126,8 @@ impl<M: Modulus> Shape<M> {
         if Self::LOOPED {
             let mut out = M::Width::ZERO;
             let (p, inv, spare) = (&Self::P, Self::INV, Self::SPARE);
-            if cfg!(wide_arithmetic) {
-                looped::cios(out.as_mut_slice(), a, b, p, inv, spare);
-            } else {
-                let mut wide = M::Width::WIDE_ZERO;
-                looped::sos(out.as_mut_slice(), wide.as_mut_slice(), a, b, p, inv, spare);
-            }
+            let mut wide = M::Width::WIDE_ZERO;
+            looped::sos(out.as_mut_slice(), wide.as_mut_slice(), a, b, p, inv, spare);
             return out;
         }
         if Self::SEPARATED {
@@ -145,6 +144,11 @@ impl<M: Modulus> Shape<M> {
         if Self::LIMBS == 1 {
             let value = limb(a, 0);
             return Self::single(Self::mul1::<CT>(value, value));
+        }
+        if cfg!(wide_arithmetic) && Self::LIMBS > 4 {
+            // The product of `a` by itself: 180 cycles over BLS12-381 in Chrome against 280 for
+            // the symmetric square.
+            return Self::mul::<CT>(a, a);
         }
         let mut wide = Self::square_product(a);
         if Self::LOOPED {
@@ -639,8 +643,10 @@ impl<M: Modulus> Shape<M> {
     /// chain and the high halves, one limb up, in a second ([`Self::add_row`]): a BLS12-381
     /// product measures 13% fewer cycles than with one chain of multiply-accumulates, a P-521
     /// product 5%. On four limbs the one chain takes fewer cycles, as the constant limbs of `p`
-    /// fold into its additions: a P-256 product takes 25% more with two.
-    pub(crate) const TWO_CHAINS: bool = Self::LIMBS > 4;
+    /// fold into its additions: a P-256 product takes 25% more with two. WebAssembly runs one chain:
+    /// the second costs a comparison per carry, and a P-521 product took Chrome 1,023 cycles with
+    /// two against 668 with one. Its symmetric squares keep two, [`Self::square_product`].
+    pub(crate) const TWO_CHAINS: bool = Self::LIMBS > 4 && !cfg!(target_arch = "wasm32");
 
     /// The full product `a b` in `2 L` limbs, by rows of one limb of `b`.
     #[inline(always)]
@@ -707,12 +713,13 @@ impl<M: Modulus> Shape<M> {
     }
 
     /// The full square `a a` in `2 L` limbs: each cross product once, doubled, plus the squares
-    /// on the diagonal.
+    /// on the diagonal. Beyond four limbs its rows run two carry chains on every target: on
+    /// WebAssembly a 381-bit square took Chrome 580 cycles this way against 700 with one.
     #[inline(always)]
     fn square_product(a: &[u64]) -> WideLimbs<M> {
         let mut wide = M::Width::WIDE_ZERO;
         // Limb `i + L` is zero before row `i`, and the row's sum fits through it.
-        if Self::TWO_CHAINS {
+        if Self::LIMBS > 4 {
             Self::each_limb(
                 #[inline(always)]
                 |i| {
@@ -1027,16 +1034,8 @@ const LOOPED_LIMBS: usize = 6;
 /// The Montgomery kernels as calls on slices, whose lengths the compiler does not know, so that
 /// their loops stay loops.
 mod looped {
-    /// [`kernel::cios`](crate::kernel::cios): the wide-arithmetic builds, whose products and sums
-    /// of two limbs are one instruction each, run the interleaved form fastest.
-    #[inline(never)]
-    pub(super) fn cios(out: &mut [u64], a: &[u64], b: &[u64], p: &[u64], inv: u64, spare: bool) {
-        crate::kernel::cios(out, a, b, p, inv, spare);
-    }
-
     /// The product into `wide`, then its reduction into `out`, by
-    /// [`kernel::mul_wide`](crate::kernel::mul_wide) and [`redc`]: the other WebAssembly builds
-    /// run the separated form fastest.
+    /// [`kernel::mul_wide`](crate::kernel::mul_wide) and [`redc`]: the separated form runs fastest.
     #[inline(never)]
     pub(super) fn sos(
         out: &mut [u64],
