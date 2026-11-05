@@ -169,11 +169,25 @@ impl<N: Bits, E: Bits> CtPow<ConstantTime<Uint<E>>> for Uint<N> {
 }
 
 /// `(self + rhs) mod modulus`, for operands of any value.
+///
+/// Natively, a modulus that reduces by one subtraction takes `a + b ≡ a - (m - b)`: `b` reduces,
+/// `m - b` lies in `(0, m]`, and [`difference_mod`] corrects. That is one masked reduction where
+/// the sum of both reduced operands takes three: at 2048 bits, 300 cycles per operation on Zen 3
+/// against 380 to 640, and fewer at every width. WebAssembly, unmeasured in this form, reduces both
+/// operands and corrects their sum.
 impl<N: Bits> CtAddMod<NonZeroUint<N>> for Uint<N> {
     #[inline(always)]
     fn ct_add_mod(self, rhs: Self, modulus: NonZeroUint<N>) -> Self {
         let modulus = modulus.get();
         let reduction = Reduction::new(&modulus);
+        if cfg!(not(target_arch = "wasm32"))
+            && let Reduction::Subtract(subtracted) = reduction
+        {
+            let b = reduction.reduce(&rhs);
+            let mut negated = Uint::<N>::ZERO;
+            fits(sub_into(&mut negated.limbs, &subtracted.limbs, &b.limbs));
+            return difference_mod(&self, &negated, subtracted);
+        }
         let (a, b) = (reduction.reduce(&self), reduction.reduce(&rhs));
         sum_mod_masked(&a, b.source(), &modulus)
     }
@@ -185,12 +199,8 @@ impl<N: Bits> CtSubMod<NonZeroUint<N>> for Uint<N> {
     fn ct_sub_mod(self, rhs: Self, modulus: NonZeroUint<N>) -> Self {
         let modulus = modulus.get();
         let reduction = Reduction::new(&modulus);
-        // A `const` condition keeps the arm out of the code of every other length. Evaluated at
-        // run time, it reaches LLVM, which then allocates the registers of 2048 bits otherwise.
-        if const {
-            *CHAINED_DIFFERENCE_LIMBS.start() <= N::LIMBS
-                && N::LIMBS <= *CHAINED_DIFFERENCE_LIMBS.end()
-        } && let Reduction::Subtract(subtracted) = reduction
+        if const { chained::<N>() }
+            && let Reduction::Subtract(subtracted) = reduction
         {
             return difference_mod_chained(&self, &rhs, subtracted);
         }
@@ -206,12 +216,29 @@ impl<N: Bits> CtSubMod<NonZeroUint<N>> for Uint<N> {
     }
 }
 
+/// `(a - b) mod modulus` under masks, for `a` below twice the modulus and `b` at most the modulus.
+#[inline(always)]
+fn difference_mod<N: Bits>(a: &Uint<N>, b: &Uint<N>, modulus: &Uint<N>) -> Uint<N> {
+    if const { chained::<N>() } {
+        difference_mod_chained(a, b, modulus)
+    } else {
+        difference_mod_masked(a, b, modulus)
+    }
+}
+
 /// The lengths of [`difference_mod_chained`], whose three carry chains run in place. Longer, the
 /// chains through memory take more cycles on Zen 3 than [`difference_mod_masked`], whose select
 /// vectorizes: at 4096 bits 489 against 445 per operation. At one limb, the reduction of `b` in
 /// [`difference_mod_masked`] runs beside the chain of `a`, whose latency is 8.9 cycles there against
 /// 16 here.
 const CHAINED_DIFFERENCE_LIMBS: core::ops::RangeInclusive<usize> = 2..=16;
+
+/// Whether a difference of `N` bits runs [`difference_mod_chained`]. Tested in a `const` block, the
+/// condition keeps the other arm out of the code of each length: evaluated at run time, it reaches
+/// LLVM, which then allocates the registers of 2048 bits otherwise.
+const fn chained<N: Bits>() -> bool {
+    *CHAINED_DIFFERENCE_LIMBS.start() <= N::LIMBS && N::LIMBS <= *CHAINED_DIFFERENCE_LIMBS.end()
+}
 
 /// `(a - b) mod modulus` under masks, for `a` and `b` below twice the modulus: the difference `d`
 /// lies strictly between `-2 * modulus` and `2 * modulus`. A borrow puts `d` below zero, and
