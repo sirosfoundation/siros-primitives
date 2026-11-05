@@ -69,6 +69,22 @@ pub(crate) fn sub_mul_row(out: &mut [u64], a: &[u64], m: u64) -> u64 {
     })
 }
 
+/// Writes `from - a * m` to the first `a.len()` limbs of `out` and returns the limb that the
+/// subtraction owes above them, as [`sub_mul_row`] does in place. `from` is at least as long as
+/// `a`.
+#[inline(always)]
+pub(crate) fn sub_mul_row_into(out: &mut [u64], from: &[u64], a: &[u64], m: u64) -> u64 {
+    out.iter_mut()
+        .zip(from)
+        .zip(a)
+        .fold(0, |borrow, ((slot, &minuend), &limb)| {
+            let (low, high) = mul_add(limb, m, borrow, 0);
+            let (difference, owed) = minuend.overflowing_sub(low);
+            *slot = difference;
+            high + u64::from(owed)
+        })
+}
+
 /// The limbs of a group of [`sub_mul_row_chains`], whose products stay in registers.
 const CHAIN_GROUP: usize = 4;
 

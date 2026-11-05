@@ -3,6 +3,7 @@
 //! the sum below the modulus.
 
 use crate::bits::Bits;
+use crate::div::{DiscardQuotient, Top, divide_preparing};
 use crate::kernel::{
     add_assign, add_unless_carry, add_unless_carry_masked, compare, fits, reduced, sub_assign,
     subtract_when_above_in_place, subtract_when_above_masked,
@@ -221,5 +222,5 @@ fn remainder<N: Bits>(value: Uint<N>, modulus: NonZeroUint<N>) -> Uint<N> {
     if cfg!(not(target_arch = "wasm32")) {
         rare_call();
     }
-    value % modulus
+    divide_preparing::<N::Window, N>(&value.limbs, modulus, Top::Any, &mut DiscardQuotient)
 }

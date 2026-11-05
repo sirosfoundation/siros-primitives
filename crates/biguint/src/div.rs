@@ -23,7 +23,7 @@ use crate::bits::Bits;
 use crate::bits::sealed::Sealed;
 use crate::kernel::{
     add_assign, compare, fits, shl_bits_into, shr_bits_into, split, split_mut, sub_mul_row,
-    sub_mul_row_chains, subtract_if_above,
+    sub_mul_row_chains, sub_mul_row_into, subtract_if_above,
 };
 use crate::mul::WideningMul;
 use crate::nonzero::{NonZeroUint, significant_len};
@@ -153,13 +153,37 @@ pub(crate) fn divide<W: ArrayLength, M: Bits>(
     top: Top,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) -> Uint<M> {
+    divide_reading::<W, M, true>(dividend, divisor, top, quotient)
+}
+
+/// [`divide`] that prepares an [`Invariant`] of every divisor. A rare division inlined beside a
+/// cheap common path takes it: its second copy for divisors read in place moved the registers of
+/// the 1024-bit modular sum, which took 9 more instructions and 3.4 more cycles.
+#[inline(always)]
+pub(crate) fn divide_preparing<W: ArrayLength, M: Bits>(
+    dividend: &[u64],
+    divisor: NonZeroUint<M>,
+    top: Top,
+    quotient: &mut (impl QuotientSink + ?Sized),
+) -> Uint<M> {
+    divide_reading::<W, M, false>(dividend, divisor, top, quotient)
+}
+
+/// [`divide`], whose divisors of [`IN_PLACE_DIVISOR_LIMBS`] are read in place when `IN_PLACE`.
+#[inline(always)]
+fn divide_reading<W: ArrayLength, M: Bits, const IN_PLACE: bool>(
+    dividend: &[u64],
+    divisor: NonZeroUint<M>,
+    top: Top,
+    quotient: &mut (impl QuotientSink + ?Sized),
+) -> Uint<M> {
     if Native::<W, M::Limbs>::FITS
         && let Some(divisor) = divisor.native()
     {
         return native(dividend, divisor, quotient);
     }
     let limbs = divisor.limbs();
-    long::<_, W, M>(dividend, &limbs, significant_len(&limbs), top, quotient)
+    long::<_, W, M, IN_PLACE>(dividend, &limbs, significant_len(&limbs), top, quotient)
 }
 
 /// Whether a dividend in a `W`-limb window and an `L`-limb divisor both fit in `u128`, or on
@@ -202,19 +226,46 @@ fn wide(limbs: &[u64]) -> u128 {
 /// `dividend mod divisor` in `M` bits for a divisor whose low `len` limbs hold its value, the top
 /// one nonzero.
 #[inline(always)]
-fn long<L: ArrayLength, W: ArrayLength, M: Bits>(
+fn long<L: ArrayLength, W: ArrayLength, M: Bits, const IN_PLACE: bool>(
     dividend: &[u64],
     divisor: &GenericArray<u64, L>,
     len: usize,
     top: Top,
     quotient: &mut (impl QuotientSink + ?Sized),
 ) -> Uint<M> {
+    // A divisor of three limbs and more whose top bit is set is its own normalized form, and the
+    // division reads it where it lies.
+    if const { IN_PLACE && divides_in_place::<L>() }
+        && let Some(&high) = divisor.get(len.wrapping_sub(1))
+        && high.leading_zeros() == 0
+        && len >= 3
+        && let Some(&next) = divisor.get(len.wrapping_sub(2))
+    {
+        let leading = Reciprocal3By2::new(NormalizedLimb::top_set(high), next);
+        return by_limbs::<L, W, M>(dividend, divisor, len, 0, leading, top, quotient);
+    }
     Invariant::with(
         divisor,
         len,
         #[inline(always)]
         |invariant| invariant.remainder::<W, M>(dividend, top, quotient),
     )
+}
+
+/// The divisor lengths whose [`long`] division reads a divisor with its top bit set where it lies.
+/// Its copy into an [`Invariant`] loads the limbs that scalar stores have just written with vector
+/// loads, which wait about 13 cycles on Zen 3 for those stores to retire. At 3 to 5 limbs the
+/// second copy of the division costs the divisions that normalize more than the copy: 4 to 6
+/// cycles of a 160-bit divisor at 320 bits.
+const IN_PLACE_DIVISOR_LIMBS: core::ops::RangeInclusive<usize> = 6..=16;
+
+/// Whether a division by a divisor of `L` limbs reads a normalized divisor where it lies; the
+/// WebAssembly builds keep their measured form, the copy. Tested in a `const` block, it leaves the
+/// other arm out of the code of each length.
+const fn divides_in_place<L: ArrayLength>() -> bool {
+    cfg!(not(target_arch = "wasm32"))
+        && *IN_PLACE_DIVISOR_LIMBS.start() <= L::USIZE
+        && L::USIZE <= *IN_PLACE_DIVISOR_LIMBS.end()
 }
 
 /// A divisor prepared for division: shifted left until the top bit of its top significant limb is
@@ -374,6 +425,15 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
         divide_and_conquer::<M, Width<W>, L>(&mut window, normalized, leading, quotient);
     } else {
         let (part, _) = split_mut(&mut window, span);
+        if const { registers_hold_remainder::<L>() }
+            && top == Top::Below
+            && len == L::USIZE
+            && let Some((_, upper)) = part.split_first_mut()
+            && upper.len() >= L::USIZE
+        {
+            divide_by_limbs::<true>(upper, normalized.as_slice(), leading, &mut Above(quotient));
+            return lowest_quotient_limb::<L, M>(&window, normalized, shift, leading, quotient);
+        }
         if len == L::USIZE {
             // A divisor that fills its limbs passes its length as a constant, so the compiler
             // unrolls the division as it does the multiplication.
@@ -390,6 +450,63 @@ fn by_limbs<L: ArrayLength, W: ArrayLength, M: Bits>(
         shr_bits_into(&mut remainder, &window, shift);
     }
     Uint::from_generic_limbs(remainder)
+}
+
+/// The divisor lengths whose last quotient limb [`lowest_quotient_limb`] computes out of place, in
+/// the reductions of products (`Top::Below`). A store forwards only to a load of its own width:
+/// when LLVM merges the loads of a remainder read back from the window into a vector load, that
+/// load waits about 13 cycles on Zen 3 for the last quotient limb's scalar stores to retire. From 6
+/// limbs the limbs of the step no longer fit in registers: the product modulo 384 and 512 bits
+/// took 10 to 30 more cycles. A division of any dividend keeps one copy of the step: a second one
+/// moved the registers of the 256-bit division by a half-width divisor, which took 8 more
+/// instructions.
+const REGISTER_REMAINDER_LIMBS: core::ops::RangeInclusive<usize> = 3..=5;
+
+/// Whether a divisor that fills `L` limbs takes its last quotient limb out of place; the WebAssembly
+/// builds keep their measured form, in place. Tested in a `const` block, it leaves the other arm
+/// out of the code of each length.
+const fn registers_hold_remainder<L: ArrayLength>() -> bool {
+    cfg!(not(target_arch = "wasm32"))
+        && *REGISTER_REMAINDER_LIMBS.start() <= L::USIZE
+        && L::USIZE <= *REGISTER_REMAINDER_LIMBS.end()
+}
+
+/// The remainder in `M` bits of the window whose limbs above the lowest have been divided by the
+/// normalized `divisor`, which fills its `L` limbs: the lowest quotient limb reduces the low
+/// `L + 1` limbs of the window into limbs of its own, which the compiler keeps in registers, and
+/// the remainder shifts back from them.
+#[inline(always)]
+fn lowest_quotient_limb<L: ArrayLength, M: Bits>(
+    window: &[u64],
+    divisor: &GenericArray<u64, L>,
+    shift: u32,
+    leading: Reciprocal3By2,
+    quotient: &mut (impl QuotientSink + ?Sized),
+) -> Uint<M> {
+    let mut reduced = GenericArray::<u64, L>::default();
+    let (part, _) = split(window, L::USIZE + 1);
+    quotient.put(
+        0,
+        quotient_limb_into(&mut reduced, part, divisor.as_slice(), leading),
+    );
+    let mut remainder = GenericArray::<u64, M::Limbs>::default();
+    if shift == 0 {
+        shr_bits_into(&mut remainder, &reduced, 0);
+    } else {
+        shr_bits_into(&mut remainder, &reduced, shift);
+    }
+    Uint::from_generic_limbs(remainder)
+}
+
+/// The quotient limbs of a division of the window above its lowest limb, at their indices in the
+/// whole window.
+struct Above<'a, Q: QuotientSink + ?Sized>(&'a mut Q);
+
+impl<Q: QuotientSink + ?Sized> QuotientSink for Above<'_, Q> {
+    #[inline(always)]
+    fn put(&mut self, index: usize, limb: u64) {
+        self.0.put(index + 1, limb);
+    }
 }
 
 /// [`dc::divide_window`] of a `Span`-limb window by an `L`-limb divisor, with its scratch for a
@@ -597,6 +714,51 @@ fn quotient_limb<const CONSTANT: bool>(
 
     if borrowed {
         add_back(body, divisor);
+        digit - 1
+    } else {
+        digit
+    }
+}
+
+/// [`quotient_limb`] that writes the remainder to the `divisor.len()` limbs of `out` and leaves
+/// `part` as it is. The remainder is below the divisor, so the limb above it is zero.
+#[inline(always)]
+fn quotient_limb_into(
+    out: &mut [u64],
+    part: &[u64],
+    divisor: &[u64],
+    leading: Reciprocal3By2,
+) -> u64 {
+    let (Some((&top, body)), [divisor_low @ .., _, _]) = (part.split_last(), divisor) else {
+        return 0;
+    };
+    let [body_low @ .., next, high] = body else {
+        return 0;
+    };
+    let leading_part = join(top, *high);
+    if leading_part == leading.divisor() {
+        // The subtraction owes `top` above the remainder, emptying it.
+        fits(sub_mul_row_into(out, body, divisor, u64::MAX));
+        return u64::MAX;
+    }
+
+    let (digit, remainder) = leading.div_rem(leading_part, *next);
+    let borrowed = {
+        let [out_low @ .., remainder_low, remainder_high] = &mut *out else {
+            return digit;
+        };
+        let (remainder, borrowed) = remainder.overflowing_sub(u128::from(sub_mul_row_into(
+            out_low,
+            body_low,
+            divisor_low,
+            digit,
+        )));
+        *remainder_low = remainder as u64;
+        *remainder_high = (remainder >> 64) as u64;
+        borrowed
+    };
+    if borrowed {
+        add_back(out, divisor);
         digit - 1
     } else {
         digit

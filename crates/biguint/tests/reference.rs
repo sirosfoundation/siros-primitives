@@ -7,8 +7,8 @@ use biguint::{Bits, Modulus, NonZeroUint, NotReduced, OutOfRange, Pow, Uint, Wid
 use generic_array::GenericArray;
 use generic_array::sequence::GenericSequence;
 use typenum::{
-    Sum, U1, U7, U8, U28, U63, U64, U65, U100, U128, U129, U130, U192, U256, U384, U512, U521,
-    U1024,
+    Sum, U1, U7, U8, U28, U63, U64, U65, U100, U128, U129, U130, U192, U256, U320, U384, U512,
+    U521, U1024,
 };
 
 type Reference<const B: usize, const L: usize> = ruint::Uint<B, L>;
@@ -30,6 +30,7 @@ macro_rules! for_each_width {
         $check::<U129, 129, 3>();
         $check::<U192, 192, 3>();
         $check::<U256, 256, 4>();
+        $check::<U320, 320, 5>();
         $check::<U384, 384, 6>();
         $check::<U512, 512, 8>();
         $check::<U521, 521, 9>();

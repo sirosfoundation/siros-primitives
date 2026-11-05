@@ -23,7 +23,7 @@ use crate::bits::Bits;
 use crate::div::ct::MaskedDivisor;
 use crate::div::{DiscardQuotient, Invariant, Top};
 use crate::kernel::split_mut;
-use crate::modular::sum_mod;
+use crate::modular::{sum_mod, sum_mod_masked};
 use crate::mul::{basecase, karatsuba};
 use crate::nonzero::{NonZeroUint, significant_len};
 use crate::recursion::{Depth, Halvings, Width};
@@ -415,11 +415,30 @@ impl<'id, N: Bits> Add for Residue<'id, N> {
 
     #[inline(always)]
     fn add(self, rhs: Self) -> Self::Output {
+        let (a, b, m) = (&self.value, rhs.value.source(), &self.ring.modulus.value);
+        let value = if const { masked_residue_sum::<N>() } {
+            sum_mod_masked(a, b, m)
+        } else {
+            sum_mod(a, b, m)
+        };
         Self {
-            value: sum_mod(&self.value, rhs.value.source(), &self.ring.modulus.value),
+            value,
             ring: self.ring,
         }
     }
+}
+
+/// The lengths whose residue sums take their correction under a mask. There LLVM turns the selects
+/// of [`sum_mod`] into a branch, which mispredicts on half the sums of uniform residues.
+const MASKED_RESIDUE_SUM_LIMBS: core::ops::RangeInclusive<usize> = 4..=8;
+
+/// Whether a residue sum of `N` bits runs [`sum_mod_masked`]; the WebAssembly builds keep their
+/// measured form, the branch of [`sum_mod`]. Tested in a `const` block, it leaves the other arm out
+/// of the code of each length.
+const fn masked_residue_sum<N: Bits>() -> bool {
+    cfg!(not(target_arch = "wasm32"))
+        && *MASKED_RESIDUE_SUM_LIMBS.start() <= N::LIMBS
+        && N::LIMBS <= *MASKED_RESIDUE_SUM_LIMBS.end()
 }
 
 /// `(self - rhs) mod m`.

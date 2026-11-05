@@ -161,6 +161,8 @@ fn divide_and_conquer_mul_mod_matches_reference() {
     check_mul_mod::<U4096, U4096, U2048>();
     // A 48-limb divisor, whose halves divide by schoolbook.
     check_mul_mod::<U3072, U3072, U3072>();
+    // A 16-limb divisor, read in place.
+    check_mul_mod::<U1024, U1024, U1024>();
 }
 
 /// Products and reductions of the residues of every odd and even modulus sample.
