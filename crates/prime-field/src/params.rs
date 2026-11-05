@@ -94,7 +94,7 @@ impl<M: Modulus> Shape<M> {
     /// whose product fits the limb lands below `p`.
     pub(crate) const PRIME_LIMB: bool = Self::LIMBS == 1 && is_prime(Self::P0);
     /// `R = 2^(64 L) mod p`.
-    const R: Limbs<M> = Self::pow2_mod(64 * Self::LIMBS);
+    pub(crate) const R: Limbs<M> = Self::pow2_mod(64 * Self::LIMBS);
     /// `R^2 mod p`.
     pub(crate) const R2: Limbs<M> = Self::pow2_mod(128 * Self::LIMBS);
     /// `R^3 mod p`: a Montgomery product by it turns the inverse of a representation into the
