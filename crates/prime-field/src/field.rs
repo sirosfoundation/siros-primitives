@@ -79,7 +79,8 @@ impl<M: Modulus> Fp<M> {
     #[inline]
     #[must_use]
     pub const fn from_u64(value: u64) -> Self {
-        let reduced = if Shape::<M>::LIMBS == 1 {
+        // The one Montgomery step of `p = 2^64 - 2^32 + 1` reduces any `u64`.
+        let reduced = if Shape::<M>::LIMBS == 1 && !Shape::<M>::SHIFT_ENCODE {
             value % limb(Shape::<M>::P.as_slice(), 0)
         } else {
             value
@@ -629,7 +630,11 @@ impl<M: Modulus> num_traits::Zero for Fp<M> {
 impl<M: Modulus> From<u64> for Fp<M> {
     #[inline]
     fn from(value: u64) -> Self {
-        Self::integer_with::<false>(&[value])
+        if Shape::<M>::SHIFT_ENCODE {
+            Self::from_u64(value)
+        } else {
+            Self::integer_with::<false>(&[value])
+        }
     }
 }
 

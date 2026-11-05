@@ -274,11 +274,19 @@ impl<M: Modulus> Shape<M> {
     /// The folds of [`Self::mersenne_word`] that bring every `u64` to at most `p = 2^BITS - 1`.
     const WORD_FOLDS: usize = mersenne_word_folds(Self::BITS);
 
-    /// The representation of the integer `value < p`.
+    /// Montgomery form for `p = 2^64 - 2^32 + 1`: [`Self::encode`] takes one Montgomery step
+    /// of shifts.
+    pub(crate) const SHIFT_ENCODE: bool = Self::MONTGOMERY && Self::SHIFT_REDC;
+
+    /// The representation of the integer `value < p`, or of any one-limb `value` when
+    /// [`Self::SHIFT_ENCODE`] holds.
     #[inline(always)]
     pub(crate) const fn encode(value: &[u64]) -> Limbs<M> {
         let mut out = M::Width::ZERO;
-        if Self::MONTGOMERY {
+        if Self::SHIFT_ENCODE {
+            let product = limb(value, 0) as u128 * limb(Self::R2.as_slice(), 0) as u128;
+            set(out.as_mut_slice(), 0, shift_redc(product));
+        } else if Self::MONTGOMERY {
             cios(
                 out.as_mut_slice(),
                 value,
@@ -668,4 +676,17 @@ const fn pow_mod(base: u64, exponent: u64, n: u64) -> u64 {
         rest >>= 1;
     }
     result
+}
+
+/// Montgomery reduction `value / 2^64 mod p` for `p = 2^64 - 2^32 + 1` and `value < p 2^64`, in
+/// winter-math's `mont_red_cst` order: `m = low + (low << 32)` with its carry `e`, and
+/// `(m p) >> 64 = m - (m >> 32) - e` from `m`. A conversion runs unchained, where this order takes
+/// fewer cycles per element than [`Shape::SHIFT_REDC`]'s order, which shortens a chain of products.
+/// A borrow adds `p`, which modulo `2^64` subtracts `2^32 - 1`.
+pub(crate) const fn shift_redc(value: u128) -> u64 {
+    let (low, high) = (value as u64, (value >> 64) as u64);
+    let (m, e) = low.overflowing_add(low << 32);
+    let quotient = m.wrapping_sub(m >> 32).wrapping_sub(e as u64);
+    let (result, borrow) = high.overflowing_sub(quotient);
+    result.wrapping_sub(0u32.wrapping_sub(borrow as u32) as u64)
 }
