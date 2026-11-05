@@ -3,9 +3,11 @@
 //! the sum below the modulus.
 
 use crate::bits::Bits;
+#[cfg(target_arch = "wasm32")]
+use crate::kernel::{add_assign, compare, fits, sub_assign};
 use crate::kernel::{
-    add_assign, add_unless_carry, add_unless_carry_masked, compare, fits, reduced, sub_assign,
-    subtract_when_above_in_place, subtract_when_above_masked,
+    add_unless_carry, add_unless_carry_masked, reduced, subtract_when_above_in_place,
+    subtract_when_above_masked,
 };
 use crate::limb::rare_call;
 use crate::nonzero::NonZeroUint;
@@ -153,8 +155,9 @@ pub(crate) fn top<N: Bits>(value: &Uint<N>) -> u64 {
 /// branch on the whole comparison mispredicts on half the sums of reduced operands, and the
 /// correction of the top limbs ([`subtract_when_above_in_place`]) took Firefox 268 cycles against
 /// 430 and Chrome 252 against 283.
+#[cfg(target_arch = "wasm32")]
 const fn branches(limbs: usize) -> bool {
-    cfg!(target_arch = "wasm32") && !(cfg!(not(wide_arithmetic)) && limbs == 32)
+    !(cfg!(not(wide_arithmetic)) && limbs == 32)
 }
 
 /// The second operand of [`sum_mod`], with the correction that brings the sum below the modulus.
@@ -166,6 +169,7 @@ pub(crate) trait Addend: LimbSource {
     fn correct(sum: &mut [u64], carry: u64, modulus: &[u64]);
 
     /// [`Self::correct`] by one branch on whether the whole correction applies.
+    #[cfg(target_arch = "wasm32")]
     fn correct_by_branch(sum: &mut [u64], carry: u64, modulus: &[u64]);
 
     /// [`Self::correct`] under masks at every length: writes the corrected `sum` to `out`.
@@ -186,6 +190,7 @@ impl Addend for ZeroExtended<'_> {
         reduced(subtract_when_above_in_place(sum, modulus, carry));
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[inline(always)]
     fn correct_by_branch(sum: &mut [u64], carry: u64, modulus: &[u64]) {
         if carry != 0 || compare(sum, modulus).is_ge() {
@@ -218,6 +223,7 @@ impl<S: LimbSource> Addend for TwosComplement<S> {
         add_unless_carry(sum, modulus, carry);
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[inline(always)]
     fn correct_by_branch(sum: &mut [u64], carry: u64, modulus: &[u64]) {
         if carry == 0 {
@@ -237,7 +243,10 @@ impl<S: LimbSource> Addend for TwosComplement<S> {
 pub(crate) fn sum_mod<N: Bits, B: Addend>(a: &Uint<N>, addend: B, modulus: &Uint<N>) -> Uint<N> {
     let (limbs, carry) = B::sum(a, addend);
     let mut out = Uint::<N> { limbs };
+    #[cfg(target_arch = "wasm32")]
     correct::<N, B>(&mut out.limbs, carry, &modulus.limbs);
+    #[cfg(not(target_arch = "wasm32"))]
+    B::correct(&mut out.limbs, carry, &modulus.limbs);
     // Below the modulus, the bits above `N` are zero.
     out
 }
@@ -251,13 +260,6 @@ fn correct<N: Bits, B: Addend>(sum: &mut [u64], carry: u64, modulus: &[u64]) {
     } else {
         B::correct(sum, carry, modulus);
     }
-}
-
-/// The correction of a sum of `N` bits.
-#[cfg(not(target_arch = "wasm32"))]
-#[inline(always)]
-fn correct<N: Bits, B: Addend>(sum: &mut [u64], carry: u64, modulus: &[u64]) {
-    B::correct(sum, carry, modulus);
 }
 
 /// [`sum_mod`] with the correction under masks: no branch and no memory address depends on `a` or
