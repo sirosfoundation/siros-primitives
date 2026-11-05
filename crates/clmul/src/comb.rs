@@ -13,6 +13,7 @@
 const LANE: u64 = 0x1111_1111_1111_1111;
 
 /// `LANE` in both words.
+#[cfg(any(not(target_arch = "wasm32"), test))]
 const WIDE_LANE: u128 = (LANE as u128) | ((LANE as u128) << 64);
 
 /// The carry-less product `a * b` of [`clmul64`](crate::clmul64), evaluable in const contexts.
@@ -70,10 +71,14 @@ const fn clmul32(a: u32, b: u32) -> u64 {
     let lane = LANE & 0xFFFF_FFFF;
     let [x0, x1, x2, x3] = [a & lane, a & (lane << 1), a & (lane << 2), a & (lane << 3)];
     let [y0, y1, y2, y3] = [b & lane, b & (lane << 1), b & (lane << 2), b & (lane << 3)];
-    let lane0 = x0.wrapping_mul(y0) ^ x1.wrapping_mul(y3) ^ x2.wrapping_mul(y2) ^ x3.wrapping_mul(y1);
-    let lane1 = x0.wrapping_mul(y1) ^ x1.wrapping_mul(y0) ^ x2.wrapping_mul(y3) ^ x3.wrapping_mul(y2);
-    let lane2 = x0.wrapping_mul(y2) ^ x1.wrapping_mul(y1) ^ x2.wrapping_mul(y0) ^ x3.wrapping_mul(y3);
-    let lane3 = x0.wrapping_mul(y3) ^ x1.wrapping_mul(y2) ^ x2.wrapping_mul(y1) ^ x3.wrapping_mul(y0);
+    let lane0 =
+        x0.wrapping_mul(y0) ^ x1.wrapping_mul(y3) ^ x2.wrapping_mul(y2) ^ x3.wrapping_mul(y1);
+    let lane1 =
+        x0.wrapping_mul(y1) ^ x1.wrapping_mul(y0) ^ x2.wrapping_mul(y3) ^ x3.wrapping_mul(y2);
+    let lane2 =
+        x0.wrapping_mul(y2) ^ x1.wrapping_mul(y1) ^ x2.wrapping_mul(y0) ^ x3.wrapping_mul(y3);
+    let lane3 =
+        x0.wrapping_mul(y3) ^ x1.wrapping_mul(y2) ^ x2.wrapping_mul(y1) ^ x3.wrapping_mul(y0);
     (lane0 & LANE) | (lane1 & (LANE << 1)) | (lane2 & (LANE << 2)) | (lane3 & (LANE << 3))
 }
 

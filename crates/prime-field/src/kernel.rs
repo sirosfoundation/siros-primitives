@@ -576,7 +576,15 @@ mod tests {
     /// The split product of WebAssembly builds against `u128` arithmetic, on every target.
     #[test]
     fn split_product_matches_wide_arithmetic() {
-        const EDGES: [u64; 7] = [0, 1, 2, u32::MAX as u64, 1 << 63, u64::MAX, 0xa5a5_a5a5_5a5a_5a5a];
+        const EDGES: [u64; 7] = [
+            0,
+            1,
+            2,
+            u32::MAX as u64,
+            1 << 63,
+            u64::MAX,
+            0xa5a5_a5a5_5a5a_5a5a,
+        ];
         for a in EDGES {
             for b in EDGES {
                 for c in EDGES {

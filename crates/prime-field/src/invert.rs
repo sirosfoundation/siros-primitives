@@ -370,9 +370,7 @@ fn unpack(word: u64) -> (i64, i64) {
 fn combination(masks: Masks, out: &mut [u64], f: i64, a: &[u64], g: i64, b: &[u64]) -> u64 {
     let mut carry: i128 = 0;
     for (index, slot) in out.iter_mut().enumerate() {
-        let sum = carry
-            + signed_product(f, limb(a, index))
-            + signed_product(g, limb(b, index));
+        let sum = carry + signed_product(f, limb(a, index)) + signed_product(g, limb(b, index));
         *slot = sum as u64;
         carry = sum >> 64;
     }

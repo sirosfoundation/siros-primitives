@@ -23,7 +23,9 @@ fn enables_wide_arithmetic(flags: &str) -> bool {
     let mut enabled = false;
     while let Some(word) = words.next() {
         let list = match word {
-            "-C" | "--codegen" => words.next().and_then(|next| next.strip_prefix("target-feature=")),
+            "-C" | "--codegen" => words
+                .next()
+                .and_then(|next| next.strip_prefix("target-feature=")),
             _ => word
                 .strip_prefix("-Ctarget-feature=")
                 .or_else(|| word.strip_prefix("--codegen=target-feature=")),

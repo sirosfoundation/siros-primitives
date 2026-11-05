@@ -21,7 +21,10 @@ pub(crate) fn sbb(borrow: u8, a: u64, b: u64) -> (u64, u8) {
 
 /// `a + b + carry` as `(sum, carry_out)`, with carries in `{0, 1}`: one `u128` sum, which wide
 /// arithmetic runs as `i64.add128`.
-#[cfg(not(any(target_arch = "x86_64", all(target_arch = "wasm32", not(wide_arithmetic)))))]
+#[cfg(not(any(
+    target_arch = "x86_64",
+    all(target_arch = "wasm32", not(wide_arithmetic))
+)))]
 #[inline(always)]
 pub(crate) fn adc(carry: u8, a: u64, b: u64) -> (u64, u8) {
     let wide = u128::from(a) + u128::from(b) + u128::from(carry);
@@ -50,7 +53,10 @@ pub(crate) fn sbb(borrow: u8, a: u64, b: u64) -> (u64, u8) {
 }
 
 /// `a - b - borrow` as `(difference, borrow_out)`, with borrows in `{0, 1}`.
-#[cfg(not(any(target_arch = "x86_64", all(target_arch = "wasm32", not(wide_arithmetic)))))]
+#[cfg(not(any(
+    target_arch = "x86_64",
+    all(target_arch = "wasm32", not(wide_arithmetic))
+)))]
 #[inline(always)]
 pub(crate) fn sbb(borrow: u8, a: u64, b: u64) -> (u64, u8) {
     let wide = u128::from(a)

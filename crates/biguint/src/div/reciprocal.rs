@@ -35,8 +35,7 @@ macro_rules! division_steps {
             divisor: $word,
             reciprocal: $word,
         ) -> ($word, $word) {
-            let estimate =
-                $widening(reciprocal, high_word) + join(high_word, low);
+            let estimate = $widening(reciprocal, high_word) + join(high_word, low);
             let fraction = estimate as $word;
             let quotient = high(estimate).wrapping_add(1);
             let remainder = low.wrapping_sub(quotient.wrapping_mul(divisor));
@@ -60,8 +59,7 @@ macro_rules! division_steps {
             divisor: $word,
             reciprocal: $word,
         ) -> ($word, $word) {
-            let estimate =
-                $widening(reciprocal, high_word) + join(high_word, low);
+            let estimate = $widening(reciprocal, high_word) + join(high_word, low);
             let fraction = estimate as $word;
             let quotient = high(estimate).wrapping_add(1);
             let remainder = low.wrapping_sub(quotient.wrapping_mul(divisor));

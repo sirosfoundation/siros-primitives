@@ -2,7 +2,7 @@
 //! products come from the comb.
 
 pub(crate) use crate::comb::clmul64;
-use crate::to_limbs;
+use crate::{REDUCTION, to_limbs};
 
 /// A register: two 64-bit words, word 0 first.
 pub(crate) type Register = [u64; 2];
@@ -20,7 +20,11 @@ pub(crate) const fn register(words: [u64; 2]) -> Register {
 /// `bits` up to 64: the operations on that word then fold away.
 #[inline(always)]
 pub(crate) const fn narrow(register: Register, bits: usize) -> Register {
-    if bits <= 64 { [register[0], 0] } else { register }
+    if bits <= 64 {
+        [register[0], 0]
+    } else {
+        register
+    }
 }
 
 /// The words `[low, high]` of `register`.
@@ -168,9 +172,17 @@ impl Accumulator {
 }
 
 /// `low + high * x^64`, reduced: the part of `high` at and above `x^64` folds into its product with
-/// `x^7 + x^2 + x + 1`, [`REDUCTION`](crate::REDUCTION), by shifts.
+/// `x^7 + x^2 + x + 1`, [`REDUCTION`], by one shift per term.
 #[inline(always)]
 fn reduce(low: u128, high: u128) -> u128 {
     let top = high >> 64;
-    low ^ (high << 64) ^ top ^ (top << 1) ^ (top << 2) ^ (top << 7)
+    let mut folded = low ^ (high << 64);
+    let mut term = 0;
+    while term < u64::BITS - REDUCTION.leading_zeros() {
+        if (REDUCTION >> term) & 1 == 1 {
+            folded ^= top << term;
+        }
+        term += 1;
+    }
+    folded
 }
