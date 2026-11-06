@@ -39,9 +39,9 @@ use crate::error::Error;
 #[cfg(target_arch = "wasm32")]
 use crate::record::Overhead;
 use crate::record::{Cell, Class, Count, Events, Latency, Line, Outcome};
-use crate::suite::{
-    Call, CaseId, Chain, Function, Inputs, Rng, Suite, Visitor, run_batch, run_chain, visit,
-};
+use crate::suite::{Call, CaseId, Chain, Function, Inputs, Rng, Suite, Visitor, visit};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::suite::{run_batch, run_chain};
 
 /// The counted repetitions of every case.
 pub const REPETITIONS: usize = 31;
@@ -526,6 +526,29 @@ trait Trial {
         warm: Run,
         counters: &mut Counters,
     ) -> Result<([usize; 2], Counts), Error>;
+}
+
+/// `body` on `batch` through a function pointer: V8 inlines a direct call of up to 500 wire bytes,
+/// so the code of a short loop took the registers its caller left, and the 128-bit product took
+/// Chrome 6.6 cycles against 4.7.
+#[cfg(target_arch = "wasm32")]
+#[inline(always)]
+fn apart<I, F>(body: fn(&[I], F) -> usize, batch: &[I], run: F) -> usize {
+    core::hint::black_box(body)(batch, run)
+}
+
+/// [`crate::suite::run_batch`], apart from the code that counts it.
+#[cfg(target_arch = "wasm32")]
+#[inline(always)]
+fn run_batch<I, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
+    apart(crate::suite::run_batch, batch, run)
+}
+
+/// [`crate::suite::run_chain`], apart from the code that counts it.
+#[cfg(target_arch = "wasm32")]
+#[inline(always)]
+fn run_chain<I: Chain<R>, R, B: Barrier>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
+    apart(crate::suite::run_chain::<I, R, B>, batch, run)
 }
 
 /// A form of a case: `region` runs a batch of the inputs that `inputs` draws.

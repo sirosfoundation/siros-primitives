@@ -490,6 +490,8 @@ const WEBASSEMBLY: &[&str] = &[
     "A second worker carries the start and the end of each count to the driver while the \
      measuring worker sleeps.",
     "The browser's flags compile every function with its optimizing tier when the module loads.",
+    "A counted loop runs behind a function pointer, which keeps V8 from inlining it into the code \
+     around the count.",
     "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count 4 \
      million instructions.",
     "A case whose difference counts under 50 times the noise of the fixed cost of a count stops \
