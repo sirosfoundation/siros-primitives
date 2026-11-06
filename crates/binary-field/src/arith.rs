@@ -701,8 +701,8 @@ impl<P: Polynomial> Field<P> {
         }
     }
 
-    /// The inverse of a nonzero `a`, the default: the table of inverses, or the field's chain with
-    /// the tables of its Frobenius powers.
+    /// The inverse of a nonzero `a`, the default: the table of inverses, the inverse through a
+    /// subfield, or the field's chain with the tables of its Frobenius powers.
     #[cfg_attr(debug_assertions, inline(never))]
     #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn invert(a: Element<P>) -> Element<P> {
@@ -710,6 +710,10 @@ impl<P: Polynomial> Field<P> {
             Element::<P>::from_word(Tables::<P>::invert(a.word()))
         } else if Subfield::<P>::USED {
             Element::<P>::from_poly(Subfield::<P>::invert(a.poly()))
+        } else if Subfield::<P>::QUAD_USED {
+            Element::<P>::from_poly(Subfield::<P>::invert_quad(a.poly()))
+        } else if Subfield::<P>::WORD_USED {
+            Element::<P>::from_poly(Subfield::<P>::invert_word(a.poly()))
         } else if Plan::<P>::FROBENIUS_WINDOW > 0 {
             Element::<P>::from_poly(inverse::<P, Tabulated<P>>(a.poly()))
         } else {
@@ -717,13 +721,17 @@ impl<P: Polynomial> Field<P> {
         }
     }
 
-    /// The inverse of a nonzero `a` in constant time: `a^(2^n - 2)` along the field's chain, with
-    /// squarings or the constant-time maps of the Frobenius powers.
+    /// The inverse of a nonzero `a` in constant time: through a subfield, or `a^(2^n - 2)` along the
+    /// field's chain, with squarings or the constant-time maps of the Frobenius powers.
     #[cfg_attr(debug_assertions, inline(never))]
     #[cfg_attr(not(debug_assertions), inline(always))]
     pub(crate) fn ct_invert(a: Element<P>) -> Element<P> {
         if Plan::<P>::SMALL {
             Element::<P>::from_word(inverse::<P, Words<P>>(a.word()))
+        } else if Subfield::<P>::QUAD_USED {
+            Element::<P>::from_poly(Subfield::<P>::ct_invert_quad(a.poly()))
+        } else if Subfield::<P>::LANE_CT_USED {
+            Element::<P>::from_poly(Subfield::<P>::ct_invert_lane(a.poly()))
         } else {
             Element::<P>::from_poly(inverse::<P, Squarings<P>>(a.poly()))
         }

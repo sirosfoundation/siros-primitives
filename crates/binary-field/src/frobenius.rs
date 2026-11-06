@@ -714,7 +714,9 @@ pub(crate) fn add_lane_rows<const ENTRIES: usize>(
 
 /// The polynomial of the field with the polynomial `P` whose low words are `words`.
 #[inline(always)]
-fn polynomial<P: Polynomial, const WORDS: usize>(words: [u64; WORDS]) -> Poly<P::Degree> {
+pub(crate) fn polynomial<P: Polynomial, const WORDS: usize>(
+    words: [u64; WORDS],
+) -> Poly<P::Degree> {
     let mut limbs = GenericArray::<u64, Limbs<P>>::DEFAULT;
     for (slot, word) in limbs.iter_mut().zip(words) {
         *slot = word;
@@ -765,9 +767,37 @@ fn quad_sum(table: &QuadNibbles, limbs: &[u64]) -> [u64; 4] {
     xor_words(first, second)
 }
 
+/// Adds the images of four words that the windows of `word` select in `rows` to two sums, a row
+/// to each in turn.
+#[inline(always)]
+pub(crate) fn add_quad_rows<const ENTRIES: usize>(
+    sums: &mut [[u64; 4]; 2],
+    rows: &[[[u64; 4]; ENTRIES]],
+    word: u64,
+    window: u32,
+) {
+    let mask = (ENTRIES as u64) - 1;
+    let [first, second] = sums;
+    let (pairs, remainder) = rows.as_chunks::<2>();
+    let image = |row: &[[u64; 4]; ENTRIES], position: usize| {
+        let index = ((word >> (window * position as u32)) & mask) as usize;
+        row.get(index).copied().unwrap_or([0; 4])
+    };
+    let mut position = 0;
+    for [a, b] in pairs {
+        *first = xor_words(*first, image(a, position));
+        *second = xor_words(*second, image(b, position + 1));
+        position += 2;
+    }
+    for row in remainder {
+        *first = xor_words(*first, image(row, position));
+        position += 1;
+    }
+}
+
 /// `a + b` word by word.
 #[inline(always)]
-fn xor_words(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
+pub(crate) fn xor_words(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     let ([a0, a1, a2, a3], [b0, b1, b2, b3]) = (a, b);
     [a0 ^ b0, a1 ^ b1, a2 ^ b2, a3 ^ b3]
 }
@@ -775,7 +805,10 @@ fn xor_words(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
 /// The sum of the images of the set bits of `limbs`, up to four words, each image under the mask
 /// of its bit, in four sums. No address and no branch depends on `limbs`.
 #[inline(always)]
-fn quad_masked_sum(images: &[[u64; 4]; 256], limbs: &[u64]) -> [u64; 4] {
+pub(crate) fn quad_masked_sum<const BITS: usize>(
+    images: &[[u64; 4]; BITS],
+    limbs: &[u64],
+) -> [u64; 4] {
     let mut sums = [[0u64; 4]; 4];
     let (chunks, _) = images.as_chunks::<4>();
     for (index, group) in chunks.iter().enumerate() {
@@ -796,13 +829,56 @@ fn quad_masked_sum(images: &[[u64; 4]; 256], limbs: &[u64]) -> [u64; 4] {
     xor_words(xor_words(first, second), xor_words(third, fourth))
 }
 
+/// [`quad_masked_sum`] with images of one word.
+#[inline(always)]
+pub(crate) fn word_masked_sum<const BITS: usize>(images: &[u64; BITS], limbs: &[u64]) -> u64 {
+    let mut sums = [0u64; 4];
+    let (chunks, _) = images.as_chunks::<4>();
+    for (index, group) in chunks.iter().enumerate() {
+        let bits = limbs.get(index / 16).copied().unwrap_or(0) >> (4 * (index % 16));
+        for (bit, (sum, image)) in sums.iter_mut().zip(group).enumerate() {
+            *sum ^= image & ((bits >> bit) & 1).wrapping_neg();
+        }
+    }
+    let [first, second, third, fourth] = sums;
+    (first ^ second) ^ (third ^ fourth)
+}
+
+/// [`quad_masked_sum`] with images of two words.
+#[inline(always)]
+pub(crate) fn pair_masked_sum<const BITS: usize>(
+    images: &[[u64; 2]; BITS],
+    limbs: &[u64],
+) -> [u64; 2] {
+    let mut sums = [[0u64; 2]; 4];
+    let (chunks, _) = images.as_chunks::<4>();
+    for (index, group) in chunks.iter().enumerate() {
+        let bits = limbs.get(index / 16).copied().unwrap_or(0) >> (4 * (index % 16));
+        for (bit, (sum, image)) in sums.iter_mut().zip(group).enumerate() {
+            let mask = ((bits >> bit) & 1).wrapping_neg();
+            // Spelled out, as in `quad_masked_sum`.
+            let [first, second] = sum;
+            let [a, b] = *image;
+            *first ^= a & mask;
+            *second ^= b & mask;
+        }
+    }
+    let [[a0, a1], [b0, b1], [c0, c1], [d0, d1]] = sums;
+    [(a0 ^ b0) ^ (c0 ^ d0), (a1 ^ b1) ^ (c1 ^ d1)]
+}
+
 /// The images of the basis elements `x^j` under `a -> a^(2^power)` in the field of degree
-/// `degree`, from 129 to 256, with `taps`, as four words each; zero unless `used`.
+/// `degree`, up to 256, with `taps`, as four words each; zero unless `used`.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its array's length"
 )]
-const fn quad_images(used: bool, degree: usize, taps: &[usize], power: usize) -> [[u64; 4]; 256] {
+pub(crate) const fn quad_images(
+    used: bool,
+    degree: usize,
+    taps: &[usize],
+    power: usize,
+) -> [[u64; 4]; 256] {
     let mut images = [[0u64; 4]; 256];
     if !used || power == 0 {
         return images;
@@ -836,7 +912,7 @@ const fn quad_images(used: bool, degree: usize, taps: &[usize], power: usize) ->
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its array's length"
 )]
-const fn shifts(a: [u64; 4]) -> [[u64; 5]; 256] {
+pub(crate) const fn shifts(a: [u64; 4]) -> [[u64; 5]; 256] {
     let mut multiples = [[0u64; 5]; 256];
     let mut value: usize = 1;
     while value < 256 {
@@ -859,13 +935,13 @@ const fn shifts(a: [u64; 4]) -> [[u64; 5]; 256] {
     multiples
 }
 
-/// `a b mod x^degree + r` for `a` and `b` below `x^degree`, a degree from 129 to 256, with the
+/// `a b mod x^degree + r` for `a` and `b` below `x^degree`, a degree up to 256, with the
 /// [`shifts`] of `a`: the carry-less product by the bytes of `b`.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its array's length"
 )]
-const fn quad_mul_mod(
+pub(crate) const fn quad_mul_mod(
     multiples: &[[u64; 5]; 256],
     b: [u64; 4],
     degree: usize,
@@ -920,13 +996,13 @@ const fn quad_table(used: bool, degree: usize, images: &[[u64; 4]; 256]) -> Quad
     table
 }
 
-/// `a^2 mod x^degree + r` for `a` below `x^degree`, a degree from 129 to 256, as [`square_mod`]
+/// `a^2 mod x^degree + r` for `a` below `x^degree`, a degree up to 256, as [`square_mod`]
 /// on eight words.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its array's length"
 )]
-const fn quad_square_mod(a: [u64; 4], degree: usize, taps: &[usize]) -> [u64; 4] {
+pub(crate) const fn quad_square_mod(a: [u64; 4], degree: usize, taps: &[usize]) -> [u64; 4] {
     let mut value = [0u64; 8];
     let mut word = 0;
     while word < 4 {
@@ -938,7 +1014,7 @@ const fn quad_square_mod(a: [u64; 4], degree: usize, taps: &[usize]) -> [u64; 4]
     quad_reduce(value, degree, taps)
 }
 
-/// `value mod x^degree + r` for `value` of up to 512 bits, a degree from 129 to 256: the part at
+/// `value mod x^degree + r` for `value` of up to 512 bits, a degree up to 256: the part at
 /// and above `x^degree` folds down by `r` until none is left.
 #[expect(
     clippy::indexing_slicing,
