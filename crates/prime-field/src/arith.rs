@@ -160,9 +160,7 @@ impl<M: Modulus> Shape<M> {
             let value = limb(a, 0);
             return Self::single(Self::mul1::<CT>(value, value));
         }
-        if cfg!(wide_arithmetic) && Self::LIMBS > 4 {
-            // The product of `a` by itself: 180 cycles over BLS12-381 in Chrome against 280 for
-            // the symmetric square.
+        if cfg!(wide_arithmetic) && Self::LIMBS > 4 && !Self::MONTGOMERY {
             return Self::mul::<CT>(a, a);
         }
         let mut wide = Self::square_product(a);
@@ -287,9 +285,19 @@ impl<M: Modulus> Shape<M> {
     /// Runs `body` on each pair `(i, j)` of limb indices, row `i` by row `i`, as one run over the
     /// `L^2` pairs, so that each call knows both indices. A loop nested in a loop body inlines
     /// into that body while `i` is unknown, where LLVM reassociates `a b + c + d` into
-    /// `(c + d) + a b`: a second carry chain, held in a register.
+    /// `(c + d) + a b`: a second carry chain, held in a register. With wide arithmetic beyond four
+    /// limbs, where [`Self::each`] loops past 16 pairs, the pairs run as nested copies of
+    /// [`unroll!`] instead: the 381-bit square took Chrome 158.5 cycles against 173.5.
     #[inline(always)]
     fn each_pair(mut body: impl FnMut(usize, usize)) {
+        if cfg!(wide_arithmetic) && Self::LIMBS > 4 {
+            unroll!(i in 0, Self::LIMBS => {
+                unroll!(j in 0, Self::LIMBS => {
+                    body(i, j);
+                });
+            });
+            return;
+        }
         Self::each::<<M::Width as Width>::Pairs>(
             #[inline(always)]
             |pair| body(pair / Self::LIMBS, pair % Self::LIMBS),
@@ -920,13 +928,14 @@ impl<M: Modulus> Shape<M> {
     }
 
     /// The full square `a a` in `2 L` limbs: each cross product once, doubled, plus the squares
-    /// on the diagonal. Beyond four limbs its rows run two carry chains on every target: on
-    /// WebAssembly a 381-bit square took Chrome 580 cycles this way against 700 with one.
+    /// on the diagonal. Beyond four limbs its rows run two carry chains on every target but
+    /// WebAssembly with wide arithmetic: without it a 381-bit square took Chrome 580 cycles this
+    /// way against 700 with one.
     #[inline(always)]
     fn square_product(a: &[u64]) -> WideLimbs<M> {
         let mut wide = M::Width::WIDE_ZERO;
         // Limb `i + L` is zero before row `i`, and the row's sum fits through it.
-        if Self::LIMBS > 4 {
+        if Self::LIMBS > 4 && !cfg!(wide_arithmetic) {
             Self::each_limb(
                 #[inline(always)]
                 |i| {
