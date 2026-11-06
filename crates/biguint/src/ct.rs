@@ -177,9 +177,11 @@ impl<N: Bits> CtAddMod<NonZeroUint<N>> for Uint<N> {
         // Natively, a modulus that reduces by one subtraction takes `a + b ≡ a - (m - b)`: `b`
         // reduces, `m - b` lies in `(0, m]`, and `difference_mod` corrects. That is one masked
         // reduction where the sum of both reduced operands takes three: at 2048 bits, 300 cycles
-        // per operation on Zen 3 against 380 to 640, and fewer at every width. WebAssembly,
-        // unmeasured in this form, reduces both operands and corrects their sum.
-        if cfg!(not(target_arch = "wasm32"))
+        // per operation on Zen 3 against 380 to 640, and fewer at every width. WebAssembly takes
+        // it from 32 limbs: at 2048 bits 868 cycles in Chrome against 912 with both operands
+        // reduced, 530 against 619 with wide arithmetic. Below, the reduced operands took Firefox
+        // fewer cycles: at 256 bits 107 against 126.
+        if const { cfg!(not(target_arch = "wasm32")) || N::LIMBS >= 32 }
             && let Reduction::Subtract(subtracted) = reduction
         {
             let b = reduction.reduce(&rhs);

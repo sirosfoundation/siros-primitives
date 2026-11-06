@@ -1,7 +1,7 @@
-//! Tables of the Frobenius powers `x -> x^(2^k)` that the default inverse of a field of 17 to 128
-//! bits applies along its addition chain. Squaring is GF(2)-linear, so a power applies as the sum of
+//! Tables of the Frobenius powers `x -> x^(2^k)` that the default inverse of a field of 17 to
+//! [`TABLE_DEGREE`] bits applies along its addition chain. Squaring is GF(2)-linear, so a power applies as the sum of
 //! the images of the windows of `x`: one lookup per window of 3, 4 or 8 bits. With `precomputed`
-//! every power of the chain has a byte table. The default build has the tables of 3 or 4 bits that
+//! every power of the chain has a byte table, above 128 bits a nibble table. The default build has the tables of 3 or 4 bits that
 //! cost least within its budget, and composes the other powers from them and squarings.
 //! `not-precomputed` squares. The lookups index the tables by the value. Without hardware word
 //! products, `ConstantTime` sums the images of the single bits of `x` under masks instead, from
@@ -18,20 +18,40 @@ use typenum::U128;
 use crate::arith::Field;
 use crate::chain::{Chain, Chains, MAX_STEPS};
 use crate::element::Limbs;
-use crate::plan::{Plan, Polynomial, TABLE_BUDGET, TIER, Tier};
+use crate::plan::{Plan, Polynomial, TABLE_BUDGET, TABLE_DEGREE, TIER, Tier};
 
 /// The tables of a field at most.
 const MAX_TABLES: usize = 8;
 
-/// The cost of one squaring, in tenths of a cycle of the chain of inverses on Zen 3: 14 cycles.
-const SQUARING_COST: usize = 140;
+/// The cost of one squaring of `degree` bits, in tenths of a cycle of the chain of inverses: 14
+/// cycles on Zen 3 up to two words; 58 cycles in WebAssembly for four words, the one target with
+/// tables of four words.
+const fn squaring_cost(degree: usize) -> usize {
+    if words(degree) == 4 { 580 } else { 140 }
+}
+
+/// The words of an image in the tables of a field of `degree` bits: 1, 2 or 4.
+const fn words(degree: usize) -> usize {
+    if degree <= 64 {
+        1
+    } else if degree <= 128 {
+        2
+    } else {
+        4
+    }
+}
 
 /// The cost of one table application to a value of `degree` bits, in tenths of a cycle: about
 /// 2 cycles per lookup of a 3-bit window, 2.5 per nibble and 3 per byte, which the moves of the
 /// windows into general registers, their indices and the sums take.
 const fn apply_cost(window: usize, degree: usize) -> usize {
-    let words = if degree <= 64 { 1 } else { 2 };
+    let words = words(degree);
     let lookups = words * 64usize.div_ceil(window);
+    if words == 4 {
+        // WebAssembly cycles against its squarings of four words, [`squaring_cost`]: four loads
+        // or four masked words and four sums per lookup.
+        return lookups * if window == 1 { 30 } else { 40 };
+    }
     lookups
         * match window {
             // A masked image per bit, in WebAssembly cycles against the squarings there, which
@@ -85,8 +105,15 @@ impl<P: Polynomial> Frobenius<P> {
     pub(crate) const POWERS: Powers = {
         let chain = &Chains::<P>::CHAIN;
         let degree = Plan::<P>::DEGREE;
-        if degree <= 16 || degree > 128 {
+        if degree <= 16 || degree > TABLE_DEGREE {
             powers(chain, 0, degree, 0)
+        } else if degree > 128 {
+            // The byte tables of four words take 256 KiB a power; the nibble tables 32 KiB, above
+            // the default budget.
+            match TIER {
+                Tier::Full => powers(chain, 4, degree, usize::MAX),
+                Tier::Budget | Tier::None => powers(chain, 0, degree, 0),
+            }
         } else {
             match TIER {
                 Tier::Full => powers(chain, 8, degree, usize::MAX),
@@ -109,8 +136,15 @@ impl<P: Polynomial> Frobenius<P> {
     pub(crate) const CT_POWERS: Powers = {
         let chain = &Chains::<P>::CHAIN;
         let degree = Plan::<P>::DEGREE;
-        if degree <= 16 || degree > 128 || clmul::HARDWARE {
+        if degree <= 16 || degree > TABLE_DEGREE || clmul::HARDWARE {
             powers(chain, 0, degree, 0)
+        } else if degree > 128 {
+            // Among the powers of the nibble tables, whose images [`QuadImages`] computes once for
+            // both.
+            match TIER {
+                Tier::Full => powers_among(chain, 1, degree, usize::MAX, Some(&Self::POWERS)),
+                Tier::Budget | Tier::None => powers(chain, 0, degree, 0),
+            }
         } else {
             let used = Self::POWERS.tables * table_bytes(Self::POWERS.window, degree);
             match TIER {
@@ -170,11 +204,22 @@ impl Powers {
 
 /// The plan of `chain` with tables of `window` bits in a field of degree `degree`: the set of its
 /// distinct powers of the least cost within `budget` bytes. A window of 0 plans no table.
+const fn powers(chain: &Chain, window: usize, degree: usize, budget: usize) -> Powers {
+    powers_among(chain, window, degree, budget, None)
+}
+
+/// [`powers`] that tabulates only powers that `among` tabulates, when given.
 #[expect(
     clippy::indexing_slicing,
     reason = "const evaluation, with every index below its array's length"
 )]
-const fn powers(chain: &Chain, window: usize, degree: usize, budget: usize) -> Powers {
+const fn powers_among(
+    chain: &Chain,
+    window: usize,
+    degree: usize,
+    budget: usize,
+    among: Option<&Powers>,
+) -> Powers {
     let mut plan = Powers {
         window,
         tabulated: [0; MAX_TABLES],
@@ -193,6 +238,15 @@ const fn powers(chain: &Chain, window: usize, degree: usize, budget: usize) -> P
     while step < len {
         let power = chain.steps[step].power;
         let mut seen = power < 2;
+        if let Some(among) = among {
+            let mut found = false;
+            let mut index = 0;
+            while index < among.tables {
+                found |= among.tabulated[index] == power;
+                index += 1;
+            }
+            seen |= !found;
+        }
         let mut index = 0;
         while index < count {
             if distinct[index] == power {
@@ -282,7 +336,7 @@ const fn chain_cost(
             cost += counts[index] * apply_cost(window, degree);
             index += 1;
         }
-        cost += squarings * SQUARING_COST;
+        cost += squarings * squaring_cost(degree);
         step += 1;
     }
     cost
@@ -312,12 +366,12 @@ const fn decompose(
     (counts, rest)
 }
 
-/// The bytes of one table of `window` bits for a degree up to 128.
+/// The bytes of one table of `window` bits for a degree up to 256.
 const fn table_bytes(window: usize, degree: usize) -> usize {
     if window == 0 {
         return 0;
     }
-    let words = if degree <= 64 { 1 } else { 2 };
+    let words = words(degree);
     if window == 1 {
         // One image per bit.
         return words * 64 * 8 * words;
@@ -341,6 +395,8 @@ type LaneTriples = [[Lane<U128>; 8]; 44];
 type LaneNibbles = [[Lane<U128>; 16]; 32];
 /// Byte tables of fields of two words.
 type LaneBytes = [[Lane<U128>; 256]; 16];
+/// Nibble tables of fields of three or four words: 16 windows per word.
+type QuadNibbles = [[[u64; 4]; 16]; 64];
 
 impl<P: Polynomial, const T: usize> Table<P, T> {
     /// The power, or 0 past the tabulated ones.
@@ -357,6 +413,8 @@ impl<P: Polynomial, const T: usize> Table<P, T> {
     };
     /// Whether the table holds one word per entry.
     const WORD: bool = Plan::<P>::DEGREE <= 64;
+    /// Whether the table holds four words per entry.
+    const QUAD: bool = Plan::<P>::DEGREE > 128;
     /// The window of the field's tables.
     const WINDOW: usize = Frobenius::<P>::POWERS.window;
 
@@ -379,28 +437,36 @@ impl<P: Polynomial, const T: usize> Table<P, T> {
         Self::POWER,
     );
     const LANE_TRIPLES: &'static LaneTriples = &lane_table::<44, 8>(
-        !Self::WORD && Self::WINDOW == 3,
+        !Self::WORD && !Self::QUAD && Self::WINDOW == 3,
         Plan::<P>::DEGREE,
         Plan::<P>::TAPS,
         Self::POWER,
     );
     const LANE_NIBBLES: &'static LaneNibbles = &lane_table::<32, 16>(
-        !Self::WORD && Self::WINDOW == 4,
+        !Self::WORD && !Self::QUAD && Self::WINDOW == 4,
         Plan::<P>::DEGREE,
         Plan::<P>::TAPS,
         Self::POWER,
     );
     const LANE_BYTES: &'static LaneBytes = &lane_table::<16, 256>(
-        !Self::WORD && Self::WINDOW == 8,
+        !Self::WORD && !Self::QUAD && Self::WINDOW == 8,
         Plan::<P>::DEGREE,
         Plan::<P>::TAPS,
         Self::POWER,
+    );
+    const QUAD_NIBBLES: &'static QuadNibbles = &quad_table(
+        Self::QUAD && Self::WINDOW == 4,
+        Plan::<P>::DEGREE,
+        QuadImages::<P, T>::IMAGES,
     );
 
     /// `x^(2^POWER)`: the images of the windows of `x`, summed.
     #[inline(always)]
     fn apply(x: Poly<P::Degree>) -> Poly<P::Degree> {
         let limbs = x.to_uint().into_limbs();
+        if Self::QUAD {
+            return polynomial::<P, 4>(quad_sum(Self::QUAD_NIBBLES, &limbs));
+        }
         let low = limbs.first().copied().unwrap_or(0);
         let high = limbs.get(1).copied().unwrap_or(0);
         if Self::WORD {
@@ -409,7 +475,7 @@ impl<P: Polynomial, const T: usize> Table<P, T> {
                 4 => word_sum(Self::WORD_NIBBLES, low, 4),
                 _ => word_sum(Self::WORD_BYTES, low, 8),
             };
-            polynomial::<P>([sum, 0])
+            polynomial::<P, 2>([sum, 0])
         } else {
             let sum = match Self::WINDOW {
                 3 => lane_sum(Self::LANE_TRIPLES, low, high, 3),
@@ -419,6 +485,20 @@ impl<P: Polynomial, const T: usize> Table<P, T> {
             sum.into_poly().resize()
         }
     }
+}
+
+/// The images of the bits of an element under the tabulated power `T` of a field of three or four
+/// words, which [`Table`] and [`BitTable`] share: the two plans tabulate the same powers there.
+struct QuadImages<P, const T: usize>(PhantomData<P>);
+
+impl<P: Polynomial, const T: usize> QuadImages<P, T> {
+    /// The images; zero for the other fields and past the tabulated powers.
+    const IMAGES: &'static [[u64; 4]; 256] = &quad_images(
+        Plan::<P>::DEGREE > 128,
+        Plan::<P>::DEGREE,
+        Plan::<P>::TAPS,
+        Table::<P, T>::POWER,
+    );
 }
 
 /// The table of the tabulated power `T` of [`Frobenius::CT_POWERS`]: the image of each bit of an
@@ -444,10 +524,38 @@ impl<P: Polynomial, const T: usize> BitTable<P, T> {
     const WORD_IMAGES: &'static [u64; 64] =
         &word_images(Self::WORD, Plan::<P>::DEGREE, Plan::<P>::TAPS, Self::POWER);
     /// The images of the bits of a field of two words; zero for the other fields.
-    const LANE_IMAGES: &'static [u128; 128] = &if Self::WORD || Self::POWER == 0 {
+    const LANE_IMAGES: &'static [u128; 128] = &if Self::WORD || Self::QUAD || Self::POWER == 0 {
         [0; 128]
     } else {
         images(Plan::<P>::DEGREE, Plan::<P>::TAPS, Self::POWER)
+    };
+    /// Whether an image is four words.
+    const QUAD: bool = Plan::<P>::DEGREE > 128;
+    /// The images of the bits of a field of three or four words; zero for the other fields.
+    const QUAD_IMAGES: &'static [[u64; 4]; 256] = {
+        // The index of this power among the nibble tables.
+        let plan = Frobenius::<P>::POWERS;
+        let mut index = 0;
+        while index < plan.tables {
+            if let [power, ..] = plan.tabulated.split_at(index).1
+                && *power == Self::POWER
+            {
+                break;
+            }
+            index += 1;
+        }
+        match index {
+            _ if Self::POWER == 0 => &[[0; 4]; 256],
+            0 => QuadImages::<P, 0>::IMAGES,
+            1 => QuadImages::<P, 1>::IMAGES,
+            2 => QuadImages::<P, 2>::IMAGES,
+            3 => QuadImages::<P, 3>::IMAGES,
+            4 => QuadImages::<P, 4>::IMAGES,
+            5 => QuadImages::<P, 5>::IMAGES,
+            6 => QuadImages::<P, 6>::IMAGES,
+            7 => QuadImages::<P, 7>::IMAGES,
+            _ => &[[0; 4]; 256],
+        }
     };
 
     /// `x^(2^POWER)`: the sum of the images of the set bits of `x`, each under the mask of its
@@ -455,6 +563,9 @@ impl<P: Polynomial, const T: usize> BitTable<P, T> {
     #[inline(always)]
     fn apply(x: Poly<P::Degree>) -> Poly<P::Degree> {
         let limbs = x.to_uint().into_limbs();
+        if Self::QUAD {
+            return polynomial::<P, 4>(quad_masked_sum(Self::QUAD_IMAGES, &limbs));
+        }
         let low = limbs.first().copied().unwrap_or(0);
         let high = limbs.get(1).copied().unwrap_or(0);
         if Self::WORD {
@@ -468,7 +579,7 @@ impl<P: Polynomial, const T: usize> BitTable<P, T> {
                 third ^= c & mask(bits, 2);
                 fourth ^= d & mask(bits, 3);
             }
-            polynomial::<P>([(first ^ second) ^ (third ^ fourth), 0])
+            polynomial::<P, 2>([(first ^ second) ^ (third ^ fourth), 0])
         } else {
             let mask = |bits: u64, bit: u32| ((bits >> bit) & 1).wrapping_neg();
             let mut sums = [[0u64; 2]; 4];
@@ -483,7 +594,7 @@ impl<P: Polynomial, const T: usize> BitTable<P, T> {
                 }
             }
             let [first, second, third, fourth] = sums;
-            polynomial::<P>([
+            polynomial::<P, 2>([
                 (first[0] ^ second[0]) ^ (third[0] ^ fourth[0]),
                 (first[1] ^ second[1]) ^ (third[1] ^ fourth[1]),
             ])
@@ -603,7 +714,7 @@ pub(crate) fn add_lane_rows<const ENTRIES: usize>(
 
 /// The polynomial of the field with the polynomial `P` whose low words are `words`.
 #[inline(always)]
-fn polynomial<P: Polynomial>(words: [u64; 2]) -> Poly<P::Degree> {
+fn polynomial<P: Polynomial, const WORDS: usize>(words: [u64; WORDS]) -> Poly<P::Degree> {
     let mut limbs = GenericArray::<u64, Limbs<P>>::DEFAULT;
     for (slot, word) in limbs.iter_mut().zip(words) {
         *slot = word;
@@ -634,6 +745,284 @@ pub(crate) const fn images(degree: usize, taps: &[usize], power: usize) -> [u128
         squaring += 1;
     }
     images
+}
+
+/// The sum of the rows of `table` that the nibbles of `limbs`, up to four words, select. Two sums
+/// alternate, so that consecutive lookups add in parallel.
+#[inline(always)]
+fn quad_sum(table: &QuadNibbles, limbs: &[u64]) -> [u64; 4] {
+    let mut sums = [[0u64; 4]; 2];
+    for (position, row) in table.iter().enumerate() {
+        let word = limbs.get(position / 16).copied().unwrap_or(0);
+        let index = ((word >> (4 * (position % 16))) & 15) as usize;
+        if let (Some(image), Some(sum)) = (row.get(index), sums.get_mut(position % 2)) {
+            for (slot, &limb) in sum.iter_mut().zip(image) {
+                *slot ^= limb;
+            }
+        }
+    }
+    let [first, second] = sums;
+    xor_words(first, second)
+}
+
+/// `a + b` word by word.
+#[inline(always)]
+fn xor_words(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
+    let ([a0, a1, a2, a3], [b0, b1, b2, b3]) = (a, b);
+    [a0 ^ b0, a1 ^ b1, a2 ^ b2, a3 ^ b3]
+}
+
+/// The sum of the images of the set bits of `limbs`, up to four words, each image under the mask
+/// of its bit, in four sums. No address and no branch depends on `limbs`.
+#[inline(always)]
+fn quad_masked_sum(images: &[[u64; 4]; 256], limbs: &[u64]) -> [u64; 4] {
+    let mut sums = [[0u64; 4]; 4];
+    let (chunks, _) = images.as_chunks::<4>();
+    for (index, group) in chunks.iter().enumerate() {
+        let bits = limbs.get(index / 16).copied().unwrap_or(0) >> (4 * (index % 16));
+        for (bit, (sum, image)) in sums.iter_mut().zip(group).enumerate() {
+            let mask = ((bits >> bit) & 1).wrapping_neg();
+            // Spelled out: a loop over the words would let LLVM unswitch it on the mask, a branch
+            // on the bit.
+            let [first, second, third, fourth] = sum;
+            let [a, b, c, d] = *image;
+            *first ^= a & mask;
+            *second ^= b & mask;
+            *third ^= c & mask;
+            *fourth ^= d & mask;
+        }
+    }
+    let [first, second, third, fourth] = sums;
+    xor_words(xor_words(first, second), xor_words(third, fourth))
+}
+
+/// The images of the basis elements `x^j` under `a -> a^(2^power)` in the field of degree
+/// `degree`, from 129 to 256, with `taps`, as four words each; zero unless `used`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn quad_images(used: bool, degree: usize, taps: &[usize], power: usize) -> [[u64; 4]; 256] {
+    let mut images = [[0u64; 4]; 256];
+    if !used || power == 0 {
+        return images;
+    }
+    // The image of `x^j` is `y^j` with `y = x^(2^power)`: the square of the image of `x^(j / 2)`
+    // for an even `j`, and the product of the image of `x^(j - 1)` and `y` for an odd one.
+    let mut y = [0u64; 4];
+    y[0] = 2;
+    let mut squaring = 0;
+    while squaring < power {
+        y = quad_square_mod(y, degree, taps);
+        squaring += 1;
+    }
+    let shifted = shifts(y);
+    images[0][0] = 1;
+    let mut bit = 1;
+    while bit < degree {
+        images[bit] = if bit % 2 == 0 {
+            quad_square_mod(images[bit / 2], degree, taps)
+        } else {
+            quad_mul_mod(&shifted, images[bit - 1], degree, taps)
+        };
+        bit += 1;
+    }
+    images
+}
+
+/// The carry-less products of `a` and every byte, each on five words. Constant evaluation runs a
+/// product by them a byte of the multiplier at a time.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn shifts(a: [u64; 4]) -> [[u64; 5]; 256] {
+    let mut multiples = [[0u64; 5]; 256];
+    let mut value: usize = 1;
+    while value < 256 {
+        // Each value is a smaller one plus its lowest bit.
+        let low = value & value.wrapping_neg();
+        let shift = low.trailing_zeros();
+        let mut word = 0;
+        while word < 5 {
+            let shifted = if word < 4 { a[word] << shift } else { 0 };
+            let carried = if word > 0 && shift > 0 {
+                a[word - 1] >> (64 - shift)
+            } else {
+                0
+            };
+            multiples[value][word] = multiples[value ^ low][word] ^ shifted ^ carried;
+            word += 1;
+        }
+        value += 1;
+    }
+    multiples
+}
+
+/// `a b mod x^degree + r` for `a` and `b` below `x^degree`, a degree from 129 to 256, with the
+/// [`shifts`] of `a`: the carry-less product by the bytes of `b`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn quad_mul_mod(
+    multiples: &[[u64; 5]; 256],
+    b: [u64; 4],
+    degree: usize,
+    taps: &[usize],
+) -> [u64; 4] {
+    let mut product = [0u64; 8];
+    let mut byte = 0;
+    while byte < 32 {
+        let multiple = &multiples[((b[byte / 8] >> (8 * (byte % 8))) & 0xFF) as usize];
+        let (word, shift) = (byte / 8, 8 * (byte % 8));
+        let mut index = 0;
+        while index < 5 {
+            product[word + index] ^= multiple[index] << shift;
+            // The top word of a multiple holds 7 bits, which a shift keeps within the word.
+            if shift > 0 && word + index + 1 < 8 {
+                product[word + index + 1] ^= multiple[index] >> (64 - shift);
+            }
+            index += 1;
+        }
+        byte += 1;
+    }
+    quad_reduce(product, degree, taps)
+}
+
+/// The nibble table of the power whose bit `images` are given, in fields of three or four words, as
+/// `word_table`; zero unless `used`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn quad_table(used: bool, degree: usize, images: &[[u64; 4]; 256]) -> QuadNibbles {
+    let mut table = [[[0u64; 4]; 16]; 64];
+    if !used {
+        return table;
+    }
+    let mut position = 0;
+    while position < 64 {
+        let mut value: usize = 1;
+        while value < 16 {
+            let low = value & value.wrapping_neg();
+            let bit = 4 * position + low.trailing_zeros() as usize;
+            let mut word = 0;
+            while word < 4 {
+                let image = if bit < degree { images[bit][word] } else { 0 };
+                table[position][value][word] = table[position][value ^ low][word] ^ image;
+                word += 1;
+            }
+            value += 1;
+        }
+        position += 1;
+    }
+    table
+}
+
+/// `a^2 mod x^degree + r` for `a` below `x^degree`, a degree from 129 to 256, as [`square_mod`]
+/// on eight words.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn quad_square_mod(a: [u64; 4], degree: usize, taps: &[usize]) -> [u64; 4] {
+    let mut value = [0u64; 8];
+    let mut word = 0;
+    while word < 4 {
+        let spread = spread(a[word]);
+        value[2 * word] = spread as u64;
+        value[2 * word + 1] = (spread >> 64) as u64;
+        word += 1;
+    }
+    quad_reduce(value, degree, taps)
+}
+
+/// `value mod x^degree + r` for `value` of up to 512 bits, a degree from 129 to 256: the part at
+/// and above `x^degree` folds down by `r` until none is left.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn quad_reduce(value: [u64; 8], degree: usize, taps: &[usize]) -> [u64; 4] {
+    let mut value = value;
+    loop {
+        // The part at and above `x^degree` folds down by `r`.
+        let top = shift_words(&value, degree as isize);
+        let mut any = false;
+        let mut index = 0;
+        while index < 8 {
+            any |= top[index] != 0;
+            index += 1;
+        }
+        if !any {
+            return [value[0], value[1], value[2], value[3]];
+        }
+        index = 0;
+        while index < 8 {
+            let low = index * 64;
+            value[index] &= if low + 64 <= degree {
+                u64::MAX
+            } else if low >= degree {
+                0
+            } else {
+                (1 << (degree - low)) - 1
+            };
+            index += 1;
+        }
+        let mut rest = taps;
+        while let [tap, tail @ ..] = rest {
+            let added = shift_words(&top, -(*tap as isize));
+            index = 0;
+            while index < 8 {
+                value[index] ^= added[index];
+                index += 1;
+            }
+            rest = tail;
+        }
+    }
+}
+
+/// `value >> shift` for a positive `shift`, `value << -shift` for a negative one, on eight words.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with every index below its array's length"
+)]
+const fn shift_words(value: &[u64; 8], shift: isize) -> [u64; 8] {
+    let mut out = [0u64; 8];
+    let amount = shift.unsigned_abs();
+    let (words, offset) = (amount / 64, (amount % 64) as u32);
+    let mut index = 0;
+    while index < 8 {
+        // Bit `b` of `out` is bit `b + shift` of `value`.
+        let word = if shift >= 0 {
+            index as isize + words as isize
+        } else {
+            index as isize - words as isize
+        };
+        out[index] = if offset == 0 {
+            word_at(value, word)
+        } else if shift >= 0 {
+            (word_at(value, word) >> offset) | (word_at(value, word + 1) << (64 - offset))
+        } else {
+            (word_at(value, word) << offset) | (word_at(value, word - 1) >> (64 - offset))
+        };
+        index += 1;
+    }
+    out
+}
+
+/// Word `word` of `value`, zero outside it.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "const evaluation, with the index checked against the length"
+)]
+const fn word_at(value: &[u64; 8], word: isize) -> u64 {
+    if word >= 0 && word < 8 {
+        value[word as usize]
+    } else {
+        0
+    }
 }
 
 /// The table of a power in fields of one word: for each window position, the sum of the images of

@@ -117,6 +117,16 @@ const BYTE_SHUFFLE: bool = cfg!(any(
     )
 ));
 
+/// The largest degree whose inverse applies tables of Frobenius powers. On WebAssembly a squaring
+/// of 129 to 256 bits takes about 58 cycles, and the 254 squarings of the inverse of GF(2^256)
+/// took Chrome two thirds of its 23,000 cycles; tables of four words per image replace them.
+/// Elsewhere 128.
+pub(crate) const TABLE_DEGREE: usize = if cfg!(target_arch = "wasm32") {
+    256
+} else {
+    128
+};
+
 /// The bytes of constants a field may hold without `precomputed`.
 pub(crate) const BUDGET: usize = 16 * 1024;
 
@@ -163,12 +173,16 @@ impl<P: Polynomial> Plan<P> {
     pub(crate) const BYTE_MAPS: bool =
         matches!(TIER, Tier::Budget) && Self::SMALL && Self::DEGREE > 8;
     /// The window in bits of the tables of the Frobenius powers of the default inverse of a field
-    /// of 17 to 128 bits: bytes with `precomputed`, nibbles by default, none without tables.
-    pub(crate) const FROBENIUS_WINDOW: usize = if Self::DEGREE <= 16 || Self::DEGREE > 128 {
+    /// of 17 to [`TABLE_DEGREE`] bits: bytes with `precomputed` up to 128 bits and nibbles above,
+    /// nibbles by default up to 128 bits, none without tables.
+    pub(crate) const FROBENIUS_WINDOW: usize = if Self::DEGREE <= 16 || Self::DEGREE > TABLE_DEGREE
+    {
         0
     } else {
         match TIER {
+            Tier::Full if Self::DEGREE > 128 => 4,
             Tier::Full => 8,
+            Tier::Budget if Self::DEGREE > 128 => 0,
             Tier::Budget => 4,
             Tier::None => 0,
         }

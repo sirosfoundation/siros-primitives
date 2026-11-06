@@ -441,7 +441,12 @@ pub(crate) fn select_masked(out: &mut [u64], a: &[u64], mask: u64) {
 /// unrolls the chains up to this length; there the add-back costs two instructions a limb, and a
 /// select would gather the scalar limbs into vector lanes one by one. Longer corrections run in
 /// loops: the corrected value goes to memory, and the select of every limb vectorizes.
-pub(crate) const ADD_BACK_LIMBS: usize = 32;
+///
+/// WebAssembly has no carry flag: an add-back step costs six instructions a limb, the select three.
+/// From three limbs the select takes fewer cycles: the 256-bit constant-time `add_mod` took Chrome
+/// 82 against 98 with the add-back. At two limbs it took Firefox with wide arithmetic 47 against
+/// 35.
+pub(crate) const ADD_BACK_LIMBS: usize = if cfg!(target_arch = "wasm32") { 2 } else { 32 };
 
 /// [`subtract_when_above`] under masks at every length: writes `part - divisor` to `out` when
 /// `carry` is set or `part >= divisor`, `part` otherwise. Up to [`ADD_BACK_LIMBS`] limbs, `out`
