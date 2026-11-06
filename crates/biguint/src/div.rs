@@ -805,9 +805,9 @@ fn full_quotient_limb<const CONSTANT: bool>(
 
 /// Subtracts `divisor * digit` from `out` and returns the limb owed above it: in two carry chains
 /// when the compiler knows the divisor's length, in one otherwise and with wide arithmetic. There
-/// the two chains run two `i64.add128` and two `i64.sub128` a limb where one chain runs one of
-/// each: the 1024-bit `mul_mod` took Firefox 3,631 cycles in one chain against 4,185 in two, and
-/// Chrome 2,720 against 2,598.
+/// the two chains run two `i64.add128` and two `i64.sub128` a limb where one chain runs two
+/// `i64.add128`: the 1024-bit `mul_mod` took Firefox 3,122 cycles in one chain against 3,568 for
+/// `ruint` in two, and Chrome 2,426 against 2,595.
 #[inline(always)]
 fn scaled_subtraction<const CONSTANT: bool>(out: &mut [u64], divisor: &[u64], digit: u64) -> u64 {
     if CONSTANT && !cfg!(wide_arithmetic) {

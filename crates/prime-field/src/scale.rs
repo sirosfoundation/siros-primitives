@@ -150,8 +150,8 @@ impl<M: Modulus> Shape<M> {
             // `k R^2 < p 2^64` reduces by one Montgomery step to `k R mod p`, of shifts.
             Self::montgomery1::<CT>(k, limb(&Self::R2, 0))
         } else if Self::MONTGOMERY {
-            // `k R^2 < p 2^64` reduces by one Montgomery step to `k R mod p`.
-            Self::redc1::<CT>(widening_mul(k, limb(&Self::R2, 0)))
+            // `k (R 2^64 mod p) < p 2^64` reduces by one Montgomery step to `k R mod p`.
+            Self::redc1::<CT>(widening_mul(k, limb(&Self::R_WORD, 0)))
         } else {
             limb(&Self::reduce_wide::<CT>(Self::row(&Self::ONE, k)), 0)
         }

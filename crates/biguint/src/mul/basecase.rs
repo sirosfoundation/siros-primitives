@@ -16,8 +16,6 @@
 //! copy per limb up to [`GROUPED_ROW`], the copies past the length folding away.
 
 use generic_array::{ArrayLength, GenericArray};
-#[cfg(wide_arithmetic)]
-use typenum::U6;
 use typenum::{U16, Unsigned};
 
 use crate::each::each;
@@ -42,13 +40,6 @@ pub(crate) fn product<A: ArrayLength, B: ArrayLength>(
         copied_mac_rows::<B>(out, a, b);
         return;
     }
-    #[cfg(wide_arithmetic)]
-    if const { A::USIZE == CHAINED_LIMBS && B::USIZE == CHAINED_LIMBS }
-        && out.len() == CHAINED_LIMBS
-    {
-        chained_rows(out, a, b);
-        return;
-    }
     if A::USIZE <= MAC_ROWS && B::USIZE <= MAC_ROWS {
         mac_rows(out, a, b);
     } else if A::USIZE > GROUPED_ROW || B::USIZE > GROUPED_ROW {
@@ -62,9 +53,8 @@ pub(crate) fn product<A: ArrayLength, B: ArrayLength>(
 
 /// The operand length whose products run [`columns`] with wide arithmetic, and the most limbs of a
 /// product of slices that does. Chrome and Firefox took the 1024-bit wrapping product in 315 and
-/// 567 cycles by columns against 337 and 742 by rows; the 2048-bit one, whose Karatsuba leaves
-/// are 8-limb full products, in 2,317 and 3,520 against 2,493 and 3,676. At 6 and 8 limbs the two
-/// forms tie, and the rows run fewer instructions.
+/// 567 cycles by columns against 337 and 742 by rows. At 6 and 8 limbs the two forms tie, and the
+/// rows run fewer instructions.
 #[cfg(wide_arithmetic)]
 const COLUMN_LIMBS: usize = ColumnLimbs::USIZE;
 
@@ -135,41 +125,6 @@ fn mac_rows(out: &mut [u64], a: &[u64], b: &[u64]) {
     }
     for index in 0..b.len() {
         mac_row!(out, a, b, index);
-    }
-}
-
-/// The operand length whose wrapping products run [`chained_rows`] with wide arithmetic: Chrome and
-/// Firefox took the 384-bit one in 43.1 and 70.7 cycles against 54.0 and 66.7 in [`mac_rows`]. At 4
-/// and 8 limbs [`mac_rows`] took 16.8 and 26.0, 70.9 and 126, against 18.4 and 27.6, 80.8 and 128.
-#[cfg(wide_arithmetic)]
-const CHAINED_LIMBS: usize = 6;
-
-/// Writes `a * b mod 2^(64 * CHAINED_LIMBS)` to `out`, from the rows in a local sum: one row per limb of `a`, every
-/// step a full multiply-accumulate with the sum's limb added before the carry.
-#[cfg(wide_arithmetic)]
-#[inline(always)]
-fn chained_rows(out: &mut [u64], a: &[u64], b: &[u64]) {
-    let mut sum = [0u64; CHAINED_LIMBS];
-    each::<U6>(
-        #[inline(always)]
-        |index| {
-            if let Some(&multiplier) = a.get(index) {
-                let mut carry = 0;
-                each::<U6>(
-                    #[inline(always)]
-                    |column| {
-                        if let (Some(&limb), Some(slot)) =
-                            (b.get(column), sum.get_mut(index + column))
-                        {
-                            (*slot, carry) = mul_add(multiplier, limb, *slot, carry);
-                        }
-                    },
-                );
-            }
-        },
-    );
-    for (slot, limb) in out.iter_mut().zip(sum) {
-        *slot = limb;
     }
 }
 

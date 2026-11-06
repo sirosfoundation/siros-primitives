@@ -93,13 +93,26 @@ impl<M: Modulus> Shape<M> {
     /// prime bases, which decides every 64-bit number. A Montgomery product of a prime modulus
     /// whose product fits the limb lands below `p`.
     pub(crate) const PRIME_LIMB: bool = Self::LIMBS == 1 && is_prime(Self::P0);
-    /// `R = 2^(64 L) mod p`.
-    const R: Limbs<M> = Self::pow2_mod(64 * Self::LIMBS);
+    /// Montgomery form on WebAssembly without wide arithmetic, with a product of two elements
+    /// inside the limb: `R = 2^32`, and a product reduces by [`half_redc`]. The BabyBear product
+    /// took Chrome 4.1 cycles and Firefox 5.5 against 5.2 and 5.1 with `R = 2^64`, the square 5.4 and
+    /// 6.0 against 4.7 and 5.7.
+    pub(crate) const HALF_RADIX: bool = cfg!(all(target_arch = "wasm32", not(wide_arithmetic)))
+        && Self::MONTGOMERY
+        && Self::PRODUCT_FITS_LIMB;
+    /// The bits of `R`: `64 L` unless [`Self::HALF_RADIX`] holds.
+    const RADIX_BITS: usize = if Self::HALF_RADIX {
+        32
+    } else {
+        64 * Self::LIMBS
+    };
+    /// `R mod p`.
+    const R: Limbs<M> = Self::pow2_mod(Self::RADIX_BITS);
     /// `R^2 mod p`.
-    pub(crate) const R2: Limbs<M> = Self::pow2_mod(128 * Self::LIMBS);
+    pub(crate) const R2: Limbs<M> = Self::pow2_mod(2 * Self::RADIX_BITS);
     /// `R^3 mod p`: a Montgomery product by it turns the inverse of a representation into the
     /// representation of the inverse.
-    pub(crate) const R3: Limbs<M> = Self::pow2_mod(192 * Self::LIMBS);
+    pub(crate) const R3: Limbs<M> = Self::pow2_mod(3 * Self::RADIX_BITS);
     /// The representation of `1`.
     pub(crate) const ONE: Limbs<M> = {
         let () = Self::VALID;
@@ -299,9 +312,9 @@ impl<M: Modulus> Shape<M> {
     /// of shifts.
     pub(crate) const SHIFT_ENCODE: bool = Self::MONTGOMERY && Self::SHIFT_REDC;
 
-    /// `2^(64 (L + 1)) mod p`: one Montgomery step of a word times it leaves the word's Montgomery
-    /// form.
-    pub(crate) const R_WORD: Limbs<M> = Self::pow2_mod(64 * Self::LIMBS + 64);
+    /// `R 2^64 mod p`: one Montgomery step of a word times it, which divides by `2^64`, leaves the
+    /// word's Montgomery form.
+    pub(crate) const R_WORD: Limbs<M> = Self::pow2_mod(Self::RADIX_BITS + 64);
 
     /// The representation of the word `value`, in constant time: one Montgomery step of `value`
     /// times [`Self::R_WORD`], one row of products against the `L` rows of [`Self::encode`];
@@ -338,14 +351,7 @@ impl<M: Modulus> Shape<M> {
             let product = widening_mul(limb(value, 0), limb(Self::R2.as_slice(), 0));
             set(out.as_mut_slice(), 0, shift_redc(product));
         } else if Self::MONTGOMERY {
-            cios(
-                out.as_mut_slice(),
-                value,
-                Self::R2.as_slice(),
-                Self::P.as_slice(),
-                Self::INV,
-                Self::SPARE,
-            );
+            Self::montgomery_raw(out.as_mut_slice(), value, Self::R2.as_slice());
         } else if Self::MERSENNE && is_zero(value) {
             copy(out.as_mut_slice(), Self::P.as_slice());
         } else {
@@ -361,13 +367,7 @@ impl<M: Modulus> Shape<M> {
         if Self::MONTGOMERY {
             let mut wide = M::Width::WIDE_ZERO;
             copy(wide.as_mut_slice(), value);
-            redc(
-                out.as_mut_slice(),
-                wide.as_mut_slice(),
-                Self::P.as_slice(),
-                Self::INV,
-                Self::SPARE,
-            );
+            Self::redc_raw(out.as_mut_slice(), wide.as_mut_slice());
         } else if !(Self::MERSENNE && equal(value, Self::P.as_slice())) {
             copy(out.as_mut_slice(), value);
         }
@@ -439,14 +439,7 @@ impl<M: Modulus> Shape<M> {
     pub(crate) const fn mul_raw(a: &[u64], b: &[u64]) -> Limbs<M> {
         let mut out = M::Width::ZERO;
         if Self::MONTGOMERY {
-            cios(
-                out.as_mut_slice(),
-                a,
-                b,
-                Self::P.as_slice(),
-                Self::INV,
-                Self::SPARE,
-            );
+            Self::montgomery_raw(out.as_mut_slice(), a, b);
         } else {
             let mut wide = M::Width::WIDE_ZERO;
             mul_wide(
@@ -466,17 +459,31 @@ impl<M: Modulus> Shape<M> {
         let mut wide = M::Width::WIDE_ZERO;
         square_wide(wide.as_mut_slice(), Self::residue(a).as_slice());
         if Self::MONTGOMERY {
-            redc(
-                out.as_mut_slice(),
-                wide.as_mut_slice(),
-                Self::P.as_slice(),
-                Self::INV,
-                Self::SPARE,
-            );
+            Self::redc_raw(out.as_mut_slice(), wide.as_mut_slice());
         } else {
             Self::fold_raw(&mut out, wide.as_slice());
         }
         Self::represent(out)
+    }
+
+    /// `out = a b / R mod p` for `a b < p R`.
+    #[inline(always)]
+    const fn montgomery_raw(out: &mut [u64], a: &[u64], b: &[u64]) {
+        if Self::HALF_RADIX {
+            set(out, 0, half_redc(limb(a, 0) * limb(b, 0), Self::P0, Self::INV));
+        } else {
+            cios(out, a, b, Self::P.as_slice(), Self::INV, Self::SPARE);
+        }
+    }
+
+    /// `out = wide / R mod p` for `wide < p R`.
+    #[inline(always)]
+    const fn redc_raw(out: &mut [u64], wide: &mut [u64]) {
+        if Self::HALF_RADIX {
+            set(out, 0, half_redc(limb(wide, 0), Self::P0, Self::INV));
+        } else {
+            redc(out, wide, Self::P.as_slice(), Self::INV, Self::SPARE);
+        }
     }
 
     /// The limbs that the value needs after the first, second and third fold, from the bound on
@@ -727,6 +734,26 @@ const fn pow_mod(base: u64, exponent: u64, n: u64) -> u64 {
         rest >>= 1;
     }
     result
+}
+
+/// Montgomery reduction `x / 2^32 mod p` for `p < 2^32` and `x < p 2^32`, with `inv = -p^-1 mod
+/// 2^64`, in plonky3's `monty_reduce` order: `x - t p` is a multiple of `2^32` for `t = x p^-1 mod
+/// 2^32`, and its high half lies in `(-p, p)`. The selection compiles to `select`.
+#[inline(always)]
+pub(crate) const fn half_redc(x: u64, p: u64, inv: u64) -> u64 {
+    let t = x.wrapping_mul(inv.wrapping_neg()) & 0xffff_ffff;
+    let (difference, negative) = x.overflowing_sub(t * p);
+    let high = (difference >> 32) as u32;
+    let correction = if negative { p as u32 } else { 0 };
+    high.wrapping_add(correction) as u64
+}
+
+/// [`half_redc`] with the correction from the sign of the difference, by shifts.
+#[inline(always)]
+pub(crate) const fn half_redc_signed(x: u64, p: u64, inv: u64) -> u64 {
+    let t = x.wrapping_mul(inv.wrapping_neg()) & 0xffff_ffff;
+    let difference = x.wrapping_sub(t * p) as i64;
+    ((difference >> 32) + ((difference >> 63) & p as i64)) as u64
 }
 
 /// Montgomery reduction `value / 2^64 mod p` for `p = 2^64 - 2^32 + 1` and `value < p 2^64`, in

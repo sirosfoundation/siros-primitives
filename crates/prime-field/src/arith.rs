@@ -20,7 +20,9 @@ use crate::kernel::{equal, fits, is_zero, limb, low_limb, set, shifted_limb, wid
 use crate::limb::{
     SignedPowers, adc, adc_constant, adc_sum, mac, sbb, sbb_constant, sbb_mask, select,
 };
-use crate::params::{ExtendedLimbs, Limbs, Shape, WideLimbs};
+use crate::params::{
+    ExtendedLimbs, Limbs, Shape, WideLimbs, half_redc, half_redc_signed, shift_redc,
+};
 use crate::unrolled::{UNROLLED, unroll};
 use crate::width::Width;
 
@@ -158,6 +160,16 @@ impl<M: Modulus> Shape<M> {
     pub(crate) fn square<const CT: bool>(a: &Limbs<M>) -> Limbs<M> {
         if Self::LIMBS == 1 {
             let value = limb(a, 0);
+            if Self::SHIFT_REDC && cfg!(wide_arithmetic) {
+                // The Goldilocks square took Firefox 7.0 cycles against 8.0 by `mul1` and Chrome
+                // 6.0 against 6.2, at a latency of 14.4 cycles against 12.7 and 13.9 against 11.0.
+                return Self::single(shift_redc(widening_mul(value, value)));
+            }
+            if Self::HALF_RADIX {
+                // The BabyBear square took Firefox 6.0 cycles against 6.5 by `half_redc` and
+                // Chrome 5.4 against 5.3.
+                return Self::single(half_redc_signed(value * value, Self::P0, Self::INV));
+            }
             return Self::single(Self::mul1::<CT>(value, value));
         }
         if cfg!(wide_arithmetic) && Self::LIMBS > 4 && !Self::MONTGOMERY {
@@ -482,21 +494,22 @@ impl<M: Modulus> Shape<M> {
         }
     }
 
-    /// The Montgomery product `a b / 2^64 mod p` on one limb.
+    /// The Montgomery product `a b / R mod p` on one limb.
     #[inline(always)]
     pub(crate) fn montgomery1<const CT: bool>(a: u64, b: u64) -> u64 {
-        if Self::PRODUCT_FITS_LIMB {
+        if Self::HALF_RADIX {
+            half_redc(a * b, Self::P0, Self::INV)
+        } else if Self::PRODUCT_FITS_LIMB {
             // `x + m p = 0 mod 2^64` with `x < 2^64`: the low limbs carry exactly when `x` is
             // not zero, and the result `(m p >> 64) + carry` is at most `p`. It equals `p` only
             // when `x` is a nonzero multiple of `p`, which a prime modulus rules out.
             let product = a * b;
             let m = product.wrapping_mul(Self::INV);
-            let result = if Self::HALVED_REDC {
-                // `(product + m p) / 2^32 = y + (m >> 32) p` for `y = (product + (m mod 2^32) p)
-                // / 2^32`, a multiple of `2^32`. `y < 2^32` is the complement of `(m >> 32) p`
-                // modulo `2^32`, so the result rounds `(m >> 32) p / 2^32` up: one product of
-                // halves where the high limb of `m p` takes two without wide arithmetic.
-                ((m >> 32) * Self::P0 + 0xffff_ffff) >> 32
+            let result = if cfg!(wide_arithmetic) {
+                // The low limb of `m p` is `-x`, so adding `2^64 - 1` carries as adding `x` does,
+                // in one `i64.add128`: the BabyBear square took Chrome 3.7 cycles and Firefox 5.8
+                // against 5.3 and 6.5 by `half_redc`, the product 4.5 and 5.2 against 4.1 and 5.5.
+                ((widening_mul(m, Self::P0) + u128::from(u64::MAX)) >> 64) as u64
             } else {
                 (widening_mul(m, Self::P0) >> 64) as u64 + u64::from(product != 0)
             };
@@ -534,16 +547,6 @@ impl<M: Modulus> Shape<M> {
         let (result, carry) = adc(u8::from(low != 0), high, reduction);
         Self::reduce1::<CT>(result, carry)
     }
-
-    /// A one-limb Montgomery product, on WebAssembly without wide arithmetic, takes the high limb
-    /// of `m p` from the high half of `m`: [`Self::PRODUCT_FITS_LIMB`] and `(p - 1)^2 + (2^32 -
-    /// 1) p < 2^64`, which keeps the sum of the product and the multiple of `p` of the low half of
-    /// `m` within a limb. The BabyBear product took Chrome 5.2 cycles against 7.8 for the split
-    /// high limb; with wide arithmetic, `i64.mul_wide_u` keeps one cycle less of latency.
-    const HALVED_REDC: bool = cfg!(all(target_arch = "wasm32", not(wide_arithmetic)))
-        && Self::PRODUCT_FITS_LIMB
-        && ((Self::P0 - 1) as u128 * (Self::P0 - 1) as u128 + 0xffff_ffff * Self::P0 as u128)
-            < 1 << 64;
 
     /// One limb with `p^-1 = 1 + 2^32 mod 2^64`, that is `p = 2^64 - 2^32 + 1`: the Montgomery
     /// multiplier is a shift and an addition, and the multiple of `p` its shift and subtractions.
@@ -1026,6 +1029,24 @@ impl<M: Modulus> Shape<M> {
                 },
             );
         }
+        if cfg!(wide_arithmetic) {
+            // Each diagonal step as one multiply-accumulate and one carry into the next limb, as
+            // halo2curves orders it: with the reduction kept out of the product, Firefox spilled
+            // 23 limbs of the Tom-256 square against 31, and ran 734 instructions against 773.
+            let mut carry = 0;
+            Self::each_limb(
+                #[inline(always)]
+                |i| {
+                    let value = limb(a, i);
+                    let (low, high) = mac(value, value, limb(wide.as_slice(), 2 * i), carry);
+                    let (next, carry_out) = adc(0, limb(wide.as_slice(), 2 * i + 1), high);
+                    set(wide.as_mut_slice(), 2 * i, low);
+                    set(wide.as_mut_slice(), 2 * i + 1, next);
+                    carry = u64::from(carry_out);
+                },
+            );
+            return wide;
+        }
         let mut carry = 0;
         Self::each_limb(
             #[inline(always)]
@@ -1112,8 +1133,14 @@ impl<M: Modulus> Shape<M> {
                 carry = high;
             });
             let (row_top, above) = adc(0, top, carry);
-            let m = limb(out.as_slice(), 0).wrapping_mul(Self::INV);
-            let (_, mut carry) = mac(m, Self::P0, limb(out.as_slice(), 0), 0);
+            let low = limb(out.as_slice(), 0);
+            let m = low.wrapping_mul(Self::INV);
+            // The low half of `m p0` cancels `low`, and their sum carries unless `low` is zero.
+            let mut carry = if cfg!(wide_arithmetic) {
+                (widening_mul(m, Self::P0) >> 64) as u64 + u64::from(low != 0)
+            } else {
+                mac(m, Self::P0, low, 0).1
+            };
             unroll!(j in 1, Self::LIMBS => {
                 let (low, high) =
                     mac(m, limb(Self::P.as_slice(), j), limb(out.as_slice(), j), carry);

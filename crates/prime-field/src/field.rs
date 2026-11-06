@@ -32,7 +32,8 @@ pub trait Modulus: Copy + 'static {
 /// A one-limb Mersenne modulus `2^k - 1` (Mersenne-31) holds plain residues in `[1, p]`, with
 /// `0` held as `p`. A modulus `2^k - c` of several limbs with `c < 2^64` small against `2^k`
 /// (secp256k1, P-521) holds plain residues and reduces products by folding. Every other field
-/// holds Montgomery residues `x R mod p` with `R = 2^(64 L)` and reduces products by Montgomery
+/// holds Montgomery residues `x R mod p` with `R = 2^(64 L)`, or `R = 2^32` for a modulus below
+/// `2^32` on WebAssembly without wide arithmetic, and reduces products by Montgomery
 /// multiplication. The representation is private; the conversions take and return canonical
 /// integers.
 #[repr(transparent)]
