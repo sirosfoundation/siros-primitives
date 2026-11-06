@@ -26,6 +26,7 @@
 - Divisors `k`: nonzero, uniform of exactly 64 bits over the fields of more than 64 bits, or of exactly one bit less than `p`. A crate without a division by an integer runs its own conversion of `k`, its inverse and a product; `prime-field × invert` is that composition in `prime-field`.
 - Every result matches `num-bigint` before it is measured.
 - `prime-field` runs `Fp` in the tables without a label and `ConstantTime` in the constant-time tables.
+- `prime-field` holds each element in Montgomery form, which favours `mul`. `k256/p256` holds a P-256 scalar as a plain integer, which favours `add_u64`, `sub_u64`, `add_uint`, `sub_uint` and `from_u64` over that field.
 
 ## Functions
 
