@@ -15,7 +15,7 @@ use crate::chain::Program;
 use crate::kernel::{
     add, add_mod, below, bit, bit_len, cios, copy, equal, fits, fold, inv64, is_zero, jacobi, limb,
     montgomery_word, mul_wide, neg_mod, redc, reduce_once, set, shr, square_wide, sub, sub_mod,
-    trailing_zeros, truncate, truncate_mut,
+    trailing_zeros, truncate, truncate_mut, widening_mul,
 };
 use crate::width::Width;
 
@@ -272,7 +272,28 @@ impl<M: Modulus> Shape<M> {
     }
 
     /// The folds of [`Self::mersenne_word`] that bring every `u64` to at most `p = 2^BITS - 1`.
-    const WORD_FOLDS: usize = mersenne_word_folds(Self::BITS);
+    const WORD_FOLDS: usize = mersenne_folds(Self::BITS, u64::MAX);
+
+    /// The representation in `[1, p]` of `value` for [`Self::MERSENNE`]: the first fold of
+    /// [`Self::mersenne_word`] plus `p`, which leaves every value nonzero, and the folds that bring
+    /// the sum to at most `p`, which keep it nonzero.
+    #[inline(always)]
+    pub(crate) const fn mersenne_representation(value: u64) -> u64 {
+        let mut folded = (value & Self::P0) + (value >> Self::BITS) + Self::P0;
+        let mut count = 0;
+        while count < Self::REPRESENTATION_FOLDS {
+            folded = (folded & Self::P0) + (folded >> Self::BITS);
+            count += 1;
+        }
+        folded
+    }
+
+    /// The folds of [`Self::mersenne_representation`] after its first; none for any other modulus.
+    const REPRESENTATION_FOLDS: usize = if Self::MERSENNE {
+        mersenne_folds(Self::BITS, 2 * Self::P0 + (u64::MAX >> Self::BITS))
+    } else {
+        0
+    };
 
     /// Montgomery form for `p = 2^64 - 2^32 + 1`: [`Self::encode`] takes one Montgomery step
     /// of shifts.
@@ -314,7 +335,7 @@ impl<M: Modulus> Shape<M> {
     pub(crate) const fn encode(value: &[u64]) -> Limbs<M> {
         let mut out = M::Width::ZERO;
         if Self::SHIFT_ENCODE {
-            let product = limb(value, 0) as u128 * limb(Self::R2.as_slice(), 0) as u128;
+            let product = widening_mul(limb(value, 0), limb(Self::R2.as_slice(), 0));
             set(out.as_mut_slice(), 0, shift_redc(product));
         } else if Self::MONTGOMERY {
             cios(
@@ -620,15 +641,15 @@ pub(crate) const fn folds_from(bits: usize, deficit: u64, high: Option<u128>) ->
     MAX_FOLDS + 1
 }
 
-/// The folds `x -> (x & p) + (x >> bits)` that bring every `u64` to at most `p = 2^bits - 1`,
-/// for `bits < 64`. A fold of the values up to `bound` reaches at most `p` plus the high part
-/// less one, or the low and high parts of `bound` itself.
-const fn mersenne_word_folds(bits: usize) -> usize {
+/// The folds `x -> (x & p) + (x >> bits)` that bring every value up to `bound` to at most
+/// `p = 2^bits - 1`, for `bits < 64`. A fold of the values up to `bound` reaches at most `p` plus
+/// the high part less one, or the low and high parts of `bound` itself.
+const fn mersenne_folds(bits: usize, bound: u64) -> usize {
     if bits == 0 || bits >= 64 {
         return 0;
     }
     let p = (1u64 << bits) - 1;
-    let mut bound = u64::MAX;
+    let mut bound = bound;
     let mut count = 0;
     while bound > p {
         let high = bound >> bits;
