@@ -14,8 +14,10 @@ use crate::stream::{LimbSource, LimbStream, Op2CarryIter, SubOp, ZeroExtended};
 
 use super::basecase;
 
-/// Operands shorter than this many limbs multiply by the quadratic product.
-pub(crate) const THRESHOLD: usize = 16;
+/// Operands shorter than this many limbs multiply by the quadratic product. With wide arithmetic,
+/// whose 16-limb product takes the two browsers 905 and 1,243 cycles in loops of rows and about
+/// 1,170 and 2,365 by Karatsuba, one limb longer.
+pub(crate) const THRESHOLD: usize = if cfg!(wide_arithmetic) { 17 } else { 16 };
 
 /// Writes `a * b` to `out[..2n]` for `a` and `b` of `n = L` limbs, with the sub-products at depth
 /// `D`. `scratch` holds `product_scratch(n, D::LEVELS + 1)` limbs; other lengths run the

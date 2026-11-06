@@ -27,10 +27,13 @@ pub(crate) const fn quadratic(len: usize) -> bool {
 const UNBALANCED_LOW: usize = 19;
 
 /// The high part of a split of `len` limbs, after GMP's rule: half while the full product of the
-/// low part would stay quadratic, `11/36` of the length once Karatsuba makes it cheaper.
+/// low part would stay quadratic, `11/36` of the length once Karatsuba makes it cheaper. On
+/// WebAssembly always half: the 2048-bit wrapping product took Chrome 1,846 cycles and Firefox
+/// 3,496 in halves against 2,325 and 3,508 at `11/36`, without wide arithmetic 4,834 and 6,102
+/// against 5,600 and 6,575.
 #[inline(always)]
 const fn high_part(len: usize) -> usize {
-    if len * 25 / 36 < UNBALANCED_LOW {
+    if cfg!(target_arch = "wasm32") || len * 25 / 36 < UNBALANCED_LOW {
         len / 2
     } else {
         len * 11 / 36

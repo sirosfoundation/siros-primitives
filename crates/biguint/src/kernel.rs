@@ -18,7 +18,7 @@ use crate::stream::{
 /// `a * b + c + d` as `(low, high)`, each addition an add-with-carry into the high limb: the form
 /// that LLVM keeps as two `adc` chains inside a loop, where it otherwise sums `c + d` first and
 /// saves that carry with `setb`.
-#[cfg(not(all(target_arch = "wasm32", not(wide_arithmetic))))]
+#[cfg(not(target_arch = "wasm32"))]
 #[inline(always)]
 pub(crate) fn mul_add_chained(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
     let product = widening_mul(a, b);
@@ -29,9 +29,10 @@ pub(crate) fn mul_add_chained(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
     (low, high)
 }
 
-/// `a * b + c + d` as `(low, high)`: the split product of [`mul_add`] adds `c` and `d` without
-/// carries.
-#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+/// `a * b + c + d` as `(low, high)`: on WebAssembly [`mul_add`] takes both additions into one
+/// expression. With wide arithmetic, the rows of a 16-limb product run 12 instructions per product
+/// against 25 with separate additions.
+#[cfg(target_arch = "wasm32")]
 #[inline(always)]
 pub(crate) fn mul_add_chained(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
     mul_add(a, b, c, d)
