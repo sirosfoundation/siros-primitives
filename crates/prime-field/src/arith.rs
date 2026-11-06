@@ -17,7 +17,9 @@ use typenum::Unsigned;
 
 use crate::field::Modulus;
 use crate::kernel::{equal, fits, is_zero, limb, low_limb, set, shifted_limb, widening_mul};
-use crate::limb::{SignedPowers, adc, adc_constant, adc_sum, mac, sbb, sbb_constant, select};
+use crate::limb::{
+    SignedPowers, adc, adc_constant, adc_sum, mac, sbb, sbb_constant, sbb_mask, select,
+};
 use crate::params::{ExtendedLimbs, Limbs, Shape, WideLimbs};
 use crate::unrolled::{UNROLLED, unroll};
 use crate::width::Width;
@@ -92,16 +94,15 @@ impl<M: Modulus> Shape<M> {
         if Self::LIMBS == 1 {
             return Self::single(Self::sub1(limb(a, 0), limb(b, 0)));
         }
-        let (difference, borrow) = Self::sub_limbs(a, b);
+        let (difference, spread) = Self::sub_limbs_mask(a, b);
         if !CT && Self::BRANCHES {
             // A difference that borrowed gains `p`.
-            return if borrow == 0 {
+            return if spread == 0 {
                 difference
             } else {
                 Self::modulus_on(&difference)
             };
         }
-        let spread = 0u64.wrapping_sub(u64::from(borrow));
         if Self::SUB_MASKED {
             return Self::add_masked(difference, spread);
         }
@@ -159,9 +160,7 @@ impl<M: Modulus> Shape<M> {
             let value = limb(a, 0);
             return Self::single(Self::mul1::<CT>(value, value));
         }
-        if cfg!(wide_arithmetic) && Self::LIMBS > 4 {
-            // The product of `a` by itself: 180 cycles over BLS12-381 in Chrome against 280 for
-            // the symmetric square.
+        if cfg!(wide_arithmetic) && Self::LIMBS > 4 && !Self::MONTGOMERY {
             return Self::mul::<CT>(a, a);
         }
         let mut wide = Self::square_product(a);
@@ -286,9 +285,19 @@ impl<M: Modulus> Shape<M> {
     /// Runs `body` on each pair `(i, j)` of limb indices, row `i` by row `i`, as one run over the
     /// `L^2` pairs, so that each call knows both indices. A loop nested in a loop body inlines
     /// into that body while `i` is unknown, where LLVM reassociates `a b + c + d` into
-    /// `(c + d) + a b`: a second carry chain, held in a register.
+    /// `(c + d) + a b`: a second carry chain, held in a register. With wide arithmetic beyond four
+    /// limbs, where [`Self::each`] loops past 16 pairs, the pairs run as nested copies of
+    /// [`unroll!`] instead: the 381-bit square took Chrome 158.5 cycles against 173.5.
     #[inline(always)]
     fn each_pair(mut body: impl FnMut(usize, usize)) {
+        if cfg!(wide_arithmetic) && Self::LIMBS > 4 {
+            unroll!(i in 0, Self::LIMBS => {
+                unroll!(j in 0, Self::LIMBS => {
+                    body(i, j);
+                });
+            });
+            return;
+        }
         Self::each::<<M::Width as Width>::Pairs>(
             #[inline(always)]
             |pair| body(pair / Self::LIMBS, pair % Self::LIMBS),
@@ -613,6 +622,30 @@ impl<M: Modulus> Shape<M> {
         (out, borrow)
     }
 
+    /// `a - b` over the limbs; the borrow out of the top limb as a mask, `0` or `2^64 - 1`. With
+    /// wide arithmetic the chain carries the mask from limb to limb ([`sbb_mask`]): the borrow bit
+    /// took one shift per limb, and Chrome 16.5 cycles of latency for the constant-time BN254
+    /// difference against 13.2, 15.6 for the P-256 one against 12.6, and 22.8 for the P-256 sum
+    /// against 15.0.
+    #[inline(always)]
+    fn sub_limbs_mask(a: &[u64], b: &[u64]) -> (Limbs<M>, u64) {
+        if !cfg!(wide_arithmetic) {
+            let (difference, borrow) = Self::sub_limbs(a, b);
+            return (difference, 0u64.wrapping_sub(u64::from(borrow)));
+        }
+        let mut out = M::Width::ZERO;
+        let mut mask = 0;
+        Self::each_limb(
+            #[inline(always)]
+            |j| {
+                let (difference, mask_out) = sbb_mask(mask, limb(a, j), limb(b, j));
+                set(out.as_mut_slice(), j, difference);
+                mask = mask_out;
+            },
+        );
+        (out, mask)
+    }
+
     /// `value - p` modulo `2^(64 L)`, by the carry chain of a constant subtrahend.
     #[inline(always)]
     fn modulus_off(value: &Limbs<M>) -> Limbs<M> {
@@ -689,6 +722,16 @@ impl<M: Modulus> Shape<M> {
     pub(crate) fn reduce_select(t: Limbs<M>, top: u8) -> Limbs<M> {
         // `-top`, taken while a carry out of a sum still stands in the flags.
         let spread = 0u64.wrapping_sub(u64::from(top));
+        if cfg!(wide_arithmetic) {
+            // The borrow as a mask: the value stays below `p` exactly when it differs from the
+            // mask of `top`, since a set top implies a borrow.
+            let (reduced, borrow) = Self::sub_limbs_mask(&t, &Self::P);
+            let below = if Self::SPARE { borrow } else { borrow ^ spread };
+            if Self::REDUCE_MASKED {
+                return Self::add_masked(reduced, below);
+            }
+            return Self::select_limbs(below != 0, &t, &reduced);
+        }
         let (reduced, borrow) = Self::sub_limbs(&t, &Self::P);
         if Self::REDUCE_MASKED {
             // `top 2^(64 L) + t - p` borrows exactly when the value stays below `p`.
@@ -885,13 +928,14 @@ impl<M: Modulus> Shape<M> {
     }
 
     /// The full square `a a` in `2 L` limbs: each cross product once, doubled, plus the squares
-    /// on the diagonal. Beyond four limbs its rows run two carry chains on every target: on
-    /// WebAssembly a 381-bit square took Chrome 580 cycles this way against 700 with one.
+    /// on the diagonal. Beyond four limbs its rows run two carry chains on every target but
+    /// WebAssembly with wide arithmetic: without it a 381-bit square took Chrome 580 cycles this
+    /// way against 700 with one.
     #[inline(always)]
     fn square_product(a: &[u64]) -> WideLimbs<M> {
         let mut wide = M::Width::WIDE_ZERO;
         // Limb `i + L` is zero before row `i`, and the row's sum fits through it.
-        if Self::LIMBS > 4 {
+        if Self::LIMBS > 4 && !cfg!(wide_arithmetic) {
             Self::each_limb(
                 #[inline(always)]
                 |i| {

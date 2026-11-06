@@ -65,6 +65,18 @@ pub(crate) fn sbb(borrow: u8, a: u64, b: u64) -> (u64, u8) {
     (wide as u64, (wide >> 127) as u8)
 }
 
+/// `a - b` less the borrow of `mask`, as `(difference, mask_out)`: a mask is `0` without a borrow
+/// and `2^64 - 1` with one. The mask out is the high word of the `u128` difference, which adds the
+/// mask in with both words set to it: with wide arithmetic one `i64.sub128` and one `i64.add128`
+/// per limb, the mask passing from limb to limb as it stands.
+#[inline(always)]
+pub(crate) fn sbb_mask(mask: u64, a: u64, b: u64) -> (u64, u64) {
+    let wide = u128::from(a)
+        .wrapping_sub(u128::from(b))
+        .wrapping_add((u128::from(mask) << 64) | u128::from(mask));
+    (wide as u64, (wide >> 64) as u64)
+}
+
 /// [`adc`] for a constant `b`: on WebAssembly without wide arithmetic and `b < 2^64 - 1`, `a` plus
 /// `b + carry`, a selection between two constants, and one comparison for the carry out; elsewhere
 /// [`adc`]. The variable-time BN254 sum, whose subtraction of `p` runs [`sbb_constant`], took
