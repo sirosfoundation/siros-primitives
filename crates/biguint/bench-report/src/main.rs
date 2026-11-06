@@ -85,6 +85,10 @@ const LAYOUT: Layout<'static, Width> = Layout {
         "The rows of reduced operands take the one modulus of the width. `biguint` runs \
          `Residue` and `ConstantTimeResidue` of a ring that `Modulus::scope` prepares outside \
          the measured loop: the type holds each operand below the modulus, with no check.",
+        "`Residue` keeps a reference to its ring and reads the modulus through it, which makes \
+         modulus mixing a compile error. `native` holds the modulus of its 64-bit and 128-bit \
+         rows in a register, which leads `Residue -` at 128 bits natively, and the rows of reduced \
+         operands at 64 and 128 bits in WebAssembly.",
     ],
     wasm_native: "",
 };

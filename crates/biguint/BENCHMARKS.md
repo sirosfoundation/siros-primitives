@@ -27,6 +27,7 @@
 - A constant-time table compares `ConstantTime<Uint>` with every function whose time the width fixes; divisors and moduli are public.
 - add_mod and sub_mod take operands of any value. A `*` there marks a function with an unchecked precondition, operands below the modulus, which gives a wrong result for other inputs: those cells compare against an unchecked precondition.
 - The rows of reduced operands take the one modulus of the width. `biguint` runs `Residue` and `ConstantTimeResidue` of a ring that `Modulus::scope` prepares outside the measured loop: the type holds each operand below the modulus, with no check.
+- `Residue` keeps a reference to its ring and reads the modulus through it, which makes modulus mixing a compile error. `native` holds the modulus of its 64-bit and 128-bit rows in a register, which leads `Residue -` at 128 bits natively, and the rows of reduced operands at 64 and 128 bits in WebAssembly.
 
 ## Functions
 
