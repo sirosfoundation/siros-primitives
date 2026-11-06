@@ -1,8 +1,8 @@
-//! Both carry backends and the split product against `u128` arithmetic. The portable backend and
-//! the split product compile here on every target, so this build also checks the code that other
-//! builds ship.
+//! The carry backends and the split product against `u128` arithmetic. The portable backend, the
+//! lookahead carries and the split product compile here on every target, so this build also checks
+//! the code that other builds ship.
 
-use super::{arch, mul_add_halves, portable};
+use super::{add_carry_ahead, arch, mul_add_halves, portable, sub_borrow_ahead};
 
 const EDGES: [u64; 8] = [
     0,
@@ -27,13 +27,25 @@ fn sub_reference(borrow: u8, lhs: u64, rhs: u64) -> (u64, u8) {
     (wide as u64, u8::from(wide < 0))
 }
 
+fn add_ahead(carry: u8, lhs: u64, rhs: u64) -> (u64, u8) {
+    let (sum, carry) = add_carry_ahead(lhs, rhs, u64::from(carry));
+    (sum, carry as u8)
+}
+
+fn sub_ahead(borrow: u8, lhs: u64, rhs: u64) -> (u64, u8) {
+    let (difference, borrow) = sub_borrow_ahead(lhs, rhs, u64::from(borrow));
+    (difference, borrow as u8)
+}
+
 #[test]
 fn carry_backends_match_wide_arithmetic() {
-    let cases: [(&str, CarryFn, CarryFn); 4] = [
+    let cases: [(&str, CarryFn, CarryFn); 6] = [
         ("arch add", arch::add_carry, add_reference),
         ("portable add", portable::add_carry, add_reference),
+        ("lookahead add", add_ahead, add_reference),
         ("arch sub", arch::sub_borrow, sub_reference),
         ("portable sub", portable::sub_borrow, sub_reference),
+        ("lookahead sub", sub_ahead, sub_reference),
     ];
     for (name, backend, reference) in cases {
         for lhs in EDGES {

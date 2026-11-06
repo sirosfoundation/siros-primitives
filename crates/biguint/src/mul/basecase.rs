@@ -5,8 +5,10 @@
 //! against 16.0 in constant time. A row of up to [`GROUPED_ROW`] limbs runs two carry chains: it
 //! adds each product's low half to the high half before it, then adds a group of [`ROW_GROUP`]
 //! such limbs into the output from registers. A product cut below its full length drops the
-//! products past its end. Longer rows run loops of multiply-accumulate steps, as every row does on
-//! WebAssembly.
+//! products past its end. Longer rows run loops of multiply-accumulate steps. On WebAssembly every
+//! row up to [`GROUPED_ROW`] limbs is one chain: without wide arithmetic one copy per row from 5
+//! rows ([`copied_rows`]); with it, the products of [`COLUMN_LIMBS`]-limb operands and the products
+//! of slices of up to [`COLUMN_LIMBS`] limbs run column by column ([`columns`]).
 //!
 //! [`product`] and [`square`] take their lengths as types and run one copy of each row and each
 //! limb ([`each`]), so the limbs of a product stay in registers. [`basecase`] takes slices,
@@ -28,8 +30,12 @@ pub(crate) fn product<A: ArrayLength, B: ArrayLength>(
     a: &GenericArray<u64, A>,
     b: &GenericArray<u64, B>,
 ) {
-    if A::USIZE <= MAC_ROWS && B::USIZE <= MAC_ROWS {
-        mac_rows(out, a, b);
+    if const { cfg!(wide_arithmetic) && (A::USIZE == COLUMN_LIMBS || B::USIZE == COLUMN_LIMBS) }
+        && out.len() <= COLUMN_LIMBS
+    {
+        columns(out, a, b);
+    } else if A::USIZE <= MAC_ROWS && B::USIZE <= MAC_ROWS {
+        mac_rows::<B>(out, a, b);
     } else if A::USIZE > GROUPED_ROW || B::USIZE > GROUPED_ROW {
         basecase(out, a, b);
     } else if A::USIZE >= B::USIZE {
@@ -37,6 +43,55 @@ pub(crate) fn product<A: ArrayLength, B: ArrayLength>(
     } else {
         rows::<B, A>(out, b, a);
     }
+}
+
+/// The operand length whose products run [`columns`] with wide arithmetic, and the most limbs of a
+/// product of slices that does. Chrome and Firefox took the 1024-bit wrapping product in 315 and
+/// 567 cycles by columns against 337 and 742 by rows; the 2048-bit one, whose Karatsuba leaves
+/// are 8-limb full products, in 2,317 and 3,520 against 2,493 and 3,676. At 6 and 8 limbs the two
+/// forms tie, and the rows run fewer instructions.
+const COLUMN_LIMBS: usize = ColumnLimbs::USIZE;
+
+/// [`COLUMN_LIMBS`] as a type.
+type ColumnLimbs = U16;
+
+/// Writes `a * b mod 2^(64 * out.len())` to `out`, at most [`COLUMN_LIMBS`] limbs, column by
+/// column (Comba): each column sums the low halves of its products into one `u128` and the high
+/// halves, which belong to the next column, into another. The products of a column are
+/// independent: with wide arithmetic, each is one `i64.mul_wide_u` and two `i64.add128`, and only
+/// the two sums carry from column to column.
+#[inline(always)]
+fn columns(out: &mut [u64], a: &[u64], b: &[u64]) {
+    let len = out.len();
+    let mut carry: u128 = 0;
+    let mut highs: u128 = 0;
+    each::<ColumnLimbs>(
+        #[inline(always)]
+        |column| {
+            if column >= len {
+                return;
+            }
+            let mut lows = carry + highs;
+            let mut next = 0u128;
+            let last = column + 1 == len;
+            for (index, &limb) in a.iter().enumerate().take(column + 1) {
+                if let Some(&factor) = b.get(column - index) {
+                    if last {
+                        lows = lows.wrapping_add(u128::from(limb.wrapping_mul(factor)));
+                    } else {
+                        let product = widening_mul(limb, factor);
+                        lows += u128::from(product as u64);
+                        next += product >> 64;
+                    }
+                }
+            }
+            if let Some(slot) = out.get_mut(column) {
+                *slot = lows as u64;
+            }
+            carry = lows >> 64;
+            highs = next;
+        },
+    );
 }
 
 /// The longest operands whose rows run one chain of multiply-accumulate steps each. On
@@ -56,37 +111,60 @@ const MAC_ROWS: usize = if cfg!(target_arch = "wasm32") {
 /// product 5 moves into the multiplication's implicit register where 3 do, and the 512-bit full
 /// product 15 where 4 do.
 #[inline(always)]
-fn mac_rows(out: &mut [u64], a: &[u64], b: &[u64]) {
+fn mac_rows<Rows: Unsigned>(out: &mut [u64], a: &[u64], b: &[u64]) {
     for slot in out.iter_mut() {
         *slot = 0;
     }
-    for index in 0..b.len() {
-        let (_, window) = split_mut(out, index);
-        let len = a.len().min(window.len());
-        // A full row ends in a fresh limb above its products. A cut row's last product lands on
-        // the window's top limb, which takes its low half.
-        let full = window.len() > len;
-        let chain = if full { len } else { len.saturating_sub(1) };
-        let (row, rest) = split_mut(window, chain);
-        let mut carry = 0;
-        for (&limb, slot) in a.iter().zip(row.iter_mut()) {
-            if let Some(&multiplier) = b.get(index) {
-                (*slot, carry) = mul_add(limb, multiplier, carry, *slot);
-            }
-        }
-        if full {
-            if let Some(slot) = rest.first_mut() {
-                *slot = carry;
-            }
-        } else if let (Some(slot), Some(&limb), Some(&multiplier)) =
-            (rest.first_mut(), a.get(chain), b.get(index))
-        {
-            *slot = limb
-                .wrapping_mul(multiplier)
-                .wrapping_add(*slot)
-                .wrapping_add(carry);
+    if const { copied_rows(Rows::USIZE) } {
+        each::<Rows>(
+            #[inline(always)]
+            |index| mac_row(out, a, b, index),
+        );
+    } else {
+        for index in 0..b.len() {
+            mac_row(out, a, b, index);
         }
     }
+}
+
+/// Adds row `index` of [`mac_rows`], `a * b[index]`, to `out`.
+#[inline(always)]
+fn mac_row(out: &mut [u64], a: &[u64], b: &[u64], index: usize) {
+    let (_, window) = split_mut(out, index);
+    let len = a.len().min(window.len());
+    // A full row ends in a fresh limb above its products. A cut row's last product lands on
+    // the window's top limb, which takes its low half.
+    let full = window.len() > len;
+    let chain = if full { len } else { len.saturating_sub(1) };
+    let (row, rest) = split_mut(window, chain);
+    let mut carry = 0;
+    for (&limb, slot) in a.iter().zip(row.iter_mut()) {
+        if let Some(&multiplier) = b.get(index) {
+            (*slot, carry) = mul_add(limb, multiplier, carry, *slot);
+        }
+    }
+    if full {
+        if let Some(slot) = rest.first_mut() {
+            *slot = carry;
+        }
+    } else if let (Some(slot), Some(&limb), Some(&multiplier)) =
+        (rest.first_mut(), a.get(chain), b.get(index))
+    {
+        *slot = limb
+            .wrapping_mul(multiplier)
+            .wrapping_add(*slot)
+            .wrapping_add(carry);
+    }
+}
+
+/// Whether [`mac_rows`] runs one copy per row: on WebAssembly without wide arithmetic from 5 rows,
+/// where a loop over the rows did not unroll. The 384-bit wrapping product took Chrome 116 cycles
+/// in copies against 185 in the loop, Firefox 182 against 198; the 1024-bit one 1,235 against 1,340
+/// and 1,506 against 1,589. The 256-bit one took Chrome 50.1 and Firefox 74.6 in copies against
+/// 47.7 and 67.2. With wide arithmetic, where 16-limb operands run [`columns`], the copies of 6 and
+/// 8 rows took the two browsers 122 and 204 cycles in sum against 118 and 203 in the loop.
+const fn copied_rows(rows: usize) -> bool {
+    cfg!(all(target_arch = "wasm32", not(wide_arithmetic))) && rows > 4
 }
 
 /// The rows of [`product`]: one per limb of `short`, each over the limbs of `long`.
@@ -170,6 +248,10 @@ pub(crate) fn square<A: ArrayLength>(out: &mut [u64], a: &GenericArray<u64, A>) 
 /// the cycles.
 #[inline(always)]
 pub(crate) fn basecase(out: &mut [u64], a: &[u64], b: &[u64]) {
+    if cfg!(wide_arithmetic) && out.len() <= COLUMN_LIMBS {
+        columns(out, a, b);
+        return;
+    }
     let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
     for (index, &multiplier) in short.iter().enumerate() {
         let (_, window) = split_mut(out, index);

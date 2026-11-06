@@ -4,6 +4,8 @@ use generic_array::GenericArray;
 
 use crate::bits::Bits;
 use crate::limb::{BorrowingSub, CarryingAdd};
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+use crate::stream::AddAheadOp;
 use crate::stream::{AddOp, LimbSource, Op2CarryIter, SubOp};
 use crate::uint::Uint;
 
@@ -127,12 +129,26 @@ impl<N: Bits, RhsN: Bits> Add<Uint<RhsN>> for Uint<N> {
 
     #[inline(always)]
     fn add(self, rhs: Uint<RhsN>) -> Self::Output {
+        #[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+        if const { N::LIMBS >= AHEAD_SUM_LIMBS || RhsN::LIMBS >= AHEAD_SUM_LIMBS } {
+            return Uint::from_stream(
+                Op2CarryIter::<_, _, AddAheadOp>::new(rhs.source().pull(), self.source().pull()),
+                N::BITS.max(RhsN::BITS) + 1,
+            );
+        }
         Uint::from_stream(
             Op2CarryIter::<_, _, AddOp>::new(rhs.source().pull(), self.source().pull()),
             N::BITS.max(RhsN::BITS) + 1,
         )
     }
 }
+
+/// The shortest sums that carry by [`AddAheadOp`] on WebAssembly without wide arithmetic. The
+/// 384-bit sum took Chrome 16.3 cycles in throughput and 14.8 in latency against 16.3 and 15.4 with
+/// the carry of a second overflowing addition, Firefox 15.3 and 15.5 against 15.9 and 15.5; the
+/// 256-bit one 39.4 cycles in the four figures against 39.0.
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+const AHEAD_SUM_LIMBS: usize = 6;
 
 /// `(self - rhs) mod 2^N`.
 impl<N: Bits, RhsN: Bits> Sub<Uint<RhsN>> for Uint<N> {

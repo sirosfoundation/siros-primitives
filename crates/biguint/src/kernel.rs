@@ -7,6 +7,8 @@
 use core::cmp::Ordering;
 use core::hint::{black_box, select_unpredictable};
 
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+use crate::limb::add_carry_ahead;
 use crate::limb::{BorrowingSub, CarryingAdd, mask_below, mul_add, widening_mul};
 use crate::stream::{
     LimbSource, LimbStream, Op2CarryIter, SubOp, ZeroExtended, for_each_slot, funnel_left,
@@ -122,6 +124,18 @@ pub(crate) fn add_assign(out: &mut [u64], a: &[u64]) -> u64 {
     let mut carry = 0;
     for_each_slot(out, |slot| {
         (*slot, carry) = slot.add_carry(source.next_limb(), carry);
+    });
+    carry
+}
+
+/// [`add_assign`] with the carry of [`add_carry_ahead`].
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+#[inline(always)]
+pub(crate) fn add_assign_ahead(out: &mut [u64], a: &[u64]) -> u64 {
+    let mut source = ZeroExtended::new(a).pull();
+    let mut carry = 0;
+    for_each_slot(out, |slot| {
+        (*slot, carry) = add_carry_ahead(*slot, source.next_limb(), carry);
     });
     carry
 }

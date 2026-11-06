@@ -4,6 +4,8 @@
 
 use crate::bits::Bits;
 use crate::div::{DiscardQuotient, Top, divide, divide_preparing};
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+use crate::kernel::add_assign_ahead;
 #[cfg(target_arch = "wasm32")]
 use crate::kernel::{add_assign, compare, fits, sub_assign};
 use crate::kernel::{
@@ -14,6 +16,8 @@ use crate::limb::rare_call;
 use crate::nonzero::NonZeroUint;
 use generic_array::GenericArray;
 
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+use crate::stream::{AddAheadOp, SubAheadOp};
 use crate::stream::{
     AddOp, LimbSource, Op2CarryIter, SubOp, TwosComplement, ZeroExtended, pull_limbs,
 };
@@ -161,6 +165,13 @@ const fn branches(limbs: usize) -> bool {
     !(cfg!(not(wide_arithmetic)) && limbs == 32)
 }
 
+/// The shortest modular sums and differences whose carry chain runs [`AddAheadOp`] or
+/// [`SubAheadOp`] on WebAssembly without wide arithmetic. The 1024-bit sum of reduced operands took
+/// Chrome 80 cycles against 134 with the carry of a second overflowing addition, Firefox 90 against
+/// 125; the 384-bit one took Firefox 35 against 28.
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+const AHEAD_LIMBS: usize = 8;
+
 /// The second operand of [`sum_mod`], with the correction that brings the sum below the modulus.
 pub(crate) trait Addend: LimbSource {
     /// The limbs of `a + addend` in `N` bits, and the carry out of the top limb.
@@ -182,6 +193,11 @@ pub(crate) trait Addend: LimbSource {
 impl Addend for ZeroExtended<'_> {
     #[inline(always)]
     fn sum<N: Bits>(a: &Uint<N>, addend: Self) -> (GenericArray<u64, N::Limbs>, u64) {
+        #[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+        if const { N::LIMBS >= AHEAD_LIMBS } {
+            let mut sum = Op2CarryIter::<_, _, AddAheadOp>::new(a.source().pull(), addend.pull());
+            return (pull_limbs::<N::Limbs>(&mut sum), sum.carry());
+        }
         let mut sum = Op2CarryIter::<_, _, AddOp>::new(a.source().pull(), addend.pull());
         (pull_limbs::<N::Limbs>(&mut sum), sum.carry())
     }
@@ -212,6 +228,15 @@ impl Addend for ZeroExtended<'_> {
 impl<S: LimbSource> Addend for TwosComplement<S> {
     #[inline(always)]
     fn sum<N: Bits>(a: &Uint<N>, addend: Self) -> (GenericArray<u64, N::Limbs>, u64) {
+        #[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+        if const { N::LIMBS >= AHEAD_LIMBS } {
+            let mut difference =
+                Op2CarryIter::<_, _, SubAheadOp>::new(a.source().pull(), addend.0.pull());
+            return (
+                pull_limbs::<N::Limbs>(&mut difference),
+                difference.carry() ^ 1,
+            );
+        }
         let mut difference = Op2CarryIter::<_, _, SubOp>::new(a.source().pull(), addend.0.pull());
         (
             pull_limbs::<N::Limbs>(&mut difference),
@@ -227,6 +252,11 @@ impl<S: LimbSource> Addend for TwosComplement<S> {
     #[cfg(target_arch = "wasm32")]
     #[inline(always)]
     fn correct_by_branch(sum: &mut [u64], carry: u64, modulus: &[u64]) {
+        #[cfg(not(wide_arithmetic))]
+        if carry == 0 && sum.len() >= AHEAD_LIMBS {
+            fits(add_assign_ahead(sum, modulus));
+            return;
+        }
         if carry == 0 {
             fits(add_assign(sum, modulus));
         }

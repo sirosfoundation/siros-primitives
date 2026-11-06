@@ -20,6 +20,8 @@ use generic_array::sequence::GenericSequence;
 use generic_array::{ArrayLength, GenericArray};
 
 use crate::limb::{BorrowingSub, CarryingAdd};
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+use crate::limb::{add_carry_ahead, sub_borrow_ahead};
 
 /// A little-endian value read by limb index.
 pub(crate) trait LimbSource {
@@ -83,11 +85,22 @@ impl<S: LimbSource> LimbStream for Pull<S> {
 }
 
 /// The next `L` limbs of `stream`. Up to four limbs the pull unrolls; longer pulls run in groups of
-/// four.
+/// four. On WebAssembly, a pull of more than 32 limbs runs in blocks of 32, which LLVM unrolls
+/// whole: in a loop, every access adds its offset to the address, which the unrolled pull carries
+/// in the load. The 4096-bit sum took Chrome 342 cycles in blocks against 426 in a loop, Firefox
+/// 374 against 464.
 #[inline(always)]
 pub(crate) fn pull_limbs<L: ArrayLength>(stream: &mut impl LimbStream) -> GenericArray<u64, L> {
     if L::USIZE <= 4 {
         GenericArray::generate(|_| stream.next_limb())
+    } else if cfg!(target_arch = "wasm32") && L::USIZE > 32 {
+        let mut limbs = GenericArray::<u64, L>::default();
+        let (blocks, rest) = limbs.as_chunks_mut::<32>();
+        for block in blocks {
+            for_each_slot(block, |slot| *slot = stream.next_limb());
+        }
+        for_each_slot(rest, |slot| *slot = stream.next_limb());
+        limbs
     } else {
         let mut limbs = GenericArray::<u64, L>::default();
         for_each_slot(&mut limbs, |slot| *slot = stream.next_limb());
@@ -175,6 +188,34 @@ impl Op2CarryOp for SubOp {
     #[inline(always)]
     fn op(a: u64, b: u64, borrow: &mut u64) -> u64 {
         let (difference, borrow_out) = a.sub_borrow(b, *borrow);
+        *borrow = borrow_out;
+        difference
+    }
+}
+
+/// [`AddOp`] with the carry of [`add_carry_ahead`], for WebAssembly without wide arithmetic.
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+pub(crate) struct AddAheadOp;
+
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+impl Op2CarryOp for AddAheadOp {
+    #[inline(always)]
+    fn op(a: u64, b: u64, carry: &mut u64) -> u64 {
+        let (sum, carry_out) = add_carry_ahead(a, b, *carry);
+        *carry = carry_out;
+        sum
+    }
+}
+
+/// [`SubOp`] with the borrow of [`sub_borrow_ahead`], for WebAssembly without wide arithmetic.
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+pub(crate) struct SubAheadOp;
+
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+impl Op2CarryOp for SubAheadOp {
+    #[inline(always)]
+    fn op(a: u64, b: u64, borrow: &mut u64) -> u64 {
+        let (difference, borrow_out) = sub_borrow_ahead(a, b, *borrow);
         *borrow = borrow_out;
         difference
     }
