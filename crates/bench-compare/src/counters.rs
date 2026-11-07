@@ -25,7 +25,10 @@ mod page {
     use crate::host;
 
     /// The driver's counters, which the module reaches through its imports.
-    pub(crate) struct Counters;
+    pub(crate) struct Counters {
+        /// The cycles that a count leaves out.
+        empty: u64,
+    }
 
     impl Counters {
         /// The driver opened the counters before the module started.
@@ -34,14 +37,19 @@ mod page {
             reason = "the native counters fail to open; the sweep takes either"
         )]
         pub(crate) fn open() -> Result<Self, Error> {
-            Ok(Self)
+            Ok(Self { empty: 0 })
+        }
+
+        /// Leaves `empty` cycles, the fixed cost of a count, out of the later counts.
+        pub(crate) fn leave_out(&mut self, empty: u64) {
+            self.empty = empty;
         }
 
         /// The value of `region` and the events that it counts. The driver fails the page's call
-        /// on a region during which the kernel shared the counters with other groups.
+        /// on a region during which the kernel shared the counters with other groups. A region of
+        /// few operations can count fewer cycles than the fixed cost, and then counts none.
         #[expect(
             clippy::unnecessary_wraps,
-            clippy::unused_self,
             reason = "the native counters fail a read; the sweep takes either"
         )]
         pub(crate) fn count(
@@ -50,7 +58,14 @@ mod page {
         ) -> Result<(usize, Counts), Error> {
             host::begin();
             let value = region();
-            Ok((value, host::end()))
+            let counts = host::end();
+            Ok((
+                value,
+                Counts {
+                    cycles: counts.cycles.saturating_sub(self.empty),
+                    ..counts
+                },
+            ))
         }
     }
 }

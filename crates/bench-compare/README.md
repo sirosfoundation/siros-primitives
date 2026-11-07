@@ -132,6 +132,12 @@ cargo run --release -p bench-compare --bin bench-browser -- \
 - Each bench first counts 1,000 empty regions: a case whose difference counts under 50 times the
   noise of the fixed cost of a count stops the sweep. That noise is the difference of the fewest
   counts of two sets of 31 empty counts, the largest of four pairs.
+- A figure of cycles is the lower rate of the fewest run of n operations and the fewest of 2n, each
+  less the fewest empty count. A disturbance only adds counts (Chen and Revels, 2016), so each rate
+  bounds the undisturbed one from above, where a difference moves by twice what the other run
+  missed. At a load of 40 to 60, the median distance of a cell between two runs fell from 2.2% to
+  0.5% in Chrome and from 3.3% to 1.3% in Firefox, the 95th percentile from 18.7% to 8.5% and from
+  39.0% to 26.8%.
 - A chain holds `x` in WebAssembly locals and stores a copy after each step, which keeps every
   intermediate `x`; it also runs with `x` in memory, and the faster counts.
 - The driver needs to trace the browser: it starts the browser itself and adopts its orphans as
