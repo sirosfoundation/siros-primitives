@@ -188,10 +188,10 @@ while the record holds its key:
 A cell without a key counts as changed, and so does a cell whose loop can reach an indirect call. A
 round runs the changed cells, the subject's columns in their rows, and each row's fewest figure and
 best competitor per part; a module with none of them stays out, and a module where they hold a third
-of its cells or more runs whole, once, for no more time than three runs of them. Fresh figures replace
-old ones, with no minimum across runs. A round repeats while a kept figure leads a re-measured row, 12 times at most;
-past that the tool stops with an error. `--dry-run` prints the cells of the first round of each
-build. A `bench-wasm` without `--changed` measures every cell.
+of its cells or more runs whole, once, for no more time than three runs of them. Fresh figures
+replace old ones, with no minimum across runs. A round repeats while a kept figure leads a
+re-measured row, 12 times at most; past that the tool stops with an error. `--dry-run` prints the
+cells of the first round of each build. A `bench-wasm` without `--changed` measures every cell.
 
 `report` refuses a record whose verdict compares figures of different runs: per build, operation, row
 and part, one of the tied fewest figures and one of the best competitor's must come from the subject's
@@ -214,4 +214,18 @@ the record's `head`. The files of `bench-compare` stay out of that check: run `b
 between the modules of both commits first.
 
 A selected cell takes the fewest figures of `SELECTED_RUNS`, 3, runs of its bench: repetitions within
-one run can all meet one burst of load, where a full run spreads them over minutes.
+one run can all meet one burst of load, where a full run spreads them over minutes. Cycles of 384
+figures of 48 cells across 16 operations in two crates, against the full runs of the same module
+before and after them, at load 29 to 96:
+
+| Against each full run     | Median distance | 95th percentile | Median signed difference |
+| ------------------------- | --------------- | --------------- | ------------------------ |
+| The other full run        | 0.8%            | 6.3%            | -0.1%                    |
+| 1 selected run            | 0.9%, 1.1%      | 13.2%, 12.9%    | +0.2%, +0.3%             |
+| Fewest of 2 selected runs | 0.7%, 0.7%      | 5.5%, 6.7%      | -0.2%, -0.1%             |
+| Fewest of 3 selected runs | 0.6%, 0.7%      | 5.3%, 5.9%      | -0.4%, -0.2%             |
+
+Above the fewest figure of all seven runs of a cell, a full run stands at a median of 0.7% and a 95th
+percentile of 5.9%, 3 selected runs at 0.2% and 2.2%. A verdict compares figures of one run, so the
+offset between runs stays out of it. Instructions differ by a median of 0.000%; a chain's count
+follows its class, which each run picks by its cycles.
