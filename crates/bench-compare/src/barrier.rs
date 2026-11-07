@@ -112,17 +112,31 @@ impl Barrier for Locals {
             return 0;
         };
         let mut x = run(opaque(first));
-        let mut runs = 1;
-        for input in rest {
-            show(&x);
-            x = run(&input.chain(x));
-            runs += 1;
+        if const { size_of::<I>() <= PLAIN_WALK_BYTES } {
+            for input in rest {
+                show(&x);
+                x = run(&input.chain(x));
+            }
+        } else if let Some(mut walk) = HiddenWalk::of(rest) {
+            for _ in rest {
+                show(&x);
+                x = run(&walk.input().chain(x));
+                walk.step();
+            }
         }
         // A sink of `x` itself would keep `x` in memory, with one store and one load per step.
         show(&x);
-        runs
+        batch.len()
     }
 }
+
+/// The most bytes of an operand set whose chain through [`Locals`] walks plain addresses. The load
+/// of a hidden step raises a one-instruction step from 1.1 cycles to 1.7, and LLVM's induction
+/// variable costs a set this small no address. Larger sets hide their addresses as every other
+/// chain does: LLVM otherwise bases their loads on a limb past the first, with an `i32.add` per
+/// limb, and the 384-bit sum ran 60 instructions per step against 50.
+#[cfg(target_arch = "wasm32")]
+const PLAIN_WALK_BYTES: usize = 2 * size_of::<u128>();
 
 /// Stores a copy of the bytes of `value` where an empty block may read it. `value` itself keeps
 /// its place: the block can neither read nor rewrite it.
@@ -191,39 +205,39 @@ pub(crate) fn opaque<T>(value: &T) -> &T {
     #[cfg(target_arch = "x86_64")]
     return registers::opaque(value);
     #[cfg(not(target_arch = "x86_64"))]
-    return through(&mut { value }, value);
+    return through(value);
 }
 
-/// `value` from a volatile store to `slot` and a volatile load, which hide it as
-/// `core::hint::black_box` does. The empty block after them bounds the search of LLVM's DAG
-/// combiner to the operation's own loads: it gives up after 18 steps, and a 512-bit sum by value
-/// takes 17 to pass its first store over its 16 loads.
+/// `value` from a volatile store and a volatile load, which hide it as `core::hint::black_box`
+/// does. The empty block after them bounds the search of LLVM's DAG combiner to the operation's
+/// own loads: it gives up after 18 steps, and a 512-bit sum by value takes 17 to pass its first
+/// store over its 16 loads.
 #[cfg(not(target_arch = "x86_64"))]
 #[inline(always)]
-fn through<P: Copy>(slot: &mut P, value: P) -> P {
-    // SAFETY: `slot` is a reference, valid for writes.
-    unsafe { core::ptr::write_volatile(slot, value) };
-    // SAFETY: `slot` is a reference, valid for reads.
-    let hidden = unsafe { core::ptr::read_volatile(slot) };
+fn through<T>(value: &T) -> &T {
+    let mut slot = value;
+    // SAFETY: `slot` is a local, valid for writes.
+    unsafe { core::ptr::write_volatile(&mut slot, value) };
+    // SAFETY: `slot` is a local, valid for reads.
+    let hidden = unsafe { core::ptr::read_volatile(&slot) };
     core::hint::black_box(());
     hidden
 }
 
-/// A walk over the inputs of a nonempty batch: each address passes through [`through`], and the
-/// walk ends on what comes out. LLVM cannot count such a loop, so it unrolls none, where it would
-/// unroll a WebAssembly loop of at most 16 IR instructions and halve the exit tests of only the
-/// operations that small. The next address stays in a local: taken from the volatile load, it
-/// chains each input on the last through memory, and the plain 128-bit product took Chrome 12 to 16
-/// cycles against 9.8.
+/// A walk over the inputs of a nonempty batch that holds one address in a local and reads its step
+/// and its end by volatile loads. LLVM can neither see the address of an input nor count the loop,
+/// so it folds no input into a strength-reduced address and unrolls for no operation, where it
+/// would unroll a WebAssembly loop of at most 16 IR instructions and halve the exit tests of only
+/// the operations that small. Nothing that the walk adds waits on a store, and the operation keeps
+/// every other local.
 #[cfg(target_arch = "wasm32")]
 pub(crate) struct HiddenWalk<'a, I> {
     /// The address of an input of the batch.
-    next: *const I,
+    input: *const I,
+    /// The bytes from one input to the next.
+    step: usize,
     /// The address after the last input.
     end: *const I,
-    /// Where each address passes through memory: apart from the result of an operation, which
-    /// otherwise shares its stack slot.
-    slot: *const I,
     batch: core::marker::PhantomData<&'a [I]>,
 }
 
@@ -240,27 +254,34 @@ impl<'a, I> HiddenWalk<'a, I> {
         };
         let range = batch.as_ptr_range();
         (range.start != range.end).then_some(Self {
-            next: range.start,
+            input: range.start,
+            step: size_of::<I>(),
             end: range.end,
-            slot: range.start,
             batch: core::marker::PhantomData,
         })
     }
 
     /// The current input.
     #[inline(always)]
-    pub(crate) fn input(&mut self) -> &'a I {
-        let hidden = through(&mut self.slot, self.next);
-        // SAFETY: `next` addresses an input of the batch, which lives for `'a`.
-        unsafe { &*hidden }
+    pub(crate) fn input(&self) -> &'a I {
+        // SAFETY: `input` addresses an input of the batch, which lives for `'a`.
+        unsafe { &*self.input }
     }
 
-    /// Moves past `input`, the current input. Returns whether an input remains.
+    /// Moves past the current input.
     #[inline(always)]
-    pub(crate) fn advance(&mut self, input: &I) -> bool {
-        // SAFETY: `next` addresses an input, so the next address is at most the end of the batch.
-        self.next = unsafe { self.next.add(1) };
-        core::ptr::from_ref(input).wrapping_add(1) != self.end
+    fn step(&mut self) {
+        // SAFETY: `step` is a field, valid for reads.
+        let step = unsafe { core::ptr::read_volatile(&self.step) };
+        self.input = self.input.wrapping_byte_add(step);
+    }
+
+    /// Moves past the current input. Returns whether an input remains.
+    #[inline(always)]
+    pub(crate) fn advance(&mut self) -> bool {
+        self.step();
+        // SAFETY: `end` is a field, valid for reads.
+        self.input != unsafe { core::ptr::read_volatile(&self.end) }
     }
 }
 

@@ -224,7 +224,7 @@ pub fn run_batch<I, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
             loop {
                 let input = walk.input();
                 sink(&run(input));
-                if !walk.advance(input) {
+                if !walk.advance() {
                     break;
                 }
             }

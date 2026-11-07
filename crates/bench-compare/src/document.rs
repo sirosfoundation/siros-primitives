@@ -492,8 +492,9 @@ const WEBASSEMBLY: &[&str] = &[
     "The browser's flags compile every function with its optimizing tier when the module loads.",
     "A counted loop runs behind a function pointer, which keeps V8 from inlining it into the code \
      around the count.",
-    "A batch loop takes each address from a volatile load and ends on it, so LLVM unrolls it for \
-     no operation, whatever the operation's size.",
+    "A batch loop reads its step and its end by volatile loads, so LLVM unrolls it for no \
+     operation, whatever the operation's size. A chain through locals over operand sets of more \
+     than 32 bytes reads its step the same way.",
     "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count 4 \
      million instructions.",
     "A case whose difference counts under 50 times the noise of the fixed cost of a count stops \
