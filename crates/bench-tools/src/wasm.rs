@@ -778,6 +778,9 @@ struct Progress<'a, K> {
     running: Vec<(usize, usize)>,
     /// The cells of the units of this sweep that ended.
     measured: usize,
+    /// The cells of each build whose key differs from the record and that no run of this sweep has
+    /// measured yet.
+    pending: Vec<HashSet<CellId<K>>>,
 }
 
 impl<'a, K: Key> Progress<'a, K> {
@@ -790,6 +793,7 @@ impl<'a, K: Key> Progress<'a, K> {
     ) -> Result<Self, ToolError> {
         let mut queue = VecDeque::new();
         let mut builds = Vec::with_capacity(started.len());
+        let mut pending = Vec::with_capacity(started.len());
         for (index, started) in started.into_iter().enumerate() {
             let seeds = started.seeds(context.layout)?;
             if !seeds.is_empty() {
@@ -803,6 +807,7 @@ impl<'a, K: Key> Progress<'a, K> {
                 )?);
             }
             builds.push(started.measurement);
+            pending.push(started.changed.into_iter().collect());
         }
         Ok(Self {
             context,
@@ -815,6 +820,7 @@ impl<'a, K: Key> Progress<'a, K> {
             queue,
             running: Vec::new(),
             measured: 0,
+            pending,
         })
     }
 
@@ -917,6 +923,11 @@ impl<'a, K: Key> Progress<'a, K> {
                 Ok(Recorded { cell, run, code })
             })
             .collect::<Result<Vec<_>, ToolError>>()?;
+        let ids: HashSet<CellId<K>> = cells.iter().map(|cell| CellId::of(&cell.cell)).collect();
+        self.pending
+            .get_mut(unit.build)
+            .ok_or_else(|| ToolError::missing("the changed cells", wasm.name))?
+            .retain(|id| !ids.contains(id));
         merge(&mut measurement.cells, cells)?;
         *measurement
             .overheads
@@ -959,16 +970,13 @@ impl<'a, K: Key> Progress<'a, K> {
         Ok(())
     }
 
-    /// The finished record: every listed case of every build has its figures, and every bench its
-    /// cost of a count.
+    /// The finished record: every listed case of every build has figures of its code, from a run of
+    /// this sweep or kept with an equal key, and every bench its cost of a count.
     fn finish(self, benches: &[&str]) -> Result<Record<K>, ToolError> {
-        for measurement in &self.record.builds {
-            let unmeasured = measurement.cells.iter().find(|cell| {
-                matches!(&cell.cell.outcome, Outcome::Absent(reason) if reason == NOT_MEASURED)
-            });
-            if let Some(cell) = unmeasured {
+        for (measurement, pending) in self.record.builds.iter().zip(&self.pending) {
+            if let Some(id) = pending.iter().next() {
                 return Err(ToolError::missing(
-                    &format!("figures of {}", CellId::of(&cell.cell).pattern()),
+                    &format!("figures of {} at its code", id.pattern()),
                     &measurement.name,
                 ));
             }
