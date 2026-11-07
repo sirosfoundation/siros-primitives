@@ -39,10 +39,13 @@ onmessage = async (event) => {
     }
   };
   try {
+    const plan = call('/plan');
+    const planBytes = new TextEncoder().encode(plan);
     const module = await WebAssembly.compile(await (await fetch('/bench.wasm')).arrayBuffer());
     let memory = null;
     const text = (address, length) =>
       new TextDecoder().decode(new Uint8Array(memory.buffer, address, length));
+    const digit = (value) => value + (value < 10 ? 48 : 87);
     const instance = await WebAssembly.instantiate(module, {
       bench: {
         begin: () => ask(BEGIN),
@@ -56,13 +59,28 @@ onmessage = async (event) => {
         fail: (address, length) => {
           call('/fail', text(address, length));
         },
+        plan_size: () => planBytes.length,
+        plan: (target) => {
+          new Uint8Array(memory.buffer, target, planBytes.length).set(planBytes);
+        },
+        hex: (address, length, target) => {
+          const bytes = new Uint8Array(memory.buffer, address, length);
+          const digits = new Uint8Array(memory.buffer, target, 2 * length);
+          bytes.forEach((byte, index) => {
+            digits[2 * index] = digit(byte >> 4);
+            digits[2 * index + 1] = digit(byte & 15);
+          });
+        },
       },
     });
     memory = instance.exports.memory;
-    do {
-      call('/calibrate');
-      spin(2000);
-    } while (call('/calibrated') === 'again');
+    // A run that lists its cells counts nothing, so it needs no measuring thread.
+    if (plan !== 'list') {
+      do {
+        call('/calibrate');
+        spin(2000);
+      } while (call('/calibrated') === 'again');
+    }
     const status = instance.exports.main(0, 0);
     call('/done', String(status));
   } catch (error) {

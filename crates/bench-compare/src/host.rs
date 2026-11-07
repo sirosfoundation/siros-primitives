@@ -24,6 +24,41 @@ unsafe extern "C" {
     /// Sends the UTF-8 reason of `len` bytes at `reason` for which the bench stops.
     #[link_name = "fail"]
     fn import_fail(reason: *const u8, len: usize);
+    /// The bytes of the plan of this run.
+    #[link_name = "plan_size"]
+    fn import_plan_size() -> usize;
+    /// Writes the plan of this run, as UTF-8, to the bytes at `target`.
+    #[link_name = "plan"]
+    fn import_plan(target: *mut u8);
+    /// Writes the `len` bytes at `value` to `target` as hexadecimal digits, two per byte: the page
+    /// reads them, padding included.
+    #[link_name = "hex"]
+    fn import_hex(value: *const u8, len: usize, target: *mut u8);
+}
+
+/// The text of the plan of this run.
+pub(crate) fn plan() -> Result<String, std::string::FromUtf8Error> {
+    // SAFETY: the import takes no argument.
+    let size = unsafe { import_plan_size() };
+    let mut text = vec![0; size];
+    // SAFETY: `text` holds the `size` bytes that the import writes.
+    unsafe { import_plan(text.as_mut_ptr()) };
+    String::from_utf8(text)
+}
+
+/// The bytes of `value`, in hexadecimal digits.
+pub(crate) fn hex<T>(value: &T) -> Result<String, std::string::FromUtf8Error> {
+    let size = size_of::<T>();
+    let mut digits = vec![0; 2 * size];
+    // SAFETY: the import reads the `size` bytes of `value` and writes `2 * size` bytes to `digits`.
+    unsafe {
+        import_hex(
+            core::ptr::from_ref(value).cast::<u8>(),
+            size,
+            digits.as_mut_ptr(),
+        );
+    }
+    String::from_utf8(digits)
 }
 
 /// Resets and enables the counters of the measuring thread.

@@ -50,7 +50,6 @@ const MEASURED: Measured = Measured {
             rustflags: "-C target-cpu=native -C target-feature=-pclmulqdq,-vpclmulqdq \
                         -C codegen-units=1 -C llvm-args=-align-loops=64 \
                         --cfg polyval_backend=\"soft\"",
-            ..NATIVE
         },
     ],
 };

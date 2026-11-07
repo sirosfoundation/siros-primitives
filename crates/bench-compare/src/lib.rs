@@ -3,17 +3,31 @@
 mod barrier;
 #[cfg(not(target_arch = "wasm32"))]
 mod browser;
+#[cfg(not(target_arch = "wasm32"))]
+mod changed;
 mod count;
 mod counters;
 #[cfg(not(target_arch = "wasm32"))]
+mod decide;
+#[cfg(not(target_arch = "wasm32"))]
 mod document;
 mod error;
+#[cfg(not(target_arch = "wasm32"))]
+mod fewest;
+mod fingerprint;
 #[cfg(target_arch = "wasm32")]
 mod host;
+#[cfg(not(target_arch = "wasm32"))]
+mod identity;
+#[cfg(not(target_arch = "wasm32"))]
+mod module;
 mod record;
 #[cfg(not(target_arch = "wasm32"))]
 mod run;
+mod selection;
 mod suite;
+#[cfg(not(target_arch = "wasm32"))]
+mod wasm;
 #[cfg(not(target_arch = "wasm32"))]
 mod window;
 #[cfg(not(target_arch = "wasm32"))]
@@ -26,24 +40,39 @@ pub use barrier::{Barrier, Memory};
 pub use barrier::{Gpr, Xmm};
 #[cfg(not(target_arch = "wasm32"))]
 pub use browser::{
-    Browser, CHROME, CHROME_WIDE, Cpus, FIREFOX, FIREFOX_WIDE, Pref, Threads,
-    run as run_in_browser, version as browser_version,
+    Browser, CHROME, CHROME_WIDE, Cpus, FIREFOX, FIREFOX_WIDE, LISTING, Pref, Threads,
+    list as list_in_browser, run as run_in_browser, version as browser_version,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use changed::{CellId, code, compact, harness, merge, overtaken, select};
 pub use count::{CPU, FEWEST_STEP_CYCLES, REPETITIONS, RETRIES, TARGET, main};
+#[cfg(not(target_arch = "wasm32"))]
+pub use decide::{Decision, decide};
 #[cfg(not(target_arch = "wasm32"))]
 pub use document::{LOAD, Layout, Operation, markdown_table, report, sentence};
 pub use error::Error;
+#[cfg(not(target_arch = "wasm32"))]
+pub use error::ToolError;
+#[cfg(not(target_arch = "wasm32"))]
+pub use fewest::fewest;
+pub use fingerprint::Fingerprint;
+#[cfg(not(target_arch = "wasm32"))]
+pub use identity::{CodeHash, Identity};
+#[cfg(not(target_arch = "wasm32"))]
+pub use module::ModuleError;
 pub use record::{
-    Cell, Class, Count, Engine, Events, Key, Latency, Line, Load, Measurement, Outcome, Overhead,
-    Record, Sibling, Sweep, Version,
+    Cell, Class, Count, Engine, Events, Key, Latency, Line, Listed, ListedCall, ListedCase,
+    ListedChain, Load, Measurement, Outcome, Overhead, Record, Recorded, Run, Sibling, Sweep,
+    Version,
 };
 #[cfg(not(target_arch = "wasm32"))]
-pub use run::{
-    Build, Measured, NATIVE, Options, Paths, Runner, WASM, bench, cargo, execute, output,
-};
+pub use run::{Build, Measured, NATIVE, Options, Paths, bench, cargo, execute, output};
+pub use selection::{Plan, Selection, SelectionError};
 pub use suite::{
     BATCH, Call, CaseId, Cells, Chain, Function, Inputs, Limbs, Rng, Row, Sample, Selected, Suite,
     Visitor, run_batch, run_chain, trim, visit,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use wasm::{FLAVOURS, Flavour, SELECTED_RUNS, WASM, WasmBuild};
 #[cfg(not(target_arch = "wasm32"))]
 pub use window::Window;

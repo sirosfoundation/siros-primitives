@@ -3,9 +3,10 @@
 use std::collections::HashMap;
 use std::fs;
 
+use crate::changed::CellId;
 use crate::count::{FEWEST_STEP_CYCLES, REPETITIONS, RETRIES};
-use crate::error::Error;
-use crate::record::{Cell, Count, Key, Measurement, Outcome, Record, Sweep};
+use crate::error::{Error, ToolError, UnmatchedVerdict};
+use crate::record::{Count, Key, Measurement, Outcome, Record, Recorded, Sweep};
 use crate::run::Paths;
 
 /// The 1-minute load average from which a sweep ran under load.
@@ -89,13 +90,14 @@ pub struct Layout<'a, K> {
 /// its figure on a row of more bits, in the same table, by more than 10%. Then it prints every
 /// trailing cell of the native and the WebAssembly builds: a figure of the subject 0.5 cycles or
 /// more above the fewest figure of its row and part among the functions that keep the row's
-/// definition.
+/// definition. It refuses a record where a figure of the subject and the figure it is compared with
+/// come from different runs: [`ToolError::Unmatched`].
 pub fn report<K: Key>(
     paths: &Paths,
     layout: &Layout<'_, K>,
     record: &Record<K>,
     wasm: Option<&Record<K>>,
-) -> Result<(), Error> {
+) -> Result<(), ToolError> {
     let tables = record
         .builds
         .iter()
@@ -103,15 +105,17 @@ pub fn report<K: Key>(
         .map(|build| Ok((build, Table::new(&build.cells, layout)?)))
         .collect::<Result<Vec<_>, Error>>()?;
     let [(_, first), ..] = tables.as_slice() else {
-        return Err(Error::missing("build", "the run record"));
+        return Err(Error::missing("build", "the run record").into());
     };
     for (build, table) in &tables {
         if table.ops != first.ops || table.keys != first.keys || table.crates != first.crates {
             return Err(Error::missing(
                 &format!("the cells of the first build in the build {}", build.name),
                 "the run records",
-            ));
+            )
+            .into());
         }
+        check_matched(layout, table, build)?;
     }
     let (native, browsers) = tables.split_at(record.builds.len());
     let mut lines = header(record, layout, first);
@@ -168,6 +172,36 @@ pub fn report<K: Key>(
     Ok(())
 }
 
+/// Fails on the first verdict of `table`, the cells of `build`, that compares figures of different
+/// runs.
+fn check_matched<K: Key>(
+    layout: &Layout<'_, K>,
+    table: &Table<'_, K>,
+    build: &Measurement<K>,
+) -> Result<(), ToolError> {
+    let run = |cell: &Recorded<K>| {
+        build.runs.get(cell.run).map_or_else(
+            || format!("unknown run {}", cell.run),
+            |run| format!("run {} at {}", cell.run, run.commit),
+        )
+    };
+    for verdict in table.verdicts(layout) {
+        if let Some(rival) = verdict.unmatched() {
+            return Err(ToolError::Unmatched(Box::new(UnmatchedVerdict {
+                build: build.name.clone(),
+                op: verdict.operation.op.to_owned(),
+                row: verdict.key.to_string(),
+                part: PARTS[verdict.part].1,
+                subject: layout.subject.to_owned(),
+                subject_run: run(verdict.subject),
+                rival: rival.cell.library.clone(),
+                rival_run: run(rival),
+            })));
+        }
+    }
+    Ok(())
+}
+
 /// The title of the table of `operation` in `build`.
 fn title<K>(operation: &Operation<'_>, build: &Measurement<K>) -> String {
     let (name, formula) = (operation.title(), operation.formula);
@@ -184,19 +218,53 @@ fn loaded(sweep: &Sweep) -> bool {
 }
 
 /// The cells of a build, indexed by operation, row and crate.
-struct Table<'a, K> {
+pub(crate) struct Table<'a, K> {
     /// Each operation, in the order of the layout.
     ops: Vec<Operation<'a>>,
     keys: Vec<K>,
     crates: Vec<&'a str>,
-    cells: HashMap<(&'a str, &'a K, &'a str), &'a Cell<K>>,
+    cells: HashMap<(&'a str, &'a K, &'a str), &'a Recorded<K>>,
+}
+
+/// What a verdict on the subject compares in one part of one row.
+pub(crate) struct Verdict<'a, K> {
+    /// The operation.
+    pub(crate) operation: Operation<'a>,
+    /// The row.
+    pub(crate) key: &'a K,
+    /// The part of the row, an index of [`parts`].
+    pub(crate) part: usize,
+    /// The cell of the subject's figure.
+    pub(crate) subject: &'a Recorded<K>,
+    /// The cells of the row's fewest figure, then of the fewest figure of the other crates; each
+    /// with every tie.
+    pub(crate) rivals: [Vec<&'a Recorded<K>>; 2],
+}
+
+impl<'a, K> Verdict<'a, K> {
+    /// A cell that the subject is compared with, where no cell tied with it comes from the subject's
+    /// run.
+    pub(crate) fn unmatched(&self) -> Option<&'a Recorded<K>> {
+        self.rivals
+            .iter()
+            .filter(|tied| !tied.iter().any(|cell| cell.run == self.subject.run))
+            .find_map(|tied| tied.first().copied())
+    }
+}
+
+/// The cells of one row as a round of re-measuring sees them.
+pub(crate) struct ComparedRow<K> {
+    /// The cells that the row holds or shows.
+    pub(crate) members: Vec<CellId<K>>,
+    /// The cells that a verdict on the row compares: the columns of the subject and the leaders.
+    pub(crate) compared: Vec<CellId<K>>,
 }
 
 impl<'a, K: Key> Table<'a, K> {
     /// Fails unless `cells` hold exactly one cell for every operation, row and crate, and the
     /// layout names every operation.
-    fn new(cells: &'a [Cell<K>], layout: &Layout<'a, K>) -> Result<Self, Error> {
-        let recorded = unique(cells.iter().map(|cell| cell.op.as_str()));
+    pub(crate) fn new(cells: &'a [Recorded<K>], layout: &Layout<'a, K>) -> Result<Self, Error> {
+        let recorded = unique(cells.iter().map(|cell| cell.cell.op.as_str()));
         if let Some(op) = recorded.iter().find(|op| {
             !layout
                 .operations
@@ -213,11 +281,20 @@ impl<'a, K: Key> Table<'a, K> {
             .collect();
         let table = Self {
             ops,
-            keys: unique(cells.iter().map(|cell| cell.key.clone())),
-            crates: unique(cells.iter().map(|cell| cell.library.as_str())),
+            keys: unique(cells.iter().map(|cell| cell.cell.key.clone())),
+            crates: unique(cells.iter().map(|cell| cell.cell.library.as_str())),
             cells: cells
                 .iter()
-                .map(|cell| ((cell.op.as_str(), &cell.key, cell.library.as_str()), cell))
+                .map(|cell| {
+                    (
+                        (
+                            cell.cell.op.as_str(),
+                            &cell.cell.key,
+                            cell.cell.library.as_str(),
+                        ),
+                        cell,
+                    )
+                })
                 .collect(),
         };
         if table.cells.len() != cells.len() {
@@ -259,9 +336,9 @@ impl<'a, K: Key> Table<'a, K> {
 
     /// The figure a table of `operation` shows on the row `key` for `library`: its own count, or,
     /// in a variable-time table without one, the count of the constant-time twin of the same name.
-    fn figure(&self, operation: &Operation<'_>, key: &K, library: &str) -> Option<Figure<'a>> {
-        if let Some(count) = self.count(operation.op, key, library) {
-            return Some(Figure { count });
+    fn figure(&self, operation: &Operation<'_>, key: &K, library: &str) -> Option<Figure<'a, K>> {
+        if let Some(figure) = self.count(operation.op, key, library) {
+            return Some(figure);
         }
         if operation.constant_time {
             return None;
@@ -270,29 +347,138 @@ impl<'a, K: Key> Table<'a, K> {
             .iter()
             .find(|twin| twin.constant_time && twin.name == operation.name)
             .and_then(|twin| self.count(twin.op, key, library))
-            .map(|count| Figure { count })
     }
 
-    /// The count of `op` on the row `key` in `library`; `None` for an absent cell.
-    fn count(&self, op: &str, key: &K, library: &str) -> Option<&'a Count> {
-        match self
-            .cells
-            .get(&(op, key, library))
-            .map(|cell| &cell.outcome)
-        {
-            Some(Outcome::Counted(count)) => Some(count),
-            Some(Outcome::Absent(_)) | None => None,
+    /// The figure of `op` on the row `key` in `library`; `None` for an absent cell.
+    fn count(&self, op: &str, key: &K, library: &str) -> Option<Figure<'a, K>> {
+        let cell = *self.cells.get(&(op, key, library))?;
+        match &cell.cell.outcome {
+            Outcome::Counted(count) => Some(Figure { count, cell }),
+            Outcome::Absent(_) => None,
         }
     }
+
+    /// The cells whose figures tie for the fewest of `part` on the row `key` of `operation`, among
+    /// the crates that `wanted` takes and the functions that keep the row's definition.
+    fn tied(
+        &self,
+        operation: &Operation<'_>,
+        key: &K,
+        part: usize,
+        wanted: impl Fn(&str) -> bool,
+    ) -> Vec<&'a Recorded<K>> {
+        let figures: Vec<(f64, &'a Recorded<K>)> = self
+            .crates
+            .iter()
+            .filter(|library| wanted(library))
+            .filter_map(|library| self.figure(operation, key, library))
+            .filter(|figure| figure.count.deviation.is_none())
+            .filter_map(|figure| Some((shown(parts(figure.count)[part]?), figure.cell)))
+            .collect();
+        let fewest = figures.iter().map(|(number, _)| *number).reduce(f64::min);
+        figures
+            .into_iter()
+            .filter(|(number, _)| Some(*number) == fewest)
+            .map(|(_, cell)| cell)
+            .collect()
+    }
+
+    /// What the verdicts on the subject compare: per operation, row and part where the subject has
+    /// a figure, that figure, the row's fewest and the fewest of the other crates.
+    pub(crate) fn verdicts(&self, layout: &Layout<'_, K>) -> Vec<Verdict<'a, K>> {
+        let mut verdicts = Vec::new();
+        for operation in &self.ops {
+            for key in &self.keys {
+                let Some(ours) = self.figure(operation, key, layout.subject) else {
+                    continue;
+                };
+                for (part, _) in PARTS {
+                    if parts(ours.count)[part].is_none() {
+                        continue;
+                    }
+                    let fewest = self.tied(operation, key, part, |_| true);
+                    let others = |library: &str| !library.starts_with(layout.subject);
+                    let best = self.tied(operation, key, part, others);
+                    verdicts.push(Verdict {
+                        operation: *operation,
+                        key: &ours.cell.cell.key,
+                        part,
+                        subject: ours.cell,
+                        rivals: [fewest, best],
+                    });
+                }
+            }
+        }
+        verdicts
+    }
+
+    /// The cells of the row of `verdict`, as its table shows them.
+    pub(crate) fn row_cells<'s>(
+        &'s self,
+        verdict: &'s Verdict<'_, K>,
+    ) -> impl Iterator<Item = &'a Recorded<K>> + 's {
+        self.crates.iter().filter_map(move |library| {
+            self.figure(&verdict.operation, verdict.key, library)
+                .map(|figure| figure.cell)
+        })
+    }
+
+    /// Every row, as a round of re-measuring sees it.
+    pub(crate) fn rows(&self, layout: &Layout<'_, K>) -> Vec<ComparedRow<K>> {
+        let id = |cell: &Recorded<K>| CellId::of(&cell.cell);
+        let mut rows = Vec::new();
+        for operation in &self.ops {
+            for key in &self.keys {
+                let mut members = Vec::new();
+                for library in &self.crates {
+                    members.extend(
+                        self.cells
+                            .get(&(operation.op, key, *library))
+                            .map(|cell| id(cell)),
+                    );
+                    members.extend(
+                        self.figure(operation, key, library)
+                            .map(|figure| id(figure.cell)),
+                    );
+                }
+                let mut compared: Vec<CellId<K>> = self
+                    .crates
+                    .iter()
+                    .filter(|library| library.starts_with(layout.subject))
+                    .filter_map(|library| self.figure(operation, key, library))
+                    .map(|figure| id(figure.cell))
+                    .collect();
+                let others = |library: &str| !library.starts_with(layout.subject);
+                for (part, _) in PARTS {
+                    compared.extend(
+                        self.tied(operation, key, part, |_| true)
+                            .into_iter()
+                            .map(id),
+                    );
+                    compared.extend(self.tied(operation, key, part, others).into_iter().map(id));
+                }
+                rows.push(ComparedRow { members, compared });
+            }
+        }
+        rows
+    }
 }
 
-/// A count as a table shows it.
-#[derive(Clone, Copy)]
-struct Figure<'a> {
+/// A count as a table shows it, with the cell that holds it.
+struct Figure<'a, K> {
     count: &'a Count,
+    cell: &'a Recorded<K>,
 }
 
-impl Figure<'_> {
+impl<K> Clone for Figure<'_, K> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<K> Copy for Figure<'_, K> {}
+
+impl<K> Figure<'_, K> {
     /// The function as a `Functions` cell names it.
     fn function(self) -> String {
         format!("`{}`", self.count.function)
@@ -558,7 +744,27 @@ fn setup<K>(record: &Record<K>, heading: &str) -> Vec<String> {
         }
     }
     for build in &record.builds {
-        rows.push(vec![label("Load", build), load(&build.sweep)]);
+        for (index, run) in build.runs.iter().enumerate() {
+            let counted = build
+                .cells
+                .iter()
+                .filter(|cell| cell.counted() && cell.run == index)
+                .count();
+            let state = if run.dirty {
+                ", with uncommitted changes"
+            } else {
+                ""
+            };
+            rows.push(vec![
+                label(&format!("Run {}", index + 1), build),
+                format!(
+                    "`{}`{state}, {}: {counted} cells; {}",
+                    short(&run.commit),
+                    run.date,
+                    load(&run.sweep)
+                ),
+            ]);
+        }
     }
     rows.push(vec!["Crates".to_owned(), crates.join(", ")]);
     let mut lines = vec![heading.to_owned(), String::new()];
@@ -633,7 +839,12 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
              more, up to {RETRIES} times."
         ),
     ];
-    if record.builds.iter().any(|build| loaded(&build.sweep)) {
+    if record
+        .builds
+        .iter()
+        .flat_map(|build| &build.runs)
+        .any(|run| loaded(&run.sweep))
+    {
         lines.push(format!(
             "- A sweep ran at a 1-minute load of {LOAD} or more: compare figures within a table \
              only."
@@ -700,7 +911,7 @@ fn functions<K: Key>(layout: &Layout<'_, K>, table: &Table<'_, K>) -> Vec<String
             .map(|operation| {
                 let mut row = vec![operation.name.to_owned()];
                 row.extend(crates.iter().map(|library| {
-                    let figures: Vec<Figure<'_>> = table
+                    let figures: Vec<Figure<'_, K>> = table
                         .keys
                         .iter()
                         .filter_map(|key| table.figure(operation, key, library))
@@ -810,7 +1021,7 @@ fn results<K: Key>(
         // Each starred cell: its crate, its deviation and its row.
         let mut starred: Vec<(&str, &str, &K)> = Vec::new();
         for key in &table.keys {
-            let figures: Vec<Option<Figure<'_>>> = crates
+            let figures: Vec<Option<Figure<'_, K>>> = crates
                 .iter()
                 .map(|library| table.figure(operation, key, library))
                 .collect();
@@ -1128,6 +1339,10 @@ fn reproduce(tool: &str, wasm: bool) -> Vec<String> {
         lines.push(format!(
             "cargo run -p {tool} -- bench-wasm --chrome <chrome> --firefox <firefox>   # the \
              WebAssembly builds"
+        ));
+        lines.push(format!(
+            "cargo run -p {tool} -- bench-wasm --changed --chrome <chrome> --firefox <firefox>   # \
+             the cells whose code changed, with the figures they are compared with"
         ));
     }
     lines.extend([

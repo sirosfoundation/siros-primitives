@@ -30,6 +30,7 @@ use tiny_http::{Header, Method, Request, Response, Server};
 use super::{Browser, Cpus, Threads};
 use crate::counters::{Counters, Counts, pin, pin_thread};
 use crate::error::Error;
+use crate::selection::Plan;
 
 /// The page, which starts the two workers on the memory they share.
 const PAGE: &str = include_str!("page.html");
@@ -59,21 +60,23 @@ const CALIBRATION_TICKS: u64 = 50;
 /// The spins of the worker that may pass before one thread stands out.
 const CALIBRATIONS: usize = 5;
 
-/// Runs the bench `module` in `browser` at `executable` on `cpus`, counting `threads`; returns
-/// the lines that the bench sends. A thread of its own drives the browser, and another holds the
-/// measuring CPU: their pins leave the calling thread as it was.
+/// Runs the cells of `plan` of the bench `module` in `browser` at `executable` on `cpus`, counting
+/// `threads`; returns the lines that the bench sends. A thread of its own drives the browser, and
+/// another holds the measuring CPU: their pins leave the calling thread as it was.
 pub fn run(
     module: &[u8],
     browser: &Browser,
     executable: &Path,
     cpus: Cpus,
     threads: Threads,
+    plan: &Plan,
 ) -> Result<Vec<String>, Error> {
     std::thread::scope(|scope| {
         let (stop, stopped) = mpsc::channel::<()>();
         let holder = scope.spawn(move || hold(cpus.measuring, &stopped));
+        let placement = Some(Placement { cpus, threads });
         let driven = scope
-            .spawn(|| drive(module, browser, executable, cpus, threads))
+            .spawn(move || drive(module, browser, executable, placement, plan))
             .join()
             .map_err(panicked);
         // The holder stops once the channel is closed.
@@ -81,6 +84,21 @@ pub fn run(
         holder.join().map_err(panicked)??;
         driven?
     })
+}
+
+/// The lines that the bench `module` sends when it lists its cells in `browser` at `executable`,
+/// on the CPUs of the calling thread: nothing counts, so nothing is pinned.
+pub fn list(module: &[u8], browser: &Browser, executable: &Path) -> Result<Vec<String>, Error> {
+    drive(module, browser, executable, None, &Plan::List)
+}
+
+/// Where a run that counts stands.
+#[derive(Clone, Copy)]
+struct Placement {
+    /// The CPUs of the run.
+    cpus: Cpus,
+    /// The threads that it counts.
+    threads: Threads,
 }
 
 /// The error of a thread of the driver that panicked with `payload`.
@@ -107,15 +125,17 @@ fn hold(cpu: usize, stopped: &mpsc::Receiver<()>) -> Result<(), Error> {
     Ok(())
 }
 
-/// [`run`], on the calling thread.
+/// Starts the browser on the calling thread, pinned where `placement` says, and answers the page.
 fn drive(
     module: &[u8],
     browser: &Browser,
     executable: &Path,
-    cpus: Cpus,
-    threads: Threads,
+    placement: Option<Placement>,
+    plan: &Plan,
 ) -> Result<Vec<String>, Error> {
-    pin(cpus.browser)?;
+    if let Some(Placement { cpus, .. }) = placement {
+        pin(cpus.browser)?;
+    }
     nix::sys::prctl::set_child_subreaper(true).map_err(|source| Error::Browser {
         reason: format!("becoming the subreaper of the browser: {source}"),
     })?;
@@ -147,8 +167,8 @@ fn drive(
         })?;
     let mut session = Session {
         module,
-        threads,
-        measuring_cpu: cpus.measuring,
+        plan: plan.text(),
+        placement,
         browser: child,
         calibration: None,
         calibrations: 0,
@@ -204,9 +224,11 @@ impl Profile {
 /// One run of a bench in the browser.
 struct Session<'a> {
     module: &'a [u8],
-    threads: Threads,
-    /// The CPU of the measuring thread, which the calibration pins there.
-    measuring_cpu: usize,
+    /// The text of the plan of the run, which the page passes to the bench.
+    plan: String,
+    /// Where the calibration pins the measuring thread, and what it counts; `None` for a run that
+    /// counts nothing.
+    placement: Option<Placement>,
     browser: Child,
     /// The CPU time of every thread of the browser when the worker started to spin.
     calibration: Option<Vec<Task>>,
@@ -283,6 +305,7 @@ impl Session<'_> {
             (Method::Get, _, Some((_, source))) => {
                 (Reply::of(source, "text/javascript"), Asked::More)
             }
+            (Method::Post, "/plan", _) => (Reply::of(&self.plan, "text/plain"), Asked::More),
             (Method::Post, "/calibrate", _) => {
                 self.calibration = Some(tasks()?);
                 (Reply::empty(), Asked::More)
@@ -361,6 +384,9 @@ impl Session<'_> {
     /// and opens the counters of the threads to count; returns whether one thread stood out. The
     /// page spins again until one does, [`CALIBRATIONS`] times at most.
     fn calibrated(&mut self) -> Result<bool, Error> {
+        let Placement { cpus, threads } = self
+            .placement
+            .ok_or_else(|| Error::missing("place to count", "a run that lists its cells"))?;
         let before = self
             .calibration
             .take()
@@ -401,8 +427,8 @@ impl Session<'_> {
                 });
             }
         };
-        pin_thread(measuring.tid, self.measuring_cpu)?;
-        let counted: Vec<i32> = match self.threads {
+        pin_thread(measuring.tid, cpus.measuring)?;
+        let counted: Vec<i32> = match threads {
             Threads::Measuring => vec![measuring.tid],
             Threads::Process => after
                 .iter()

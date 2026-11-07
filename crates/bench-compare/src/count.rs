@@ -37,8 +37,14 @@ use crate::barrier::{Gpr, Xmm};
 use crate::counters::{Counters, Counts};
 use crate::error::Error;
 #[cfg(target_arch = "wasm32")]
-use crate::record::Overhead;
+use crate::fingerprint::Fingerprint;
 use crate::record::{Cell, Class, Count, Events, Latency, Line, Outcome};
+#[cfg(target_arch = "wasm32")]
+use crate::record::{Listed, ListedCall, ListedCase, ListedChain, Overhead};
+#[cfg(target_arch = "wasm32")]
+use crate::selection::Plan;
+#[cfg(target_arch = "wasm32")]
+use crate::suite::Limbs;
 use crate::suite::{Call, CaseId, Chain, Function, Inputs, Rng, Suite, Visitor, visit};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::suite::{run_batch, run_chain};
@@ -174,21 +180,28 @@ pub fn main<S: Suite>(name: &str) -> ExitCode {
     }
 }
 
-/// Runs the WebAssembly bench of `S`, named `name` in its messages, in the page of the driver:
-/// it sends the line of every cell to the driver, or the reason for which it stops. A panic sends
-/// its message before the module traps.
+/// Runs the WebAssembly bench of `S`, named `name` in its messages, in the page of the driver: it
+/// measures the cells of the driver's plan and sends the line of each, or it lists its cells; or
+/// it sends the reason for which it stops. A panic sends its message before the module traps.
 #[cfg(target_arch = "wasm32")]
 #[must_use]
 pub fn main<S: Suite>(name: &str) -> ExitCode {
     std::panic::set_hook(Box::new(|info| crate::host::fail(&info.to_string())));
-    let measured = Counters::open().and_then(|mut counters| {
+    let plan = crate::host::plan()
+        .map_err(Error::Plan)
+        .and_then(|text| Plan::parse(&text).map_err(Error::Selection));
+    let lines = plan.and_then(|plan| {
+        let mut counters = Counters::open()?;
+        if plan == Plan::List {
+            return listing::<S>(&mut counters);
+        }
         let overhead = overhead(&mut counters)?;
         let line = Line::<S::Key>::Overhead(overhead);
         let mut lines = vec![serde_json::to_string(&line).map_err(Error::Cells)?];
-        lines.extend(cells::<S>(&mut counters, Some(overhead.noise))?);
+        lines.extend(cells::<S>(&mut counters, Some(overhead.noise), plan)?);
         Ok(lines)
     });
-    match measured {
+    match lines {
         Ok(lines) => {
             for line in lines {
                 crate::host::emit(&line);
@@ -257,10 +270,99 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
     Ok(lines)
 }
 
-/// Checks and measures every case with `counters`; returns the line of every cell, in the order
-/// of [`visit`]. `noise` is the noise of the fixed cost of a count where the counts reach the
-/// counters through requests; such a difference counts at least [`SIGNAL`] times as many cycles.
-fn cells<S: Suite>(counters: &mut Counters, noise: Option<f64>) -> Result<Vec<String>, Error> {
+/// The operand sets of a row whose hash a listing sends.
+#[cfg(target_arch = "wasm32")]
+const LISTED_DRAWS: usize = 16;
+
+/// The line of every cell of `S`, in the order of [`visit`], with what its case runs. No case runs.
+#[cfg(target_arch = "wasm32")]
+fn listing<S: Suite>(counters: &mut Counters) -> Result<Vec<String>, Error> {
+    let mut measuring = visit::<S, _>(Measuring {
+        counters,
+        pass: 0,
+        rng: Rng(SEED),
+        cells: Vec::new(),
+        cases: Vec::new(),
+        settled: Vec::new(),
+        next: 0,
+        error: None,
+        plan: Plan::List,
+        listed: Vec::new(),
+        operands: S::operands,
+    });
+    if let Some(error) = measuring.error.take() {
+        return Err(error);
+    }
+    let Measuring { cells, listed, .. } = measuring;
+    let mut lines = Vec::with_capacity(cells.len());
+    for (id, call) in cells {
+        let name = id.to_string();
+        let call = match call {
+            Call::Case(_) => ListedCall::Case(
+                listed
+                    .iter()
+                    .find(|(listed, _)| *listed == name)
+                    .map(|(_, case)| case.clone())
+                    .ok_or_else(|| Error::missing(&name, "the listed cases"))?,
+            ),
+            Call::Absent(reason) => ListedCall::Absent(reason.to_owned()),
+        };
+        let line = Listed {
+            op: id.op.to_string(),
+            row: id.key.to_string(),
+            key: id.key,
+            library: id.lib.to_owned(),
+            call,
+        };
+        lines.push(serde_json::to_string(&line).map_err(Error::Cells)?);
+    }
+    Ok(lines)
+}
+
+/// The hash of the operand sets of the row `key` of `op` that a fixed seed draws.
+#[cfg(target_arch = "wasm32")]
+fn operands_hash<O, K>(operands: fn(O, &K, &mut Rng) -> Vec<Limbs>, op: &O, key: &K) -> String
+where
+    O: Clone,
+{
+    let mut rng = Rng(SEED);
+    let mut state = Fingerprint::new();
+    for _ in 0..LISTED_DRAWS {
+        for operand in operands(op.clone(), key, &mut rng) {
+            state.update(&operand.len().to_le_bytes());
+            for limb in operand {
+                state.update(&limb.to_le_bytes());
+            }
+        }
+    }
+    format!("{:032x}", state.finish())
+}
+
+/// The index in the module's table of the function `body`, the loop of a case that runs `_run`: the
+/// function that [`apart`] calls.
+#[cfg(target_arch = "wasm32")]
+fn entry<I, F>(body: fn(&[I], F) -> usize, _run: &F) -> usize {
+    body as usize
+}
+
+/// The operand sets of the pass `pass` of the case `id`: the same whatever else the run measures.
+#[cfg(target_arch = "wasm32")]
+fn stream(id: &str, pass: usize) -> Rng {
+    let mut state = Fingerprint::new();
+    state.update(id.as_bytes());
+    state.update(&pass.to_le_bytes());
+    Rng(SEED ^ state.finish() as u64)
+}
+
+/// Checks and measures every case with `counters` that `plan` holds; returns the line of each cell,
+/// in the order of [`visit`]. `noise` is the noise of the fixed cost of a count where the counts
+/// reach the counters through requests; such a difference counts at least [`SIGNAL`] times as many
+/// cycles.
+fn cells<S: Suite>(
+    counters: &mut Counters,
+    noise: Option<f64>,
+    #[cfg(target_arch = "wasm32")] plan: Plan,
+) -> Result<Vec<String>, Error> {
     // Pass 0 checks and sizes the cases; pass `r` runs repetition `r`.
     let mut measuring = Measuring {
         counters,
@@ -271,6 +373,12 @@ fn cells<S: Suite>(counters: &mut Counters, noise: Option<f64>) -> Result<Vec<St
         settled: Vec::new(),
         next: 0,
         error: None,
+        #[cfg(target_arch = "wasm32")]
+        plan,
+        #[cfg(target_arch = "wasm32")]
+        listed: Vec::new(),
+        #[cfg(target_arch = "wasm32")]
+        operands: S::operands,
     };
     let mut passes = 0..=REPETITIONS;
     let mut retries = 0;
@@ -297,9 +405,21 @@ fn cells<S: Suite>(counters: &mut Counters, noise: Option<f64>) -> Result<Vec<St
         measuring.settled = settled;
         passes = retries * REPETITIONS + 1..=(retries + 1) * REPETITIONS;
     }
-    let Measuring { cells, cases, .. } = measuring;
+    #[cfg(target_arch = "wasm32")]
+    measuring.check_plan()?;
+    let Measuring {
+        cells,
+        cases,
+        #[cfg(target_arch = "wasm32")]
+        plan,
+        ..
+    } = measuring;
     let mut lines = Vec::with_capacity(cells.len() + 1);
     for (id, call) in &cells {
+        #[cfg(target_arch = "wasm32")]
+        if !plan.holds(id) {
+            continue;
+        }
         let name = id.to_string();
         let outcome = match call {
             Call::Case(function) => {
@@ -498,6 +618,95 @@ struct Measuring<'a, O, K> {
     next: usize,
     /// The first failure of the pass, which ends it.
     error: Option<Error>,
+    /// What this run does.
+    #[cfg(target_arch = "wasm32")]
+    plan: Plan,
+    /// What each case runs, by the name of the case, in a run that lists its cells.
+    #[cfg(target_arch = "wasm32")]
+    listed: Vec<(String, ListedCase)>,
+    /// The operands of a row: [`Suite::operands`].
+    #[cfg(target_arch = "wasm32")]
+    operands: fn(O, &K, &mut Rng) -> Vec<Limbs>,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Plan {
+    /// Whether the plan holds the cell `id`.
+    fn holds<O: std::fmt::Display, K: std::fmt::Display>(&self, id: &CaseId<O, K>) -> bool {
+        match self {
+            Self::All | Self::List => true,
+            Self::Only(selection) => {
+                selection.holds(&id.op.to_string(), &id.key.to_string(), id.lib)
+            }
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<O, K> Measuring<'_, O, K> {
+    /// Fails on a pattern of the selection that matched no cell of the bench.
+    fn check_plan(&self) -> Result<(), Error> {
+        match &self.plan {
+            Plan::All | Plan::List => Ok(()),
+            Plan::Only(selection) => selection.check_matched().map_err(Error::Selection),
+        }
+    }
+
+    /// Lists a chain of the case that it listed last, which runs `run` with `x` held by `B`.
+    /// Nothing, for a result that `B` does not hold: that chain compiles to nothing.
+    fn list_chain<I: Chain<R>, R, B: Barrier, F: Fn(&I) -> R>(
+        &mut self,
+        id: &str,
+        run: &F,
+    ) -> Result<(), Error> {
+        if !const { B::LEAST <= size_of::<R>() && size_of::<R>() <= B::MOST } {
+            return Ok(());
+        }
+        let entry = entry(crate::suite::run_chain::<I, R, B>, run);
+        self.listed
+            .last_mut()
+            .filter(|(listed, _)| listed == id)
+            .ok_or_else(|| Error::missing(id, "the listed cases"))?
+            .1
+            .chains
+            .push(ListedChain {
+                class: B::CLASS,
+                entry,
+            });
+        Ok(())
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<O: Clone + std::fmt::Display, K: Clone + std::fmt::Display> Measuring<'_, O, K> {
+    /// Lists the case `id`: its batch loop, which runs `run` on `inputs`. Its chains follow.
+    fn list_case<I, R, F: Fn(&I) -> R>(
+        &mut self,
+        id: &CaseId<O, K>,
+        inputs: &Inputs<'_, I>,
+        run: &F,
+    ) -> Result<(), Error> {
+        let function = self
+            .cells
+            .last()
+            .and_then(|(_, call)| match call {
+                Call::Case(function) => Some(*function),
+                Call::Absent(_) => None,
+            })
+            .ok_or_else(|| Error::missing(&id.to_string(), "the noted cells"))?;
+        let case = ListedCase {
+            function: function.name.to_owned(),
+            deviation: function.deviation.map(str::to_owned),
+            batch: entry(crate::suite::run_batch, run),
+            chains: Vec::new(),
+            draw: inputs.builders.draw,
+            setup: inputs.builders.setup,
+            operands: operands_hash(self.operands, &id.op, &id.key),
+            captures: crate::host::hex(run).map_err(Error::Plan)?,
+        };
+        self.listed.push((id.to_string(), case));
+        Ok(())
+    }
 }
 
 /// Fails unless a run of `count` operations of the case `id` ran `runs`.
@@ -678,6 +887,10 @@ impl<O, K> Measuring<'_, O, K> {
     /// Sizes, in pass 0, the batch form of the case `id`, which `trial` runs; in pass `r`, runs
     /// its repetition `r`.
     fn batch(&mut self, id: String, trial: &dyn Trial, cap: usize) -> Result<(), Error> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.rng = stream(&id, self.pass);
+        }
         if self.pass == 0 {
             let batch = self.size(trial, cap, &id)?;
             self.cases.push(Case {
@@ -752,15 +965,31 @@ impl<O: Clone + std::fmt::Display, K: Clone + std::fmt::Display> Visitor<O, K>
     fn note(&mut self, id: &CaseId<O, K>, call: &Call) {
         if self.pass == 0 {
             self.cells.push((id.clone(), *call));
+            #[cfg(target_arch = "wasm32")]
+            if let Plan::Only(selection) = &mut self.plan {
+                selection.note(&id.op.to_string(), &id.key.to_string(), id.lib);
+            }
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn wants(&self, _id: &CaseId<O, K>) -> bool {
         self.error.is_none()
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn wants(&self, id: &CaseId<O, K>) -> bool {
+        self.error.is_none() && self.plan.holds(id)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn checks(&self, _id: &CaseId<O, K>) -> bool {
         self.pass == 0
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn checks(&self, _id: &CaseId<O, K>) -> bool {
+        self.pass == 0 && self.plan != Plan::List
     }
 
     fn measure<I, R>(
@@ -769,6 +998,11 @@ impl<O: Clone + std::fmt::Display, K: Clone + std::fmt::Display> Visitor<O, K>
         inputs: &Inputs<'_, I>,
         run: impl Fn(&I) -> R + Copy,
     ) -> Self {
+        #[cfg(target_arch = "wasm32")]
+        if self.plan == Plan::List {
+            let result = self.list_case(id, inputs, &run);
+            return self.fail(result);
+        }
         let trial = Region {
             inputs,
             region: |batch: &[I]| run_batch(batch, run),
@@ -787,6 +1021,13 @@ impl<O: Clone + std::fmt::Display, K: Clone + std::fmt::Display> Visitor<O, K>
             return self;
         }
         let name = id.to_string();
+        #[cfg(target_arch = "wasm32")]
+        if self.plan == Plan::List {
+            let result = self
+                .list_chain::<I, R, crate::barrier::Locals, _>(&name, &run)
+                .and_then(|()| self.list_chain::<I, R, Memory, _>(&name, &run));
+            return self.fail(result);
+        }
         let result = self
             .last(&name)
             .and_then(|index| self.chains(index, inputs, run, &name));
