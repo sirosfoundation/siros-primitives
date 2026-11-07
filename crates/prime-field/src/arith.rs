@@ -166,9 +166,10 @@ impl<M: Modulus> Shape<M> {
                 return Self::single(shift_redc(widening_mul(value, value)));
             }
             if Self::HALF_RADIX {
-                // The BabyBear square took Firefox 6.0 cycles against 6.5 by `half_redc` and
-                // Chrome 5.4 against 5.3.
-                return Self::single(half_redc_signed(value * value, Self::P0, Self::INV));
+                // The BabyBear square took Firefox 5.3 cycles against 5.3 to 5.9 by
+                // `half_redc_signed` and Chrome 5.1 against 5.0, at a latency of 13.0 cycles
+                // against 14.0 and 12.2 against 13.0.
+                return Self::single(half_redc(value * value, Self::P0, Self::INV));
             }
             return Self::single(Self::mul1::<CT>(value, value));
         }
@@ -498,7 +499,9 @@ impl<M: Modulus> Shape<M> {
     #[inline(always)]
     pub(crate) fn montgomery1<const CT: bool>(a: u64, b: u64) -> u64 {
         if Self::HALF_RADIX {
-            half_redc(a * b, Self::P0, Self::INV)
+            // The BabyBear product took Firefox 5.4 cycles against 5.7 by `half_redc` and Chrome
+            // 5.1 against 5.1, at a latency of 14.0 cycles against 13.0 and 13.0 against 12.1.
+            half_redc_signed(a * b, Self::P0, Self::INV)
         } else if Self::PRODUCT_FITS_LIMB {
             // `x + m p = 0 mod 2^64` with `x < 2^64`: the low limbs carry exactly when `x` is
             // not zero, and the result `(m p >> 64) + carry` is at most `p`. It equals `p` only

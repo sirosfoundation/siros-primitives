@@ -4,7 +4,7 @@
 //! bit, `p = 1 mod 4` and `p = 3 mod 4`, one and nine limbs.
 
 use biguint::typenum::{
-    IsLess, True, U7, U30, U63, U64, U126, U127, U128, U253, U255, U256, U380, U520,
+    IsLess, True, U7, U30, U32, U63, U64, U126, U127, U128, U253, U255, U256, U380, U520,
 };
 use biguint::{Bits, NonZero, NonZeroUint, Uint};
 use num_bigint::BigUint;
@@ -31,6 +31,7 @@ macro_rules! moduli {
 
 moduli! {
     Seven: U7 = [7];
+    Prime32: U32 = [0xffff_fffb];
     Mersenne127: U127 = [0xffff_ffff_ffff_ffff, 0x7fff_ffff_ffff_ffff];
     Secp256k1Scalar: U256 = [
         0xbfd2_5e8c_d036_4141,
@@ -315,6 +316,7 @@ fn every_operation_matches_num_bigint() {
         sweep,
         check,
         Seven,
+        Prime32,
         Mersenne31,
         BabyBear,
         Goldilocks,
@@ -613,6 +615,7 @@ fn integer_operands_match_biguint() {
         sweep,
         check_integers,
         Seven,
+        Prime32,
         Mersenne31,
         BabyBear,
         Goldilocks,
