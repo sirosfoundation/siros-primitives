@@ -216,6 +216,14 @@ impl<P: Polynomial> Plan<P> {
     /// The square root splits the even and odd coefficients and multiplies by the constant
     /// `sqrt(x)`; otherwise it squares `n - 1` times.
     pub(crate) const SQRT_BY_SPLIT: bool = Self::DEGREE <= SQRT_CONSTANT_LIMIT;
+
+    /// The square root of `x^128 + x^7 + x^2 + x + 1` multiplies by `sqrt(x)` through shifts, on
+    /// WebAssembly, whose two word products take 96 integer products: Chrome 41.0 cycles against
+    /// 154.4.
+    pub(crate) const SQRT_BY_SHIFTS: bool = cfg!(target_arch = "wasm32")
+        && Self::DEGREE == 128
+        && Self::R_DEGREE == 7
+        && Self::R_WORD == 0x87;
 }
 
 /// The fold shape of a degree.

@@ -524,8 +524,9 @@ impl<P: Polynomial> Field<P> {
     /// `sqrt(a) = e(x) + sqrt(x) o(x)` for the even and odd coefficients `e(x^2)` and `x o(x^2)` of
     /// `a`, which the masks and shifts within words gather. Up to 64 bits one gather takes `a` and
     /// `a / x` side by side in the two words of a register, and one word product multiplies `o`.
-    /// At 128 bits `o` fills one word: two word products and one fold. Above, `o` keeps
-    /// `ceil(n / 2)` bits, and its product takes the registers of those bits alone.
+    /// At 128 bits `o` fills one word: two word products and one fold, or
+    /// [`Plan::SQRT_BY_SHIFTS`]. Above, `o` keeps `ceil(n / 2)` bits, and its product takes the
+    /// registers of those bits alone.
     #[inline(always)]
     pub(crate) fn lanes_sqrt(a: Lanes<P>) -> Lanes<P> {
         if Plan::<P>::SQRT_BY_SPLIT {
@@ -553,7 +554,11 @@ impl<P: Polynomial> Field<P> {
                 Shape::Lane => {
                     let even = gather(a);
                     let odd = gather(a.shr_within_words(1));
-                    even ^ Self::word_mul_lane(odd.resize(), root_x.resize()).resize()
+                    if Plan::<P>::SQRT_BY_SHIFTS {
+                        even ^ gcm_root_product(odd.resize()).resize()
+                    } else {
+                        even ^ Self::word_mul_lane(odd.resize(), root_x.resize()).resize()
+                    }
                 }
                 Shape::Lanes => {
                     let even = gather(a);
@@ -816,6 +821,27 @@ impl<N: clmul::Width> Masks<N> {
         Poly::from_uint(blocks::<N>(512)),
         Poly::from_uint(blocks::<N>(1024)),
     ];
+}
+
+/// `odd sqrt(x) mod f` for `f = x^128 + x^7 + x^2 + x + 1` and `odd` below `x^64`. Since
+/// `f = (x^64 + x + 1)^2 + x (x^3 + 1)^2`, `sqrt(x) (x^3 + 1) = x^128 + x^64 + x^7 + x^2`, and the
+/// product is `s (x^128 + x^64 + x^7 + x^2)` for the series `s = odd / (x^3 + 1)`. Above `x^64`,
+/// `s` repeats its top 3 coefficients; the terms past `x^189` cancel.
+#[inline(always)]
+fn gcm_root_product(odd: Poly<U128>) -> Poly<U128> {
+    let mut low = odd.to_uint().as_limbs().first().copied().unwrap_or(0);
+    each(
+        5,
+        #[inline(always)]
+        |level| low ^= low << (3 << level),
+    );
+    let next = (low >> 61).wrapping_mul(0x9249_2492_4924_9249);
+    // The part at and above `x^128`, whose degree is at most 60.
+    let high = (low ^ (next >> 2)) & (u64::MAX >> 3);
+    Poly::from_uint(Uint::from_limbs([
+        (low << 2) ^ (low << 7) ^ high ^ (high << 1) ^ (high << 2) ^ (high << 7),
+        (low >> 62) ^ (next << 2) ^ (low >> 57) ^ (next << 7) ^ low ^ (high >> 57),
+    ]))
 }
 
 /// The coefficients at the even positions of `a`, moved to half their position: the gather

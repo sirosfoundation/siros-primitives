@@ -58,22 +58,22 @@ pub(crate) fn add_mul_row(out: &mut [u64], a: &[u64], m: u64) -> u64 {
     })
 }
 
-/// `minuend - limb m - borrow` as the low limb and the limb that the subtraction owes above it.
+/// `minuend - limb m - borrow` as the low limb, the high limb of the product, and the flag that
+/// adds to it for the limb that the subtraction owes above.
 ///
 /// With wide arithmetic, the sum `limb m + borrow + !minuend` stays below `2^128`: its high half is
 /// the limb owed, and its low half the complement of the difference. The limb owed then crosses one
 /// addition with carry per step, where a subtraction after the product adds a comparison and its
 /// flag: the 1024-bit `mul_mod` took Chrome 2,426 cycles against 2,813.
 #[inline(always)]
-fn sub_mul_limb(minuend: u64, limb: u64, m: u64, borrow: u64) -> (u64, u64) {
+fn sub_mul_limb(minuend: &u64, limb: u64, m: u64, borrow: u64) -> (u64, u64, bool) {
     if cfg!(wide_arithmetic) {
-        let (low, high) = mul_add(limb, m, !minuend, borrow);
-        (!low, high)
+        let (low, high) = mul_add(limb, m, !*minuend, borrow);
+        (!low, high, false)
     } else {
         let (low, high) = mul_add(limb, m, borrow, 0);
         let (difference, owed) = minuend.overflowing_sub(low);
-        // `high` reaches `2^64 - 1` only with `low = 0`, which owes nothing.
-        (difference, high + u64::from(owed))
+        (difference, high, owed)
     }
 }
 
@@ -83,9 +83,10 @@ fn sub_mul_limb(minuend: u64, limb: u64, m: u64, borrow: u64) -> (u64, u64) {
 #[inline(always)]
 pub(crate) fn sub_mul_row(out: &mut [u64], a: &[u64], m: u64) -> u64 {
     out.iter_mut().zip(a).fold(0, |borrow, (slot, &limb)| {
-        let (difference, owed) = sub_mul_limb(*slot, limb, m, borrow);
+        let (difference, high, owed) = sub_mul_limb(slot, limb, m, borrow);
         *slot = difference;
-        owed
+        // `high` reaches `2^64 - 1` only with `low = 0`, which owes nothing.
+        high + u64::from(owed)
     })
 }
 
@@ -98,9 +99,9 @@ pub(crate) fn sub_mul_row_into(out: &mut [u64], from: &[u64], a: &[u64], m: u64)
         .zip(from)
         .zip(a)
         .fold(0, |borrow, ((slot, &minuend), &limb)| {
-            let (difference, owed) = sub_mul_limb(minuend, limb, m, borrow);
+            let (difference, high, owed) = sub_mul_limb(&minuend, limb, m, borrow);
             *slot = difference;
-            owed
+            high + u64::from(owed)
         })
 }
 
