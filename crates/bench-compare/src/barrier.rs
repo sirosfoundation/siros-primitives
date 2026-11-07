@@ -201,11 +201,10 @@ pub(crate) fn opaque<T>(value: &T) -> &T {
 #[cfg(not(target_arch = "x86_64"))]
 #[inline(always)]
 fn through<P: Copy>(slot: &mut P, value: P) -> P {
-    // SAFETY: `slot` is a reference, valid for writes and reads.
-    let hidden = unsafe {
-        core::ptr::write_volatile(slot, value);
-        core::ptr::read_volatile(slot)
-    };
+    // SAFETY: `slot` is a reference, valid for writes.
+    unsafe { core::ptr::write_volatile(slot, value) };
+    // SAFETY: `slot` is a reference, valid for reads.
+    let hidden = unsafe { core::ptr::read_volatile(slot) };
     core::hint::black_box(());
     hidden
 }
