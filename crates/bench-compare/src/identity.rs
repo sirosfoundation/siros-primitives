@@ -204,9 +204,7 @@ fn symbol_hashes(module: &Module<'_>) -> Vec<u128> {
 /// The defined functions that `stream` calls and that can return.
 fn stream_callees<'s>(stream: &'s Stream, returns: &'s [bool]) -> impl Iterator<Item = u32> + 's {
     stream.holes.iter().filter_map(|hole| match hole.kind {
-        HoleKind::Call(callee) if returns.get(callee as usize).copied().unwrap_or(false) => {
-            Some(callee)
-        }
+        HoleKind::Call(callee) if returns[callee as usize] => Some(callee),
         HoleKind::Call(_) | HoleKind::Data(_) => None,
     })
 }
@@ -674,7 +672,7 @@ fn can_return(control: &[Control], returns: &[bool]) -> bool {
             }
             Control::Unreachable => live = false,
             Control::Call(callee) => {
-                if !returns.get(*callee as usize).copied().unwrap_or(false) {
+                if !returns[*callee as usize] {
                     live = false;
                 }
             }

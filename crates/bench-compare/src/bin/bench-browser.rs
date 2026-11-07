@@ -283,11 +283,9 @@ mod linux {
             };
             let (mine, yours) = (hashes(&mut first, functions)?, hashes(&mut second, others)?);
             for (mine, yours) in mine.iter().zip(&yours) {
-                if mine.0 == yours.0 {
-                    same += 1;
-                } else {
-                    let why = first.difference(mine.1, &mut second, yours.1)?;
-                    lines.push(format!("differs {name}: {}", why.unwrap_or_default()));
+                match first.difference(mine.1, &mut second, yours.1)? {
+                    None => same += 1,
+                    Some(why) => lines.push(format!("differs {name}: {why}")),
                 }
             }
             if mine.len() != yours.len() {
@@ -331,8 +329,16 @@ mod linux {
         let mut listed = Vec::with_capacity(lines.len());
         for line in lines {
             let value: Value = serde_json::from_str(&line).map_err(Error::Cells)?;
-            let text = |field: &str| value.get(field).and_then(Value::as_str).unwrap_or_default();
-            let cell = format!("{}/{}/{}", text("op"), text("row"), text("crate"));
+            let text = |field: &str| {
+                value
+                    .get(field)
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| Error::Missing {
+                        what: field.to_owned(),
+                        origin: "a line of the listing".to_owned(),
+                    })
+            };
+            let cell = format!("{}/{}/{}", text("op")?, text("row")?, text("crate")?);
             let Some(case) = value.get("case") else {
                 listed.push(format!("{cell}\tabsent"));
                 continue;

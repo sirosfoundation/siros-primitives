@@ -604,6 +604,11 @@ fn the_reader_refuses_what_it_cannot_read() {
     let at = unknown.assemble().raw.expect("the unknown opcode");
     assert_eq!(unknown.refusal().offset, at);
 
+    let mut beyond = sample();
+    beyond.functions[LEAF] = vec![Instruction::Raw(vec![0x10, 0xff, 0xff, 0x03])];
+    let at = beyond.assemble().raw.expect("the call");
+    assert_eq!(beyond.refusal().offset, at + 1);
+
     let wrong = Sample {
         wrong_operand: 4,
         ..sample()

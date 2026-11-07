@@ -1121,7 +1121,7 @@ impl<'a> Sections<'a> {
                 stream.control.push(Control::BrTable(labels));
             }
             Immediates::Function => {
-                let callee = reader.u32()?;
+                let callee = self.callee(reader)?;
                 stream.bytes.push(mark::CALL);
                 stream.push_hole(HoleKind::Call(callee));
                 stream.control.push(Control::Call(callee));
@@ -1169,10 +1169,23 @@ impl<'a> Sections<'a> {
             Immediates::FunctionReference => {
                 stream.indirect = true;
                 stream.bytes.push(mark::CALL);
-                stream.push_hole(HoleKind::Call(reader.u32()?));
+                stream.push_hole(HoleKind::Call(self.callee(reader)?));
             }
         }
         Ok(())
+    }
+
+    /// A function index, which must name a function of the module.
+    fn callee(&self, reader: &mut Reader<'a>) -> Result<u32, ModuleError> {
+        let position = reader.at;
+        let callee = reader.u32()?;
+        if callee as usize >= self.imports.len() + self.declared.len() {
+            return Err(ModuleError {
+                offset: position,
+                reason: format!("the function {callee}, which the module does not hold"),
+            });
+        }
+        Ok(callee)
     }
 
     /// A block type: empty, one value type, or a type index, which a new type moves.

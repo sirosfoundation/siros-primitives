@@ -25,11 +25,16 @@ counters, natively and in Chrome and Firefox as WebAssembly.
 - `bench_compare::execute`: the report tool.
   - `bench [--cpu <cpu>] [--machine <description>]` builds, runs and records
     `benchmarks/record.json`;
-  - `bench-wasm --chrome <executable> --firefox <executable> [--cpu <cpu>] [--browser-cpu <cpu>]
-    [--machine <description>]` builds the builds of `WASM` and runs them in the two browsers,
-    then records `benchmarks/record-wasm.json`;
+  - `bench-wasm --chrome <executable> --firefox <executable> [--changed [--dry-run]] [--runs <runs>]
+    [--target-dir <directory>] [--cpu <cpu>] [--browser-cpu <cpu>] [--machine <description>]` builds
+    the builds of `WASM` and runs them in the two browsers, then records
+    `benchmarks/record-wasm.json`;
+  - `stamp-wasm --chrome <executable> [--target-dir <directory>]` writes the keys of the tree into
+    the WebAssembly record;
+  - `modules --out <directory> [--target-dir <directory>]` builds the modules of a decision;
   - `report` writes `BENCHMARKS.md` from the records.
-- `bench-browser`: runs one WebAssembly bench in one browser and prints its lines.
+- `bench-browser`: runs one WebAssembly bench in one browser and prints its lines. `decide` compares
+  two directories of modules; `list`, `diff` and `edges` read modules.
 - `run_batch` and `run_chain`: the measured loops, for other tools such as `ct-check`.
 
 ## Usage
@@ -93,7 +98,7 @@ cargo build --release --target wasm32-unknown-unknown -p bench-compare --example
 cargo run --release -p bench-compare --bin bench-browser -- \
   target/wasm32-unknown-unknown/release/examples/calibration.wasm --firefox <firefox> \
   --cpu 12 --browser-cpu 14 [--build baseline | wide] [--tiering optimizing | default] \
-  [--threads measuring | process]
+  [--threads measuring | process] [--only <op/key/crate,...>] [--runs <runs>]
 ```
 
 ## Protocol
@@ -140,3 +145,76 @@ cargo run --release -p bench-compare --bin bench-browser -- \
   operation and row, the subject against the fewest figure of the crates that keep the row's
   definition, as `Δ` in cycles and as a ratio; and the subject against its native build
   `Layout::wasm_native`, as a ratio.
+
+## Measuring what changed
+
+A selection names cells as `op/key/crate`, separated by commas, where a part may be `*`. It reaches
+the module through an import, and the module stays whole: a selected cell runs the code of a full
+run, on the operands of a full run, because each case on WebAssembly draws from a stream of its own.
+A pattern that matches no cell stops the run.
+
+A decision between two trees:
+
+```sh
+cargo run -p prime-field-bench-report -- modules --out <baseline>   # in the baseline's tree
+cargo run -p prime-field-bench-report -- modules --out <change>     # in the change's tree
+cargo run --release -p bench-compare --bin bench-browser -- decide \
+  --baseline <baseline> --change <change> \
+  --only 'mul_vartime/P-256 base/prime-field,mul_vartime/P-256 base/ark-ff' \
+  --chrome <chrome> --firefox <firefox> --cpu 12 --browser-cpu 14 [--runs <runs>]
+```
+
+It runs both sides back to back in each of the four builds, `--runs` times, and prints each cell's
+fewest figures and the load.
+
+`bench-wasm --changed` is a content-addressed action cache, as in Bazel. A cell keeps its figures
+while the record holds its key:
+
+- its code: the hashes of its batch and chain loops, of what draws its inputs and of its setup, with
+  all they call and all the data they address; the hash of its operands from a fixed seed; the bytes
+  that its operation captures; and, when those can address memory that code fills, the hash of the
+  function that offers its crate's cells;
+- the browser's name, version and settings;
+- the `RUSTFLAGS` of the build and the model of the CPU;
+- the hash of the sources that measure: `HARNESS` in `src/changed.rs`.
+
+A cell without a key counts as changed, and so does a cell whose loop can reach an indirect call. A
+round runs the changed cells, the subject's columns in their rows, and each row's fewest figure and
+best competitor per part; a module with none of them stays out. Fresh figures replace old ones, with
+no minimum across runs. A round repeats while a kept figure leads a re-measured row, 12 times at most;
+past that the tool stops with an error. `--dry-run` prints the cells of the first round of each
+build. A `bench-wasm` without `--changed` measures every cell.
+
+`report` refuses a record whose verdict compares figures of different runs: per build, operation, row
+and part, one of the tied fewest figures and one of the best competitor's must come from the subject's
+run. Each cell records its run. The setup table of `BENCHMARKS.md` gives each run's commit, cells and
+load.
+
+The hash in `src/identity.rs` is a Merkle hash over the reachable functions and data. It reads the
+relocations that `KEEP_RELOCATIONS` (`-C link-arg=--emit-relocs`) keeps in each module, so each
+address resolves to its symbol: layout leaves the hash, and the symbol's bytes enter it. The flag
+adds custom sections and writes the zeros of `.bss` as a data segment. The two `num-bigint` crates of
+the prime-field plain builds swap places in those modules, because `RUSTFLAGS` enters the file names
+of the rlibs; every function body stays the same. An opcode or a relocation that the reader does not
+know stops the tool with its offset. `bench-browser diff` names the functions that differ between two
+modules, and `bench-browser edges` prints the call edges that the reader sees, to compare with
+`wasm-tools print`.
+
+`stamp-wasm` writes the keys of a record measured at an earlier commit, without measuring. It refuses
+a record that ran dirty, uncommitted changes in the measured sources, and sources that differ from
+the record's `head`. The files of `bench-compare` stay out of that check: run `bench-browser diff`
+between the modules of both commits first.
+
+A selected cell takes the fewest figures of `SELECTED_RUNS`, 3, runs of its bench: repetitions within
+one run meet one burst of load, where a full run spreads them over minutes. Cycles of 48 cells across
+16 operations in two crates, against a full run back to back, at load 25 to 60:
+
+| Against a full run | Figures | Median distance | 95th percentile | Median signed difference |
+| ------------------ | ------- | --------------- | --------------- | ------------------------ |
+| A second full run  | 176     | 1.9%            | 22.9%           | +0.1%                    |
+| 1 selected run     | 192     | 2.4%            | 29.6%           | +0.2%                    |
+| 3 selected runs    | 192     | 1.6%            | 18.4%           | -0.9%                    |
+| 7 selected runs    | 96      | 4.7%            | 36.8%           | -3.0%                    |
+
+Instruction counts differ by a median of 0.000% on each line. More runs read lower, as a minimum over
+more samples does. A verdict compares figures of one run, so this offset between runs stays out of it.
