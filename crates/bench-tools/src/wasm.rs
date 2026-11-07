@@ -1101,12 +1101,13 @@ pub(crate) fn bench_wasm<K: Key>(
     let swept = progress.run(&streams);
     let running = clock.elapsed();
     let summary = format!(
-        "built in {:.1} s, listed in {:.1} s, measured {} cells in {:.1} s on {} streams",
+        "built in {:.1} s, listed in {:.1} s, measured {} cells in {:.1} s on {} stream{}",
         building.as_secs_f64(),
         listing.as_secs_f64(),
         progress.measured,
         running.as_secs_f64(),
-        streams.len()
+        streams.len(),
+        if streams.len() == 1 { "" } else { "s" }
     );
     if let Err(error) = swept {
         println!(

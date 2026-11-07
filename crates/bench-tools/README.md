@@ -78,7 +78,7 @@ the package and of every workspace package it is built from, as `cargo metadata`
 The record marks the run dirty when those files, the root manifests or the package's `benches`
 differ from `HEAD`.
 
-One bench in one browser, such as the example:
+One bench in one browser, such as the calibration bench of `bench-compare`:
 
 ```sh
 cargo build --release --target wasm32-unknown-unknown -p bench-compare --bench calibration
@@ -208,12 +208,13 @@ follows its class, which each run picks by its cycles.
 ## Sweeps that stop
 
 `bench-wasm` writes its record after each run of a bench in a build, marked `"unfinished": true`, by
-renaming a complete file over the old one. `report` and `stamp-wasm` refuse such a record. A run that
-its bench or its browser stops takes up to three attempts, `ATTEMPTS`. Past them the sweep hands out
-no more runs, lets the running ones end and record their figures, and stops with the error.
-`bench-wasm --changed` then measures what remains: a kept figure whose key differs holds no code
-until a run measures it again, and a row whose rounds a stop cut short starts the first round. A
-`bench-wasm` without `--changed` measures every cell again.
+renaming a complete file over the old one. `report` and `stamp-wasm` refuse such a record. The sweep
+drops the mark at its end, once every cell whose key differed holds figures of one of its runs. A
+run that its bench or its browser stops takes up to three attempts, `ATTEMPTS`. Past them the sweep
+hands out no more runs, lets the running ones end and record their figures, and stops with the
+error. `bench-wasm --changed` then measures what remains: a kept figure whose key differs holds no
+code until a run measures it again, and a row whose rounds a stop cut short starts the first round.
+A `bench-wasm` without `--changed` measures every cell again.
 
 Each run of a bench runs in a process of its own, which reads its module from the standard input and
 which the kernel kills when the sweep dies. A browser whose driver died waits for requests that never
