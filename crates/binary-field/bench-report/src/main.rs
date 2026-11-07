@@ -79,6 +79,10 @@ const LAYOUT: Layout<'static, Field> = Layout {
          GF(2²³³) and GF(2⁵⁷¹) of NIST B-233 and B-571.",
         "Every result matches a bit-serial reference before it is measured.",
         "The build without carry-less multiplication drops PCLMULQDQ and VPCLMULQDQ.",
+        "Over GF(2¹⁶) without carry-less multiplication, `precomputed` multiplies through tables \
+         of logarithms and antilogarithms. That favours throughput: each product chained on the \
+         last runs through two loads from those large tables, so `reed-solomon-erasure` leads \
+         latency there and `binary-field` leads throughput.",
     ],
     wasm_native: "without carry-less multiplication",
 };
