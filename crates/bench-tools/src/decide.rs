@@ -6,17 +6,13 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use bench_compare::{Count, Error, Fingerprint, Plan, Selection, load};
 use serde_json::{Map, Value};
 
 use crate::browser::{Cpus, LISTING, Threads, list, run as run_in_browser};
-use crate::error::Error;
 use crate::fewest::fewest;
-use crate::fingerprint::Fingerprint;
-use crate::record::Count;
-use crate::selection::{Plan, Selection};
 use crate::tool_error::ToolError;
 use crate::wasm::{FLAVOURS, WASM, WasmBuild};
-use crate::window::load;
 
 /// What a decision runs.
 pub struct Decision<'a> {
@@ -59,13 +55,13 @@ fn row_fields(line: &Map<String, Value>) -> String {
 
 /// The lines that the module at `path` lists, which the file `<path>.list` keeps per content of the
 /// module: a browser takes seconds to start.
-fn listing(path: &Path, bytes: &[u8], chrome: &Path) -> Result<Vec<String>, Error> {
+fn listing(path: &Path, bytes: &[u8], chrome: &Path) -> Result<Vec<String>, ToolError> {
     let mut cache = path.as_os_str().to_owned();
     cache.push(".list");
     let cache = PathBuf::from(cache);
     let hash = format!("{:032x}", Fingerprint::of(bytes));
     if cache.exists() {
-        let text = fs::read_to_string(&cache).map_err(|source| Error::io(&cache, source))?;
+        let text = fs::read_to_string(&cache).map_err(|source| ToolError::io(&cache, source))?;
         if let Some(rest) = text.strip_prefix(&hash) {
             return Ok(rest
                 .lines()
@@ -76,25 +72,25 @@ fn listing(path: &Path, bytes: &[u8], chrome: &Path) -> Result<Vec<String>, Erro
     }
     let lines = list(bytes, &LISTING, chrome)?;
     let text = format!("{hash}\n{}\n", lines.join("\n"));
-    fs::write(&cache, text).map_err(|source| Error::io(&cache, source))?;
+    fs::write(&cache, text).map_err(|source| ToolError::io(&cache, source))?;
     Ok(lines)
 }
 
 /// The string field `field` of the cell `line`.
-fn text(line: &Map<String, Value>, field: &str) -> Result<String, Error> {
+fn text(line: &Map<String, Value>, field: &str) -> Result<String, ToolError> {
     line.get(field)
         .and_then(Value::as_str)
         .map(str::to_owned)
-        .ok_or_else(|| Error::missing(field, "a line of a listing"))
+        .ok_or_else(|| ToolError::missing(field, "a line of a listing"))
 }
 
 impl Named {
     /// The module at `path`; `None` when there is no such file.
-    fn read(path: &Path, chrome: &Path) -> Result<Option<Self>, Error> {
+    fn read(path: &Path, chrome: &Path) -> Result<Option<Self>, ToolError> {
         if !path.exists() {
             return Ok(None);
         }
-        let bytes = fs::read(path).map_err(|source| Error::io(path, source))?;
+        let bytes = fs::read(path).map_err(|source| ToolError::io(path, source))?;
         let mut cells = Vec::new();
         let mut rows = HashMap::new();
         for line in listing(path, &bytes, chrome)? {
@@ -108,10 +104,10 @@ impl Named {
 }
 
 /// The name of each bench in `directory`: `<bench>.<word>.wasm`.
-fn benches(directory: &Path) -> Result<Vec<String>, Error> {
+fn benches(directory: &Path) -> Result<Vec<String>, ToolError> {
     let mut names = Vec::new();
-    for entry in fs::read_dir(directory).map_err(|source| Error::io(directory, source))? {
-        let entry = entry.map_err(|source| Error::io(directory, source))?;
+    for entry in fs::read_dir(directory).map_err(|source| ToolError::io(directory, source))? {
+        let entry = entry.map_err(|source| ToolError::io(directory, source))?;
         let name = entry.file_name();
         let Some(bench) = name.to_str().and_then(|name| {
             FLAVOURS
@@ -136,7 +132,7 @@ struct Figures {
 }
 
 /// The cells in `lines`, the lines of a run of `module`.
-fn figures(lines: Vec<String>, module: &Named) -> Result<Vec<Figures>, Error> {
+fn figures(lines: Vec<String>, module: &Named) -> Result<Vec<Figures>, ToolError> {
     let mut cells = Vec::new();
     for line in lines {
         let line: Value = serde_json::from_str(&line).map_err(Error::Cells)?;
@@ -144,10 +140,9 @@ fn figures(lines: Vec<String>, module: &Named) -> Result<Vec<Figures>, Error> {
             continue;
         };
         let fields = row_fields(cell);
-        let row = module
-            .rows
-            .get(&fields)
-            .ok_or_else(|| Error::missing(&format!("row {fields}"), "the listing of the module"))?;
+        let row = module.rows.get(&fields).ok_or_else(|| {
+            ToolError::missing(&format!("row {fields}"), "the listing of the module")
+        })?;
         cells.push(Figures {
             name: format!("{}/{row}/{}", text(cell, "op")?, text(cell, "crate")?),
             count: cell
@@ -201,7 +196,7 @@ fn run_side(
     build: &WasmBuild,
     decision: &Decision<'_>,
     executable: &Path,
-) -> Result<Option<Vec<String>>, Error> {
+) -> Result<Option<Vec<String>>, ToolError> {
     let Some(module) = module else {
         return Ok(None);
     };
@@ -227,7 +222,7 @@ fn decide_bench(
     build: &WasmBuild,
     bench: &str,
     sides: [Option<&Named>; 2],
-) -> Result<(), Error> {
+) -> Result<(), ToolError> {
     let executable = match build.browser.name() {
         "Chrome" => decision.chrome,
         _ => decision.firefox,

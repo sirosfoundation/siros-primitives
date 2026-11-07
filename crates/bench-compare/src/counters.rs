@@ -3,16 +3,19 @@
 
 /// The events of one counted region.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Counts {
-    pub(crate) cycles: u64,
-    pub(crate) instructions: u64,
-    pub(crate) branch_misses: u64,
+pub struct Counts {
+    /// Core cycles.
+    pub cycles: u64,
+    /// Retired instructions.
+    pub instructions: u64,
+    /// Mispredicted branches.
+    pub branch_misses: u64,
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) use linux::{Counters, pin, pin_thread};
+pub use linux::{Counters, pin, pin_thread};
 #[cfg(not(any(target_os = "linux", target_arch = "wasm32")))]
-pub(crate) use other::{Counters, pin};
+pub use other::{Counters, pin};
 #[cfg(target_arch = "wasm32")]
 pub(crate) use page::Counters;
 
@@ -84,13 +87,13 @@ mod linux {
     use crate::error::Error;
 
     /// Pins the calling thread to `cpu`.
-    pub(crate) fn pin(cpu: usize) -> Result<(), Error> {
+    pub fn pin(cpu: usize) -> Result<(), Error> {
         // Tid 0 is the calling thread.
         pin_thread(0, cpu)
     }
 
     /// Pins the thread `tid` to `cpu`.
-    pub(crate) fn pin_thread(tid: i32, cpu: usize) -> Result<(), Error> {
+    pub fn pin_thread(tid: i32, cpu: usize) -> Result<(), Error> {
         let failure = |source: nix::Error| Error::Pin {
             cpu,
             source: io::Error::from(source),
@@ -102,7 +105,7 @@ mod linux {
 
     /// One perf_event group on one thread and any CPU, which counts user-mode cycles,
     /// instructions and branch misses.
-    pub(crate) struct Counters {
+    pub struct Counters {
         group: Group,
         cycles: Counter,
         instructions: Counter,
@@ -113,13 +116,13 @@ mod linux {
 
     impl Counters {
         /// Opens the group on the calling thread.
-        pub(crate) fn open() -> Result<Self, Error> {
+        pub fn open() -> Result<Self, Error> {
             // Pid 0 is the calling thread.
             Self::build(0)
         }
 
         /// Opens the group on the thread `tid` of another process, which this process may trace.
-        pub(crate) fn observe(tid: i32) -> Result<Self, Error> {
+        pub fn observe(tid: i32) -> Result<Self, Error> {
             Self::build(tid)
         }
 
@@ -152,7 +155,7 @@ mod linux {
 
         /// The value of `region` and the events that it counts. A region during which the
         /// kernel shared the counters with other groups is a [`Error::Multiplexed`].
-        pub(crate) fn count(
+        pub fn count(
             &mut self,
             region: &mut dyn FnMut() -> usize,
         ) -> Result<(usize, Counts), Error> {
@@ -162,7 +165,7 @@ mod linux {
         }
 
         /// Resets and enables the group.
-        pub(crate) fn begin(&mut self) -> Result<(), Error> {
+        pub fn begin(&mut self) -> Result<(), Error> {
             let failure = |source: io::Error| Error::Counters { source };
             self.group.reset().map_err(failure)?;
             self.group.enable().map_err(failure)
@@ -171,7 +174,7 @@ mod linux {
         /// Disables the group and returns what it counted since [`begin`](Self::begin). A span
         /// during which the kernel shared the counters with other groups is a
         /// [`Error::Multiplexed`].
-        pub(crate) fn end(&mut self) -> Result<Counts, Error> {
+        pub fn end(&mut self) -> Result<Counts, Error> {
             let failure = |source: io::Error| Error::Counters { source };
             self.group.disable().map_err(failure)?;
             let data = self.group.read().map_err(failure)?;
@@ -208,19 +211,21 @@ mod other {
     use crate::error::Error;
 
     /// Pinning needs Linux.
-    pub(crate) fn pin(_cpu: usize) -> Result<(), Error> {
+    pub fn pin(_cpu: usize) -> Result<(), Error> {
         Err(Error::NoPerfEvent)
     }
 
     /// The counters of a target without perf_event: none can open.
-    pub(crate) enum Counters {}
+    pub enum Counters {}
 
     impl Counters {
-        pub(crate) fn open() -> Result<Self, Error> {
+        /// None can open.
+        pub fn open() -> Result<Self, Error> {
             Err(Error::NoPerfEvent)
         }
 
-        pub(crate) fn count(
+        /// None can open.
+        pub fn count(
             &mut self,
             _region: &mut dyn FnMut() -> usize,
         ) -> Result<(usize, Counts), Error> {

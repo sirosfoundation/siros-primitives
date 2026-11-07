@@ -9,21 +9,23 @@
 
 use std::collections::HashSet;
 
+use bench_compare::{Cell, Fingerprint, Key, ListedCase};
+
 use crate::document::{Layout, Table};
-use crate::error::Error;
-use crate::fingerprint::Fingerprint;
 use crate::identity::Identity;
 use crate::module::ModuleError;
-use crate::record::{Cell, Key, ListedCase, Recorded, Run};
+use crate::record::{Recorded, Run};
+use crate::tool_error::ToolError;
 
 /// The sources that measure, whose text is part of the key of every cell.
-const HARNESS: [&str; 12] = [
-    include_str!("count.rs"),
-    include_str!("counters.rs"),
-    include_str!("barrier.rs"),
+const HARNESS: [&str; 13] = [
+    include_str!("../../bench-compare/src/count.rs"),
+    include_str!("../../bench-compare/src/counters.rs"),
+    include_str!("../../bench-compare/src/barrier.rs"),
+    include_str!("../../bench-compare/src/fingerprint.rs"),
+    include_str!("../../bench-compare/src/suite.rs"),
+    include_str!("../../bench-compare/src/host.rs"),
     include_str!("fewest.rs"),
-    include_str!("suite.rs"),
-    include_str!("host.rs"),
     include_str!("browser/mod.rs"),
     include_str!("browser/driver.rs"),
     include_str!("browser/worker.js"),
@@ -136,7 +138,7 @@ impl<K: Key> CellId<K> {
         }
     }
 
-    /// The name as a pattern of a [`Selection`](crate::Selection).
+    /// The name as a pattern of a [`Selection`](bench_compare::Selection).
     #[must_use]
     pub fn pattern(&self) -> String {
         format!("{}/{}/{}", self.op, self.key, self.library)
@@ -151,7 +153,7 @@ pub fn select<K: Key>(
     layout: &Layout<'_, K>,
     cells: &[Recorded<K>],
     seeds: impl IntoIterator<Item = CellId<K>>,
-) -> Result<HashSet<CellId<K>>, Error> {
+) -> Result<HashSet<CellId<K>>, ToolError> {
     let rows = Table::new(cells, layout)?.rows(layout);
     let mut selected: HashSet<CellId<K>> = seeds.into_iter().collect();
     loop {
@@ -175,7 +177,7 @@ pub fn select<K: Key>(
 pub fn overtaken<K: Key>(
     layout: &Layout<'_, K>,
     cells: &[Recorded<K>],
-) -> Result<Vec<CellId<K>>, Error> {
+) -> Result<Vec<CellId<K>>, ToolError> {
     let table = Table::new(cells, layout)?;
     let mut seeds = Vec::new();
     for verdict in table.verdicts(layout) {
@@ -195,18 +197,18 @@ pub fn overtaken<K: Key>(
 
 /// Replaces the figures of the cells of `cells` that `fresh` names by those of `fresh`, which come
 /// from the run `run`. It takes no minimum with the old figures: a figure of an earlier run met other
-/// conditions. A fresh cell that `cells` lacks is an [`Error::Missing`].
+/// conditions. A fresh cell that `cells` lacks is an [`Error::Missing`](bench_compare::Error::Missing).
 pub fn merge<K: Key>(
     cells: &mut [Recorded<K>],
     fresh: Vec<Cell<K>>,
     run: usize,
-) -> Result<(), Error> {
+) -> Result<(), ToolError> {
     for cell in fresh {
         let id = CellId::of(&cell);
         let kept = cells
             .iter_mut()
             .find(|kept| CellId::of(&kept.cell) == id)
-            .ok_or_else(|| Error::missing(&id.pattern(), "the listed cells"))?;
+            .ok_or_else(|| ToolError::missing(&id.pattern(), "the listed cells"))?;
         kept.cell = cell;
         kept.run = run;
     }

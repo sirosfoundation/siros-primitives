@@ -3,7 +3,7 @@
 use core::fmt;
 use std::process::ExitCode;
 
-use bench_compare::{Layout, Measured, NATIVE, Operation, Paths, sentence};
+use bench_tools::{Layout, Measured, NATIVE, Operation, Paths, sentence};
 use serde::{Deserialize, Serialize};
 
 /// A row: a width in bits.
@@ -94,7 +94,7 @@ const LAYOUT: Layout<'static, Width> = Layout {
 };
 
 fn main() -> ExitCode {
-    bench_compare::execute(
+    bench_tools::execute(
         "biguint-bench-report",
         &Paths::new(env!("CARGO_MANIFEST_DIR")),
         &MEASURED,

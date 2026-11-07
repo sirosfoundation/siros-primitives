@@ -5,15 +5,30 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use crate::error::Error;
 #[cfg(not(target_os = "linux"))]
-use crate::selection::Plan;
+use bench_compare::{Error, Plan};
+
+use crate::tool_error::ToolError;
 
 #[cfg(target_os = "linux")]
 mod driver;
 
 #[cfg(target_os = "linux")]
 pub use driver::{list, run};
+
+/// The error of a thread that panicked with `payload`.
+pub(crate) fn panicked(payload: Box<dyn std::any::Any + Send>) -> ToolError {
+    ToolError::Browser {
+        reason: format!(
+            "a thread panicked: {}",
+            payload
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                .unwrap_or("a payload of another type")
+        ),
+    }
+}
 
 /// Runs a bench in a browser: the counters need Linux.
 #[cfg(not(target_os = "linux"))]
@@ -24,14 +39,18 @@ pub fn run(
     _cpus: Cpus,
     _threads: Threads,
     _plan: &Plan,
-) -> Result<Vec<String>, Error> {
-    Err(Error::NoPerfEvent)
+) -> Result<Vec<String>, ToolError> {
+    Err(Error::NoPerfEvent.into())
 }
 
 /// Lists the cells of a bench in a browser: the driver needs Linux.
 #[cfg(not(target_os = "linux"))]
-pub fn list(_module: &[u8], _browser: &Browser, _executable: &Path) -> Result<Vec<String>, Error> {
-    Err(Error::NoPerfEvent)
+pub fn list(
+    _module: &[u8],
+    _browser: &Browser,
+    _executable: &Path,
+) -> Result<Vec<String>, ToolError> {
+    Err(Error::NoPerfEvent.into())
 }
 
 /// A browser engine, with the settings of a build.
@@ -139,7 +158,7 @@ impl Browser {
 
     /// The arguments that start the browser headless, with the profile `profile`, on the page
     /// `url`. A Firefox profile gets its preferences.
-    fn arguments(&self, profile: &Path, url: &str) -> Result<Vec<String>, Error> {
+    fn arguments(&self, profile: &Path, url: &str) -> Result<Vec<String>, ToolError> {
         match self {
             Self::Chrome { js_flags } => Ok(vec![
                 "--headless".to_owned(),
@@ -166,7 +185,8 @@ impl Browser {
                     .collect();
                 lines.push(String::new());
                 let path = profile.join("user.js");
-                fs::write(&path, lines.join("\n")).map_err(|source| Error::io(&path, source))?;
+                fs::write(&path, lines.join("\n"))
+                    .map_err(|source| ToolError::io(&path, source))?;
                 Ok(vec![
                     "--headless".to_owned(),
                     "--no-remote".to_owned(),
@@ -221,13 +241,15 @@ const QUIET_FIREFOX: &[Pref] = &[
 ];
 
 /// The version that the browser at `executable` reports, such as `Mozilla Firefox 158.0.1`.
-pub fn version(executable: &Path) -> Result<String, Error> {
+pub fn version(executable: &Path) -> Result<String, ToolError> {
     let text = crate::run::output(Command::new(executable).arg("--version"))?;
     text.lines()
         .map(str::trim)
         .find(|line| !line.is_empty())
         .map(str::to_owned)
-        .ok_or_else(|| Error::missing("version", &format!("{} --version", executable.display())))
+        .ok_or_else(|| {
+            ToolError::missing("version", &format!("{} --version", executable.display()))
+        })
 }
 
 /// The CPUs of a run in a browser.

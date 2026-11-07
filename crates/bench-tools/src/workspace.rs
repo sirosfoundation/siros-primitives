@@ -7,8 +7,8 @@ use std::process::Command;
 
 use serde::Deserialize;
 
-use crate::error::Error;
 use crate::run::{Paths, output};
+use crate::tool_error::ToolError;
 
 /// The files of the workspace root that every build reads.
 const ROOT_FILES: [&str; 4] = [
@@ -88,7 +88,7 @@ impl Dependency {
 impl Sources {
     /// The sources of `package`, from `cargo metadata` at the workspace root with every feature
     /// resolved.
-    pub(crate) fn of(paths: &Paths, package: &str) -> Result<Self, Error> {
+    pub(crate) fn of(paths: &Paths, package: &str) -> Result<Self, ToolError> {
         let text = output(
             Command::new("cargo")
                 .args([
@@ -100,19 +100,19 @@ impl Sources {
                 ])
                 .current_dir(&paths.root),
         )?;
-        let metadata: Metadata = serde_json::from_str(&text).map_err(Error::Metadata)?;
+        let metadata: Metadata = serde_json::from_str(&text).map_err(ToolError::Metadata)?;
         metadata.sources(package)
     }
 }
 
 impl Metadata {
-    fn sources(&self, package: &str) -> Result<Sources, Error> {
+    fn sources(&self, package: &str) -> Result<Sources, ToolError> {
         let root = self
             .packages
             .iter()
             .find(|candidate| candidate.name == package && self.is_member(&candidate.id))
             .ok_or_else(|| {
-                Error::missing(&format!("workspace package {package}"), "cargo metadata")
+                ToolError::missing(&format!("workspace package {package}"), "cargo metadata")
             })?;
         let node = self.node(&root.id)?;
         let library = self.closure(
@@ -148,7 +148,7 @@ impl Metadata {
         &'a self,
         first: impl Iterator<Item = &'a str>,
         start: &'a str,
-    ) -> Result<Vec<&'a str>, Error> {
+    ) -> Result<Vec<&'a str>, ToolError> {
         let mut order = vec![start];
         let mut queue: VecDeque<&str> = first.filter(|id| self.is_member(id)).collect();
         while let Some(id) = queue.pop_front() {
@@ -172,26 +172,26 @@ impl Metadata {
         self.workspace_members.iter().any(|member| member == id)
     }
 
-    fn node(&self, id: &str) -> Result<&Node, Error> {
+    fn node(&self, id: &str) -> Result<&Node, ToolError> {
         self.resolve
             .nodes
             .iter()
             .find(|node| node.id == id)
-            .ok_or_else(|| Error::missing(&format!("resolve node {id}"), "cargo metadata"))
+            .ok_or_else(|| ToolError::missing(&format!("resolve node {id}"), "cargo metadata"))
     }
 
     /// The directory of package `id`, relative to the workspace root.
-    fn directory(&self, id: &str) -> Result<String, Error> {
+    fn directory(&self, id: &str) -> Result<String, ToolError> {
         let package = self
             .packages
             .iter()
             .find(|package| package.id == id)
-            .ok_or_else(|| Error::missing(&format!("package {id}"), "cargo metadata"))?;
+            .ok_or_else(|| ToolError::missing(&format!("package {id}"), "cargo metadata"))?;
         let directory = Path::new(&package.manifest_path)
             .parent()
             .and_then(|directory| directory.strip_prefix(&self.workspace_root).ok())
             .ok_or_else(|| {
-                Error::missing(
+                ToolError::missing(
                     &format!("a directory under the workspace root for {}", package.name),
                     "cargo metadata",
                 )
@@ -200,7 +200,7 @@ impl Metadata {
     }
 
     /// The pathspecs of the code of package `id`.
-    fn code(&self, id: &str) -> Result<[String; 3], Error> {
+    fn code(&self, id: &str) -> Result<[String; 3], ToolError> {
         let directory = self.directory(id)?;
         Ok([
             format!("{directory}/src"),

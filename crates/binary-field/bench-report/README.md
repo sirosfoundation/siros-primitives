@@ -14,7 +14,7 @@ cargo run -p binary-field-bench-report -- report
 ```
 
 `bench` builds the benches of the crate, one per group of operations, with the feature
-`precomputed` twice: with the flags of [`bench-compare`](../../bench-compare), and with
+`precomputed` twice: with the flags of [`bench-tools`](../../bench-tools), and with
 `-C target-feature=-pclmulqdq,-vpclmulqdq --cfg polyval_backend="soft"` added. It runs each build
 on one CPU (CPU 15 by default), checks every case against a bit-serial reference, and records the
 counts in `benchmarks/record.json` of the crate. `report` writes the document from the record and
@@ -27,4 +27,4 @@ runs each build in Chrome and in Firefox, and records the counts in `benchmarks/
 `report` adds their tables. `--changed` measures the cells whose key differs from the record, with
 the figures they are compared with; `stamp-wasm` writes the keys of the tree into a record of the same
 sources; `modules` writes the modules of a `bench-browser decide`.
-[`bench-compare`](../../bench-compare) describes the browser driver and these keys.
+[`bench-tools`](../../bench-tools) describes the browser driver and these keys.

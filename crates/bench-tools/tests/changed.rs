@@ -3,10 +3,10 @@
 
 use std::collections::HashSet;
 
-use bench_compare::{
-    Cell, CellId, Count, Events, Layout, Load, Measurement, Operation, Outcome, Record, Recorded,
-    Run, Selection, SelectionError, Sweep, ToolError, check_records, compact, merge, overtaken,
-    select,
+use bench_compare::{Cell, Count, Events, Load, Outcome, Selection, SelectionError, Sweep};
+use bench_tools::{
+    CellId, Layout, Measurement, Operation, Record, Recorded, Run, ToolError, check_records,
+    compact, merge, overtaken, select,
 };
 
 const SUBJECT: &str = "subject";

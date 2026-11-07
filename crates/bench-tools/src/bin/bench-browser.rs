@@ -32,10 +32,10 @@ mod linux {
     use std::fs;
     use std::path::Path;
 
-    use bench_compare::{
-        Browser, CHROME, CHROME_WIDE, CPU, Cpus, Decision, Error, FIREFOX, FIREFOX_WIDE, Identity,
-        LISTING, Line, Plan, SELECTED_RUNS, Selection, Threads, ToolError, Window, code, decide,
-        fewest, list_in_browser, run_in_browser,
+    use bench_compare::{CPU, Error, Line, Plan, Selection, Window};
+    use bench_tools::{
+        Browser, CHROME, CHROME_WIDE, Cpus, Decision, FIREFOX, FIREFOX_WIDE, Identity, LISTING,
+        SELECTED_RUNS, Threads, ToolError, code, decide, fewest, list_in_browser, run_in_browser,
     };
     use serde_json::Value;
 
@@ -85,8 +85,8 @@ mod linux {
         }
     }
 
-    fn usage() -> Error {
-        Error::Browser {
+    fn usage() -> ToolError {
+        ToolError::Browser {
             reason: USAGE.to_owned(),
         }
     }
@@ -107,12 +107,12 @@ mod linux {
 
     fn parse(args: &[String]) -> Result<Arguments<'_>, ToolError> {
         let [module, engine, executable, options @ ..] = args else {
-            return Err(usage().into());
+            return Err(usage());
         };
         let firefox = match engine.as_str() {
             "--chrome" => false,
             "--firefox" => true,
-            _ => return Err(usage().into()),
+            _ => return Err(usage()),
         };
         let mut arguments = Arguments {
             module: Path::new(module),
@@ -127,7 +127,7 @@ mod linux {
             runs: None,
         };
         let (pairs, []) = options.as_chunks::<2>() else {
-            return Err(usage().into());
+            return Err(usage());
         };
         for [flag, value] in pairs {
             match (flag.as_str(), value.as_str()) {
@@ -143,7 +143,7 @@ mod linux {
                 ("--threads", "process") => arguments.threads = Threads::Process,
                 ("--only", text) => arguments.only = Some(Selection::parse(text)?),
                 ("--runs", text) => arguments.runs = Some(number("runs", text)?),
-                _ => return Err(usage().into()),
+                _ => return Err(usage()),
             }
         }
         Ok(arguments)
@@ -188,7 +188,7 @@ mod linux {
     /// Runs a decision that `options`, pairs of a flag and its value, name.
     fn decision(options: &[String]) -> Result<Vec<String>, ToolError> {
         let (pairs, []) = options.as_chunks::<2>() else {
-            return Err(usage().into());
+            return Err(usage());
         };
         let value = |wanted: &str| {
             pairs
@@ -210,10 +210,9 @@ mod linux {
             ]
             .contains(&flag.as_str())
         }) {
-            return Err(Error::Browser {
+            return Err(ToolError::Browser {
                 reason: format!("the flag {flag}\n{USAGE}"),
-            }
-            .into());
+            });
         }
         let measuring = value("--cpu").map_or(Ok(CPU), cpu)?;
         decide(&Decision {

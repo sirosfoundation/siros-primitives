@@ -1,9 +1,9 @@
 //! The check: builds the operations for each target CPU and runs them under memcheck.
 
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, ExitStatus, Stdio};
 
-use bench_compare::{cargo, output};
 use serde::Deserialize;
 
 /// A build of the operations: the code that a target CPU and its features select.
@@ -43,9 +43,22 @@ pub(crate) const OPERATIONS: &str = "--operations";
 /// Why the check stopped before a verdict.
 #[derive(Debug, thiserror::Error)]
 enum Failure {
-    /// A command could not run or failed.
-    #[error(transparent)]
-    Command(#[from] bench_compare::Error),
+    /// A command could not start.
+    #[error("{command}: {source}")]
+    Spawn {
+        /// The command line.
+        command: String,
+        /// The cause.
+        source: io::Error,
+    },
+    /// A command failed.
+    #[error("{command}: {status}")]
+    Failed {
+        /// The command line.
+        command: String,
+        /// Its exit status.
+        status: ExitStatus,
+    },
     /// A line of `cargo build` is no JSON message.
     #[error("a message of cargo build: {0}")]
     Message(serde_json::Error),
@@ -83,6 +96,26 @@ pub(crate) fn main() -> ExitCode {
     }
 }
 
+/// The standard output of `command`, which must succeed. Its standard error goes to the terminal.
+fn output(command: &mut Command) -> Result<String, Failure> {
+    let line = format!("{command:?}");
+    let output = command
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|source| Failure::Spawn {
+            command: line.clone(),
+            source,
+        })?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        Err(Failure::Failed {
+            command: line,
+            status: output.status,
+        })
+    }
+}
+
 /// Builds the operations for `build` and runs them under memcheck, which prints its errors;
 /// whether it reported none.
 fn check(valgrind: &Path, build: &Build) -> Result<bool, Failure> {
@@ -107,7 +140,7 @@ fn check(valgrind: &Path, build: &Build) -> Result<bool, Failure> {
             println!("{}: {}, no error", build.name, report.trim_end());
             Ok(true)
         }
-        Err(bench_compare::Error::Failed { status, .. }) if status.code() == Some(REPORTED) => {
+        Err(Failure::Failed { status, .. }) if status.code() == Some(REPORTED) => {
             println!(
                 "{}: memcheck reported a branch or a memory address that depends on a wrapped \
                  operand",
@@ -115,7 +148,7 @@ fn check(valgrind: &Path, build: &Build) -> Result<bool, Failure> {
             );
             Ok(false)
         }
-        Err(error) => Err(error.into()),
+        Err(error) => Err(error),
     }
 }
 
@@ -123,20 +156,25 @@ fn check(valgrind: &Path, build: &Build) -> Result<bool, Failure> {
 /// the inlined functions in memcheck's reports; the executable.
 fn compile(build: &Build) -> Result<PathBuf, Failure> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    let messages = cargo(
-        &root,
-        &root.join("target").join("ct-check").join(build.name),
-        build.rustflags,
-        &[
-            "build",
-            "--locked",
-            "--release",
-            "-p",
-            env!("CARGO_PKG_NAME"),
-            "--message-format=json-render-diagnostics",
-            "--config",
-            "profile.release.debug=\"line-tables-only\"",
-        ],
+    let messages = output(
+        Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+            .args([
+                "build",
+                "--locked",
+                "--release",
+                "-p",
+                env!("CARGO_PKG_NAME"),
+                "--message-format=json-render-diagnostics",
+                "--config",
+                "profile.release.debug=\"line-tables-only\"",
+            ])
+            .current_dir(&root)
+            .env(
+                "CARGO_TARGET_DIR",
+                root.join("target").join("ct-check").join(build.name),
+            )
+            .env("RUSTFLAGS", build.rustflags)
+            .env_remove("CARGO_ENCODED_RUSTFLAGS"),
     )?;
     messages
         .lines()

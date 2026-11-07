@@ -1,7 +1,7 @@
 [package]
 name = "bench-compare"
 version = "0.0.0"
-description = "Measures one crate's operations against other crates with the CPU's performance counters and writes the BENCHMARKS.md of the comparison"
+description = "What a bench target links to measure one crate's operations against other crates with the CPU's performance counters"
 readme = "README.md"
 publish = false
 edition.workspace = true
@@ -9,13 +9,15 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
-# Tests live in `tests/`. A unit-test build would compile these targets again for no test.
+# It has no test: a unit-test or a doc-test build would compile it again for nothing.
 [lib]
 test = false
+doctest = false
+bench = false
 
-[[bin]]
-name = "bench-browser"
-test = false
+[[bench]]
+name = "calibration"
+harness = false
 
 [dependencies]
 serde.workspace = true
@@ -25,7 +27,6 @@ thiserror.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 nix.workspace = true
 perf-event2.workspace = true
-tiny_http.workspace = true
 
 # A chain barrier is inline assembly, which takes `unsafe`. `unsafe_code` is `deny` here, and the
 # module of the barriers `expect`s it. A manifest cannot inherit `[workspace.lints]` and change one

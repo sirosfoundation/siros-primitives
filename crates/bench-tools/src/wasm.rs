@@ -4,30 +4,27 @@
 //! [`crate::changed`].
 
 use std::collections::{HashMap, HashSet};
-use std::fs::{self, File};
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Stdio};
 use std::time::Instant;
 
+use bench_compare::{
+    CPU, Cell, Error, Key, Line, Listed, ListedCall, Outcome, Overhead, Plan, Selection, Window,
+    load,
+};
+
 use crate::browser::{
-    Browser, CHROME, CHROME_WIDE, Cpus, FIREFOX, FIREFOX_WIDE, LISTING, Threads, list,
+    Browser, CHROME, CHROME_WIDE, Cpus, FIREFOX, FIREFOX_WIDE, LISTING, Threads, list, panicked,
     run as run_in_browser, version as browser_version,
 };
 use crate::changed::{CellId, code, compact, harness, merge, overtaken, select};
-use crate::count::CPU;
 use crate::document::Layout;
-use crate::error::Error;
 use crate::fewest::fewest;
 use crate::identity::Identity;
 use crate::module::{custom_section, used_features};
-use crate::record::{
-    Cell, Engine, Key, Line, Listed, ListedCall, Measurement, Outcome, Overhead, Record, Recorded,
-    Run,
-};
-use crate::run::{Measured, Options, Paths, check_features, git, parse_cpu, with_cargo};
-use crate::selection::{Plan, Selection};
+use crate::record::{Engine, Measurement, Record, Recorded, Run};
+use crate::run::{Measured, Options, Paths, cargo, check_features, git, locked_closure, parse_cpu};
 use crate::tool_error::ToolError;
-use crate::window::{Window, load};
 use crate::workspace::Sources;
 
 /// The target of a WebAssembly build.
@@ -130,27 +127,19 @@ fn results(paths: &Paths, base: Option<&Path>, flavour: &Flavour) -> PathBuf {
 /// the linker writes. `rustc --print cfg` leaves out the features that rustc keeps unstable, wide
 /// arithmetic among them.
 fn module_features(module: &[u8], path: &Path) -> Result<Vec<String>, ToolError> {
-    let section = custom_section(module, b"target_features")?
-        .ok_or_else(|| Error::missing("target_features section", &path.display().to_string()))?;
+    let section = custom_section(module, b"target_features")?.ok_or_else(|| {
+        ToolError::missing("target_features section", &path.display().to_string())
+    })?;
     Ok(used_features(section)?)
 }
 
-/// A running build of one compilation.
-struct Building {
-    child: Child,
-    /// The command of `child`, for its errors.
-    command: String,
-    /// The file of its JSON messages.
-    messages: PathBuf,
-}
-
-/// Starts the build of the benches of one compilation.
-fn start_build(
+/// Builds the benches of one compilation, and checks what it built.
+fn build(
     paths: &Paths,
     measured: &Measured,
     base: Option<&Path>,
     flavour: &Flavour,
-) -> Result<Building, Error> {
+) -> Result<Built, ToolError> {
     let features = measured.features.join(",");
     let mut args = vec!["bench", "--locked", "-p", measured.package];
     if !features.is_empty() {
@@ -162,86 +151,49 @@ fn start_build(
     }
     args.extend(["--no-run", "--message-format=json"]);
     let target = results(paths, base, flavour);
-    fs::create_dir_all(&target).map_err(|source| Error::io(&target, source))?;
-    let messages = target.join("messages.json");
-    let file = File::create(&messages).map_err(|source| Error::io(&messages, source))?;
     let rustflags = format!("{} {KEEP_RELOCATIONS}", flavour.rustflags);
-    with_cargo(&paths.root, &target, &rustflags, &args, |command| {
-        let line = format!("{command:?}");
-        let child = command
-            .stdout(file)
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|source| Error::Spawn {
-                command: line.clone(),
-                source,
-            })?;
-        Ok(Building {
-            child,
-            command: line,
-            messages,
-        })
+    let messages = cargo(&paths.root, &target, &rustflags, &args)?;
+    let modules = check_features(measured, &messages)?;
+    let mut features: Option<Vec<String>> = None;
+    for path in &modules {
+        let module = fs::read(path).map_err(|source| ToolError::io(path, source))?;
+        let found = module_features(&module, path)?;
+        match &features {
+            Some(first) if *first != found => {
+                return Err(ToolError::missing(
+                    &format!("the target features of the first module, {first:?}"),
+                    &path.display().to_string(),
+                ));
+            }
+            Some(_) => {}
+            None => features = Some(found),
+        }
+    }
+    let target_features =
+        features.ok_or_else(|| ToolError::missing("bench module", "the build"))?;
+    Ok(Built {
+        modules,
+        target_features,
     })
 }
 
-impl Building {
-    /// Waits for the end of the build, and checks what it built.
-    fn finish(mut self, measured: &Measured) -> Result<Built, ToolError> {
-        let status = self.child.wait().map_err(|source| Error::Spawn {
-            command: self.command.clone(),
-            source,
-        })?;
-        if !status.success() {
-            return Err(Error::Failed {
-                command: self.command,
-                status,
-            }
-            .into());
-        }
-        let messages = fs::read_to_string(&self.messages)
-            .map_err(|source| Error::io(&self.messages, source))?;
-        let modules = check_features(measured, &messages)?;
-        let mut features: Option<Vec<String>> = None;
-        for path in &modules {
-            let module = fs::read(path).map_err(|source| Error::io(path, source))?;
-            let found = module_features(&module, path)?;
-            match &features {
-                Some(first) if *first != found => {
-                    return Err(Error::missing(
-                        &format!("the target features of the first module, {first:?}"),
-                        &path.display().to_string(),
-                    )
-                    .into());
-                }
-                Some(_) => {}
-                None => features = Some(found),
-            }
-        }
-        let target_features =
-            features.ok_or_else(|| Error::missing("bench module", "the build"))?;
-        Ok(Built {
-            modules,
-            target_features,
-        })
-    }
-}
-
-/// Builds the benches of every compilation at once. Every build ends before the first failure
+/// Builds the benches of every compilation, in parallel. Every build ends before the first failure
 /// returns.
 fn build_all(
     paths: &Paths,
     measured: &Measured,
     base: Option<&Path>,
 ) -> Result<Vec<Built>, ToolError> {
-    let building: Vec<Result<Building, Error>> = FLAVOURS
-        .iter()
-        .map(|flavour| start_build(paths, measured, base, flavour))
-        .collect();
-    let finished: Vec<Result<Built, ToolError>> = building
-        .into_iter()
-        .map(|build| build?.finish(measured))
-        .collect();
-    finished.into_iter().collect()
+    std::thread::scope(|scope| {
+        let builds: Vec<_> = FLAVOURS
+            .iter()
+            .map(|flavour| scope.spawn(move || build(paths, measured, base, flavour)))
+            .collect();
+        builds
+            .into_iter()
+            .map(|build| build.join().map_err(panicked)?)
+            .collect()
+    })
 }
 
 /// A cell of a module.
@@ -278,7 +230,7 @@ impl<K> Listing<K> {
 
 /// The cells of the module at `path`, which `chrome` lists.
 fn list_module<K: Key>(path: &Path, bench: &str, chrome: &Path) -> Result<Listing<K>, ToolError> {
-    let bytes = fs::read(path).map_err(|source| Error::io(path, source))?;
+    let bytes = fs::read(path).map_err(|source| ToolError::io(path, source))?;
     let lines = list(&bytes, &LISTING, chrome)?;
     let mut identity = Identity::of(&bytes)?;
     let mut cells = Vec::with_capacity(lines.len());
@@ -324,13 +276,13 @@ fn list_all<K: Key>(
 }
 
 /// `options`' number of runs, if it names one.
-fn parse_runs(options: &Options) -> Result<Option<usize>, Error> {
+fn parse_runs(options: &Options) -> Result<Option<usize>, ToolError> {
     options
         .runs
         .as_deref()
         .map(|text| {
             text.parse::<usize>()
-                .map_err(|source| Error::number("runs", text, source))
+                .map_err(|source| ToolError::number("runs", text, source))
         })
         .transpose()
 }
@@ -370,9 +322,9 @@ struct Started<K> {
 }
 
 /// What the bench `bench` counted, from its `lines`.
-fn parse_lines<K: Key>(lines: Vec<String>, bench: &str) -> Result<Counted<K>, Error> {
+fn parse_lines<K: Key>(lines: Vec<String>, bench: &str) -> Result<Counted<K>, ToolError> {
     let wrong = || {
-        Error::missing(
+        ToolError::missing(
             "the cost of a count, then cells",
             &format!("the lines of the WebAssembly bench {bench}"),
         )
@@ -555,10 +507,10 @@ impl<K: Key> Context<'_, K> {
             .zip(listings)
             .map(|(overhead, listing)| {
                 overhead.ok_or_else(|| {
-                    Error::missing("cost of a count", &format!("the bench {}", listing.bench))
+                    ToolError::missing("cost of a count", &format!("the bench {}", listing.bench))
                 })
             })
-            .collect::<Result<Vec<_>, Error>>()?;
+            .collect::<Result<Vec<_>, ToolError>>()?;
         Ok((
             Measurement {
                 name: build.name.to_owned(),
@@ -624,7 +576,7 @@ impl<K: Key> Context<'_, K> {
                     &plan,
                 )
             })
-            .collect::<Result<Vec<_>, Error>>()?;
+            .collect::<Result<Vec<_>, ToolError>>()?;
         Ok(Some(parse_lines(fewest(lines)?, &listing.bench)?))
     }
 }
@@ -760,6 +712,47 @@ pub(crate) fn bench_wasm<K: Key>(
     Ok(())
 }
 
+/// Refuses a tree whose root manifests build `package` otherwise than `head` does: a `Cargo.toml` that
+/// differs beyond the list of members, or a `Cargo.lock` where `package` reaches a package or a
+/// version that it reaches nowhere at `head`.
+fn check_manifests(paths: &Paths, package: &str, head: &str) -> Result<(), ToolError> {
+    let refused = |reason: String| ToolError::Unstamped { reason };
+    let read = |file: &str| {
+        let path = paths.root.join(file);
+        fs::read_to_string(&path).map_err(|source| ToolError::io(&path, source))
+    };
+    let without_members = |manifest: &str| -> Result<String, ToolError> {
+        let (before, rest) = manifest
+            .split_once("members = [")
+            .ok_or_else(|| ToolError::missing("members", "Cargo.toml"))?;
+        let (_, after) = rest
+            .split_once(']')
+            .ok_or_else(|| ToolError::missing("the end of members", "Cargo.toml"))?;
+        Ok(format!("{before}{after}"))
+    };
+    let manifest = git(paths, &["show", &format!("{head}:Cargo.toml")], &[])? + "\n";
+    if without_members(&manifest)? != without_members(&read("Cargo.toml")?)? {
+        return Err(refused(format!(
+            "Cargo.toml differs from {head} beyond its members"
+        )));
+    }
+    let lock = git(paths, &["show", &format!("{head}:Cargo.lock")], &[])? + "\n";
+    let locked = locked_closure(&lock, package)?;
+    let mut added: Vec<String> = locked_closure(&read("Cargo.lock")?, package)?
+        .difference(&locked)
+        .map(|(name, version)| format!("{name} {version}"))
+        .collect();
+    added.sort_unstable();
+    if added.is_empty() {
+        Ok(())
+    } else {
+        Err(refused(format!(
+            "{package} reaches packages that it reaches nowhere at {head}: {}",
+            added.join(", ")
+        )))
+    }
+}
+
 /// Writes the keys of the tree into the WebAssembly record, without measuring: its figures keep
 /// holding for a tree whose measured sources the record's commit holds. The harness stays out of
 /// this check: `bench-browser diff` shows that a new harness leaves the measured code as it was.
@@ -790,10 +783,15 @@ pub(crate) fn stamp_wasm<K: Key>(
             "the tree has uncommitted changes:\n{status}"
         )));
     }
+    let compared: Vec<&str> = pathspecs
+        .iter()
+        .copied()
+        .filter(|path| !["Cargo.toml", "Cargo.lock"].contains(path))
+        .collect();
     let moved = git(
         paths,
         &["diff", "--name-only", record.head.as_str(), "--"],
-        &pathspecs,
+        &compared,
     )?;
     if !moved.is_empty() {
         return Err(refused(format!(
@@ -801,6 +799,7 @@ pub(crate) fn stamp_wasm<K: Key>(
             record.head
         )));
     }
+    check_manifests(paths, measured.package, &record.head)?;
     let built = build_all(paths, measured, options.target_dir.as_deref())?;
     let listings = list_all::<K>(measured, &built, chrome)?;
     for wasm in &WASM {
@@ -855,11 +854,12 @@ pub(crate) fn write_modules(
     out: &Path,
 ) -> Result<(), ToolError> {
     let built = build_all(paths, measured, options.target_dir.as_deref())?;
-    fs::create_dir_all(out).map_err(|source| Error::io(out, source))?;
+    fs::create_dir_all(out).map_err(|source| ToolError::io(out, source))?;
     for (flavour, built) in FLAVOURS.iter().zip(&built) {
         for (module, bench) in built.modules.iter().zip(measured.benches) {
             let target = out.join(format!("{bench}.{}.wasm", flavour.word));
-            let copied = fs::copy(module, &target).map_err(|source| Error::io(&target, source))?;
+            let copied =
+                fs::copy(module, &target).map_err(|source| ToolError::io(&target, source))?;
             println!("{}: {copied} bytes", target.display());
         }
     }

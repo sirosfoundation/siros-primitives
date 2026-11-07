@@ -15,7 +15,8 @@
 //! - Symbols or functions that refer to each other take one hash each after as many rounds as they
 //!   are: a change in one reaches all of them.
 
-use crate::fingerprint::Fingerprint;
+use bench_compare::Fingerprint;
+
 use crate::module::{
     Control, DataSymbol, HoleKind, Module, ModuleError, Relocated, Stream, Symbol,
 };

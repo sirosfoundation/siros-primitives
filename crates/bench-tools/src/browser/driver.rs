@@ -22,15 +22,14 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use bench_compare::{Counters, Counts, Plan, pin, pin_thread};
 use nix::sys::signal::{Signal, kill};
 use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
 use tiny_http::{Header, Method, Request, Response, Server};
 
-use super::{Browser, Cpus, Threads};
-use crate::counters::{Counters, Counts, pin, pin_thread};
-use crate::error::Error;
-use crate::selection::Plan;
+use super::{Browser, Cpus, Threads, panicked};
+use crate::tool_error::ToolError;
 
 /// The page, which starts the two workers on the memory they share.
 const PAGE: &str = include_str!("page.html");
@@ -70,7 +69,7 @@ pub fn run(
     cpus: Cpus,
     threads: Threads,
     plan: &Plan,
-) -> Result<Vec<String>, Error> {
+) -> Result<Vec<String>, ToolError> {
     std::thread::scope(|scope| {
         let (stop, stopped) = mpsc::channel::<()>();
         let holder = scope.spawn(move || hold(cpus.measuring, &stopped));
@@ -88,7 +87,7 @@ pub fn run(
 
 /// The lines that the bench `module` sends when it lists its cells in `browser` at `executable`,
 /// on the CPUs of the calling thread: nothing counts, so nothing is pinned.
-pub fn list(module: &[u8], browser: &Browser, executable: &Path) -> Result<Vec<String>, Error> {
+pub fn list(module: &[u8], browser: &Browser, executable: &Path) -> Result<Vec<String>, ToolError> {
     drive(module, browser, executable, None, &Plan::List)
 }
 
@@ -101,23 +100,9 @@ struct Placement {
     threads: Threads,
 }
 
-/// The error of a thread of the driver that panicked with `payload`.
-fn panicked(payload: Box<dyn std::any::Any + Send>) -> Error {
-    Error::Browser {
-        reason: format!(
-            "a thread of the driver panicked: {}",
-            payload
-                .downcast_ref::<&str>()
-                .copied()
-                .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
-                .unwrap_or("a payload of another type")
-        ),
-    }
-}
-
 /// Holds `cpu` until `stopped` closes: yields it to any thread of equal priority, the measuring
 /// thread among them, and keeps it from idling while the measuring thread sleeps.
-fn hold(cpu: usize, stopped: &mpsc::Receiver<()>) -> Result<(), Error> {
+fn hold(cpu: usize, stopped: &mpsc::Receiver<()>) -> Result<(), ToolError> {
     pin(cpu)?;
     while let Err(mpsc::TryRecvError::Empty) = stopped.try_recv() {
         std::thread::yield_now();
@@ -132,27 +117,27 @@ fn drive(
     executable: &Path,
     placement: Option<Placement>,
     plan: &Plan,
-) -> Result<Vec<String>, Error> {
+) -> Result<Vec<String>, ToolError> {
     if let Some(Placement { cpus, .. }) = placement {
         pin(cpus.browser)?;
     }
-    nix::sys::prctl::set_child_subreaper(true).map_err(|source| Error::Browser {
+    nix::sys::prctl::set_child_subreaper(true).map_err(|source| ToolError::Browser {
         reason: format!("becoming the subreaper of the browser: {source}"),
     })?;
-    let server = Server::http("127.0.0.1:0").map_err(|source| Error::Browser {
+    let server = Server::http("127.0.0.1:0").map_err(|source| ToolError::Browser {
         reason: format!("serving the page: {source}"),
     })?;
     let port = server
         .server_addr()
         .to_ip()
-        .ok_or_else(|| Error::missing("port", "the page server"))?
+        .ok_or_else(|| ToolError::missing("port", "the page server"))?
         .port();
     let profile = Profile::create()?;
     let log = profile.path.join("browser.log");
-    let output = fs::File::create(&log).map_err(|source| Error::io(&log, source))?;
+    let output = fs::File::create(&log).map_err(|source| ToolError::io(&log, source))?;
     let errors = output
         .try_clone()
-        .map_err(|source| Error::io(&log, source))?;
+        .map_err(|source| ToolError::io(&log, source))?;
     let arguments = browser.arguments(&profile.path, &format!("http://127.0.0.1:{port}/"))?;
     let child = Command::new(executable)
         .args(&arguments)
@@ -161,7 +146,7 @@ fn drive(
         .stdout(output)
         .stderr(errors)
         .spawn()
-        .map_err(|source| Error::Spawn {
+        .map_err(|source| ToolError::Spawn {
             command: executable.display().to_string(),
             source,
         })?;
@@ -187,7 +172,7 @@ fn drive(
 }
 
 /// `error` with the last lines of the browser's log at `log`.
-fn with_log(error: Error, log: &Path) -> Error {
+fn with_log(error: ToolError, log: &Path) -> ToolError {
     let tail = match fs::read_to_string(log) {
         Ok(text) => {
             let lines: Vec<&str> = text.lines().collect();
@@ -195,7 +180,7 @@ fn with_log(error: Error, log: &Path) -> Error {
         }
         Err(source) => format!("unreadable: {source}"),
     };
-    Error::Browser {
+    ToolError::Browser {
         reason: format!("{error}\nthe last lines of the browser's log:\n{tail}"),
     }
 }
@@ -207,17 +192,17 @@ struct Profile {
 
 impl Profile {
     /// An empty directory in the temporary directory, named after this process.
-    fn create() -> Result<Self, Error> {
-        let path = std::env::temp_dir().join(format!("bench-compare-{}", std::process::id()));
+    fn create() -> Result<Self, ToolError> {
+        let path = std::env::temp_dir().join(format!("bench-tools-{}", std::process::id()));
         if path.exists() {
-            fs::remove_dir_all(&path).map_err(|source| Error::io(&path, source))?;
+            fs::remove_dir_all(&path).map_err(|source| ToolError::io(&path, source))?;
         }
-        fs::create_dir_all(&path).map_err(|source| Error::io(&path, source))?;
+        fs::create_dir_all(&path).map_err(|source| ToolError::io(&path, source))?;
         Ok(Self { path })
     }
 
-    fn remove(self) -> Result<(), Error> {
-        fs::remove_dir_all(&self.path).map_err(|source| Error::io(&self.path, source))
+    fn remove(self) -> Result<(), ToolError> {
+        fs::remove_dir_all(&self.path).map_err(|source| ToolError::io(&self.path, source))
     }
 }
 
@@ -251,24 +236,28 @@ enum Asked {
 
 impl Session<'_> {
     /// Answers the page until the bench returns; returns its lines.
-    fn serve(&mut self, server: &Server) -> Result<Vec<String>, Error> {
+    fn serve(&mut self, server: &Server) -> Result<Vec<String>, ToolError> {
         let mut deadline = Instant::now() + IDLE;
         loop {
-            if let Some(status) = self.browser.try_wait().map_err(|source| Error::Browser {
-                reason: format!("waiting for the browser: {source}"),
-            })? {
-                return Err(Error::Browser {
+            if let Some(status) = self
+                .browser
+                .try_wait()
+                .map_err(|source| ToolError::Browser {
+                    reason: format!("waiting for the browser: {source}"),
+                })?
+            {
+                return Err(ToolError::Browser {
                     reason: format!("the browser exited with {status} before the bench returned"),
                 });
             }
             let request = server
                 .recv_timeout(Duration::from_millis(500))
-                .map_err(|source| Error::Browser {
+                .map_err(|source| ToolError::Browser {
                     reason: format!("receiving a request of the page: {source}"),
                 })?;
             let Some(request) = request else {
                 if Instant::now() > deadline {
-                    return Err(Error::Browser {
+                    return Err(ToolError::Browser {
                         reason: format!("no request of the page for {} seconds", IDLE.as_secs()),
                     });
                 }
@@ -280,8 +269,8 @@ impl Session<'_> {
                 Asked::Done(status) => {
                     return match (status.as_str(), self.failure.take()) {
                         ("0", None) => Ok(core::mem::take(&mut self.lines)),
-                        (_, Some(reason)) => Err(Error::Bench { reason }),
-                        (status, None) => Err(Error::Bench {
+                        (_, Some(reason)) => Err(ToolError::Bench { reason }),
+                        (status, None) => Err(ToolError::Bench {
                             reason: format!("the bench returned {status}"),
                         }),
                     };
@@ -291,11 +280,12 @@ impl Session<'_> {
     }
 
     /// Answers one request of the page.
-    fn answer(&mut self, mut request: Request) -> Result<Asked, Error> {
+    fn answer(&mut self, mut request: Request) -> Result<Asked, ToolError> {
         let path = request.url().to_owned();
-        let body = io::read_to_string(request.as_reader()).map_err(|source| Error::Browser {
-            reason: format!("reading the request {path}: {source}"),
-        })?;
+        let body =
+            io::read_to_string(request.as_reader()).map_err(|source| ToolError::Browser {
+                reason: format!("reading the request {path}: {source}"),
+            })?;
         let script = SCRIPTS.iter().find(|(name, _)| *name == path);
         let (reply, asked) = match (request.method(), path.as_str(), script) {
             (Method::Get, "/", _) => (Reply::of(PAGE, "text/html"), Asked::More),
@@ -343,7 +333,7 @@ impl Session<'_> {
                     Some(failure) => format!("{failure}\n{body}"),
                     None => body,
                 };
-                return Err(Error::Bench { reason });
+                return Err(ToolError::Bench { reason });
             }
             _ => (
                 Reply {
@@ -355,21 +345,21 @@ impl Session<'_> {
         };
         request
             .respond(reply.response()?)
-            .map_err(|source| Error::Browser {
+            .map_err(|source| ToolError::Browser {
                 reason: format!("answering the request {path}: {source}"),
             })?;
         Ok(asked)
     }
 
     /// The counts of every counted thread since `/begin`, summed.
-    fn end(&mut self) -> Result<Counts, Error> {
+    fn end(&mut self) -> Result<Counts, ToolError> {
         let mut sum = Counts {
             cycles: 0,
             instructions: 0,
             branch_misses: 0,
         };
         if self.counters.is_empty() {
-            return Err(Error::missing("counted thread", "the browser"));
+            return Err(ToolError::missing("counted thread", "the browser"));
         }
         for counters in &mut self.counters {
             let counts = counters.end()?;
@@ -383,14 +373,14 @@ impl Session<'_> {
     /// Finds the measuring thread, the thread whose CPU time grew the most since `/calibrate`,
     /// and opens the counters of the threads to count; returns whether one thread stood out. The
     /// page spins again until one does, [`CALIBRATIONS`] times at most.
-    fn calibrated(&mut self) -> Result<bool, Error> {
+    fn calibrated(&mut self) -> Result<bool, ToolError> {
         let Placement { cpus, threads } = self
             .placement
-            .ok_or_else(|| Error::missing("place to count", "a run that lists its cells"))?;
+            .ok_or_else(|| ToolError::missing("place to count", "a run that lists its cells"))?;
         let before = self
             .calibration
             .take()
-            .ok_or_else(|| Error::missing("/calibrate before /calibrated", "the page"))?;
+            .ok_or_else(|| ToolError::missing("/calibrate before /calibrated", "the page"))?;
         let after = tasks()?;
         let mut grown: Vec<(u64, &Task)> = after
             .iter()
@@ -413,7 +403,7 @@ impl Session<'_> {
             }
             _ if self.calibrations < CALIBRATIONS => return Ok(false),
             _ => {
-                return Err(Error::Browser {
+                return Err(ToolError::Browser {
                     reason: format!(
                         "no single thread spent {CALIBRATION_TICKS} ticks, twice as many as any \
                          other, in {CALIBRATIONS} spins of the worker: the most grown in the \
@@ -444,8 +434,8 @@ impl Session<'_> {
     }
 
     /// Kills every process of the browser and reaps it.
-    fn stop(&mut self) -> Result<(), Error> {
-        let failure = |source: nix::Error| Error::Browser {
+    fn stop(&mut self) -> Result<(), ToolError> {
+        let failure = |source: nix::Error| ToolError::Browser {
             reason: format!("stopping the browser: {source}"),
         };
         for pid in descendants()? {
@@ -458,7 +448,7 @@ impl Session<'_> {
             unused_results,
             reason = "the browser exits by the kill; its status tells nothing"
         )]
-        self.browser.wait().map_err(|source| Error::Browser {
+        self.browser.wait().map_err(|source| ToolError::Browser {
             reason: format!("waiting for the browser: {source}"),
         })?;
         // The killed descendants that this process adopted as their subreaper, until none is left.
@@ -495,10 +485,11 @@ impl Reply {
     }
 
     /// The response, with the headers of its content type and of [`ISOLATION`].
-    fn response(self) -> Result<Response<io::Cursor<Vec<u8>>>, Error> {
+    fn response(self) -> Result<Response<io::Cursor<Vec<u8>>>, ToolError> {
         let header = |name: &str, value: &str| {
-            Header::from_bytes(name, value)
-                .map_err(|()| Error::missing(&format!("header {name}: {value}"), "the page server"))
+            Header::from_bytes(name, value).map_err(|()| {
+                ToolError::missing(&format!("header {name}: {value}"), "the page server")
+            })
         };
         let mut response = Response::from_data(self.body)
             .with_status_code(self.status)
@@ -520,7 +511,7 @@ struct Task {
 }
 
 /// Every thread of the browser's processes, with its user-mode CPU time.
-fn tasks() -> Result<Vec<Task>, Error> {
+fn tasks() -> Result<Vec<Task>, ToolError> {
     let mut tasks = Vec::new();
     for pid in descendants()? {
         let directory = PathBuf::from(format!("/proc/{pid}/task"));
@@ -528,7 +519,7 @@ fn tasks() -> Result<Vec<Task>, Error> {
             continue;
         };
         for entry in entries {
-            let entry = entry.map_err(|source| Error::io(&directory, source))?;
+            let entry = entry.map_err(|source| ToolError::io(&directory, source))?;
             let Some(tid) = number(&entry.file_name()) else {
                 continue;
             };
@@ -541,7 +532,7 @@ fn tasks() -> Result<Vec<Task>, Error> {
                 .rsplit_once(')')
                 .and_then(|(_, rest)| rest.split_whitespace().nth(11))
                 .and_then(|field| field.parse::<u64>().ok())
-                .ok_or_else(|| Error::missing("utime", &path.display().to_string()))?;
+                .ok_or_else(|| ToolError::missing("utime", &path.display().to_string()))?;
             let comm = entry.path().join("comm");
             let Some(name) = gone(fs::read_to_string(&comm), &comm)? else {
                 continue;
@@ -559,12 +550,12 @@ fn tasks() -> Result<Vec<Task>, Error> {
 
 /// Every process that descends from this one, the subreaper of the browser: the browser and every
 /// process it started, whatever exited between them.
-fn descendants() -> Result<Vec<i32>, Error> {
+fn descendants() -> Result<Vec<i32>, ToolError> {
     let root = nix::unistd::getpid().as_raw();
     let proc = Path::new("/proc");
     let mut parents = Vec::new();
-    for entry in fs::read_dir(proc).map_err(|source| Error::io(proc, source))? {
-        let entry = entry.map_err(|source| Error::io(proc, source))?;
+    for entry in fs::read_dir(proc).map_err(|source| ToolError::io(proc, source))? {
+        let entry = entry.map_err(|source| ToolError::io(proc, source))?;
         let Some(pid) = number(&entry.file_name()) else {
             continue;
         };
@@ -576,7 +567,7 @@ fn descendants() -> Result<Vec<i32>, Error> {
             .rsplit_once(')')
             .and_then(|(_, rest)| rest.split_whitespace().nth(1))
             .and_then(|field| field.parse::<i32>().ok())
-            .ok_or_else(|| Error::missing("parent", &path.display().to_string()))?;
+            .ok_or_else(|| ToolError::missing("parent", &path.display().to_string()))?;
         parents.push((pid, parent));
     }
     let mut found = vec![root];
@@ -594,11 +585,11 @@ fn descendants() -> Result<Vec<i32>, Error> {
 }
 
 /// The value of a read under `/proc`; `None` for a process or thread that exited meanwhile.
-fn gone<T>(result: io::Result<T>, path: &Path) -> Result<Option<T>, Error> {
+fn gone<T>(result: io::Result<T>, path: &Path) -> Result<Option<T>, ToolError> {
     match result {
         Ok(value) => Ok(Some(value)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(source) => Err(Error::io(path, source)),
+        Err(source) => Err(ToolError::io(path, source)),
     }
 }
 

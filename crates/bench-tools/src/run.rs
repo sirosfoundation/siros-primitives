@@ -1,20 +1,19 @@
 //! `bench`: builds the benches of a comparison for the native CPU, runs them, and records what the
 //! CPU's counters counted. [`execute`] also runs the commands of [`crate::wasm`].
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use bench_compare::{CPU, Cell, Error, Key, Line, Sweep, Window};
 use serde::Deserialize;
 
 use crate::browser::Browser;
-use crate::count::CPU;
-use crate::error::Error;
-use crate::record::{Cell, Key, Line, Measurement, Record, Recorded, Run, Sweep, Version};
+use crate::record::{Measurement, Record, Recorded, Run, Version};
 use crate::tool_error::ToolError;
 use crate::wasm::{bench_wasm, stamp_wasm, write_modules};
-use crate::window::Window;
 use crate::workspace::Sources;
 
 /// A build of the bench.
@@ -180,14 +179,14 @@ impl Options {
     }
 
     /// The executable of `browser`, which the options must name.
-    pub(crate) fn executable(&self, browser: &Browser) -> Result<&Path, Error> {
+    pub(crate) fn executable(&self, browser: &Browser) -> Result<&Path, ToolError> {
         let (executable, flag) = match browser {
             Browser::Chrome { .. } => (&self.chrome, "--chrome"),
             Browser::Firefox { .. } => (&self.firefox, "--firefox"),
         };
         executable
             .as_deref()
-            .ok_or_else(|| Error::missing(&format!("{flag} <executable>"), "the options"))
+            .ok_or_else(|| ToolError::missing(&format!("{flag} <executable>"), "the options"))
     }
 }
 
@@ -217,7 +216,6 @@ pub fn execute<K: Key>(
             .ok_or_else(usage)
             .and_then(|options| {
                 bench::<K>(paths, measured, measured.builds, &paths.record, options)
-                    .map_err(ToolError::from)
             }),
         [command, options @ ..] if command == "bench-wasm" => Options::parse(options, true)
             .ok_or_else(usage)
@@ -263,7 +261,7 @@ pub(crate) fn skeleton<K: Key>(
     measured: &Measured,
     options: &Options,
     started: u64,
-) -> Result<Record<K>, Error> {
+) -> Result<Record<K>, ToolError> {
     let rustc = output(Command::new("rustc").arg("-vV").current_dir(&paths.root))?;
     let target_cpus = output(
         Command::new("rustc")
@@ -288,7 +286,7 @@ pub(crate) fn skeleton<K: Key>(
         rustc: rustc
             .lines()
             .next()
-            .ok_or_else(|| Error::missing("version", "rustc -vV"))?
+            .ok_or_else(|| ToolError::missing("version", "rustc -vV"))?
             .to_owned(),
         profile: bench_profile(paths)?,
         llvm: field(&rustc, "LLVM version: ", "rustc -vV")?,
@@ -309,13 +307,13 @@ pub(crate) fn skeleton<K: Key>(
 
 /// Measures every case of the bench in each of the native `builds` and writes the record at
 /// `record`.
-pub fn bench<K: Key>(
+pub(crate) fn bench<K: Key>(
     paths: &Paths,
     measured: &Measured,
     builds: &[Build],
     record: &Path,
     options: Options,
-) -> Result<(), Error> {
+) -> Result<(), ToolError> {
     let started = now()?;
     let fresh = skeleton::<K>(paths, measured, &options, started)?;
     let measurements = builds
@@ -346,13 +344,13 @@ pub fn bench<K: Key>(
                     .collect(),
             })
         })
-        .collect::<Result<Vec<_>, Error>>()?;
+        .collect::<Result<Vec<_>, ToolError>>()?;
     let written = Record {
         builds: measurements,
         ..fresh
     };
     if let Some(directory) = record.parent() {
-        fs::create_dir_all(directory).map_err(|source| Error::io(directory, source))?;
+        fs::create_dir_all(directory).map_err(|source| ToolError::io(directory, source))?;
     }
     written.write(record)
 }
@@ -367,7 +365,7 @@ fn cells<K: Key>(
     measured: &Measured,
     build: &Build,
     options: &Options,
-) -> Result<Counted<K>, Error> {
+) -> Result<Counted<K>, ToolError> {
     let features = measured.features.join(",");
     let mut args = vec!["bench", "--locked", "-p", measured.package];
     if !features.is_empty() {
@@ -408,7 +406,7 @@ fn cells<K: Key>(
                 Line::Cell(cell) => cells.push(cell),
                 Line::Sweep(sweep) => sweeps.push(sweep),
                 Line::Overhead(_) => {
-                    return Err(Error::missing(
+                    return Err(ToolError::missing(
                         "cells and a sweep, where it sent the cost of a count",
                         &format!("the lines of the bench {bench}"),
                     ));
@@ -418,7 +416,7 @@ fn cells<K: Key>(
         match <[Sweep; 1]>::try_from(sweeps) {
             Ok([sweep]) if sweep.cpu == cpu_number => {}
             Ok([sweep]) => {
-                return Err(Error::missing(
+                return Err(ToolError::missing(
                     &format!(
                         "sweep on CPU {cpu_number}, where it ran on CPU {}",
                         sweep.cpu
@@ -427,7 +425,7 @@ fn cells<K: Key>(
                 ));
             }
             Err(sweeps) => {
-                return Err(Error::missing(
+                return Err(ToolError::missing(
                     &format!("single sweep among its {}", sweeps.len()),
                     &format!("the lines of the bench {bench}"),
                 ));
@@ -463,22 +461,25 @@ struct Target {
 /// Checks the units of a build from its JSON `messages`: every bench of `measured` has every
 /// feature in [`Measured::features`], and no unit has a feature in [`Measured::forbidden`].
 /// Returns the executable of every bench, in the order of [`Measured::benches`].
-pub(crate) fn check_features(measured: &Measured, messages: &str) -> Result<Vec<PathBuf>, Error> {
+pub(crate) fn check_features(
+    measured: &Measured,
+    messages: &str,
+) -> Result<Vec<PathBuf>, ToolError> {
     let mut benches = Vec::new();
     for line in messages.lines().filter(|line| !line.trim().is_empty()) {
-        let message: Message = serde_json::from_str(line).map_err(Error::Messages)?;
+        let message: Message = serde_json::from_str(line).map_err(ToolError::Messages)?;
         if message.reason != "compiler-artifact" {
             continue;
         }
         let unit = message
             .package_id
-            .ok_or_else(|| Error::missing("package_id", "a compiler-artifact message"))?;
+            .ok_or_else(|| ToolError::missing("package_id", "a compiler-artifact message"))?;
         if let Some(feature) = message
             .features
             .iter()
             .find(|feature| measured.forbidden.contains(&feature.as_str()))
         {
-            return Err(Error::Forbidden {
+            return Err(ToolError::Forbidden {
                 unit,
                 feature: feature.clone(),
             });
@@ -496,20 +497,20 @@ pub(crate) fn check_features(measured: &Measured, messages: &str) -> Result<Vec<
             .iter()
             .find(|(name, _, _)| name == bench)
             .ok_or_else(|| {
-                Error::missing(&format!("bench {bench}"), "the messages of the build")
+                ToolError::missing(&format!("bench {bench}"), "the messages of the build")
             })?;
         if let Some(feature) = measured
             .features
             .iter()
             .find(|feature| !built.iter().any(|built| built == *feature))
         {
-            return Err(Error::Unbuilt {
+            return Err(ToolError::Unbuilt {
                 package: measured.package.to_owned(),
                 feature: (*feature).to_owned(),
             });
         }
         executables.push(executable.clone().ok_or_else(|| {
-            Error::missing(
+            ToolError::missing(
                 &format!("executable of the bench {bench}"),
                 "the messages of the build",
             )
@@ -519,10 +520,10 @@ pub(crate) fn check_features(measured: &Measured, messages: &str) -> Result<Vec<
 }
 
 /// The CPU that `cpu` names, if any.
-pub(crate) fn parse_cpu(cpu: Option<&str>) -> Result<Option<usize>, Error> {
+pub(crate) fn parse_cpu(cpu: Option<&str>) -> Result<Option<usize>, ToolError> {
     cpu.map(|cpu| {
         cpu.parse::<usize>()
-            .map_err(|source| Error::number("CPU", cpu, source))
+            .map_err(|source| ToolError::number("CPU", cpu, source))
     })
     .transpose()
 }
@@ -537,17 +538,16 @@ struct Counted<K> {
     target_features: Vec<String>,
 }
 
-/// The result of `run` on `cargo` with `args` in the workspace at `root`. The build takes exactly
-/// `rustflags`, whatever the environment and the configuration set, and keeps its artifacts in
-/// `target_dir`. `CARGO` names the cargo that runs this tool.
-pub(crate) fn with_cargo<T>(
+/// The standard output of `cargo` with `args` in the workspace at `root`, which must succeed. The
+/// build takes exactly `rustflags`, whatever the environment and the configuration set, and keeps its
+/// artifacts in `target_dir`. `CARGO` names the cargo that runs this tool.
+pub(crate) fn cargo(
     root: &Path,
     target_dir: &Path,
     rustflags: &str,
     args: &[&str],
-    run: impl FnOnce(&mut Command) -> T,
-) -> T {
-    run(
+) -> Result<String, ToolError> {
+    output(
         Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
             .args(args)
             .current_dir(root)
@@ -557,19 +557,9 @@ pub(crate) fn with_cargo<T>(
     )
 }
 
-/// The standard output of `cargo` with `args`, which must succeed.
-pub fn cargo(
-    root: &Path,
-    target_dir: &Path,
-    rustflags: &str,
-    args: &[&str],
-) -> Result<String, Error> {
-    with_cargo(root, target_dir, rustflags, args, output)
-}
-
 /// The target features that `rustc --print cfg` reports under the flags of the native `build`. A
-/// build without AVX2 is a [`Error::NoAvx2`].
-fn target_features(paths: &Paths, build: &Build) -> Result<Vec<String>, Error> {
+/// build without AVX2 is a [`ToolError::NoAvx2`].
+fn target_features(paths: &Paths, build: &Build) -> Result<Vec<String>, ToolError> {
     let text = output(
         Command::new("rustc")
             .args(["--print", "cfg"])
@@ -585,17 +575,17 @@ fn target_features(paths: &Paths, build: &Build) -> Result<Vec<String>, Error> {
     if features.iter().any(|feature| feature == "avx2") {
         Ok(features)
     } else {
-        Err(Error::NoAvx2 {
+        Err(ToolError::NoAvx2 {
             rustflags: build.rustflags.to_owned(),
         })
     }
 }
 
 /// The `key = value` lines of the `[profile.bench]` section of the workspace's `Cargo.toml`. A
-/// profile without `lto = "fat"` is an [`Error::NoFatLto`].
-fn bench_profile(paths: &Paths) -> Result<Vec<String>, Error> {
+/// profile without `lto = "fat"` is an [`ToolError::NoFatLto`].
+fn bench_profile(paths: &Paths) -> Result<Vec<String>, ToolError> {
     let path = paths.root.join("Cargo.toml");
-    let manifest = fs::read_to_string(&path).map_err(|source| Error::io(&path, source))?;
+    let manifest = fs::read_to_string(&path).map_err(|source| ToolError::io(&path, source))?;
     let settings: Vec<String> = manifest
         .lines()
         .skip_while(|line| line.trim() != "[profile.bench]")
@@ -608,35 +598,35 @@ fn bench_profile(paths: &Paths) -> Result<Vec<String>, Error> {
     if settings.iter().any(|line| line == "lto = \"fat\"") {
         Ok(settings)
     } else {
-        Err(Error::NoFatLto { manifest: path })
+        Err(ToolError::NoFatLto { manifest: path })
     }
 }
 
 /// The model name of the machine's CPU.
-pub(crate) fn cpu_model() -> Result<String, Error> {
+pub(crate) fn cpu_model() -> Result<String, ToolError> {
     let path = Path::new(CPUINFO);
-    let text = fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
+    let text = fs::read_to_string(path).map_err(|source| ToolError::io(path, source))?;
     text.lines()
         .find_map(|line| line.strip_prefix("model name"))
         .and_then(|rest| rest.split_once(':'))
         .map(|(_, name)| name.trim().to_owned())
-        .ok_or_else(|| Error::missing("model name", CPUINFO))
+        .ok_or_else(|| ToolError::missing("model name", CPUINFO))
 }
 
 /// The standard output of `command`, which must succeed. Its standard error goes to the terminal.
-pub fn output(command: &mut Command) -> Result<String, Error> {
+pub(crate) fn output(command: &mut Command) -> Result<String, ToolError> {
     let line = format!("{command:?}");
     let output = command
         .stderr(Stdio::inherit())
         .output()
-        .map_err(|source| Error::Spawn {
+        .map_err(|source| ToolError::Spawn {
             command: line.clone(),
             source,
         })?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
-        Err(Error::Failed {
+        Err(ToolError::Failed {
             command: line,
             status: output.status,
         })
@@ -644,7 +634,7 @@ pub fn output(command: &mut Command) -> Result<String, Error> {
 }
 
 /// The output of `git` with `args` and then `pathspecs`, without its trailing newline.
-pub(crate) fn git(paths: &Paths, args: &[&str], pathspecs: &[&str]) -> Result<String, Error> {
+pub(crate) fn git(paths: &Paths, args: &[&str], pathspecs: &[&str]) -> Result<String, ToolError> {
     let text = output(
         Command::new("git")
             .arg("-C")
@@ -656,27 +646,27 @@ pub(crate) fn git(paths: &Paths, args: &[&str], pathspecs: &[&str]) -> Result<St
 }
 
 /// The rest of the line of `text` that starts with `prefix`.
-fn field(text: &str, prefix: &str, origin: &str) -> Result<String, Error> {
+fn field(text: &str, prefix: &str, origin: &str) -> Result<String, ToolError> {
     text.lines()
         .find_map(|line| line.strip_prefix(prefix))
         .map(str::to_owned)
-        .ok_or_else(|| Error::missing(prefix.trim_end_matches([':', ' ']), origin))
+        .ok_or_else(|| ToolError::missing(prefix.trim_end_matches([':', ' ']), origin))
 }
 
 /// The CPU that `rustc --print target-cpus` names as the host's: `(currently <cpu>)`.
-fn native_cpu(target_cpus: &str) -> Result<String, Error> {
+fn native_cpu(target_cpus: &str) -> Result<String, ToolError> {
     target_cpus
         .split("(currently ")
         .nth(1)
         .and_then(|rest| rest.split(')').next())
         .map(str::to_owned)
-        .ok_or_else(|| Error::missing("native CPU", "rustc --print target-cpus"))
+        .ok_or_else(|| ToolError::missing("native CPU", "rustc --print target-cpus"))
 }
 
 /// The versions of `wanted` in `Cargo.lock`.
-fn versions(paths: &Paths, package: &str, wanted: &[&str]) -> Result<Vec<Version>, Error> {
+fn versions(paths: &Paths, package: &str, wanted: &[&str]) -> Result<Vec<Version>, ToolError> {
     let path = paths.root.join("Cargo.lock");
-    let lock = fs::read_to_string(&path).map_err(|source| Error::io(&path, source))?;
+    let lock = fs::read_to_string(&path).map_err(|source| ToolError::io(&path, source))?;
     let packages: Vec<Locked<'_>> = lock
         .split("[[package]]")
         .filter_map(Locked::parse)
@@ -684,7 +674,7 @@ fn versions(paths: &Paths, package: &str, wanted: &[&str]) -> Result<Vec<Version
     let measured = packages
         .iter()
         .find(|locked| locked.name == package)
-        .ok_or_else(|| Error::missing(package, "Cargo.lock"))?;
+        .ok_or_else(|| ToolError::missing(package, "Cargo.lock"))?;
     wanted
         .iter()
         .map(|wanted| {
@@ -693,30 +683,54 @@ fn versions(paths: &Paths, package: &str, wanted: &[&str]) -> Result<Vec<Version
                 .iter()
                 .find(|entry| entry.split(' ').next() == Some(*wanted))
                 .ok_or_else(|| {
-                    Error::missing(&format!("dependency {wanted} of {package}"), "Cargo.lock")
+                    ToolError::missing(&format!("dependency {wanted} of {package}"), "Cargo.lock")
                 })?;
-            // The entry names a version where the lock holds several of the crate.
-            let version = match entry.split(' ').nth(1) {
-                Some(version) => version,
-                None => {
-                    let mut named = packages.iter().filter(|locked| locked.name == *wanted);
-                    match (named.next(), named.next()) {
-                        (Some(locked), None) => locked.version,
-                        (Some(_), Some(_)) | (None, _) => {
-                            return Err(Error::missing(
-                                &format!("single version of {wanted}"),
-                                "Cargo.lock",
-                            ));
-                        }
-                    }
-                }
-            };
             Ok(Version {
                 name: (*wanted).to_owned(),
-                version: version.to_owned(),
+                version: resolved(&packages, entry)?.version.to_owned(),
             })
         })
         .collect()
+}
+
+/// The package that the dependency `entry` of a lock names. The entry names a version where the lock
+/// holds several of the crate.
+fn resolved<'l, 'a>(packages: &'l [Locked<'a>], entry: &str) -> Result<&'l Locked<'a>, ToolError> {
+    let mut parts = entry.split(' ');
+    let name = parts.next();
+    let version = parts.next();
+    let mut named = packages.iter().filter(|locked| {
+        Some(locked.name) == name && version.is_none_or(|version| version == locked.version)
+    });
+    match (named.next(), named.next()) {
+        (Some(locked), None) => Ok(locked),
+        (Some(_), Some(_)) | (None, _) => Err(ToolError::missing(
+            &format!("single version of {entry}"),
+            "Cargo.lock",
+        )),
+    }
+}
+
+/// The name and the version of `package` and of every package it reaches in the text `lock` of a
+/// `Cargo.lock`.
+pub(crate) fn locked_closure(
+    lock: &str,
+    package: &str,
+) -> Result<HashSet<(String, String)>, ToolError> {
+    let packages: Vec<Locked<'_>> = lock
+        .split("[[package]]")
+        .filter_map(Locked::parse)
+        .collect();
+    let mut queue = vec![resolved(&packages, package)?];
+    let mut reached = HashSet::new();
+    while let Some(locked) = queue.pop() {
+        if reached.insert((locked.name.to_owned(), locked.version.to_owned())) {
+            for entry in &locked.dependencies {
+                queue.push(resolved(&packages, entry)?);
+            }
+        }
+    }
+    Ok(reached)
 }
 
 /// A `[[package]]` entry of `Cargo.lock`: its name, its version, and its dependencies as the lock
@@ -756,11 +770,11 @@ fn field_value<'a>(package: &'a str, prefix: &str) -> Option<&'a str> {
 }
 
 /// Seconds since the Unix epoch.
-pub(crate) fn now() -> Result<u64, Error> {
+pub(crate) fn now() -> Result<u64, ToolError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|elapsed| elapsed.as_secs())
-        .map_err(Error::Clock)
+        .map_err(ToolError::Clock)
 }
 
 /// The UTC date of `seconds` after the Unix epoch, as `YYYY-MM-DD`, by the civil-from-days

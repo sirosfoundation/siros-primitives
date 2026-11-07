@@ -1,0 +1,43 @@
+[package]
+name = "bench-tools"
+version = "0.0.0"
+description = "The report tools of a comparison: they build and run its benches, natively and in browsers, and write its BENCHMARKS.md"
+readme = "README.md"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# `cargo test` of the workspace compiles nothing of this crate. Its tests run by name:
+# `cargo test -p bench-tools --test changed --test identity`.
+[lib]
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "bench-browser"
+test = false
+bench = false
+
+[[test]]
+name = "changed"
+test = false
+
+[[test]]
+name = "identity"
+test = false
+
+[dependencies]
+bench-compare = { path = "../bench-compare" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix.workspace = true
+tiny_http.workspace = true
+
+[lints]
+workspace = true

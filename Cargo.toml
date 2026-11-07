@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/bench-compare",
+  "crates/bench-tools",
   "crates/biguint",
   "crates/biguint/bench-report",
   "crates/binary-field",

@@ -9,6 +9,13 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+# It has no test.
+[[bin]]
+name = "ct-check"
+path = "src/main.rs"
+test = false
+bench = false
+
 [dependencies]
 bench-compare = { path = "../bench-compare" }
 biguint = { path = "../biguint" }

@@ -14,9 +14,10 @@ authors.workspace = true
 name = "prime-field-bench-report"
 path = "src/main.rs"
 test = false
+bench = false
 
 [dependencies]
-bench-compare = { path = "../../bench-compare" }
+bench-tools = { path = "../../bench-tools" }
 serde.workspace = true
 
 [lints]

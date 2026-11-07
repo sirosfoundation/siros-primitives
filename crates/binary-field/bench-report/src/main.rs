@@ -3,7 +3,7 @@
 use core::fmt;
 use std::process::ExitCode;
 
-use bench_compare::{Build, Layout, Measured, NATIVE, Operation, Paths, sentence};
+use bench_tools::{Build, Layout, Measured, NATIVE, Operation, Paths, sentence};
 use serde::{Deserialize, Serialize};
 
 /// A row: a field, by name, and the degree of its modulus.
@@ -87,7 +87,7 @@ const LAYOUT: Layout<'static, Field> = Layout {
 };
 
 fn main() -> ExitCode {
-    bench_compare::execute(
+    bench_tools::execute(
         "binary-field-bench-report",
         &Paths::new(env!("CARGO_MANIFEST_DIR")),
         &MEASURED,

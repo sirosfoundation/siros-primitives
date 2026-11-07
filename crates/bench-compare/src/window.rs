@@ -59,7 +59,7 @@ impl Window {
 }
 
 /// The 1-minute load average.
-pub(crate) fn load() -> Result<f64, Error> {
+pub fn load() -> Result<f64, Error> {
     let path = Path::new(LOADAVG);
     let text = fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
     let field = text

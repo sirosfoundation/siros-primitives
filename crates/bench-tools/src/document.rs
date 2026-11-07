@@ -3,10 +3,12 @@
 use std::collections::HashMap;
 use std::fs;
 
+use bench_compare::{
+    Count, FEWEST_STEP_CYCLES, Key, Outcome, Overhead, REPETITIONS, RETRIES, Sweep,
+};
+
 use crate::changed::CellId;
-use crate::count::{FEWEST_STEP_CYCLES, REPETITIONS, RETRIES};
-use crate::error::Error;
-use crate::record::{Count, Key, Measurement, Outcome, Record, Recorded, Sweep};
+use crate::record::{Measurement, Record, Recorded};
 use crate::run::Paths;
 use crate::tool_error::{ToolError, UnmatchedVerdict};
 use crate::wasm::SELECTED_RUNS;
@@ -102,17 +104,16 @@ fn checked_tables<'r, K: Key>(
         .iter()
         .chain(wasm.iter().flat_map(|wasm| wasm.builds.iter()))
         .map(|build| Ok((build, Table::new(&build.cells, layout)?)))
-        .collect::<Result<Vec<_>, Error>>()?;
+        .collect::<Result<Vec<_>, ToolError>>()?;
     let [(_, first), ..] = tables.as_slice() else {
-        return Err(Error::missing("build", "the run record").into());
+        return Err(ToolError::missing("build", "the run record"));
     };
     for (build, table) in &tables {
         if table.ops != first.ops || table.keys != first.keys || table.crates != first.crates {
-            return Err(Error::missing(
+            return Err(ToolError::missing(
                 &format!("the cells of the first build in the build {}", build.name),
                 "the run records",
-            )
-            .into());
+            ));
         }
         check_matched(layout, table, build)?;
     }
@@ -143,7 +144,7 @@ pub fn report<K: Key>(
 ) -> Result<(), ToolError> {
     let tables = checked_tables(layout, record, wasm)?;
     let [(_, first), ..] = tables.as_slice() else {
-        return Err(Error::missing("build", "the run record").into());
+        return Err(ToolError::missing("build", "the run record"));
     };
     let (native, browsers) = tables.split_at(record.builds.len());
     let mut lines = header(record, layout, first);
@@ -158,7 +159,7 @@ pub fn report<K: Key>(
             .iter()
             .find(|(build, _)| build.name == layout.wasm_native)
             .ok_or_else(|| {
-                Error::missing(
+                ToolError::missing(
                     &format!("the native build `{}`", layout.wasm_native),
                     "the run record",
                 )
@@ -169,7 +170,7 @@ pub fn report<K: Key>(
     }
     lines.extend(reproduce(layout.tool, wasm.is_some()));
     let path = paths.library.join("BENCHMARKS.md");
-    fs::write(&path, lines.join("\n") + "\n").map_err(|source| Error::io(&path, source))?;
+    fs::write(&path, lines.join("\n") + "\n").map_err(|source| ToolError::io(&path, source))?;
     let odd: Vec<String> = tables
         .iter()
         .flat_map(|(build, table)| odd_cells(layout, table, build))
@@ -291,7 +292,7 @@ pub(crate) struct ComparedRow<K> {
 impl<'a, K: Key> Table<'a, K> {
     /// Fails unless `cells` hold exactly one cell for every operation, row and crate, and the
     /// layout names every operation.
-    pub(crate) fn new(cells: &'a [Recorded<K>], layout: &Layout<'a, K>) -> Result<Self, Error> {
+    pub(crate) fn new(cells: &'a [Recorded<K>], layout: &Layout<'a, K>) -> Result<Self, ToolError> {
         let recorded = unique(cells.iter().map(|cell| cell.cell.op.as_str()));
         if let Some(op) = recorded.iter().find(|op| {
             !layout
@@ -299,7 +300,7 @@ impl<'a, K: Key> Table<'a, K> {
                 .iter()
                 .any(|operation| operation.op == **op)
         }) {
-            return Err(Error::missing(&format!("operation {op}"), "the layout"));
+            return Err(ToolError::missing(&format!("operation {op}"), "the layout"));
         }
         let ops = layout
             .operations
@@ -326,7 +327,7 @@ impl<'a, K: Key> Table<'a, K> {
                 .collect(),
         };
         if table.cells.len() != cells.len() {
-            return Err(Error::missing(
+            return Err(ToolError::missing(
                 "single cell per operation, row and crate",
                 "the run record",
             ));
@@ -335,7 +336,7 @@ impl<'a, K: Key> Table<'a, K> {
             for key in &table.keys {
                 for library in &table.crates {
                     if !table.cells.contains_key(&(*op, key, *library)) {
-                        return Err(Error::missing(
+                        return Err(ToolError::missing(
                             &format!("cell {op}/{key}/{library}"),
                             "the run record",
                         ));
@@ -807,7 +808,7 @@ fn setup<K>(record: &Record<K>, heading: &str) -> Vec<String> {
 
 /// The cost of an empty count in the benches of `build`, from the fewest to the most of them.
 fn overheads<K>(build: &Measurement<K>) -> String {
-    let range = |part: fn(&crate::record::Overhead) -> f64| {
+    let range = |part: fn(&Overhead) -> f64| {
         let values: Vec<f64> = build.overheads.iter().map(part).collect();
         let least = values.iter().copied().fold(f64::INFINITY, f64::min);
         let most = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);

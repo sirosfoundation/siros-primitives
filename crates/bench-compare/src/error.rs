@@ -1,22 +1,13 @@
 use std::io;
 use std::num::{ParseFloatError, ParseIntError};
-use std::path::{Path, PathBuf};
-use std::process::ExitStatus;
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
-/// Why a tool stopped.
+/// Why a bench stopped.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// The arguments name no command.
-    #[error(
-        "usage: {tool} bench [--cpu <cpu>] [--machine <description>] | bench-wasm --chrome \
-         <executable> --firefox <executable> [--cpu <cpu>] [--browser-cpu <cpu>] [--machine \
-         <description>] | report"
-    )]
-    Usage {
-        /// The tool.
-        tool: String,
-    },
     /// The arguments of the bench executable name no CPU.
     #[error("usage: {program} [--cpu <cpu>]")]
     BenchUsage {
@@ -30,30 +21,6 @@ pub enum Error {
         path: PathBuf,
         /// The cause.
         source: io::Error,
-    },
-    /// A JSON file could not be read or written.
-    #[error("{}: {source}", path.display())]
-    Json {
-        /// The file.
-        path: PathBuf,
-        /// The cause.
-        source: serde_json::Error,
-    },
-    /// A command could not start.
-    #[error("{command}: {source}")]
-    Spawn {
-        /// The command line.
-        command: String,
-        /// The cause.
-        source: io::Error,
-    },
-    /// A command failed.
-    #[error("{command}: {status}")]
-    Failed {
-        /// The command line.
-        command: String,
-        /// Its exit status.
-        status: ExitStatus,
     },
     /// The output of a command or the content of a file lacks a value.
     #[error("{origin} has no {what}")]
@@ -85,18 +52,9 @@ pub enum Error {
         /// The cause.
         source: ParseFloatError,
     },
-    /// The system clock is before the Unix epoch.
-    #[error("the system clock: {0}")]
-    Clock(std::time::SystemTimeError),
     /// A line of the bench is no cell.
     #[error("the bench: {0}")]
     Cells(serde_json::Error),
-    /// The output of `cargo metadata` is no workspace description.
-    #[error("the output of cargo metadata: {0}")]
-    Metadata(serde_json::Error),
-    /// A line of a cargo build with `--message-format=json` is no message.
-    #[error("the messages of cargo: {0}")]
-    Messages(serde_json::Error),
     /// The measuring thread could not pin itself to its CPU.
     #[error("pinning to CPU {cpu}: {source}")]
     Pin {
@@ -119,12 +77,6 @@ pub enum Error {
         /// The time counted.
         running: Duration,
     },
-    /// The browser of a WebAssembly bench, or its page, failed.
-    #[error("the browser: {reason}")]
-    Browser {
-        /// What failed.
-        reason: String,
-    },
     /// The plan that the driver sent a WebAssembly bench is no UTF-8.
     #[cfg(target_arch = "wasm32")]
     #[error("the plan of the run: {0}")]
@@ -133,27 +85,9 @@ pub enum Error {
     #[cfg(target_arch = "wasm32")]
     #[error(transparent)]
     Selection(crate::selection::SelectionError),
-    /// A WebAssembly bench stopped.
-    #[error("the WebAssembly bench: {reason}")]
-    Bench {
-        /// The reason that it sent, or the error that its page caught.
-        reason: String,
-    },
     /// The target has no perf_event.
     #[error("measuring needs the perf_event counters of Linux")]
     NoPerfEvent,
-    /// A build whose target features lack AVX2.
-    #[error("a build without AVX2: RUSTFLAGS=\"{rustflags}\"")]
-    NoAvx2 {
-        /// The flags of the build.
-        rustflags: String,
-    },
-    /// The workspace's `[profile.bench]` lacks `lto = "fat"`.
-    #[error("{}: [profile.bench] has no lto = \"fat\"", manifest.display())]
-    NoFatLto {
-        /// The workspace's `Cargo.toml`.
-        manifest: PathBuf,
-    },
     /// A run ran another number of operations than it drew.
     #[error("{case}: a run of {count} operations ran {runs}")]
     Runs {
@@ -193,22 +127,6 @@ pub enum Error {
         short: String,
         /// The spread of the cycles of the long runs.
         long: String,
-    },
-    /// The bench of a build lacks a feature that the build enables.
-    #[error("the bench of {package} was built without its feature {feature}")]
-    Unbuilt {
-        /// The measured package.
-        package: String,
-        /// The feature.
-        feature: String,
-    },
-    /// A unit of a build has a feature that the comparison forbids.
-    #[error("{unit} was built with the forbidden feature {feature}")]
-    Forbidden {
-        /// The package of the unit, as cargo names it.
-        unit: String,
-        /// The feature.
-        feature: String,
     },
     /// A chain step counted fewer cycles than
     /// [`FEWEST_STEP_CYCLES`](crate::FEWEST_STEP_CYCLES) over every repetition of its case: the
@@ -253,15 +171,9 @@ impl Error {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn io(path: &Path, source: io::Error) -> Self {
         Self::Io {
-            path: path.to_path_buf(),
-            source,
-        }
-    }
-
-    pub(crate) fn json(path: &Path, source: serde_json::Error) -> Self {
-        Self::Json {
             path: path.to_path_buf(),
             source,
         }

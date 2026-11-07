@@ -2,7 +2,8 @@
 //! layout leaves alone, and what the reader refuses. Each offset that a refusal names comes from the
 //! assembler below.
 
-use bench_compare::{Fingerprint, Identity, ModuleError};
+use bench_compare::Fingerprint;
+use bench_tools::{Identity, ModuleError};
 
 /// One instruction of a function under assembly.
 #[derive(Clone)]

@@ -54,6 +54,17 @@ jobs:
       - run: cargo test --locked -p binary-field
       - run: cargo test --locked -p binary-field --features precomputed
 
+  bench-tools:
+    name: Test the bench tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/rust-toolchain
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # `cargo test --workspace` and `cargo clippy --all-targets` leave out these targets.
+      - run: cargo test --locked -p bench-tools --test changed --test identity
+      - run: cargo clippy --locked -p bench-tools --test changed --test identity -- -D warnings
+
   constant-time:
     name: Constant time
     runs-on: ubuntu-latest
@@ -105,8 +116,8 @@ jobs:
           RUSTFLAGS: -C target-feature=+aes
       # The WebAssembly benches that `bench-wasm` runs in browsers, with and without wide
       # arithmetic.
-      - run: cargo clippy --locked --target wasm32-unknown-unknown -p bench-compare -p biguint -p prime-field -p binary-field --benches --examples --all-features -- -D warnings
-      - run: cargo clippy --locked --target wasm32-unknown-unknown -p bench-compare -p biguint -p prime-field -p binary-field --benches --examples --all-features -- -D warnings
+      - run: cargo clippy --locked --target wasm32-unknown-unknown -p bench-compare -p biguint -p prime-field -p binary-field --benches --all-features -- -D warnings
+      - run: cargo clippy --locked --target wasm32-unknown-unknown -p bench-compare -p biguint -p prime-field -p binary-field --benches --all-features -- -D warnings
         env:
           RUSTFLAGS: -C target-feature=+wide-arithmetic
 
