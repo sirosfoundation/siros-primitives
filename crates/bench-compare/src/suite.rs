@@ -10,7 +10,11 @@
 
 use core::fmt;
 
-use crate::barrier::{Barrier, opaque, sink};
+#[cfg(target_arch = "wasm32")]
+use crate::barrier::each_hidden;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::barrier::opaque;
+use crate::barrier::{Barrier, sink};
 use crate::record::Key;
 
 /// The number of operand sets that check each case.
@@ -209,17 +213,25 @@ pub fn visit<S: Suite, V: Visitor<S::Op, S::Key>>(visitor: V) -> V {
 }
 
 /// Runs `run` on each input of `batch` and returns the number of runs. The address of each input
-/// passes through an empty inline-assembly block, and another takes the address of each result,
+/// passes through a barrier, and an empty inline-assembly block takes the address of each result,
 /// so the compiler can neither precompute a result nor skip one. The loop calls `run` directly,
 /// so an operation that inlines into its caller inlines here whatever its size.
 #[inline(never)]
 pub fn run_batch<I, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
-    let mut runs = 0;
-    for input in batch {
-        sink(&run(opaque(input)));
-        runs += 1;
+    #[cfg(target_arch = "wasm32")]
+    {
+        each_hidden(batch, |input| sink(&run(input)));
+        batch.len()
     }
-    runs
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut runs = 0;
+        for input in batch {
+            sink(&run(opaque(input)));
+            runs += 1;
+        }
+        runs
+    }
 }
 
 /// Runs `run` on the inputs of `batch` as the chain `x = op(x, y)` and returns the number of

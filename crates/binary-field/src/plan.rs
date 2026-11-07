@@ -219,7 +219,7 @@ impl<P: Polynomial> Plan<P> {
 
     /// The square root of `x^128 + x^7 + x^2 + x + 1` multiplies by `sqrt(x)` through shifts, on
     /// WebAssembly, whose two word products take 96 integer products: Chrome 41.0 cycles against
-    /// 154.4.
+    /// 154.4, Firefox 45.1 against 156.4.
     pub(crate) const SQRT_BY_SHIFTS: bool = cfg!(target_arch = "wasm32")
         && Self::DEGREE == 128
         && Self::R_DEGREE == 7

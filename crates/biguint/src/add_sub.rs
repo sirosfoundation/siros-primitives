@@ -141,12 +141,28 @@ impl<N: Bits, RhsN: Bits> Add<Uint<RhsN>> for Uint<N> {
             return sum;
         }
         #[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
-        if const { N::LIMBS >= AHEAD_SUM_LIMBS || RhsN::LIMBS >= AHEAD_SUM_LIMBS } {
+        if const {
+            let limbs = if N::LIMBS > RhsN::LIMBS {
+                N::LIMBS
+            } else {
+                RhsN::LIMBS
+            };
+            limbs >= AHEAD_SUM_LIMBS && limbs != OVERFLOW_SUM_LIMBS
+        } {
             return Uint::from_stream(
                 Op2CarryIter::<_, _, AddAheadOp>::new(rhs.source().pull(), self.source().pull()),
                 N::BITS.max(RhsN::BITS) + 1,
             );
         }
+        // Wide arithmetic starts from `self`, which a chain `x = x + y` holds in locals. The 4096-bit
+        // sum took Firefox 266 cycles of latency against 299 and Chrome 232 against 248, at the same
+        // throughput.
+        #[cfg(wide_arithmetic)]
+        return Uint::from_stream(
+            Op2CarryIter::<_, _, AddOp>::new(self.source().pull(), rhs.source().pull()),
+            N::BITS.max(RhsN::BITS) + 1,
+        );
+        #[cfg(not(wide_arithmetic))]
         Uint::from_stream(
             Op2CarryIter::<_, _, AddOp>::new(rhs.source().pull(), self.source().pull()),
             N::BITS.max(RhsN::BITS) + 1,
@@ -157,9 +173,9 @@ impl<N: Bits, RhsN: Bits> Add<Uint<RhsN>> for Uint<N> {
 /// `a + b` into `out` by pairs of limbs, each pair one `i64.add128` with wide arithmetic. The 256-bit
 /// sum took Firefox 11.0 cycles against 12.2 limb by limb, and Chrome 9.1 against 8.7; without wide
 /// arithmetic Firefox 10.0 against 10.3, and Chrome 9.6 against 10.3. The other sums run limb by
-/// limb: with wide arithmetic the 512-bit one took Firefox 31.1 by pairs against 32.1, and Chrome
-/// 26.1 against 20.8; without, the 128-bit one Chrome 4.1 against 4.0, the 512-bit one Chrome 27.5
-/// against 26.3.
+/// limb: with wide arithmetic the 1024-bit one took Chrome 61.6 by pairs against 46.9, and Firefox
+/// 76.3 against 69.7; without, the 128-bit one Chrome 4.1 against 4.0, the 1024-bit one Chrome 62.5
+/// against 55.6.
 #[cfg(target_arch = "wasm32")]
 #[inline(always)]
 fn pair_sum(out: &mut [u64], a: &[u64], b: &[u64]) {
@@ -187,6 +203,11 @@ fn pair_sum(out: &mut [u64], a: &[u64], b: &[u64]) {
 /// the carry of a second overflowing addition, Firefox 15.3 and 15.5 against 15.9 and 15.5.
 #[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
 const AHEAD_SUM_LIMBS: usize = 6;
+
+/// The sum above [`AHEAD_SUM_LIMBS`] that keeps the carry of a second overflowing addition. The
+/// 512-bit sum took Chrome 23.0 cycles against 24.8 by [`AddAheadOp`], and Firefox 22.0 against 20.7.
+#[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
+const OVERFLOW_SUM_LIMBS: usize = 8;
 
 /// `(self - rhs) mod 2^N`.
 impl<N: Bits, RhsN: Bits> Sub<Uint<RhsN>> for Uint<N> {

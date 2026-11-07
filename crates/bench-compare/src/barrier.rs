@@ -7,12 +7,12 @@
 //! each register filled by one word of `x`, and can only add moves between classes: a chain runs
 //! once per class that holds its value, and the faster run counts. [`Memory`] keeps `x` in one
 //! place on the stack, whose address a block takes after each step: one store and one load per
-//! word and step. Off x86-64, `core::hint::black_box` does the hiding, and every chain runs
-//! through [`Memory`]; a WebAssembly chain also runs through `Locals`, which keeps `x` in locals
-//! and stores a copy of it after each step.
+//! word and step. Off x86-64, `core::hint::black_box` and volatile loads do the hiding, and every
+//! chain runs through [`Memory`]; a WebAssembly chain also runs through `Locals`, which keeps `x`
+//! in locals and stores a copy of it after each step.
 #![expect(
     unsafe_code,
-    reason = "a barrier is inline assembly, and `touch` reads padding bytes"
+    reason = "a barrier is inline assembly or a volatile load, and `touch` reads padding bytes"
 )]
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
@@ -191,7 +191,45 @@ pub(crate) fn opaque<T>(value: &T) -> &T {
     #[cfg(target_arch = "x86_64")]
     return registers::opaque(value);
     #[cfg(not(target_arch = "x86_64"))]
-    return core::hint::black_box(value);
+    return hide(value);
+}
+
+/// `value` from a store and a volatile load, which hide it as `core::hint::black_box` does. The
+/// empty block after them bounds the search of LLVM's DAG combiner to the operation's own loads:
+/// it gives up after 18 steps, and a 512-bit sum by value takes 17 to pass its first store over
+/// its 16 loads.
+#[cfg(not(target_arch = "x86_64"))]
+#[inline(always)]
+fn hide<P: Copy>(value: P) -> P {
+    // SAFETY: `value` is a local, valid for reads.
+    let hidden = unsafe { core::ptr::read_volatile(&raw const value) };
+    core::hint::black_box(());
+    hidden
+}
+
+/// `visit` on each input of `batch` in order: each address passes through [`hide`], and the next
+/// one follows from what comes out. LLVM cannot count such a loop, so it unrolls none, where it
+/// would unroll a WebAssembly loop of at most 16 IR instructions and halve the exit tests of only
+/// the operations that small.
+#[cfg(target_arch = "wasm32")]
+#[inline(always)]
+pub(crate) fn each_hidden<I>(batch: &[I], mut visit: impl FnMut(&I)) {
+    const {
+        assert!(
+            size_of::<I>() > 0,
+            "the end of a batch needs inputs with a size"
+        )
+    };
+    let range = batch.as_ptr_range();
+    let mut next = range.start;
+    while next != range.end {
+        let hidden = hide(next);
+        // SAFETY: `hidden` is `next`, the address of an input: it starts below the end of `batch`,
+        // and each step moves it by one input up to that end.
+        visit(unsafe { &*hidden });
+        // SAFETY: `hidden` addresses an input, so the next address is at most the end of `batch`.
+        next = unsafe { hidden.add(1) };
+    }
 }
 
 /// Uses `value` where the optimizer cannot see, so it cannot skip the operation that computed it.

@@ -77,13 +77,14 @@ pub(crate) fn sbb_mask(mask: u64, a: u64, b: u64) -> (u64, u64) {
     (wide as u64, (wide >> 64) as u64)
 }
 
-/// [`adc`] for a constant `b`: on WebAssembly without wide arithmetic and `b < 2^64 - 1`, `a` plus
-/// `b + carry`, a selection between two constants, and one comparison for the carry out; elsewhere
-/// [`adc`]. The variable-time BN254 sum, whose subtraction of `p` runs [`sbb_constant`], took
-/// Chrome 13.9 cycles and Firefox 14.7 against 16.8 with [`sbb`].
+/// [`adc`] for a constant `b`: on WebAssembly and `b < 2^64 - 1`, `a` plus `b + carry`, a selection
+/// between two constants, and one comparison for the carry out; elsewhere [`adc`]. The
+/// variable-time BN254 sum, whose subtraction of `p` runs [`sbb_constant`], took Chrome 13.9 cycles
+/// and Firefox 14.7 against 16.8 with [`sbb`]; with wide arithmetic, Chrome 11.9 against 12.8 and
+/// Firefox 17.0 against 18.5.
 #[inline(always)]
 pub(crate) fn adc_constant(carry: u8, a: u64, b: u64) -> (u64, u8) {
-    if cfg!(all(target_arch = "wasm32", not(wide_arithmetic))) && b != u64::MAX {
+    if cfg!(target_arch = "wasm32") && b != u64::MAX {
         let addend = b + u64::from(carry);
         let (sum, out) = a.overflowing_add(addend);
         (sum, u8::from(out))
@@ -110,7 +111,7 @@ pub(crate) fn adc_sum(carry: u8, a: u64, b: u64) -> (u64, u8) {
 /// [`sbb`] for a constant `b`: `a` less `b + borrow`, as [`adc_constant`] adds.
 #[inline(always)]
 pub(crate) fn sbb_constant(borrow: u8, a: u64, b: u64) -> (u64, u8) {
-    if cfg!(all(target_arch = "wasm32", not(wide_arithmetic))) && b != u64::MAX {
+    if cfg!(target_arch = "wasm32") && b != u64::MAX {
         let subtrahend = b + u64::from(borrow);
         let (difference, out) = a.overflowing_sub(subtrahend);
         (difference, u8::from(out))

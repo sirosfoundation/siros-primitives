@@ -470,7 +470,11 @@ impl<M: Modulus> Shape<M> {
     #[inline(always)]
     const fn montgomery_raw(out: &mut [u64], a: &[u64], b: &[u64]) {
         if Self::HALF_RADIX {
-            set(out, 0, half_redc(limb(a, 0) * limb(b, 0), Self::P0, Self::INV));
+            set(
+                out,
+                0,
+                half_redc(limb(a, 0) * limb(b, 0), Self::P0, Self::INV),
+            );
         } else {
             cios(out, a, b, Self::P.as_slice(), Self::INV, Self::SPARE);
         }
