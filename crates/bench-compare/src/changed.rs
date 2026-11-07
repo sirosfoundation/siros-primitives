@@ -21,7 +21,7 @@ const HARNESS: [&str; 12] = [
     include_str!("count.rs"),
     include_str!("counters.rs"),
     include_str!("barrier.rs"),
-    include_str!("median.rs"),
+    include_str!("fewest.rs"),
     include_str!("suite.rs"),
     include_str!("host.rs"),
     include_str!("browser/mod.rs"),

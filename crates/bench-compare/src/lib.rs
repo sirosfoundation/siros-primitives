@@ -26,11 +26,11 @@ mod workspace;
 mod changed;
 #[cfg(not(target_arch = "wasm32"))]
 mod decide;
+#[cfg(not(target_arch = "wasm32"))]
+mod fewest;
 mod fingerprint;
 #[cfg(not(target_arch = "wasm32"))]
 mod identity;
-#[cfg(not(target_arch = "wasm32"))]
-mod median;
 #[cfg(not(target_arch = "wasm32"))]
 mod module;
 mod selection;
@@ -57,11 +57,11 @@ pub use decide::{Decision, decide};
 #[cfg(not(target_arch = "wasm32"))]
 pub use document::{LOAD, Layout, Operation, check_records, markdown_table, report, sentence};
 pub use error::Error;
+#[cfg(not(target_arch = "wasm32"))]
+pub use fewest::fewest;
 pub use fingerprint::Fingerprint;
 #[cfg(not(target_arch = "wasm32"))]
 pub use identity::{CodeHash, Identity};
-#[cfg(not(target_arch = "wasm32"))]
-pub use median::median_of_runs;
 #[cfg(not(target_arch = "wasm32"))]
 pub use module::ModuleError;
 pub use record::{

@@ -172,7 +172,7 @@ cargo run --release -p bench-compare --bin bench-browser -- decide \
 ```
 
 It runs both sides back to back in each of the four builds, `--runs` times, and prints each cell's
-median figures and the load.
+fewest figures and the load.
 
 `bench-wasm --changed` is a content-addressed action cache, as in Bazel. A cell keeps its figures
 while the record holds its key:
@@ -213,5 +213,5 @@ a record that ran dirty, uncommitted changes in the measured sources, and source
 the record's `head`. The files of `bench-compare` stay out of that check: run `bench-browser diff`
 between the modules of both commits first.
 
-A selected cell takes the median figures of `SELECTED_RUNS`, 3, runs of its bench. A figure is a
-difference of two fewest counts, so a run errs either way.
+A selected cell takes the fewest figures of `SELECTED_RUNS`, 3, runs of its bench: repetitions within
+one run can all meet one burst of load, where a full run spreads them over minutes.

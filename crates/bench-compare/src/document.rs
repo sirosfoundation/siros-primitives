@@ -884,7 +884,7 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
     }
     if record.builds.iter().any(|build| build.runs.len() > 1) {
         lines.push(format!(
-            "- A sweep over part of a build gives each selected cell the median figures of \
+            "- A sweep over part of a build gives each selected cell the fewest figures of \
              {SELECTED_RUNS} runs of its bench by default, or the figures of one run of the whole \
              bench where the selection holds 1/{SELECTED_RUNS} of its cells or more. The setup table \
              names each run, and a verdict compares figures of one run."

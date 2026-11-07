@@ -17,8 +17,8 @@ use crate::changed::{CellId, code, compact, harness, merge, overtaken, select};
 use crate::count::CPU;
 use crate::document::Layout;
 use crate::error::Error;
+use crate::fewest::fewest;
 use crate::identity::Identity;
-use crate::median::median_of_runs;
 use crate::module::{custom_section, used_features};
 use crate::record::{
     Cell, Engine, Key, Line, Listed, ListedCall, Measurement, Outcome, Overhead, Record, Recorded,
@@ -40,7 +40,7 @@ const ROUNDS: usize = 12;
 /// The runs of a bench that measures a selection, unless `--runs` says otherwise. The repetitions
 /// of a selected cell come within seconds and can all meet one burst of load, where those of a full
 /// run spread over minutes. See the README for the figures that chose it. A sweep over part of a
-/// build runs a bench whole, once, where its selection holds at least this share of its cells.
+/// build runs a bench whole, once, where its selection holds at least one in this many of its cells.
 pub const SELECTED_RUNS: usize = 3;
 
 /// The linker flag that keeps in each module the relocations that [`Identity`] reads. Only custom
@@ -625,7 +625,7 @@ impl<K: Key> Context<'_, K> {
                 )
             })
             .collect::<Result<Vec<_>, Error>>()?;
-        Ok(Some(parse_lines(median_of_runs(lines)?, &listing.bench)?))
+        Ok(Some(parse_lines(fewest(lines)?, &listing.bench)?))
     }
 }
 
