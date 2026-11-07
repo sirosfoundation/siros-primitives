@@ -9,6 +9,12 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+# A unit-test build would compile the tool again for no test; `cargo clippy --all-targets` checks it.
+[[bin]]
+name = "biguint-bench-report"
+path = "src/main.rs"
+test = false
+
 [dependencies]
 bench-compare = { path = "../../bench-compare" }
 serde.workspace = true
