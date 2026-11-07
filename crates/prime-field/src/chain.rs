@@ -988,7 +988,7 @@ impl<M: Modulus> Fp<M> {
                 let value =
                     registers[step.src as usize % REGISTERS].square_times::<CT>(step.squarings);
                 registers[step.dst as usize % REGISTERS] = match step.mul {
-                    Some(mul) => value.mul_with::<CT>(registers[mul as usize % REGISTERS]),
+                    Some(mul) => value.chain_mul::<CT>(registers[mul as usize % REGISTERS]),
                     None => value,
                 };
                 index += 1;
@@ -1017,7 +1017,7 @@ impl<M: Modulus> Fp<M> {
                 let step = program.climb(index);
                 acc = acc.square_times::<CT>(step.squarings);
                 if let Some(mul) = step.mul {
-                    acc = acc.mul_with::<CT>(registers[mul as usize % REGISTERS]);
+                    acc = acc.chain_mul::<CT>(registers[mul as usize % REGISTERS]);
                 }
                 index += 1;
             };
@@ -1045,13 +1045,34 @@ impl<M: Modulus> Fp<M> {
         let mut value = self;
         let mut remaining = count;
         while remaining >= 2 {
-            value = value.square_with::<CT>().square_with::<CT>();
+            value = value.chain_square::<CT>().chain_square::<CT>();
             remaining -= 2;
         }
         if remaining == 1 {
-            value = value.square_with::<CT>();
+            value = value.chain_square::<CT>();
         }
         value
+    }
+
+    /// `self * rhs` as a step of a chain.
+    #[inline(always)]
+    pub(crate) fn chain_mul<const CT: bool>(self, rhs: Self) -> Self {
+        #[cfg(wide_arithmetic)]
+        return Self::from_limbs(Shape::<M>::chain_mul::<CT>(
+            self.limb_array(),
+            rhs.limb_array(),
+        ));
+        #[cfg(not(wide_arithmetic))]
+        return self.mul_with::<CT>(rhs);
+    }
+
+    /// `self * self` as a step of a chain.
+    #[inline(always)]
+    pub(crate) fn chain_square<const CT: bool>(self) -> Self {
+        #[cfg(wide_arithmetic)]
+        return Self::from_limbs(Shape::<M>::chain_square::<CT>(self.limb_array()));
+        #[cfg(not(wide_arithmetic))]
+        return self.square_with::<CT>();
     }
 }
 

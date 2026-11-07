@@ -327,17 +327,17 @@ impl<M: Modulus> Fp<M> {
         let window = pow_window(bits);
         // `table[i] = self^(2 i + 1)`.
         let mut table = [self; 1 << (POW_WINDOW - 1)];
-        let square = self.square_with::<CT>();
+        let square = self.chain_square::<CT>();
         let mut previous = self;
         for entry in table.iter_mut().take(1 << (window - 1)).skip(1) {
-            previous = previous.mul_with::<CT>(square);
+            previous = previous.chain_mul::<CT>(square);
             *entry = previous;
         }
         let mut result = Self::ONE;
         let mut index = bits;
         while index > 0 {
             if !bit(exponent, index - 1) {
-                result = result.square_with::<CT>();
+                result = result.chain_square::<CT>();
                 index -= 1;
                 continue;
             }
@@ -349,9 +349,9 @@ impl<M: Modulus> Fp<M> {
             let trailing = value.trailing_zeros() as usize;
             let used = width - trailing;
             for _ in 0..used {
-                result = result.square_with::<CT>();
+                result = result.chain_square::<CT>();
             }
-            result = result.mul_with::<CT>(table_entry(&table, (value >> trailing) / 2));
+            result = result.chain_mul::<CT>(table_entry(&table, (value >> trailing) / 2));
             index -= used;
         }
         result
@@ -611,7 +611,7 @@ impl<M: Modulus> Sum for Fp<M> {
 impl<M: Modulus> Product for Fp<M> {
     #[inline]
     fn product<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Self::ONE, |product, item| product.mul_with::<false>(item))
+        iter.fold(Self::ONE, |product, item| product.chain_mul::<false>(item))
     }
 }
 

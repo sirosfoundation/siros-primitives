@@ -523,6 +523,11 @@ impl<M: Modulus> Shape<M> {
             // `(m p) >> 64 = m - (m >> 32) - e` for the carry `e` of that sum, as in winter-math's
             // `mont_red_cst`. `m >> 32` is the 32-bit sum of the halves of `low`, which does not
             // wait for `m`. The result `high - (m p >> 64)` lies in `(-p, p)`.
+            if cfg!(wide_arithmetic) {
+                // Firefox took 6.8 cycles against 7.2 by `shift_redc_split` and Chrome 6.0 against
+                // 6.0, at a latency of 14.0 cycles against 12.5 and 12.7 against 11.1.
+                return shift_redc(widening_mul(a, b));
+            }
             if cfg!(target_arch = "wasm32") {
                 return Self::shift_redc_split(a, b);
             }
@@ -582,6 +587,30 @@ impl<M: Modulus> Shape<M> {
         let quotient = m.wrapping_sub(shifted + e);
         let (result, borrow) = high.overflowing_sub(quotient);
         select(borrow, result.wrapping_add(Self::P0), result)
+    }
+
+    /// `a * b` as a step of a chain, which waits for the step before it: on Goldilocks
+    /// [`Self::shift_redc_split`], the order of the shortest latency. The inverse took Chrome 780
+    /// cycles against 902 by [`shift_redc`] and Firefox 881 against 971.
+    #[cfg(wide_arithmetic)]
+    #[inline(always)]
+    pub(crate) fn chain_mul<const CT: bool>(a: &Limbs<M>, b: &Limbs<M>) -> Limbs<M> {
+        if Self::SHIFT_REDC {
+            Self::single(Self::shift_redc_split(limb(a, 0), limb(b, 0)))
+        } else {
+            Self::mul::<CT>(a, b)
+        }
+    }
+
+    /// `a * a` as a step of a chain, as [`Self::chain_mul`].
+    #[cfg(wide_arithmetic)]
+    #[inline(always)]
+    pub(crate) fn chain_square<const CT: bool>(a: &Limbs<M>) -> Limbs<M> {
+        if Self::SHIFT_REDC {
+            Self::chain_mul::<CT>(a, a)
+        } else {
+            Self::square::<CT>(a)
+        }
     }
 
     /// `carry 2^64 + t mod p` for `carry 2^64 + t < 2 p`, on one limb.

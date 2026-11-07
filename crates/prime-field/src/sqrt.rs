@@ -14,7 +14,7 @@ impl<M: Modulus> Fp<M> {
     pub fn sqrt(self) -> Option<Self> {
         if Shape::<M>::THREE_MOD_FOUR {
             let root = self.pow_program::<false>(&Shape::<M>::SQRT_CHAIN);
-            return if root.square_with::<false>().equals(&self) {
+            return if root.chain_square::<false>().equals(&self) {
                 Some(root)
             } else {
                 None
@@ -31,14 +31,14 @@ impl<M: Modulus> Fp<M> {
         // entry: `index` counts down from `s` with the squarings that find `i`, and lands on the
         // entry of the next generator.
         let w = self.pow_program::<false>(&Shape::<M>::SQRT_CHAIN);
-        let mut root = w.mul_with::<false>(self);
-        let mut b = w.mul_with::<false>(root);
+        let mut root = w.chain_mul::<false>(self);
+        let mut b = w.chain_mul::<false>(root);
         let mut offset = 0;
         while !b.equals(&Self::ONE) {
             let mut power = b;
             let mut index = Shape::<M>::TWO_ADICITY;
             loop {
-                power = power.square_with::<false>();
+                power = power.chain_square::<false>();
                 index -= 1;
                 if index == offset {
                     return None;
@@ -47,8 +47,8 @@ impl<M: Modulus> Fp<M> {
                     break;
                 }
             }
-            root = root.mul_with::<false>(Self::root_power(index - 1));
-            b = b.mul_with::<false>(Self::root_power(index));
+            root = root.chain_mul::<false>(Self::root_power(index - 1));
+            b = b.chain_mul::<false>(Self::root_power(index));
             offset = index;
         }
         Some(root)
@@ -67,8 +67,8 @@ impl<M: Modulus> Fp<M> {
             self.pow_program::<true>(&Shape::<M>::SQRT_CHAIN)
         } else {
             let w = self.pow_program::<true>(&Shape::<M>::SQRT_CHAIN);
-            let mut root = w.mul_with::<true>(self);
-            let mut b = root.mul_with::<true>(w);
+            let mut root = w.chain_mul::<true>(self);
+            let mut b = root.chain_mul::<true>(w);
             let mut z = Self::from_limbs(Shape::<M>::TWO_ADIC_ROOT);
             let mut v = Shape::<M>::TWO_ADICITY;
             let mut max_v = Shape::<M>::TWO_ADICITY;
@@ -76,12 +76,12 @@ impl<M: Modulus> Fp<M> {
                 // `k` ends as the order exponent of `b`; up to it the squarings compute
                 // `b^(2^k)`, beyond it they square `z`, and past `v` they change nothing.
                 let mut k = 1;
-                let mut power = b.square_with::<true>();
+                let mut power = b.chain_square::<true>();
                 let mut below_v = true;
                 let mut j = 2;
                 while j < max_v {
                     let one = power.equals(&Self::ONE);
-                    let squared = Self::select(one, z, power).square_with::<true>();
+                    let squared = Self::select(one, z, power).chain_square::<true>();
                     power = Self::select(one, power, squared);
                     let next_z = Self::select(one, squared, z);
                     below_v &= j != v;
@@ -89,16 +89,16 @@ impl<M: Modulus> Fp<M> {
                     z = Self::select(below_v, next_z, z);
                     j += 1;
                 }
-                let moved = root.mul_with::<true>(z);
+                let moved = root.chain_mul::<true>(z);
                 root = Self::select(b.equals(&Self::ONE), root, moved);
-                z = z.square_with::<true>();
-                b = b.mul_with::<true>(z);
+                z = z.chain_square::<true>();
+                b = b.chain_mul::<true>(z);
                 v = k;
                 max_v -= 1;
             }
             root
         };
-        declassify(root.square_with::<true>().equals(&self), root)
+        declassify(root.chain_square::<true>().equals(&self), root)
     }
 
     /// `a` when `condition` holds, else `b`, by conditional moves.
@@ -124,7 +124,7 @@ impl<M: Modulus> Fp<M> {
         }
         let mut power = Self::from_limbs(Shape::<M>::TWO_ADIC_ROOT_POWERS[ROOT_POWERS - 1]);
         for _ in ROOT_POWERS - 1..index {
-            power = power.square_with::<false>();
+            power = power.chain_square::<false>();
         }
         power
     }

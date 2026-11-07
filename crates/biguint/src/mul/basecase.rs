@@ -35,6 +35,11 @@ pub(crate) fn product<A: ArrayLength, B: ArrayLength>(
         columns(out, a, b);
         return;
     }
+    #[cfg(wide_arithmetic)]
+    if const { A::USIZE == 2 && B::USIZE == 2 } && out.len() == 2 {
+        wrapping_128(out, a, b);
+        return;
+    }
     #[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
     if const { B::USIZE >= COPIED_ROWS && A::USIZE <= MAC_ROWS && B::USIZE <= MAC_ROWS } {
         copied_mac_rows::<B>(out, a, b);
@@ -100,6 +105,21 @@ fn columns(out: &mut [u64], a: &[u64], b: &[u64]) {
             highs = next;
         },
     );
+}
+
+/// Writes `a * b mod 2^128` to `out`, of two limbs, with each pair of factors in operand order,
+/// where a row of [`mac_rows`] puts its multiplier first. Firefox took 5.0 cycles and 23.7
+/// instructions against 5.4 and 24.3, and Chrome 4.07 cycles against 4.13.
+#[cfg(wide_arithmetic)]
+#[inline(always)]
+fn wrapping_128(out: &mut [u64], a: &[u64], b: &[u64]) {
+    if let ([a0, a1, ..], [b0, b1, ..], [low, high, ..]) = (a, b, out) {
+        let wide = widening_mul(*a0, *b0);
+        *low = wide as u64;
+        *high = ((wide >> 64) as u64)
+            .wrapping_add(a1.wrapping_mul(*b0))
+            .wrapping_add(a0.wrapping_mul(*b1));
+    }
 }
 
 /// The longest operands whose rows run one chain of multiply-accumulate steps each. On
