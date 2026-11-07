@@ -93,13 +93,14 @@ impl<M: Modulus> Shape<M> {
     /// prime bases, which decides every 64-bit number. A Montgomery product of a prime modulus
     /// whose product fits the limb lands below `p`.
     pub(crate) const PRIME_LIMB: bool = Self::LIMBS == 1 && is_prime(Self::P0);
-    /// Montgomery form on WebAssembly without wide arithmetic, with a product of two elements
-    /// inside the limb: `R = 2^32`, and a product reduces by [`half_redc`]. The BabyBear product
-    /// took Chrome 4.1 cycles and Firefox 5.5 against 5.2 and 5.1 with `R = 2^64`, the square 5.4 and
-    /// 6.0 against 4.7 and 5.7.
+    /// Montgomery form on WebAssembly without wide arithmetic, on one limb with `p < 2^31`:
+    /// `R = 2^32`, and a product reduces by [`half_redc_signed`] or [`half_redc`]. The BabyBear
+    /// product took Chrome 5.1 cycles and Firefox 5.4 against 7.0 and 6.8 with `R = 2^64`, the
+    /// square 5.1 and 5.4 against 7.8 and 6.7.
     pub(crate) const HALF_RADIX: bool = cfg!(all(target_arch = "wasm32", not(wide_arithmetic)))
         && Self::MONTGOMERY
-        && Self::PRODUCT_FITS_LIMB;
+        && Self::LIMBS == 1
+        && Self::BITS <= 31;
     /// The bits of `R`: `64 L` unless [`Self::HALF_RADIX`] holds.
     const RADIX_BITS: usize = if Self::HALF_RADIX {
         32
@@ -740,16 +741,17 @@ const fn pow_mod(base: u64, exponent: u64, n: u64) -> u64 {
     result
 }
 
-/// Montgomery reduction `x / 2^32 mod p` for `p < 2^32` and `x < p 2^32`, with `inv = -p^-1 mod
-/// 2^64`, in plonky3's `monty_reduce` order: `x - t p` is a multiple of `2^32` for `t = x p^-1 mod
-/// 2^32`, and its high half lies in `(-p, p)`. The selection compiles to `select`.
+/// Montgomery reduction `x / 2^32 mod p` for `p < 2^31` and `x < p 2^32`, with `inv = -p^-1 mod
+/// 2^64`: `x - t p` is a multiple of `2^32` for `t = x p^-1 mod 2^32`. It lies in `(-2^63, 2^63)`,
+/// so it holds its sign as an `i64`, and its high half lies in `(-p, p)`. The selection compiles
+/// to `select`.
 #[inline(always)]
 pub(crate) const fn half_redc(x: u64, p: u64, inv: u64) -> u64 {
     let t = x.wrapping_mul(inv.wrapping_neg()) & 0xffff_ffff;
-    let (difference, negative) = x.overflowing_sub(t * p);
-    let high = (difference >> 32) as u32;
-    let correction = if negative { p as u32 } else { 0 };
-    high.wrapping_add(correction) as u64
+    let u = t * p;
+    let high = (x.wrapping_sub(u) as i64 >> 32) as u64;
+    let correction = if x < u { p } else { 0 };
+    high.wrapping_add(correction)
 }
 
 /// [`half_redc`] with the correction from the sign of the difference, by shifts.
