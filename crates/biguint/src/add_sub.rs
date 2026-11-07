@@ -129,8 +129,10 @@ impl<N: Bits, RhsN: Bits> Add<Uint<RhsN>> for Uint<N> {
 
     #[inline(always)]
     fn add(self, rhs: Uint<RhsN>) -> Self::Output {
-        #[cfg(wide_arithmetic)]
-        if const { N::LIMBS == RhsN::LIMBS && (N::LIMBS == 2 || N::LIMBS == 4) } {
+        #[cfg(target_arch = "wasm32")]
+        if const {
+            N::LIMBS == RhsN::LIMBS && (N::LIMBS == 4 || (N::LIMBS == 2 && cfg!(wide_arithmetic)))
+        } {
             let mut sum = Self::ZERO;
             pair_sum(sum.limbs.as_mut_slice(), &self.limbs, &rhs.limbs);
             if let Some(top) = sum.limbs.as_mut_slice().last_mut() {
@@ -152,10 +154,13 @@ impl<N: Bits, RhsN: Bits> Add<Uint<RhsN>> for Uint<N> {
     }
 }
 
-/// `a + b` into `out` by pairs of limbs, each pair one `i64.add128`. The 256-bit sum took Firefox
-/// 11.0 cycles against 12.2 limb by limb, and Chrome 9.1 against 8.7. The 512-bit sum, which runs
-/// limb by limb, took Firefox 31.1 by pairs against 32.1, and Chrome 26.1 against 20.8.
-#[cfg(wide_arithmetic)]
+/// `a + b` into `out` by pairs of limbs, each pair one `i64.add128` with wide arithmetic. The 256-bit
+/// sum took Firefox 11.0 cycles against 12.2 limb by limb, and Chrome 9.1 against 8.7; without wide
+/// arithmetic Firefox 10.0 against 10.3, and Chrome 9.6 against 10.3. The other sums run limb by
+/// limb: with wide arithmetic the 512-bit one took Firefox 31.1 by pairs against 32.1, and Chrome
+/// 26.1 against 20.8; without, the 128-bit one Chrome 4.1 against 4.0, the 512-bit one Chrome 27.5
+/// against 26.3.
+#[cfg(target_arch = "wasm32")]
 #[inline(always)]
 fn pair_sum(out: &mut [u64], a: &[u64], b: &[u64]) {
     let limb = |limbs: &[u64], index: usize| limbs.get(index).copied().unwrap_or(0);
@@ -179,8 +184,7 @@ fn pair_sum(out: &mut [u64], a: &[u64], b: &[u64]) {
 
 /// The shortest sums that carry by [`AddAheadOp`] on WebAssembly without wide arithmetic. The
 /// 384-bit sum took Chrome 16.3 cycles in throughput and 14.8 in latency against 16.3 and 15.4 with
-/// the carry of a second overflowing addition, Firefox 15.3 and 15.5 against 15.9 and 15.5; the
-/// 256-bit one 39.4 cycles in the four figures against 39.0.
+/// the carry of a second overflowing addition, Firefox 15.3 and 15.5 against 15.9 and 15.5.
 #[cfg(all(target_arch = "wasm32", not(wide_arithmetic)))]
 const AHEAD_SUM_LIMBS: usize = 6;
 

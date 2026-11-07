@@ -1029,40 +1029,34 @@ impl<M: Modulus> Shape<M> {
                 },
             );
         }
-        if cfg!(wide_arithmetic) {
-            // Each diagonal step as one multiply-accumulate and one carry into the next limb, as
-            // halo2curves orders it: with the reduction kept out of the product, Firefox spilled
-            // 23 limbs of the Tom-256 square against 31, and ran 734 instructions against 773.
-            let mut carry = 0;
-            Self::each_limb(
-                #[inline(always)]
-                |i| {
-                    let value = limb(a, i);
-                    let (low, high) = mac(value, value, limb(wide.as_slice(), 2 * i), carry);
-                    let (next, carry_out) = adc(0, limb(wide.as_slice(), 2 * i + 1), high);
-                    set(wide.as_mut_slice(), 2 * i, low);
-                    set(wide.as_mut_slice(), 2 * i + 1, next);
-                    carry = u64::from(carry_out);
-                },
-            );
-            return wide;
-        }
         let mut carry = 0;
         Self::each_limb(
             #[inline(always)]
             |i| {
                 let value = limb(a, i);
-                let square = widening_mul(value, value);
-                let (low, carry_low) =
-                    Self::square_adc(carry, limb(wide.as_slice(), 2 * i), square as u64);
-                let (high, carry_high) = Self::square_adc(
-                    carry_low,
-                    limb(wide.as_slice(), 2 * i + 1),
-                    (square >> 64) as u64,
-                );
+                // With wide arithmetic, one multiply-accumulate and one carry into the next limb,
+                // as halo2curves orders them: with the reduction kept out of the product, Firefox
+                // spilled 23 limbs of the Tom-256 square against 31, and ran 734 instructions
+                // against 773.
+                let (low, high, carry_out) = if cfg!(wide_arithmetic) {
+                    let (low, high) =
+                        mac(value, value, limb(wide.as_slice(), 2 * i), u64::from(carry));
+                    let (next, carry_out) = adc(0, limb(wide.as_slice(), 2 * i + 1), high);
+                    (low, next, carry_out)
+                } else {
+                    let square = widening_mul(value, value);
+                    let (low, carry_low) =
+                        Self::square_adc(carry, limb(wide.as_slice(), 2 * i), square as u64);
+                    let (high, carry_high) = Self::square_adc(
+                        carry_low,
+                        limb(wide.as_slice(), 2 * i + 1),
+                        (square >> 64) as u64,
+                    );
+                    (low, high, carry_high)
+                };
                 set(wide.as_mut_slice(), 2 * i, low);
                 set(wide.as_mut_slice(), 2 * i + 1, high);
-                carry = carry_high;
+                carry = carry_out;
             },
         );
         wide
@@ -1135,7 +1129,9 @@ impl<M: Modulus> Shape<M> {
             let (row_top, above) = adc(0, top, carry);
             let low = limb(out.as_slice(), 0);
             let m = low.wrapping_mul(Self::INV);
-            // The low half of `m p0` cancels `low`, and their sum carries unless `low` is zero.
+            // The low half of `m p0` cancels `low`, and their sum carries unless `low` is zero:
+            // Firefox multiplies once for the high half, so the BN254 product took it 154 cycles
+            // against 173, and Chrome 82.2 against 80.8.
             let mut carry = if cfg!(wide_arithmetic) {
                 (widening_mul(m, Self::P0) >> 64) as u64 + u64::from(low != 0)
             } else {
