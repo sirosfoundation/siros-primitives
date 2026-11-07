@@ -53,7 +53,7 @@ fn cell(line: &Value) -> Result<Option<(Value, Option<Count>)>, Error> {
 }
 
 /// The lines of the first of `runs`, each the lines of one run of one bench, with the counts of each
-/// cell from [`fewer`] over the runs. A cell that a run lacks is an [`Error::Missing`].
+/// cell the fewest over the runs. A cell that a run lacks is an [`Error::Missing`].
 pub fn fewest(runs: Vec<Vec<String>>) -> Result<Vec<String>, Error> {
     let mut runs = runs.into_iter();
     let first = runs

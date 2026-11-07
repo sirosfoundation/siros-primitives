@@ -42,8 +42,8 @@ const ROUNDS: usize = 12;
 /// spread over minutes. See the README for the figures that chose it.
 pub const SELECTED_RUNS: usize = 3;
 
-/// The linker flag that keeps in each module the relocations that [`crate::identity`] reads. Only
-/// custom sections and the zeros of `.bss` differ from a module without it.
+/// The linker flag that keeps in each module the relocations that [`Identity`] reads. Only custom
+/// sections and the zeros of `.bss` differ from a module without it.
 pub const KEEP_RELOCATIONS: &str = "-C link-arg=--emit-relocs";
 
 /// One compilation of the benches for WebAssembly.

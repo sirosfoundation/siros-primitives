@@ -79,6 +79,6 @@ pub use suite::{
 #[cfg(not(target_arch = "wasm32"))]
 pub use tool_error::ToolError;
 #[cfg(not(target_arch = "wasm32"))]
-pub use wasm::{FLAVOURS, Flavour, SELECTED_RUNS, WASM, WasmBuild};
+pub use wasm::{FLAVOURS, Flavour, KEEP_RELOCATIONS, SELECTED_RUNS, WASM, WasmBuild};
 #[cfg(not(target_arch = "wasm32"))]
 pub use window::Window;

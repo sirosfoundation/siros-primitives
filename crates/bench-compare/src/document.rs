@@ -9,6 +9,7 @@ use crate::error::Error;
 use crate::record::{Count, Key, Measurement, Outcome, Record, Recorded, Sweep};
 use crate::run::Paths;
 use crate::tool_error::{ToolError, UnmatchedVerdict};
+use crate::wasm::SELECTED_RUNS;
 
 /// The 1-minute load average from which a sweep ran under load.
 pub const LOAD: f64 = 2.0;
@@ -849,6 +850,13 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
         lines.push(format!(
             "- A sweep ran at a 1-minute load of {LOAD} or more: compare figures within a table \
              only."
+        ));
+    }
+    if record.builds.iter().any(|build| build.runs.len() > 1) {
+        lines.push(format!(
+            "- A sweep over part of a build gives each selected cell the fewest figures of \
+             {SELECTED_RUNS} runs of its bench by default. The setup table names each run, and a \
+             verdict compares figures of one run."
         ));
     }
     lines.extend(layout.method.iter().map(|line| format!("- {line}")));

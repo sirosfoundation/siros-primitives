@@ -237,7 +237,7 @@ pub struct Identity<'a> {
 
 impl<'a> Identity<'a> {
     /// The functions of the module `bytes`, which a build with `-C link-arg=--emit-relocs` linked. An
-    /// instruction outside the table of [`crate::module`] is a [`ModuleError`].
+    /// instruction that the reader does not know is a [`ModuleError`].
     pub fn of(bytes: &'a [u8]) -> Result<Self, ModuleError> {
         let module = Module::read(bytes)?;
         let functions = module.functions() as usize;
@@ -420,7 +420,7 @@ impl<'a> Identity<'a> {
     }
 
     /// Whether a word of `bytes`, which a closure of the module captures, can address memory that
-    /// code fills: a number of at least [`LOWEST_ADDRESS`] outside the read-only symbols, as a
+    /// code fills: a number above the first page outside the read-only symbols, as a
     /// pointer to the stack or the heap is. A number that looks like one counts too.
     #[must_use]
     pub fn captures_filled_memory(&self, bytes: &[u8]) -> bool {

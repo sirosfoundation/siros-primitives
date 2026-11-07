@@ -557,7 +557,7 @@ pub(crate) fn with_cargo<T>(
     )
 }
 
-/// The standard output of `cargo` with `args`, which must succeed. See [`with_cargo`].
+/// The standard output of `cargo` with `args`, which must succeed.
 pub fn cargo(
     root: &Path,
     target_dir: &Path,

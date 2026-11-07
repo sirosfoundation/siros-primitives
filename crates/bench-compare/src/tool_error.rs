@@ -9,9 +9,10 @@ pub enum ToolError {
     /// The arguments name no command.
     #[error(
         "usage: {tool} bench [--cpu <cpu>] [--machine <description>] | bench-wasm --chrome \
-         <executable> --firefox <executable> [--changed [--dry-run]] [--runs <runs>] [--cpu <cpu>] \
-         [--browser-cpu <cpu>] [--machine <description>] | stamp-wasm --chrome <executable> | \
-         modules --out <directory> | report"
+         <executable> --firefox <executable> [--changed [--dry-run]] [--runs <runs>] [--target-dir \
+         <directory>] [--cpu <cpu>] [--browser-cpu <cpu>] [--machine <description>] | stamp-wasm \
+         --chrome <executable> [--target-dir <directory>] | modules --out <directory> [--target-dir \
+         <directory>] | report"
     )]
     Usage {
         /// The tool.
