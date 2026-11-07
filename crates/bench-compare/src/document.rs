@@ -711,8 +711,12 @@ const WEBASSEMBLY: &[&str] = &[
      than 32 bytes reads its step the same way.",
     "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count 4 \
      million instructions. They start at a 4 KiB boundary in every case.",
-    "A case whose difference counts under 50 times the noise of the fixed cost of a count stops \
-     the sweep.",
+    "A figure of cycles is the lower rate of the fewest run of n operations and the fewest of 2n, \
+     each less the fewest empty count: under load, a run of each length seldom meets an idle \
+     sibling hardware thread.",
+    "A case whose 2n runs counted no more than its n runs, whose difference counted under 50 times \
+     the noise of the fixed cost of a count, or whose chain step counted under 0.75 cycles ran 31 \
+     more repetitions, up to 3 times. A case that stays so stops the sweep.",
     "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \
      whichever is faster.",
 ];
@@ -861,7 +865,7 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
          faster."
             .to_owned(),
         format!(
-            "- Each figure: over {REPETITIONS} repetitions, the fewest cycles of 2n operations \
+            "- Each native figure: over {REPETITIONS} repetitions, the fewest cycles of 2n operations \
              less the fewest of n, over n. A case whose 2n runs counted no more than its n runs, \
              or whose chain step counted under {FEWEST_STEP_CYCLES} cycles, ran {REPETITIONS} \
              more, up to {RETRIES} times."

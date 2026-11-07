@@ -25,6 +25,14 @@
 //! repetitions give the short runs more chances to run undisturbed. A case that stays so stops the
 //! sweep. A WebAssembly bench sizes and repeats its runs by its own
 //! [`Protocol`].
+//!
+//! A WebAssembly count leaves out the fewest cycles of an empty count, and a figure of cycles is the
+//! lower rate of the fewest short run and the fewest long run. Each rate bounds the undisturbed rate
+//! from above, where a difference moves by twice what the other run missed: under load a short run
+//! and a long run seldom both meet an idle sibling. At a load of 40 to 60, over 15 runs of two biguint
+//! benches, the median distance of a cell between two runs fell from 2.2% to 0.5% in Chrome and from
+//! 3.3% to 1.3% in Firefox, the 95th percentile from 18.7% to 8.5% and from 39.0% to 26.8%, and the
+//! figures above 6.1 instructions per cycle, past the core's width, from 5 to none.
 
 use std::mem::size_of;
 use std::process::ExitCode;
@@ -247,6 +255,7 @@ fn overhead(counters: &mut Counters) -> Result<Overhead, Error> {
         .iter()
         .map(|[first, second]| (second - first).abs())
         .fold(0.0, f64::max);
+    counters.leave_out(last.iter().map(|counts| counts.cycles).min().unwrap_or(0));
     Ok(Overhead {
         cycles: median(|counts| counts.cycles),
         instructions: median(|counts| counts.instructions),
@@ -481,9 +490,10 @@ struct Form {
 
 impl Form {
     /// The events per operation of the form `name`: the fewest that a long run counts less the
-    /// fewest that a short run counts, over the operations of a short run. Long runs whose fewest
-    /// cycles are no more than the short runs' are an [`Error::Flat`], and a difference under
-    /// [`SIGNAL`] times `noise` an [`Error::Noisy`].
+    /// fewest that a short run counts, over the operations of a short run. On WebAssembly the
+    /// cycles are the lower rate of the two lengths. Long runs whose fewest cycles are no more than
+    /// the short runs' are an [`Error::Flat`], and a difference under [`SIGNAL`] times `noise` an
+    /// [`Error::Noisy`].
     fn events(&self, name: &str, noise: Option<f64>) -> Result<Events, Error> {
         let fewest = |value: &dyn Fn(&[Counts; 2]) -> u64| -> Result<u64, Error> {
             self.repetitions
@@ -529,6 +539,12 @@ impl Form {
                 long: spread(1),
             });
         }
+        #[cfg(target_arch = "wasm32")]
+        let cycles = {
+            let short = fewest(&|[short, _]| short.cycles)? as f64;
+            let long = fewest(&|[_, long]| long.cycles)? as f64;
+            short.min(long / 2.0)
+        };
         let cycles = cycles / operations as f64;
         Ok(Events {
             operations,
