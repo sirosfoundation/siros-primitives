@@ -85,21 +85,29 @@ impl<S: LimbSource> LimbStream for Pull<S> {
 }
 
 /// The next `L` limbs of `stream`. Up to four limbs the pull unrolls; longer pulls run in groups of
-/// four. On WebAssembly, a pull of more than 32 limbs runs in blocks of 32, which LLVM unrolls
-/// whole: in a loop, every access adds its offset to the address, which the unrolled pull carries
-/// in the load. The 4096-bit sum took Chrome 342 cycles in blocks against 426 in a loop, Firefox
-/// 374 against 464.
+/// four. On WebAssembly, a pull of more than 32 limbs runs in blocks of 32. LLVM unrolls a block
+/// whole, then splits the operands and the output into locals, with no bulk memory operation.
+/// Without wide arithmetic it unrolls only the first block of a loop of blocks, so the second runs
+/// outside the loop: the 4096-bit sum took Chrome 247 cycles against 340, Firefox 319 against 398.
 #[inline(always)]
 pub(crate) fn pull_limbs<L: ArrayLength>(stream: &mut impl LimbStream) -> GenericArray<u64, L> {
     if L::USIZE <= 4 {
         GenericArray::generate(|_| stream.next_limb())
     } else if cfg!(target_arch = "wasm32") && L::USIZE > 32 {
         let mut limbs = GenericArray::<u64, L>::default();
+        let mut pull = |slots: &mut [u64]| for_each_slot(slots, |slot| *slot = stream.next_limb());
         let (blocks, rest) = limbs.as_chunks_mut::<32>();
-        for block in blocks {
-            for_each_slot(block, |slot| *slot = stream.next_limb());
+        let mut blocks = blocks.iter_mut();
+        if let Some(block) = blocks.next() {
+            pull(block);
         }
-        for_each_slot(rest, |slot| *slot = stream.next_limb());
+        if let Some(block) = blocks.next() {
+            pull(block);
+        }
+        for block in blocks {
+            pull(block);
+        }
+        pull(rest);
         limbs
     } else {
         let mut limbs = GenericArray::<u64, L>::default();
