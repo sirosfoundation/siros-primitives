@@ -855,10 +855,13 @@ impl<'a, K: Key> Progress<'a, K> {
         std::thread::scope(|scope| {
             let (sender, received) = mpsc::channel();
             loop {
-                while failure.is_none() && !free.is_empty() {
-                    let (Some(unit), Some(stream)) = (self.queue.pop_front(), free.pop()) else {
-                        break;
-                    };
+                let starting = if failure.is_none() {
+                    free.len().min(self.queue.len())
+                } else {
+                    0
+                };
+                let streams = free.split_off(free.len() - starting);
+                for (unit, stream) in self.queue.drain(..starting).zip(streams.into_iter().rev()) {
                     self.running.push((unit.build, unit.bench));
                     let sender = sender.clone();
                     drop(scope.spawn(move || {
