@@ -32,7 +32,8 @@
 //! and a long run seldom both meet an idle sibling. At a load of 40 to 60, over 15 runs of two biguint
 //! benches, the median distance of a cell between two runs fell from 2.2% to 0.5% in Chrome and from
 //! 3.3% to 1.3% in Firefox, the 95th percentile from 18.7% to 8.5% and from 39.0% to 26.8%, and the
-//! figures above 6.1 instructions per cycle, past the core's width, from 5 to none.
+//! figures above 6.1 instructions per cycle, past the core's width, from 5 to none. Only a chain step
+//! under [`FEWEST_STEP_CYCLES`] runs more repetitions there.
 
 use std::mem::size_of;
 use std::process::ExitCode;
@@ -132,11 +133,6 @@ impl Length {
     }
 }
 
-/// The fewest times the noise of the fixed cost of a count that a difference of a case counts,
-/// where the counts reach the counters through requests: its figure then moves by at most 2%
-/// with that cost.
-const SIGNAL: f64 = 50.0;
-
 /// The operations of the first sizing run, and the fewest of a short run.
 const FEWEST: usize = 16;
 
@@ -193,7 +189,7 @@ pub fn main<S: Suite>(name: &str) -> ExitCode {
         let overhead = overhead(&mut counters)?;
         let line = Line::<S::Key>::Overhead(overhead);
         let mut lines = vec![serde_json::to_string(&line).map_err(Error::Cells)?];
-        lines.extend(cells::<S>(&mut counters, Some(overhead.noise))?);
+        lines.extend(cells::<S>(&mut counters)?);
         Ok(lines)
     });
     match measured {
@@ -257,7 +253,7 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
     crate::counters::pin(cpu)?;
     let mut counters = Counters::open()?;
     let window = crate::window::Window::open(cpu)?;
-    let mut lines = match cells::<S>(&mut counters, None) {
+    let mut lines = match cells::<S>(&mut counters) {
         Ok(lines) => lines,
         Err(error) => return Err(error.at_load(crate::window::load()?)),
     };
@@ -267,9 +263,8 @@ fn sweep<S: Suite>(cpu: usize) -> Result<Vec<String>, Error> {
 }
 
 /// Checks and measures every case with `counters`; returns the line of every cell, in the order
-/// of [`visit`]. `noise` is the noise of the fixed cost of a count where the counts reach the
-/// counters through requests; such a difference counts at least [`SIGNAL`] times as many cycles.
-fn cells<S: Suite>(counters: &mut Counters, noise: Option<f64>) -> Result<Vec<String>, Error> {
+/// of [`visit`].
+fn cells<S: Suite>(counters: &mut Counters) -> Result<Vec<String>, Error> {
     // Pass 0 checks and sizes the cases; pass `r` runs repetition `r`.
     let mut measuring = Measuring {
         counters,
@@ -294,11 +289,7 @@ fn cells<S: Suite>(counters: &mut Counters, noise: Option<f64>) -> Result<Vec<St
                 return Err(error);
             }
         }
-        let settled: Vec<bool> = measuring
-            .cases
-            .iter()
-            .map(|case| case.settled(noise))
-            .collect();
+        let settled: Vec<bool> = measuring.cases.iter().map(Case::settled).collect();
         if retries == RETRIES || settled.iter().all(|settled| *settled) {
             break;
         }
@@ -316,7 +307,7 @@ fn cells<S: Suite>(counters: &mut Counters, noise: Option<f64>) -> Result<Vec<St
                     .iter()
                     .find(|case| case.id == name)
                     .ok_or_else(|| Error::missing(&name, "the measured cases"))?;
-                Outcome::Counted(case.count(function, noise)?)
+                Outcome::Counted(case.count(function)?)
             }
             Call::Absent(reason) => Outcome::Absent((*reason).to_owned()),
         };
@@ -371,10 +362,9 @@ struct Form {
 impl Form {
     /// The events per operation of the form `name`: the fewest that a long run counts less the
     /// fewest that a short run counts, over the operations of a short run. On WebAssembly the
-    /// cycles are the lower rate of the two lengths. Long runs whose fewest cycles are no more than
-    /// the short runs' are an [`Error::Flat`], and a difference under [`SIGNAL`] times `noise` an
-    /// [`Error::Noisy`].
-    fn events(&self, name: &str, noise: Option<f64>) -> Result<Events, Error> {
+    /// cycles are the lower rate of the two lengths. Natively, long runs whose fewest cycles are no
+    /// more than the short runs' are an [`Error::Flat`].
+    fn events(&self, name: &str) -> Result<Events, Error> {
         let fewest = |value: &dyn Fn(&[Counts; 2]) -> u64| -> Result<u64, Error> {
             self.repetitions
                 .iter()
@@ -389,41 +379,22 @@ impl Form {
         };
         let operations = self.run.operations();
         let per = |event| Ok::<f64, Error>(difference(event)? / operations as f64);
-        let cycles = difference(|counts| counts.cycles)?;
-        if cycles <= 0.0 {
-            return Err(Error::Flat {
-                case: name.to_owned(),
-                operations,
-            });
-        }
-        if let Some(noise) = noise.filter(|noise| cycles < SIGNAL * noise) {
-            let spread = |run: usize| {
-                let mut values: Vec<u64> = self
-                    .repetitions
-                    .iter()
-                    .map(|counts| counts[run].cycles)
-                    .collect();
-                values.sort_unstable();
-                format!(
-                    "fewest {}, median {}, most {}",
-                    values[0],
-                    values[values.len() / 2],
-                    values[values.len() - 1]
-                )
-            };
-            return Err(Error::Noisy {
-                case: name.to_owned(),
-                cycles,
-                noise,
-                short: spread(0),
-                long: spread(1),
-            });
-        }
         #[cfg(target_arch = "wasm32")]
         let cycles = {
             let short = fewest(&|[short, _]| short.cycles)? as f64;
             let long = fewest(&|[_, long]| long.cycles)? as f64;
             short.min(long / 2.0)
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        let cycles = {
+            let cycles = difference(|counts| counts.cycles)?;
+            if cycles <= 0.0 {
+                return Err(Error::Flat {
+                    case: name.to_owned(),
+                    operations,
+                });
+            }
+            cycles
         };
         let cycles = cycles / operations as f64;
         Ok(Events {
@@ -451,14 +422,14 @@ struct Case {
 }
 
 impl Case {
-    /// Whether every form of the case has a plausible figure: its long runs count more cycles
-    /// than its short runs, and each chain step at least [`FEWEST_STEP_CYCLES`].
-    fn settled(&self, noise: Option<f64>) -> bool {
-        self.batch.events(&self.id, noise).is_ok()
+    /// Whether every form of the case has a plausible figure: natively, its long runs count more
+    /// cycles than its short runs, and each chain step at least [`FEWEST_STEP_CYCLES`].
+    fn settled(&self) -> bool {
+        self.batch.events(&self.id).is_ok()
             && self.chains.iter().all(|chain| {
                 chain
                     .form
-                    .events(&self.id, noise)
+                    .events(&self.id)
                     .is_ok_and(|events| events.cycles >= FEWEST_STEP_CYCLES)
             })
     }
@@ -466,13 +437,13 @@ impl Case {
     /// The cell of the case, which runs `function`: its latency is its chain form with the fewest
     /// cycles per step. A chain step under [`FEWEST_STEP_CYCLES`], in any form, is an
     /// [`Error::Reassociated`].
-    fn count(&self, function: &Function, noise: Option<f64>) -> Result<Count, Error> {
+    fn count(&self, function: &Function) -> Result<Count, Error> {
         let latencies = self
             .chains
             .iter()
             .map(|chain| {
                 let name = format!("{} chain in {}", self.id, chain.class);
-                let events = chain.form.events(&name, noise)?;
+                let events = chain.form.events(&name)?;
                 if events.cycles < FEWEST_STEP_CYCLES {
                     return Err(Error::Reassociated {
                         case: name,
@@ -490,7 +461,7 @@ impl Case {
         Ok(Count {
             function: function.name.to_owned(),
             deviation: function.deviation.map(str::to_owned),
-            batch: self.batch.events(&self.id, noise)?,
+            batch: self.batch.events(&self.id)?,
             chain: latencies
                 .into_iter()
                 .min_by(|a, b| a.events.cycles.total_cmp(&b.events.cycles)),

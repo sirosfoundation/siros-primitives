@@ -103,8 +103,8 @@ cargo run --release -p bench-compare --bin bench-browser -- \
   one-`add` chain step: the fewest of each length is the run that met an idle sibling.
 - Latency runs the chain `x = op(x, y)` with `x` held in registers between steps. Every case first
   matches the accepted results. The bench pins itself to CPU 15.
-- A sweep stops on multiplexed counters, on long runs that count no more cycles than short runs,
-  on a chain step under 0.75 cycles, and on a `[profile.bench]` without `lto = "fat"`.
+- A sweep stops on multiplexed counters, natively on long runs that count no more cycles than short
+  runs, on a chain step under 0.75 cycles, and on a `[profile.bench]` without `lto = "fat"`.
 - Bold ties the row's fewest. `*` deviates from the row's definition and is never bold. A crate
   without a variable-time function shows its constant-time one in the variable-time table.
 - `report` prints every odd cell to the terminal: a figure more than 10% above the crate's figure
@@ -129,9 +129,9 @@ cargo run --release -p bench-compare --bin bench-browser -- \
 - A run passes over its operand sets, of up to 256 KiB as natively, as many times as it takes to
   count 4 million instructions, which load does not change: sizing on cycles stopped early on a
   loaded machine.
-- Each bench first counts 1,000 empty regions: a case whose difference counts under 50 times the
-  noise of the fixed cost of a count stops the sweep. That noise is the difference of the fewest
-  counts of two sets of 31 empty counts, the largest of four pairs.
+- Each bench first counts 1,000 empty regions: the fewest of the last 248 is the fixed cost that
+  every later count leaves out. The setup table gives its noise, the difference of the fewest counts
+  of two sets of 31 empty counts, the largest of four pairs.
 - A figure of cycles is the lower rate of the fewest run of n operations and the fewest of 2n, each
   less the fewest empty count. A disturbance only adds counts (Chen and Revels, 2016), so each rate
   bounds the undisturbed one from above, where a difference moves by twice what the other run

@@ -499,9 +499,8 @@ const WEBASSEMBLY: &[&str] = &[
      million instructions. They start at a 4 KiB boundary in every case.",
     "A figure of cycles is the lower rate of the fewest run of n operations and the fewest of 2n, \
      each less the fewest empty count: under load, a run of each length seldom meets an idle \
-     sibling hardware thread.",
-    "A case whose difference counts under 50 times the noise of the fixed cost of a count stops \
-     the sweep.",
+     sibling hardware thread. A case whose chain step counted under 0.75 cycles ran 31 more \
+     repetitions, up to 3 times.",
     "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \
      whichever is faster.",
 ];
