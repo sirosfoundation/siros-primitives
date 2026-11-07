@@ -166,31 +166,31 @@ replace old ones, with no minimum across runs. A round repeats while a kept figu
 re-measured row, 12 times at most; past that the tool stops with an error. `--dry-run` prints the
 cells of the first round of each build. A `bench-wasm` without `--changed` measures every cell.
 
-`report` refuses a record whose verdict compares figures of different runs: per build, operation, row
-and part, one of the tied fewest figures and one of the best competitor's must come from the subject's
-run. Each cell records its run. The setup table of `BENCHMARKS.md` gives each run's commit, cells and
-load.
+`report` refuses a record whose verdict compares figures of different runs: per build, operation,
+row and part, one of the tied fewest figures and one of the best competitor's must come from the
+subject's run. Each cell records its run. The setup table of `BENCHMARKS.md` gives each run's
+commit, cells and load.
 
 The hash in `src/identity.rs` is a Merkle hash over the reachable functions and data. It reads the
 relocations that `KEEP_RELOCATIONS` (`-C link-arg=--emit-relocs`) keeps in each module, so each
 address resolves to its symbol: layout leaves the hash, and the symbol's bytes enter it. The flag
-adds custom sections and writes the zeros of `.bss` as a data segment. The two `num-bigint` crates of
-the prime-field plain builds swap places in those modules, because `RUSTFLAGS` enters the file names
-of the rlibs; every function body stays the same. An opcode or a relocation that the reader does not
-know stops the tool with its offset. `bench-browser diff` names the functions that differ between two
-modules, and `bench-browser edges` prints the call edges that the reader sees, to compare with
-`wasm-tools print`.
+adds custom sections and writes the zeros of `.bss` as a data segment. The two `num-bigint` crates
+of the prime-field plain builds swap places in those modules, because `RUSTFLAGS` enters the file
+names of the rlibs; every function body stays the same. An opcode or a relocation that the reader
+does not know stops the tool with its offset. `bench-browser diff` names the functions that differ
+between two modules, and `bench-browser edges` prints the call edges that the reader sees, to
+compare with `wasm-tools print`.
 
-`stamp-wasm` writes the keys of a record measured at an earlier commit, without measuring. It refuses
-a record that ran dirty or that a sweep left unfinished, uncommitted changes in the measured sources,
-and sources that differ from the record's `head`: a root `Cargo.toml` that differs beyond its
-`members`, and a `Cargo.lock` where the measured package reaches a package or a version that it
-reaches nowhere at `head`. The files of `bench-compare` and `bench-tools` stay out of that check: run
-`bench-browser diff` between the modules of both commits first.
+`stamp-wasm` writes the keys of a record measured at an earlier commit, without measuring. It
+refuses a record that ran dirty or that a sweep left unfinished, uncommitted changes in the measured
+sources, and sources that differ from the record's `head`: a root `Cargo.toml` that differs beyond
+its `members`, and a `Cargo.lock` where the measured package reaches a package or a version that it
+reaches nowhere at `head`. The files of `bench-compare` and `bench-tools` stay out of that check:
+run `bench-browser diff` between the modules of both commits first.
 
-A selected cell takes the fewest figures of `SELECTED_RUNS`, 3, runs of its bench: repetitions within
-one run can all meet one burst of load, where a full run spreads them over minutes. Cycles of 384
-figures of 48 cells across 16 operations in two crates, against the full runs of the same module
+A selected cell takes the fewest figures of `SELECTED_RUNS`, 3, runs of its bench: repetitions
+within one run can all meet one burst of load, where a full run spreads them over minutes. Cycles of
+384 figures of 48 cells across 16 operations in two crates, against the full runs of the same module
 before and after them, at load 29 to 96:
 
 | Against each full run     | Median distance | 95th percentile | Median signed difference |
@@ -200,9 +200,9 @@ before and after them, at load 29 to 96:
 | Fewest of 2 selected runs | 0.7%, 0.7%      | 5.5%, 6.7%      | -0.2%, -0.1%             |
 | Fewest of 3 selected runs | 0.6%, 0.7%      | 5.3%, 5.9%      | -0.4%, -0.2%             |
 
-Above the fewest figure of all seven runs of a cell, a full run stands at a median of 0.7% and a 95th
-percentile of 5.9%, 3 selected runs at 0.2% and 2.2%. A verdict compares figures of one run, so the
-offset between runs stays out of it. Instructions differ by a median of 0.000%; a chain's count
+Above the fewest figure of all seven runs of a cell, a full run stands at a median of 0.7% and a
+95th percentile of 5.9%, 3 selected runs at 0.2% and 2.2%. A verdict compares figures of one run, so
+the offset between runs stays out of it. Instructions differ by a median of 0.000%; a chain's count
 follows its class, which each run picks by its cycles.
 
 ## Sweeps that stop
@@ -217,11 +217,17 @@ code until a run measures it again, and a row whose rounds a stop cut short star
 A `bench-wasm` without `--changed` measures every cell again.
 
 Each run of a bench runs in a process of its own, which reads its module from the standard input and
-which the kernel kills when the sweep dies. A browser whose driver died waits for requests that never
-come; the next driver kills it and removes its profile.
+which the kernel kills when the sweep dies. A browser whose driver died waits for requests that
+never come; the next driver kills it and removes its profile.
 
 ## Two streams
 
 `--cpu 8,9 --browser-cpu 10,11` measures on two streams, CPUs 8 and 10 and CPUs 9 and 11, which take
-the runs of every build from one queue. Each run is one bench of one build, and the setup table names
-its CPU and load. A verdict compares figures of one run, so of one stream.
+the runs of every build from one queue. Each run is one bench of one build, and the setup table
+names its CPU and load. A verdict compares figures of one run, so of one stream.
+
+A sweep of the 2228 cells of biguint measured for 885 s on two streams, at load 22 to 25. Two sweeps
+on one stream just before it measured for 2688 s, as the load rose from 25 to 41, and for 1672 s,
+as it fell from 40 to 27. The figures of the two streams stand at a median distance of 0.34% and a
+95th percentile of 4.4% from the second sweep on one stream, and of 1.1% and 7.8% from the first;
+the two sweeps on one stream stand at 1.1% and 7.5% from each other.
