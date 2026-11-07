@@ -10,9 +10,9 @@ No primitive depends on this crate.
   - `bench [--cpu <cpu>] [--machine <description>]` builds, runs and records
     `benchmarks/record.json`;
   - `bench-wasm --chrome <executable> --firefox <executable> [--changed [--dry-run]] [--runs <runs>]
-    [--target-dir <directory>] [--cpu <cpu>] [--browser-cpu <cpu>] [--machine <description>]` builds
-    the builds of `WASM` and runs them in the two browsers, then records
-    `benchmarks/record-wasm.json`;
+    [--target-dir <directory>] [--cpu <cpu>[,<cpu>...]] [--browser-cpu <cpu>[,<cpu>...]] [--machine
+    <description>]` builds the builds of `WASM` and runs them in the two browsers, on one stream per
+    measuring CPU, and records `benchmarks/record-wasm.json` after each run of a bench;
   - `stamp-wasm --chrome <executable> [--target-dir <directory>]` writes the keys of the tree into
     the WebAssembly record;
   - `modules --out <directory> [--target-dir <directory>]` builds the modules of a decision;
@@ -182,8 +182,10 @@ modules, and `bench-browser edges` prints the call edges that the reader sees, t
 `wasm-tools print`.
 
 `stamp-wasm` writes the keys of a record measured at an earlier commit, without measuring. It refuses
-a record that ran dirty, uncommitted changes in the measured sources, and sources that differ from
-the record's `head`. The files of `bench-compare` and `bench-tools` stay out of that check: run
+a record that ran dirty or that a sweep left unfinished, uncommitted changes in the measured sources,
+and sources that differ from the record's `head`: a root `Cargo.toml` that differs beyond its
+`members`, and a `Cargo.lock` where the measured package reaches a package or a version that it
+reaches nowhere at `head`. The files of `bench-compare` and `bench-tools` stay out of that check: run
 `bench-browser diff` between the modules of both commits first.
 
 A selected cell takes the fewest figures of `SELECTED_RUNS`, 3, runs of its bench: repetitions within
@@ -202,3 +204,23 @@ Above the fewest figure of all seven runs of a cell, a full run stands at a medi
 percentile of 5.9%, 3 selected runs at 0.2% and 2.2%. A verdict compares figures of one run, so the
 offset between runs stays out of it. Instructions differ by a median of 0.000%; a chain's count
 follows its class, which each run picks by its cycles.
+
+## Sweeps that stop
+
+`bench-wasm` writes its record after each run of a bench in a build, marked `"unfinished": true`, by
+renaming a complete file over the old one. `report` and `stamp-wasm` refuse such a record. A run that
+its bench or its browser stops takes up to three attempts, `ATTEMPTS`. Past them the sweep hands out
+no more runs, lets the running ones end and record their figures, and stops with the error.
+`bench-wasm --changed` then measures what remains: a kept figure whose key differs holds no code
+until a run measures it again, and a row whose rounds a stop cut short starts the first round. A
+`bench-wasm` without `--changed` measures every cell again.
+
+Each run of a bench runs in a process of its own, which reads its module from the standard input and
+which the kernel kills when the sweep dies. A browser whose driver died waits for requests that never
+come; the next driver kills it and removes its profile.
+
+## Two streams
+
+`--cpu 8,9 --browser-cpu 10,11` measures on two streams, CPUs 8 and 10 and CPUs 9 and 11, which take
+the runs of every build from one queue. Each run is one bench of one build, and the setup table names
+its CPU and load. A verdict compares figures of one run, so of one stream.

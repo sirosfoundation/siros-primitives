@@ -13,7 +13,7 @@ use serde::Deserialize;
 use crate::browser::Browser;
 use crate::record::{Measurement, Record, Recorded, Run, Version};
 use crate::tool_error::ToolError;
-use crate::wasm::{bench_wasm, stamp_wasm, write_modules};
+use crate::wasm::{RUN_BENCH, bench_wasm, run_bench, stamp_wasm, write_modules};
 use crate::workspace::Sources;
 
 /// A build of the bench.
@@ -99,11 +99,12 @@ pub struct Measured {
 /// The options of `bench` and `bench-wasm`.
 #[derive(Default)]
 pub struct Options {
-    /// The CPU of the measuring thread; the bench's own default when absent.
+    /// The CPU of the measuring thread; the bench's own default when absent. `bench-wasm` takes a
+    /// list, separated by commas: one stream per CPU.
     pub cpu: Option<String>,
     /// The operator's description of the machine.
     pub machine: Option<String>,
-    /// The CPU of the browser's other threads; the measuring CPU when absent.
+    /// The CPU of the browser's other threads, one per stream; the measuring CPU when absent.
     pub browser_cpu: Option<String>,
     /// The executable of Chrome or Chromium.
     pub chrome: Option<PathBuf>,
@@ -193,8 +194,9 @@ impl Options {
 /// Runs the report tool `tool` with the process arguments:
 /// - `bench [--cpu <cpu>] [--machine <description>]` measures the native builds and records them;
 /// - `bench-wasm --chrome <executable> --firefox <executable> [--changed [--dry-run]] [--runs <runs>]
-///   [--target-dir <directory>] [--cpu <cpu>] [--browser-cpu <cpu>] [--machine <description>]`
-///   measures the WebAssembly builds and records them;
+///   [--target-dir <directory>] [--cpu <cpu>[,<cpu>...]] [--browser-cpu <cpu>[,<cpu>...]]
+///   [--machine <description>]` measures the WebAssembly builds and records them, on one stream per
+///   measuring CPU;
 /// - `stamp-wasm --chrome <executable> [--target-dir <directory>]` writes the keys of the tree into
 ///   the WebAssembly record;
 /// - `modules --out <directory> [--target-dir <directory>]` builds the modules for
@@ -229,6 +231,7 @@ pub fn execute<K: Key>(
                 .and_then(|options| write_modules(paths, measured, &options, Path::new(out)))
         }
         [command] if command == "report" => report_records(paths, layout),
+        [command, arguments @ ..] if command == RUN_BENCH => run_bench(arguments),
         _ => Err(usage()),
     };
     match result {
@@ -256,12 +259,12 @@ fn report_records<K: Key>(
 
 /// The fields of a record of a run that starts at `started` seconds after the Unix epoch, with no
 /// build yet.
-pub(crate) fn skeleton<K: Key>(
+pub(crate) fn skeleton<K: Key, O>(
     paths: &Paths,
     measured: &Measured,
     options: &Options,
     started: u64,
-) -> Result<Record<K>, ToolError> {
+) -> Result<Record<K, O>, ToolError> {
     let rustc = output(Command::new("rustc").arg("-vV").current_dir(&paths.root))?;
     let target_cpus = output(
         Command::new("rustc")
@@ -315,7 +318,7 @@ pub(crate) fn bench<K: Key>(
     options: Options,
 ) -> Result<(), ToolError> {
     let started = now()?;
-    let fresh = skeleton::<K>(paths, measured, &options, started)?;
+    let fresh: Record<K> = skeleton(paths, measured, &options, started)?;
     let measurements = builds
         .iter()
         .map(|build| {

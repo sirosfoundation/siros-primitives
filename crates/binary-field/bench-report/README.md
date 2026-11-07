@@ -24,7 +24,8 @@ table. `bench` needs Linux with `kernel.perf_event_paranoid` at 2 or below; a un
 
 `bench-wasm` builds the benches for `wasm32-unknown-unknown`, with and without wide arithmetic,
 runs each build in Chrome and in Firefox, and records the counts in `benchmarks/record-wasm.json`;
-`report` adds their tables. `--changed` measures the cells whose key differs from the record, with
-the figures they are compared with; `stamp-wasm` writes the keys of the tree into a record of the same
+`report` adds their tables. `--changed` measures the cells whose key differs from the record or that
+a stopped sweep left, with the figures they are compared with; `--cpu 8,9 --browser-cpu 10,11` runs
+two streams; `stamp-wasm` writes the keys of the tree into a record of the same
 sources; `modules` writes the modules of a `bench-browser decide`.
 [`bench-tools`](../../bench-tools) describes the browser driver and these keys.

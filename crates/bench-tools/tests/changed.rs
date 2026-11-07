@@ -1,13 +1,17 @@
 //! The action cache over the figures of a record: what a changed cell re-measures, how a round's
-//! figures replace the kept ones, and the rule that a verdict compares figures of one run.
+//! figures replace the kept ones, the rule that a verdict compares figures of one run, the record
+//! that a stopped sweep leaves, and the streams of a sweep.
 
 use std::collections::HashSet;
+use std::fmt;
+use std::path::Path;
 
 use bench_compare::{Cell, Count, Events, Load, Outcome, Selection, SelectionError, Sweep};
 use bench_tools::{
-    CellId, Layout, Measurement, Operation, Record, Recorded, Run, ToolError, check_records,
-    compact, merge, overtaken, select,
+    CellId, Cpus, Layout, Measurement, Operation, Record, Recorded, Run, ToolError, Unfinished,
+    check_records, compact, merge, overtaken, select, streams,
 };
+use serde::{Deserialize, Serialize};
 
 const SUBJECT: &str = "subject";
 
@@ -51,6 +55,18 @@ fn recorded(op: &str, key: u32, library: &str, cycles: f64, run: usize) -> Recor
         run,
         code: Some("code".to_owned()),
     }
+}
+
+/// `cells` as figures of the run `run`.
+fn fresh(cells: Vec<Cell<u32>>, run: usize) -> Vec<Recorded<u32>> {
+    cells
+        .into_iter()
+        .map(|cell| Recorded {
+            cell,
+            run,
+            code: Some("code".to_owned()),
+        })
+        .collect()
 }
 
 fn absent(op: &str, key: u32, library: &str) -> Recorded<u32> {
@@ -141,7 +157,7 @@ fn rounds_end_with_every_verdict_matched() {
             .collect()
     };
 
-    merge(&mut cells, round(&rows), 1).expect("cells of the sample");
+    merge(&mut cells, fresh(round(&rows), 1)).expect("cells of the sample");
     let kept = cells
         .iter()
         .find(|cell| CellId::of(&cell.cell) == id("mul", 256, "a"))
@@ -161,11 +177,11 @@ fn rounds_end_with_every_verdict_matched() {
     );
 
     let rows: Vec<(&str, f64)> = vec![(SUBJECT, 8.0), ("a", 9.0), ("b", 7.5)];
-    merge(&mut cells, round(&rows), 2).expect("cells of the sample");
+    merge(&mut cells, fresh(round(&rows), 2)).expect("cells of the sample");
     // The runs of the other rows are the sample's first run.
     assert!(overtaken(&LAYOUT, &cells).expect("a table").is_empty());
 
-    assert!(merge(&mut cells, vec![counted("mul", 128, "a", 1.0)], 3).is_err());
+    assert!(merge(&mut cells, fresh(vec![counted("mul", 128, "a", 1.0)], 3)).is_err());
 
     let runs = compact(vec![run(), run(), run()], &mut cells);
     assert_eq!(runs.len(), 2);
@@ -192,7 +208,7 @@ fn run() -> Run {
     }
 }
 
-fn record(cells: Vec<Recorded<u32>>) -> Record<u32> {
+fn record<K, O>(cells: Vec<Recorded<K>>) -> Record<K, O> {
     Record {
         date: "2026-11-07".to_owned(),
         head: "0123456789abcdef".to_owned(),
@@ -224,13 +240,16 @@ fn record(cells: Vec<Recorded<u32>>) -> Record<u32> {
 /// The owner's rule: a fresh figure is never compared with one recorded under other conditions.
 #[test]
 fn report_refuses_a_verdict_across_runs() {
-    let matched = record(sample());
+    let matched: Record<u32> = record(sample());
     check_records(&LAYOUT, &matched, None).expect("a record of one run");
 
     // The subject comes from the second run, and the row's leader stays in the first.
     let mut unmatched = sample();
-    merge(&mut unmatched, vec![counted("mul", 256, SUBJECT, 8.0)], 1)
-        .expect("a cell of the sample");
+    merge(
+        &mut unmatched,
+        fresh(vec![counted("mul", 256, SUBJECT, 8.0)], 1),
+    )
+    .expect("a cell of the sample");
     let error =
         check_records(&LAYOUT, &record(unmatched), None).expect_err("a verdict across runs");
     assert!(matches!(error, ToolError::Unmatched(_)), "{error}");
@@ -262,4 +281,75 @@ fn a_selection_refuses_a_pattern_without_a_cell() {
     ));
     selection.note("mul", "512", "a");
     assert!(selection.check_matched().is_ok());
+}
+
+/// A row as a record holds it: a field of each cell.
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+struct Bits {
+    bits: u32,
+}
+
+impl fmt::Display for Bits {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.bits)
+    }
+}
+
+/// The record of the sample with rows that a file holds.
+fn on_file<O>() -> Record<Bits, O> {
+    record(
+        sample()
+            .into_iter()
+            .map(|recorded| Recorded {
+                cell: Cell {
+                    op: recorded.cell.op,
+                    key: Bits {
+                        bits: recorded.cell.key,
+                    },
+                    library: recorded.cell.library,
+                    outcome: recorded.cell.outcome,
+                },
+                run: recorded.run,
+                code: recorded.code,
+            })
+            .collect(),
+    )
+}
+
+/// A record that a sweep left after a kill holds some cells only: `report` and `stamp-wasm`, which
+/// read it as finished, refuse it, and `bench-wasm --changed` goes on from it.
+#[test]
+fn a_finished_record_is_never_an_unfinished_one() {
+    let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join("unfinished-record.json");
+    let unfinished: Unfinished<Bits> = on_file();
+    unfinished.write_unfinished(&path).expect("a writable file");
+    let error = Record::<Bits>::read(&path).expect_err("an unfinished record");
+    assert!(matches!(error, ToolError::Unfinished { .. }), "{error}");
+    let resumed = Unfinished::<Bits>::resume(&path).expect("an unfinished record");
+    assert_eq!(resumed.builds[0].cells.len(), sample().len());
+
+    let finished: Record<Bits> = on_file();
+    finished.write(&path).expect("a writable file");
+    drop(Record::<Bits>::read(&path).expect("a finished record"));
+    drop(Unfinished::<Bits>::resume(&path).expect("a finished record"));
+}
+
+/// Two streams that share a CPU would measure with each other's browser on it.
+#[test]
+fn streams_share_no_cpu() {
+    let pairs = |cpus: &[Cpus]| -> Vec<(usize, usize)> {
+        cpus.iter()
+            .map(|cpus| (cpus.measuring, cpus.browser))
+            .collect()
+    };
+    let two = streams(Some("8,9"), Some("10,11")).expect("two streams");
+    assert_eq!(pairs(&two), [(8, 10), (9, 11)]);
+    let alone = streams(Some("8"), None).expect("one stream");
+    assert_eq!(pairs(&alone), [(8, 8)]);
+    for (cpus, browser) in [("8,9", Some("10")), ("8,9", Some("10,8")), ("8,8", None)] {
+        assert!(
+            matches!(streams(Some(cpus), browser), Err(ToolError::Streams { .. })),
+            "{cpus} {browser:?}"
+        );
+    }
 }

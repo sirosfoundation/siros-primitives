@@ -195,22 +195,17 @@ pub fn overtaken<K: Key>(
     Ok(seeds)
 }
 
-/// Replaces the figures of the cells of `cells` that `fresh` names by those of `fresh`, which come
-/// from the run `run`. It takes no minimum with the old figures: a figure of an earlier run met other
-/// conditions. A fresh cell that `cells` lacks is an [`Error::Missing`](bench_compare::Error::Missing).
-pub fn merge<K: Key>(
-    cells: &mut [Recorded<K>],
-    fresh: Vec<Cell<K>>,
-    run: usize,
-) -> Result<(), ToolError> {
-    for cell in fresh {
-        let id = CellId::of(&cell);
+/// Replaces the cells of `cells` that `fresh` names by those of `fresh`, with their runs and codes.
+/// It takes no minimum with the old figures: a figure of an earlier run met other conditions. A fresh
+/// cell that `cells` lacks is an [`Error::Missing`](bench_compare::Error::Missing).
+pub fn merge<K: Key>(cells: &mut [Recorded<K>], fresh: Vec<Recorded<K>>) -> Result<(), ToolError> {
+    for recorded in fresh {
+        let id = CellId::of(&recorded.cell);
         let kept = cells
             .iter_mut()
             .find(|kept| CellId::of(&kept.cell) == id)
             .ok_or_else(|| ToolError::missing(&id.pattern(), "the listed cells"))?;
-        kept.cell = cell;
-        kept.run = run;
+        *kept = recorded;
     }
     Ok(())
 }

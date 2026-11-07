@@ -23,7 +23,7 @@ pub use document::{LOAD, Layout, Operation, check_records, markdown_table, repor
 pub use fewest::fewest;
 pub use identity::{CodeHash, Identity};
 pub use module::ModuleError;
-pub use record::{Engine, Measurement, Record, Recorded, Run, Version};
+pub use record::{Engine, Measurement, Record, Recorded, Run, Unfinished, Version};
 pub use run::{Build, Measured, NATIVE, Options, Paths, execute};
 pub use tool_error::{ToolError, UnmatchedVerdict};
-pub use wasm::{FLAVOURS, Flavour, KEEP_RELOCATIONS, SELECTED_RUNS, WASM, WasmBuild};
+pub use wasm::{FLAVOURS, Flavour, KEEP_RELOCATIONS, SELECTED_RUNS, WASM, WasmBuild, streams};

@@ -16,6 +16,23 @@ mod driver;
 #[cfg(target_os = "linux")]
 pub use driver::{list, run};
 
+/// Has the kernel kill this process when the thread that started it ends: a run of a bench that its
+/// sweep left would hold its CPUs for nothing.
+#[cfg(target_os = "linux")]
+pub(crate) fn die_with_parent() -> Result<(), ToolError> {
+    nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL).map_err(|source| {
+        ToolError::Refused {
+            reason: format!("dying with the sweep: {source}"),
+        }
+    })
+}
+
+/// Runs a bench in a process of its own: the counters need Linux.
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn die_with_parent() -> Result<(), ToolError> {
+    Err(Error::NoPerfEvent.into())
+}
+
 /// The error of a thread that panicked with `payload`.
 pub(crate) fn panicked(payload: Box<dyn std::any::Any + Send>) -> ToolError {
     ToolError::Browser {

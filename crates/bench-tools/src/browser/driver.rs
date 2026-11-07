@@ -185,6 +185,74 @@ fn with_log(error: ToolError, log: &Path) -> ToolError {
     }
 }
 
+/// The start of the name of a profile directory, which the process id of its driver ends.
+const PROFILE: &str = "bench-tools-";
+
+/// Kills the browsers whose driver a kill took away, and removes their profiles. They wait for
+/// requests that never come, and hold their memory.
+fn reap_orphans() -> Result<(), ToolError> {
+    let directory = std::env::temp_dir();
+    let entries = fs::read_dir(&directory).map_err(|source| ToolError::io(&directory, source))?;
+    for entry in entries {
+        let entry = entry.map_err(|source| ToolError::io(&directory, source))?;
+        let Some(driver) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.strip_prefix(PROFILE))
+            .and_then(|pid| pid.parse::<i32>().ok())
+        else {
+            continue;
+        };
+        if Path::new(&format!("/proc/{driver}")).exists() {
+            continue;
+        }
+        let profile = entry.path();
+        for pid in naming(&profile)? {
+            match kill(Pid::from_raw(pid), Signal::SIGKILL) {
+                Ok(()) | Err(nix::Error::ESRCH) => {}
+                Err(source) => {
+                    return Err(ToolError::Browser {
+                        reason: format!("stopping the orphaned browser {pid}: {source}"),
+                    });
+                }
+            }
+        }
+        match fs::remove_dir_all(&profile) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(source) => return Err(ToolError::io(&profile, source)),
+        }
+    }
+    Ok(())
+}
+
+/// The processes whose command line names `profile`.
+fn naming(profile: &Path) -> Result<Vec<i32>, ToolError> {
+    let name = profile.as_os_str().as_encoded_bytes();
+    let proc = Path::new("/proc");
+    let mut found = Vec::new();
+    for entry in fs::read_dir(proc).map_err(|source| ToolError::io(proc, source))? {
+        let entry = entry.map_err(|source| ToolError::io(proc, source))?;
+        let Some(pid) = number(&entry.file_name()) else {
+            continue;
+        };
+        let path = entry.path().join("cmdline");
+        let Some(command) = gone(fs::read(&path), &path)? else {
+            continue;
+        };
+        // Each argument ends in a zero byte; a profile of a driver whose number continues is another.
+        if command.windows(name.len() + 1).any(|window| {
+            window.starts_with(name)
+                && window
+                    .get(name.len())
+                    .is_some_and(|byte| !byte.is_ascii_digit())
+        }) {
+            found.push(pid);
+        }
+    }
+    Ok(found)
+}
+
 /// A fresh profile directory of the browser.
 struct Profile {
     path: PathBuf,
@@ -193,7 +261,8 @@ struct Profile {
 impl Profile {
     /// An empty directory in the temporary directory, named after this process.
     fn create() -> Result<Self, ToolError> {
-        let path = std::env::temp_dir().join(format!("bench-tools-{}", std::process::id()));
+        reap_orphans()?;
+        let path = std::env::temp_dir().join(format!("{PROFILE}{}", std::process::id()));
         if path.exists() {
             fs::remove_dir_all(&path).map_err(|source| ToolError::io(&path, source))?;
         }

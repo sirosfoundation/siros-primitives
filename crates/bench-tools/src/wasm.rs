@@ -3,27 +3,31 @@
 //! `bench-wasm --changed` is a content-addressed action cache over the cells: see
 //! [`crate::changed`].
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
+use std::io::{self, Read as _, Write as _};
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::time::Instant;
 
 use bench_compare::{
-    CPU, Cell, Error, Key, Line, Listed, ListedCall, Outcome, Overhead, Plan, Selection, Window,
-    load,
+    CPU, Cell, Error, Key, Line, Listed, ListedCall, Outcome, Overhead, Plan, Selection, Sweep,
+    Window, load,
 };
 
 use crate::browser::{
-    Browser, CHROME, CHROME_WIDE, Cpus, FIREFOX, FIREFOX_WIDE, LISTING, Threads, list, panicked,
-    run as run_in_browser, version as browser_version,
+    Browser, CHROME, CHROME_WIDE, Cpus, FIREFOX, FIREFOX_WIDE, LISTING, Threads, die_with_parent,
+    list, panicked, run as run_in_browser, version as browser_version,
 };
 use crate::changed::{CellId, code, compact, harness, merge, overtaken, select};
 use crate::document::Layout;
 use crate::fewest::fewest;
 use crate::identity::Identity;
 use crate::module::{custom_section, used_features};
-use crate::record::{Engine, Measurement, Record, Recorded, Run};
-use crate::run::{Measured, Options, Paths, cargo, check_features, git, locked_closure, parse_cpu};
+use crate::record::{Engine, Measurement, Record, Recorded, Run, Unfinished};
+use crate::run::{Measured, Options, Paths, cargo, check_features, git, locked_closure};
 use crate::tool_error::ToolError;
 use crate::workspace::Sources;
 
@@ -33,6 +37,16 @@ const WASM_TARGET: &str = "wasm32-unknown-unknown";
 /// The rounds of re-measuring of one build, of which a row needs at most one per crate. Past them a
 /// re-measured figure keeps trailing a kept one: [`ToolError::Unsettled`].
 const ROUNDS: usize = 12;
+
+/// The attempts of one run of a bench: load can stop a bench, and another attempt meets other load.
+/// Past them the sweep stops.
+const ATTEMPTS: usize = 3;
+
+/// The command of a report tool that runs one bench once, which [`Unit::attempt`] starts.
+pub(crate) const RUN_BENCH: &str = "run-bench";
+
+/// The reason of a cell that no run of this sweep or of the record measured yet.
+const NOT_MEASURED: &str = "not measured";
 
 /// The runs of a bench that measures a selection, unless `--runs` says otherwise. The repetitions
 /// of a selected cell come within seconds and can all meet one burst of load, where those of a full
@@ -218,13 +232,29 @@ struct Listing<K> {
     cells: Vec<ListedCell<K>>,
 }
 
-impl<K> Listing<K> {
+impl<K: Key> Listing<K> {
     /// The number of cells that hold a case.
     fn cases(&self) -> usize {
         self.cells
             .iter()
             .filter(|cell| matches!(cell.state, CellState::Case(_)))
             .count()
+    }
+
+    /// The code of the cell `id`; `None` for an absent cell and for one that always counts as
+    /// changed.
+    fn code(&self, id: &CellId<K>) -> Result<Option<String>, ToolError> {
+        let listed = self
+            .cells
+            .iter()
+            .find(|cell| cell.id == *id)
+            .ok_or_else(|| {
+                ToolError::missing(&id.pattern(), &format!("the cells of {}", self.bench))
+            })?;
+        Ok(match &listed.state {
+            CellState::Absent(_) => None,
+            CellState::Case(code) => code.clone(),
+        })
     }
 }
 
@@ -287,17 +317,65 @@ fn parse_runs(options: &Options) -> Result<Option<usize>, ToolError> {
         .transpose()
 }
 
+/// The streams of a sweep: one per measuring CPU in `cpus`, each with the CPU of the same place in
+/// `browser_cpus`, or the measuring CPU itself where that is absent. Without `cpus`, one stream on
+/// [`CPU`]. No CPU serves two streams.
+pub fn streams(cpus: Option<&str>, browser_cpus: Option<&str>) -> Result<Vec<Cpus>, ToolError> {
+    let list = |text: &str| {
+        text.split(',')
+            .map(|cpu| {
+                cpu.parse::<usize>()
+                    .map_err(|source| ToolError::number("CPU", cpu, source))
+            })
+            .collect::<Result<Vec<_>, _>>()
+    };
+    let measuring = cpus.map_or_else(|| Ok(vec![CPU]), list)?;
+    let browser = browser_cpus
+        .map(list)
+        .transpose()?
+        .unwrap_or_else(|| measuring.clone());
+    if browser.len() != measuring.len() {
+        return Err(ToolError::Streams {
+            reason: format!(
+                "{} measuring CPUs and {} browser CPUs",
+                measuring.len(),
+                browser.len()
+            ),
+        });
+    }
+    let streams: Vec<Cpus> = measuring
+        .into_iter()
+        .zip(browser)
+        .map(|(measuring, browser)| Cpus { measuring, browser })
+        .collect();
+    for (index, stream) in streams.iter().enumerate() {
+        let shared = streams[..index].iter().find(|other| {
+            [other.measuring, other.browser]
+                .iter()
+                .any(|cpu| *cpu == stream.measuring || *cpu == stream.browser)
+        });
+        if let Some(other) = shared {
+            return Err(ToolError::Streams {
+                reason: format!(
+                    "the streams on CPUs {} and {}, and on {} and {}, share a CPU",
+                    other.measuring, other.browser, stream.measuring, stream.browser
+                ),
+            });
+        }
+    }
+    Ok(streams)
+}
+
 /// What stays the same for every build of a sweep.
 struct Context<'a, K> {
     layout: &'a Layout<'a, K>,
     options: &'a Options,
-    cpus: Cpus,
     /// The number of runs of a bench, if `--runs` names one.
     runs: Option<usize>,
-    /// The record before the sweep.
-    old: Option<&'a Record<K>>,
+    /// The record before the sweep, finished or not.
+    old: Option<&'a Unfinished<K>>,
     /// The record's fields of this sweep, whose head and state name a new run.
-    fresh: &'a Record<K>,
+    fresh: &'a Unfinished<K>,
     /// Whether a sweep over all cells, whatever the record holds.
     full: bool,
 }
@@ -311,14 +389,23 @@ struct Counted<K> {
 
 /// The state of a build before its first round.
 struct Started<K> {
-    /// What each module lists, with the figures that the record holds.
-    cells: Vec<Recorded<K>>,
+    /// What each module lists, with the figures and the costs of a count that the record holds and
+    /// the runs that they come from. A figure whose key differs holds no code: a sweep that stops
+    /// before it measures the cell again leaves it changed.
+    measurement: Measurement<K, Option<Overhead>>,
     /// The cells whose key differs from the record.
     changed: Vec<CellId<K>>,
-    /// The runs that the kept figures come from.
-    runs: Vec<Run>,
-    /// The cost of a count per bench, where the record's holds.
-    overheads: Vec<Option<Overhead>>,
+}
+
+impl<K: Key> Started<K> {
+    /// The cells that the first round measures again, before what their rows compare them with:
+    /// the changed cells, and the rows whose verdict compares figures of different runs, which a
+    /// sweep that stopped between two rounds leaves.
+    fn seeds(&self, layout: &Layout<'_, K>) -> Result<Vec<CellId<K>>, ToolError> {
+        let mut seeds = self.changed.clone();
+        seeds.extend(overtaken(layout, &self.measurement.cells)?);
+        Ok(seeds)
+    }
 }
 
 /// What the bench `bench` counted, from its `lines`.
@@ -343,14 +430,179 @@ fn parse_lines<K: Key>(lines: Vec<String>, bench: &str) -> Result<Counted<K>, To
         .ok_or_else(wrong)
 }
 
-impl<K: Key> Context<'_, K> {
+/// The runs of one bench in one build, back to back on one stream, which takes it from the queue of
+/// the sweep.
+struct Unit<'a> {
+    /// The build: an index of [`WASM`].
+    build: usize,
+    /// The bench: an index of the build's listings.
+    bench: usize,
+    /// The name of the bench.
+    name: &'a str,
+    module: &'a [u8],
+    /// The browser's executable.
+    executable: &'a Path,
+    plan: Plan,
+    runs: usize,
+    /// The cells that it measures.
+    cells: usize,
+    /// The round of its build, from 0.
+    round: usize,
+}
+
+impl Unit<'_> {
+    /// The lines of the runs on `stream`, with the fewest figures of each cell, and the span of the
+    /// runs.
+    fn measure(&self, stream: Cpus) -> Result<(Vec<String>, Sweep), ToolError> {
+        println!(
+            "{}: {}: {} cells, {} runs, on CPUs {} and {}; load {}",
+            WASM[self.build].name,
+            self.name,
+            self.cells,
+            self.runs,
+            stream.measuring,
+            stream.browser,
+            load()?
+        );
+        let window = Window::open(stream.measuring)?;
+        let lines = (0..self.runs)
+            .map(|_| self.attempts(stream))
+            .collect::<Result<Vec<_>, ToolError>>()?;
+        Ok((fewest(lines)?, window.close()?))
+    }
+
+    /// The lines of one run, in up to [`ATTEMPTS`] attempts.
+    fn attempts(&self, stream: Cpus) -> Result<Vec<String>, ToolError> {
+        let mut attempt = 1;
+        loop {
+            match self.attempt(stream) {
+                Err(error) if attempt < ATTEMPTS => {
+                    println!(
+                        "{}: {}: attempt {attempt} of {ATTEMPTS} refused, load {}: {error}",
+                        WASM[self.build].name,
+                        self.name,
+                        load()?
+                    );
+                    attempt += 1;
+                }
+                Err(error) => return Err(error),
+                Ok(lines) => return Ok(lines),
+            }
+        }
+    }
+
+    /// The lines of one run, in a process of its own: the driver's subreaper and the processes it
+    /// finds and stops are the whole process's, so two streams need two processes. The process
+    /// runs the executable of this one, whatever replaced its file since, and reads the module from
+    /// its standard input.
+    fn attempt(&self, stream: Cpus) -> Result<Vec<String>, ToolError> {
+        let command = format!("{RUN_BENCH} of {}", self.name);
+        let mut child = Command::new("/proc/self/exe")
+            .arg(RUN_BENCH)
+            .arg(self.build.to_string())
+            .arg(self.executable)
+            .arg(stream.measuring.to_string())
+            .arg(stream.browser.to_string())
+            .arg(self.plan.text())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|source| ToolError::Spawn {
+                command: command.clone(),
+                source,
+            })?;
+        let written = child
+            .stdin
+            .take()
+            .ok_or_else(|| ToolError::missing("standard input", &command))
+            .and_then(|mut input| {
+                input
+                    .write_all(self.module)
+                    .map_err(|source| ToolError::Refused {
+                        reason: format!("{command}: writing the module: {source}"),
+                    })
+            });
+        let output = child
+            .wait_with_output()
+            .map_err(|source| ToolError::Refused {
+                reason: format!("{command}: waiting: {source}"),
+            })?;
+        if !output.status.success() {
+            return Err(ToolError::Refused {
+                reason: format!(
+                    "{}: {}: {}: {}",
+                    WASM[self.build].name,
+                    self.name,
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr).trim_end()
+                ),
+            });
+        }
+        written?;
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::to_owned)
+            .collect())
+    }
+}
+
+/// Runs one bench once, in the process of [`RUN_BENCH`] that [`Unit::attempt`] starts: `args` name
+/// the build, the browser's executable, the measuring CPU, the browser's CPU and the plan, and the
+/// standard input holds the module. It prints the lines of the bench.
+pub(crate) fn run_bench(args: &[String]) -> Result<(), ToolError> {
+    die_with_parent()?;
+    let [build, executable, measuring, browser, plan] = args else {
+        return Err(ToolError::Refused {
+            reason: format!("the arguments of {RUN_BENCH}: {args:?}"),
+        });
+    };
+    let number = |what: &str, text: &str| {
+        text.parse::<usize>()
+            .map_err(|source| ToolError::number(what, text, source))
+    };
+    let build = WASM
+        .get(number("build", build)?)
+        .ok_or_else(|| ToolError::missing(&format!("build {build}"), "the WebAssembly builds"))?;
+    let cpus = Cpus {
+        measuring: number("CPU", measuring)?,
+        browser: number("CPU", browser)?,
+    };
+    let mut module = Vec::new();
+    let read = io::stdin()
+        .lock()
+        .read_to_end(&mut module)
+        .map_err(|source| ToolError::Refused {
+            reason: format!("reading the module: {source}"),
+        })?;
+    if read == 0 {
+        return Err(ToolError::missing("module", "the standard input"));
+    }
+    let lines = run_in_browser(
+        &module,
+        &build.browser,
+        Path::new(executable),
+        cpus,
+        Threads::Measuring,
+        &Plan::parse(plan)?,
+    )?;
+    let mut out = io::stdout().lock();
+    for line in lines {
+        writeln!(out, "{line}").map_err(|source| ToolError::Refused {
+            reason: format!("writing the lines: {source}"),
+        })?;
+    }
+    Ok(())
+}
+
+impl<'a, K: Key> Context<'a, K> {
     /// Whether a figure of the build `old` in the record could hold for `build`: everything in the
     /// key beside the code of the cell. The cost of a count of each bench goes with its figures, so
     /// a record of other benches counts too.
     fn same_settings(
         &self,
-        old: &Measurement<K>,
-        record: &Record<K>,
+        old: &Measurement<K, Option<Overhead>>,
+        record: &Unfinished<K>,
         build: &WasmBuild,
         engine: &Engine,
         benches: usize,
@@ -362,9 +614,20 @@ impl<K: Key> Context<'_, K> {
             && old.overheads.len() == benches
     }
 
-    /// The state of `build` before its first round: what each module lists, with the figures that
-    /// the record holds.
-    fn start(&self, build: &WasmBuild, engine: &Engine, listings: &[Listing<K>]) -> Started<K> {
+    /// The state of `build` before its first round: what each of its `listings` lists, with the
+    /// figures that the record holds.
+    fn start(
+        &self,
+        build: &WasmBuild,
+        listings: &[Listing<K>],
+        target_features: &[String],
+    ) -> Result<Started<K>, ToolError> {
+        let executable = self.options.executable(&build.browser)?;
+        let engine = Engine {
+            name: build.browser.name().to_owned(),
+            version: browser_version(executable)?,
+            settings: build.browser.settings(),
+        };
         let old = self.old.filter(|_| !self.full).and_then(|record| {
             Some((
                 record,
@@ -372,7 +635,7 @@ impl<K: Key> Context<'_, K> {
             ))
         });
         let settings = old.is_some_and(|(record, measurement)| {
-            self.same_settings(measurement, record, build, engine, listings.len())
+            self.same_settings(measurement, record, build, &engine, listings.len())
         });
         let by_id: HashMap<CellId<K>, &Recorded<K>> = old
             .iter()
@@ -403,14 +666,14 @@ impl<K: Key> Context<'_, K> {
                     }
                     match kept {
                         Some(kept) => Recorded {
-                            code: code.clone(),
+                            code: if same { code.clone() } else { None },
                             ..(*kept).clone()
                         },
                         // It holds no figure until a round measures it.
                         None => Recorded {
-                            cell: cell(Outcome::Absent("not measured".to_owned())),
+                            cell: cell(Outcome::Absent(NOT_MEASURED.to_owned())),
                             run: 0,
-                            code: code.clone(),
+                            code: None,
                         },
                     }
                 }
@@ -421,98 +684,15 @@ impl<K: Key> Context<'_, K> {
             || (Vec::new(), vec![None; listings.len()]),
             |(_, measurement)| {
                 let overheads = if settings {
-                    measurement.overheads.iter().copied().map(Some).collect()
+                    measurement.overheads.clone()
                 } else {
                     vec![None; listings.len()]
                 };
                 (measurement.runs.clone(), overheads)
             },
         );
-        Started {
-            cells,
-            changed,
-            runs,
-            overheads,
-        }
-    }
-
-    /// Measures `build` by rounds until every verdict compares figures of one run. Returns the
-    /// measurement, and the number of cells of its first round.
-    fn measure(
-        &self,
-        build: &WasmBuild,
-        listings: &[Listing<K>],
-        target_features: &[String],
-    ) -> Result<(Measurement<K>, usize), ToolError> {
-        let executable = self.options.executable(&build.browser)?;
-        let engine = Engine {
-            name: build.browser.name().to_owned(),
-            version: browser_version(executable)?,
-            settings: build.browser.settings(),
-        };
-        let Started {
-            mut cells,
-            changed,
-            mut runs,
-            mut overheads,
-        } = self.start(build, &engine, listings);
-        let total = cells
-            .iter()
-            .filter(|cell| cell.code.is_some() || cell.counted())
-            .count();
-        let mut seeds = changed;
-        let mut first = None;
-        for _ in 0..ROUNDS {
-            if seeds.is_empty() {
-                break;
-            }
-            let selected = select(self.layout, &cells, std::mem::take(&mut seeds))?;
-            first = first.or(Some(selected.len()));
-            println!(
-                "{}: measuring {} of {total} cells; load {}",
-                build.name,
-                selected.len(),
-                load()?
-            );
-            let window = Window::open(self.cpus.measuring)?;
-            let mut fresh = Vec::with_capacity(selected.len());
-            for (index, listing) in listings.iter().enumerate() {
-                let Some(counted) = self.run_module(build, executable, listing, &selected)? else {
-                    continue;
-                };
-                overheads[index] = Some(counted.overhead);
-                fresh.extend(counted.cells);
-            }
-            let sweep = window.close()?;
-            runs.push(Run {
-                commit: self.fresh.head.clone(),
-                dirty: self.fresh.dirty,
-                date: self.fresh.date.clone(),
-                sweep,
-            });
-            merge(&mut cells, fresh, runs.len() - 1)?;
-            seeds = overtaken(self.layout, &cells)?;
-        }
-        if let Some(seed) = seeds.first() {
-            return Err(ToolError::Unsettled {
-                build: build.name.to_owned(),
-                rows: seeds.len(),
-                rounds: ROUNDS,
-                first: seed.pattern(),
-            });
-        }
-        let runs = compact(runs, &mut cells);
-        let overheads = overheads
-            .into_iter()
-            .zip(listings)
-            .map(|(overhead, listing)| {
-                overhead.ok_or_else(|| {
-                    ToolError::missing("cost of a count", &format!("the bench {}", listing.bench))
-                })
-            })
-            .collect::<Result<Vec<_>, ToolError>>()?;
-        Ok((
-            Measurement {
+        Ok(Started {
+            measurement: Measurement {
                 name: build.name.to_owned(),
                 rustflags: FLAVOURS[build.flavour].rustflags.to_owned(),
                 target_features: target_features.to_vec(),
@@ -522,82 +702,300 @@ impl<K: Key> Context<'_, K> {
                 runs,
                 cells,
             },
-            first.unwrap_or(0),
-        ))
+            changed,
+        })
     }
 
-    /// Runs the cells of `listing` in `selected`, if it has any: `--runs` times, or by default
+    /// The units of a round of `build` that measures `selected` among the cells of its `listings`:
+    /// one per bench with a selected cell. A unit runs `--runs` times, or by default
     /// [`SELECTED_RUNS`] times, where one run of the whole bench costs more. That run takes the
     /// bench's other cells with it.
-    fn run_module(
+    fn units<'l>(
         &self,
-        build: &WasmBuild,
-        executable: &Path,
-        listing: &Listing<K>,
+        build: usize,
+        round: usize,
+        listings: &'l [Listing<K>],
         selected: &HashSet<CellId<K>>,
-    ) -> Result<Option<Counted<K>>, ToolError> {
-        let patterns: Vec<String> = listing
-            .cells
-            .iter()
-            .filter(|cell| matches!(cell.state, CellState::Case(_)))
-            .filter(|cell| selected.contains(&cell.id))
-            .map(|cell| cell.id.pattern())
-            .collect();
-        if patterns.is_empty() {
-            return Ok(None);
-        }
-        let cases = listing.cases();
-        let whole = patterns.len() == cases
-            || (self.runs.is_none() && patterns.len() * SELECTED_RUNS >= cases);
-        let (plan, cells, runs) = if whole {
-            (Plan::All, cases, self.runs.unwrap_or(1))
-        } else {
-            let cells = patterns.len();
-            (
-                Plan::Only(Selection::of(patterns)?),
-                cells,
-                self.runs.unwrap_or(SELECTED_RUNS),
-            )
-        };
-        println!(
-            "{}: {}: {cells} of {cases} cells, {runs} runs; load {}",
-            build.name,
-            listing.bench,
-            load()?
-        );
-        let lines = (0..runs)
-            .map(|_| {
-                run_in_browser(
-                    &listing.bytes,
-                    &build.browser,
-                    executable,
-                    self.cpus,
-                    Threads::Measuring,
-                    &plan,
+    ) -> Result<Vec<Unit<'l>>, ToolError>
+    where
+        'a: 'l,
+    {
+        let executable = self.options.executable(&WASM[build].browser)?;
+        let mut units = Vec::new();
+        for (bench, listing) in listings.iter().enumerate() {
+            let patterns: Vec<String> = listing
+                .cells
+                .iter()
+                .filter(|cell| matches!(cell.state, CellState::Case(_)))
+                .filter(|cell| selected.contains(&cell.id))
+                .map(|cell| cell.id.pattern())
+                .collect();
+            if patterns.is_empty() {
+                continue;
+            }
+            let cases = listing.cases();
+            let whole = patterns.len() == cases
+                || (self.runs.is_none() && patterns.len() * SELECTED_RUNS >= cases);
+            let (plan, cells, runs) = if whole {
+                (Plan::All, cases, self.runs.unwrap_or(1))
+            } else {
+                let cells = patterns.len();
+                (
+                    Plan::Only(Selection::of(patterns)?),
+                    cells,
+                    self.runs.unwrap_or(SELECTED_RUNS),
                 )
-            })
-            .collect::<Result<Vec<_>, ToolError>>()?;
-        Ok(Some(parse_lines(fewest(lines)?, &listing.bench)?))
+            };
+            units.push(Unit {
+                build,
+                bench,
+                name: &listing.bench,
+                module: &listing.bytes,
+                executable,
+                plan,
+                runs,
+                cells,
+                round,
+            });
+        }
+        Ok(units)
     }
 }
 
-/// Prints what the first round of each build would measure, by name.
+/// A sweep under way: the record so far, and the units that remain. The main thread owns it, and
+/// the streams take its units.
+struct Progress<'a, K> {
+    context: &'a Context<'a, K>,
+    /// The listings of each compilation.
+    listings: &'a [Vec<Listing<K>>],
+    /// Where the record goes.
+    path: &'a Path,
+    /// The record so far, with every build in the order of [`WASM`].
+    record: Unfinished<K>,
+    queue: VecDeque<Unit<'a>>,
+    /// The build and the bench of each unit that a stream runs. A build runs one round at a time,
+    /// which runs a bench once at most.
+    running: Vec<(usize, usize)>,
+    /// The cells of the units of this sweep that ended.
+    measured: usize,
+}
+
+impl<'a, K: Key> Progress<'a, K> {
+    /// The sweep of the `started` builds, with the units of their first rounds in the queue.
+    fn new(
+        context: &'a Context<'a, K>,
+        listings: &'a [Vec<Listing<K>>],
+        path: &'a Path,
+        started: Vec<Started<K>>,
+    ) -> Result<Self, ToolError> {
+        let mut queue = VecDeque::new();
+        let mut builds = Vec::with_capacity(started.len());
+        for (index, started) in started.into_iter().enumerate() {
+            let seeds = started.seeds(context.layout)?;
+            if !seeds.is_empty() {
+                queue.extend(Self::round_units(
+                    context,
+                    listings,
+                    index,
+                    0,
+                    &started.measurement,
+                    seeds,
+                )?);
+            }
+            builds.push(started.measurement);
+        }
+        Ok(Self {
+            context,
+            listings,
+            path,
+            record: Record {
+                builds,
+                ..context.fresh.clone()
+            },
+            queue,
+            running: Vec::new(),
+            measured: 0,
+        })
+    }
+
+    /// The units of the round `round` of the build `build`, which `measurement` holds, given its
+    /// `seeds`.
+    fn round_units(
+        context: &Context<'a, K>,
+        listings: &'a [Vec<Listing<K>>],
+        build: usize,
+        round: usize,
+        measurement: &Measurement<K, Option<Overhead>>,
+        seeds: Vec<CellId<K>>,
+    ) -> Result<Vec<Unit<'a>>, ToolError> {
+        let listings = &listings[WASM[build].flavour];
+        let selected = select(context.layout, &measurement.cells, seeds)?;
+        let total = listings.iter().map(Listing::cases).sum::<usize>();
+        println!(
+            "{}: round {}: {} of {total} cells; load {}",
+            WASM[build].name,
+            round + 1,
+            selected.len(),
+            load()?
+        );
+        context.units(build, round, listings, &selected)
+    }
+
+    /// Runs the queue on `streams`, and writes the record after each unit. On the first failure it
+    /// hands out no more units, and returns the failure once the running units end.
+    fn run(&mut self, streams: &[Cpus]) -> Result<(), ToolError> {
+        let mut free: Vec<Cpus> = streams.iter().rev().copied().collect();
+        let mut failure = None;
+        std::thread::scope(|scope| {
+            let (sender, received) = mpsc::channel();
+            loop {
+                while failure.is_none() && !free.is_empty() {
+                    let (Some(unit), Some(stream)) = (self.queue.pop_front(), free.pop()) else {
+                        break;
+                    };
+                    self.running.push((unit.build, unit.bench));
+                    let sender = sender.clone();
+                    drop(scope.spawn(move || {
+                        let result = panic::catch_unwind(AssertUnwindSafe(|| unit.measure(stream)))
+                            .unwrap_or_else(|payload| Err(panicked(payload)));
+                        if sender.send((unit, stream, result)).is_err() {
+                            eprintln!("bench-wasm: a run ended after its sweep");
+                        }
+                    }));
+                }
+                if self.running.is_empty() {
+                    return;
+                }
+                let Ok((unit, stream, result)) = received.recv() else {
+                    failure = Some(ToolError::missing("the end of a run", "the streams"));
+                    return;
+                };
+                free.push(stream);
+                self.running
+                    .retain(|running| *running != (unit.build, unit.bench));
+                let ended = result.and_then(|(lines, sweep)| self.ended(&unit, lines, sweep));
+                if let Err(error) = ended {
+                    if failure.is_none() {
+                        failure = Some(error);
+                    } else {
+                        println!(
+                            "{}: {}: this run stopped too: {error}",
+                            WASM[unit.build].name, unit.name
+                        );
+                    }
+                }
+            }
+        });
+        failure.map_or(Ok(()), Err)
+    }
+
+    /// Takes the figures of `unit`, its `lines` over the span `sweep`, into the record and writes
+    /// it; queues the next round of its build where its round ended.
+    fn ended(
+        &mut self,
+        unit: &Unit<'a>,
+        lines: Vec<String>,
+        sweep: Sweep,
+    ) -> Result<(), ToolError> {
+        let wasm = &WASM[unit.build];
+        let listing = &self.listings[wasm.flavour][unit.bench];
+        let counted = parse_lines::<K>(lines, unit.name)?;
+        let fresh = self.context.fresh;
+        let measurement = &mut self.record.builds[unit.build];
+        let run = measurement.runs.len();
+        measurement.runs.push(Run {
+            commit: fresh.head.clone(),
+            dirty: fresh.dirty,
+            date: fresh.date.clone(),
+            sweep,
+        });
+        let cells = counted
+            .cells
+            .into_iter()
+            .map(|cell| {
+                let code = listing.code(&CellId::of(&cell))?;
+                Ok(Recorded { cell, run, code })
+            })
+            .collect::<Result<Vec<_>, ToolError>>()?;
+        merge(&mut measurement.cells, cells)?;
+        *measurement
+            .overheads
+            .get_mut(unit.bench)
+            .ok_or_else(|| ToolError::missing("cost of a count", unit.name))? =
+            Some(counted.overhead);
+        let runs = std::mem::take(&mut measurement.runs);
+        measurement.runs = compact(runs, &mut measurement.cells);
+        self.measured += unit.cells;
+        self.record.date = latest(&self.record.builds, &fresh.date);
+        self.record.write_unfinished(self.path)?;
+        let busy = self.running.iter().any(|(build, _)| *build == unit.build)
+            || self.queue.iter().any(|queued| queued.build == unit.build);
+        if busy {
+            return Ok(());
+        }
+        let seeds = overtaken(self.context.layout, &self.record.builds[unit.build].cells)?;
+        let Some(first) = seeds.first() else {
+            return Ok(());
+        };
+        if unit.round + 1 == ROUNDS {
+            return Err(ToolError::Unsettled {
+                build: wasm.name.to_owned(),
+                rows: seeds.len(),
+                rounds: ROUNDS,
+                first: first.pattern(),
+            });
+        }
+        let units = Self::round_units(
+            self.context,
+            self.listings,
+            unit.build,
+            unit.round + 1,
+            &self.record.builds[unit.build],
+            seeds,
+        )?;
+        for unit in units.into_iter().rev() {
+            self.queue.push_front(unit);
+        }
+        Ok(())
+    }
+
+    /// The finished record: every listed case of every build has its figures, and every bench its
+    /// cost of a count.
+    fn finish(self, benches: &[&str]) -> Result<Record<K>, ToolError> {
+        for measurement in &self.record.builds {
+            let unmeasured = measurement.cells.iter().find(|cell| {
+                matches!(&cell.cell.outcome, Outcome::Absent(reason) if reason == NOT_MEASURED)
+            });
+            if let Some(cell) = unmeasured {
+                return Err(ToolError::missing(
+                    &format!("figures of {}", CellId::of(&cell.cell).pattern()),
+                    &measurement.name,
+                ));
+            }
+        }
+        self.record.finished(benches)
+    }
+}
+
+/// The date of the latest run of `builds`; `otherwise` where they hold no run.
+fn latest<K, O>(builds: &[Measurement<K, O>], otherwise: &str) -> String {
+    builds
+        .iter()
+        .flat_map(|build| &build.runs)
+        .map(|run| run.date.clone())
+        .max()
+        .unwrap_or_else(|| otherwise.to_owned())
+}
+
+/// Prints what the first round of each of the `started` builds would measure, by name.
 fn print_selection<K: Key>(
     layout: &Layout<'_, K>,
-    context: &Context<'_, K>,
+    started: &[Started<K>],
     listings: &[Vec<Listing<K>>],
 ) -> Result<(), ToolError> {
-    for build in &WASM {
-        let executable = context.options.executable(&build.browser)?;
-        let engine = Engine {
-            name: build.browser.name().to_owned(),
-            version: browser_version(executable)?,
-            settings: build.browser.settings(),
-        };
-        let Started { cells, changed, .. } =
-            context.start(build, &engine, &listings[build.flavour]);
-        let selected = select(layout, &cells, changed.iter().cloned())?;
-        let changed: HashSet<CellId<K>> = changed.into_iter().collect();
+    for (build, started) in WASM.iter().zip(started) {
+        let selected = select(layout, &started.measurement.cells, started.seeds(layout)?)?;
+        let changed: HashSet<&CellId<K>> = started.changed.iter().collect();
         let total = listings[build.flavour]
             .iter()
             .map(Listing::cases)
@@ -628,9 +1026,11 @@ fn print_selection<K: Key>(
     Ok(())
 }
 
-/// Measures the WebAssembly builds of the bench and writes their record. With `--changed` it measures
-/// the cells whose key differs from the record, what they are compared with, and what overtakes those
-/// by a round of its own; with `--dry-run` it stops after printing them. Without it, every cell.
+/// Measures the WebAssembly builds of the bench and writes their record after each run of a bench in
+/// a build. With `--changed` it measures the cells whose key differs from the record, what they are
+/// compared with, and what overtakes those by a round of its own; with `--dry-run` it stops after
+/// printing them. Without it, every cell. A run takes up to [`ATTEMPTS`]; past them the sweep stops
+/// with the record unfinished, and `--changed` measures the rest.
 pub(crate) fn bench_wasm<K: Key>(
     paths: &Paths,
     measured: &Measured,
@@ -638,13 +1038,13 @@ pub(crate) fn bench_wasm<K: Key>(
     options: &Options,
 ) -> Result<(), ToolError> {
     let chrome = options.executable(&CHROME)?;
-    let measuring = parse_cpu(options.cpu.as_deref())?.unwrap_or(CPU);
-    let cpus = Cpus {
-        measuring,
-        browser: parse_cpu(options.browser_cpu.as_deref())?.unwrap_or(measuring),
-    };
+    let streams = streams(options.cpu.as_deref(), options.browser_cpu.as_deref())?;
+    let runs = parse_runs(options)?;
     let started = crate::run::now()?;
-    let fresh = crate::run::skeleton::<K>(paths, measured, options, started)?;
+    let fresh: Unfinished<K> = crate::run::skeleton(paths, measured, options, started)?;
+    if let Some(directory) = paths.wasm_record.parent() {
+        fs::create_dir_all(directory).map_err(|source| ToolError::io(directory, source))?;
+    }
     let load_before = load()?;
     let clock = Instant::now();
     let built = build_all(paths, measured, options.target_dir.as_deref())?;
@@ -653,21 +1053,30 @@ pub(crate) fn bench_wasm<K: Key>(
     let listings = list_all::<K>(measured, &built, chrome)?;
     let listing = clock.elapsed();
     let old = if options.changed && paths.wasm_record.exists() {
-        Some(Record::read(&paths.wasm_record)?)
+        Some(Unfinished::resume(&paths.wasm_record)?)
     } else {
         None
     };
     let context = Context {
         layout,
         options,
-        cpus,
-        runs: parse_runs(options)?,
+        runs,
         old: old.as_ref(),
         fresh: &fresh,
         full: !options.changed,
     };
+    let started = WASM
+        .iter()
+        .map(|build| {
+            context.start(
+                build,
+                &listings[build.flavour],
+                &built[build.flavour].target_features,
+            )
+        })
+        .collect::<Result<Vec<_>, ToolError>>()?;
     if options.dry_run {
-        print_selection(layout, &context, &listings)?;
+        print_selection(layout, &started, &listings)?;
         println!(
             "built in {:.1} s, listed in {:.1} s; load {load_before} before, {} after",
             building.as_secs_f64(),
@@ -677,38 +1086,30 @@ pub(crate) fn bench_wasm<K: Key>(
         return Ok(());
     }
     let clock = Instant::now();
-    let mut builds = Vec::with_capacity(WASM.len());
-    let mut measuring_cells = 0;
-    for build in &WASM {
-        let (measurement, cells) = context.measure(
-            build,
-            &listings[build.flavour],
-            &built[build.flavour].target_features,
-        )?;
-        measuring_cells += cells;
-        builds.push(measurement);
-    }
+    let mut progress = Progress::new(&context, &listings, &paths.wasm_record, started)?;
+    let swept = progress.run(&streams);
     let running = clock.elapsed();
-    let date = builds
-        .iter()
-        .flat_map(|build| &build.runs)
-        .map(|run| run.date.clone())
-        .max()
-        .unwrap_or_else(|| fresh.date.clone());
-    let written = Record {
-        builds,
-        date,
-        ..fresh
-    };
-    written.write(&paths.wasm_record)?;
-    println!(
-        "built in {:.1} s, listed in {:.1} s, measured {measuring_cells} cells in {:.1} s; load \
-         {load_before} before, {} after",
+    let summary = format!(
+        "built in {:.1} s, listed in {:.1} s, measured {} cells in {:.1} s on {} streams",
         building.as_secs_f64(),
         listing.as_secs_f64(),
+        progress.measured,
         running.as_secs_f64(),
-        load()?
+        streams.len()
     );
+    if let Err(error) = swept {
+        println!(
+            "{summary}, then stopped; {} holds what ended, and `bench-wasm --changed` measures the \
+             rest; load {load_before} before, {} after",
+            paths.wasm_record.display(),
+            load()?
+        );
+        return Err(error);
+    }
+    progress
+        .finish(measured.benches)?
+        .write(&paths.wasm_record)?;
+    println!("{summary}; load {load_before} before, {} after", load()?);
     Ok(())
 }
 

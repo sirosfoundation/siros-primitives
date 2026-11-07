@@ -16,9 +16,9 @@ pub enum ToolError {
     #[error(
         "usage: {tool} bench [--cpu <cpu>] [--machine <description>] | bench-wasm --chrome \
          <executable> --firefox <executable> [--changed [--dry-run]] [--runs <runs>] [--target-dir \
-         <directory>] [--cpu <cpu>] [--browser-cpu <cpu>] [--machine <description>] | stamp-wasm \
-         --chrome <executable> [--target-dir <directory>] | modules --out <directory> [--target-dir \
-         <directory>] | report"
+         <directory>] [--cpu <cpu>[,<cpu>...]] [--browser-cpu <cpu>[,<cpu>...]] [--machine \
+         <description>] | stamp-wasm --chrome <executable> [--target-dir <directory>] | modules \
+         --out <directory> [--target-dir <directory>] | report"
     )]
     Usage {
         /// The tool.
@@ -50,6 +50,28 @@ pub enum ToolError {
         rounds: usize,
         /// The first of the rows.
         first: String,
+    },
+    /// The CPUs of `--cpu` and `--browser-cpu` make no streams.
+    #[error("the streams of --cpu and --browser-cpu: {reason}")]
+    Streams {
+        /// Why not.
+        reason: String,
+    },
+    /// A run of a WebAssembly bench stopped in the process that ran it.
+    #[error("{reason}")]
+    Refused {
+        /// What stopped it.
+        reason: String,
+    },
+    /// A record that a sweep left unfinished.
+    #[error(
+        "{}: a sweep stopped before it measured every cell; `bench-wasm --changed` measures the \
+         rest",
+        path.display()
+    )]
+    Unfinished {
+        /// The record.
+        path: PathBuf,
     },
     /// `stamp-wasm` keeps a record from taking keys.
     #[error("stamping the record: {reason}")]
