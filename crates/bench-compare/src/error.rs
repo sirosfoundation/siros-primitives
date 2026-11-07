@@ -73,6 +73,10 @@ pub enum Error {
         /// The cause.
         source: ParseIntError,
     },
+    /// The operand sets of a case have no layout at a 4 KiB boundary.
+    #[cfg(target_arch = "wasm32")]
+    #[error("operand sets: {0}")]
+    OperandSets(std::alloc::LayoutError),
     /// A load average that does not parse.
     #[error("load average {text:?}: {source}")]
     Load {

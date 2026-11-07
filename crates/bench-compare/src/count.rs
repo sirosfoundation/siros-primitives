@@ -579,6 +579,8 @@ impl<I, F: Fn(&[I]) -> usize> Trial for Region<'_, I, F> {
         let warming = self.inputs.draw(rng, warm.sets);
         let batch = self.inputs.draw(rng, run.sets);
         let warmed = self.passes(&warming, warm.passes);
+        #[cfg(target_arch = "wasm32")]
+        let batch = crate::barrier::AtPage::of(batch).map_err(Error::OperandSets)?;
         touch(&batch);
         let (runs, counts) = counters.count(&mut || self.passes(&batch, run.passes))?;
         Ok(([warmed, runs], counts))

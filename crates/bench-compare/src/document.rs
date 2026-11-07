@@ -496,7 +496,7 @@ const WEBASSEMBLY: &[&str] = &[
      operation, whatever the operation's size. A chain through locals over operand sets of more \
      than 32 bytes reads its step the same way.",
     "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count 4 \
-     million instructions.",
+     million instructions. They start at a 4 KiB boundary in every case.",
     "A case whose difference counts under 50 times the noise of the fixed cost of a count stops \
      the sweep.",
     "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \

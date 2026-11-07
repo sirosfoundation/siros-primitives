@@ -285,6 +285,67 @@ impl<'a, I> HiddenWalk<'a, I> {
     }
 }
 
+/// The alignment of [`AtPage`]: the addresses that hardware compares between a load and the stores
+/// before it are the low 12 bits.
+#[cfg(target_arch = "wasm32")]
+const PAGE: usize = 4096;
+
+/// A copy of the operand sets of a batch that starts at a 4 KiB boundary. The allocator otherwise
+/// puts each case's operand sets at an address of its own, and the same WebAssembly function counts
+/// differently per case: the 256-bit product took Chrome from 16.4 to 18.2 cycles, and at this
+/// alignment from 17.06 to 17.11.
+#[cfg(target_arch = "wasm32")]
+pub(crate) struct AtPage<I> {
+    /// The operand sets, which own what the copy's bits address.
+    batch: Vec<I>,
+    /// The start of the copy.
+    copy: core::ptr::NonNull<I>,
+    /// The layout of the copy.
+    layout: std::alloc::Layout,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<I> AtPage<I> {
+    /// The copy of `batch`, unless the size of `batch` has no layout.
+    pub(crate) fn of(batch: Vec<I>) -> Result<Self, std::alloc::LayoutError> {
+        let layout = std::alloc::Layout::from_size_align(
+            size_of_val(batch.as_slice()).max(1),
+            PAGE.max(align_of::<I>()),
+        )?;
+        // SAFETY: `layout` has a nonzero size.
+        let block = unsafe { std::alloc::alloc(layout) }.cast::<I>();
+        let Some(copy) = core::ptr::NonNull::new(block) else {
+            std::alloc::handle_alloc_error(layout);
+        };
+        // SAFETY: `copy` is a new block of the size of `batch`, aligned for `I`.
+        unsafe { core::ptr::copy_nonoverlapping(batch.as_ptr(), copy.as_ptr(), batch.len()) };
+        Ok(Self {
+            batch,
+            copy,
+            layout,
+        })
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<I> core::ops::Deref for AtPage<I> {
+    type Target = [I];
+
+    fn deref(&self) -> &[I] {
+        // SAFETY: the copy holds the bits of the `batch.len()` values of `batch`, which stay alive
+        // and unchanged as long as `self`, and nothing writes the copy.
+        unsafe { core::slice::from_raw_parts(self.copy.as_ptr(), self.batch.len()) }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<I> Drop for AtPage<I> {
+    fn drop(&mut self) {
+        // SAFETY: `copy` came from `alloc` with `layout`. Its bits are `batch`'s to drop.
+        unsafe { std::alloc::dealloc(self.copy.as_ptr().cast::<u8>(), self.layout) };
+    }
+}
+
 /// Uses `value` where the optimizer cannot see, so it cannot skip the operation that computed it.
 /// Its bytes must be in memory at its address: a value in registers costs one store per register,
 /// a value already in memory nothing.
