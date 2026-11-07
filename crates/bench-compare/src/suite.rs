@@ -208,7 +208,7 @@ fn run_adapter<O, K, V, F: FnOnce(Cells<O, K, V>) -> Cells<O, K, V>>(
 /// The entry of [`run_adapter`] for `adapter`, as the module's table holds it.
 #[cfg(target_arch = "wasm32")]
 fn adapter_entry<O, K, V, F: FnOnce(Cells<O, K, V>) -> Cells<O, K, V>>(_adapter: &F) -> usize {
-    let entry: fn(F, Cells<O, K, V>) -> Cells<O, K, V> = run_adapter::<O, K, V, F>;
+    let entry: fn(_, _) -> _ = run_adapter::<O, K, V, F>;
     entry as usize
 }
 

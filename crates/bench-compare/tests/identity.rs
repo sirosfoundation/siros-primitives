@@ -267,10 +267,10 @@ impl Sample {
         unsigned(2, &mut data);
         let mut data_relocations = Vec::new();
         let mut data_relocated = 0_u32;
-        for segment in 0..2 {
+        for (segment, base) in bases.into_iter().enumerate() {
             unsigned(0, &mut data);
             data.push(0x41);
-            signed(bases[segment] as i32, &mut data);
+            signed(base as i32, &mut data);
             data.push(0x0b);
             unsigned(size(segment) as u32, &mut data);
             let start = data.len();
@@ -480,7 +480,8 @@ fn a_change_reaches_the_functions_that_can_run_it_and_no_others() {
         EVEN, LEAF, MAY_PANIC, ODD, OTHER_LEAF, PANICS, READS_LOCATION, READS_OTHER_TABLE,
         READS_POINTER, READS_STATIC, READS_TABLE, VIA_LEAF,
     };
-    let cases: [(&str, fn(&mut Sample), &[usize]); 9] = [
+    type Change = (&'static str, fn(&mut Sample), &'static [usize]);
+    let cases: [Change; 9] = [
         (
             "an immediate reaches its callers, through a cycle of calls too",
             |sample| sample.functions[LEAF][0] = Instruction::Const(8),

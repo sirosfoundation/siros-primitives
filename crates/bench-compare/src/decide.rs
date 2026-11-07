@@ -243,9 +243,7 @@ fn decide_bench(
     }
     let after = load()?;
     let side = |lines: Vec<Vec<String>>, module: Option<&Named>| match module {
-        Some(module) if !lines.is_empty() => {
-            fewest(lines).and_then(|lines| figures(lines, module))
-        }
+        Some(module) if !lines.is_empty() => fewest(lines).and_then(|lines| figures(lines, module)),
         _ => Ok(Vec::new()),
     };
     let [baseline, change] = runs;
