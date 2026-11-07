@@ -77,9 +77,11 @@ fn bytes(digits: &str) -> Result<Vec<u8>, ModuleError> {
 
 /// The code of the cell that runs `case` in the module of `identity`, in hexadecimal digits: the
 /// hashes of its loops, of what draws its inputs, of the operands of its row and of what its
-/// operation captures. `None` for a loop that reaches code decided at run time, which no hash covers:
-/// such a cell always counts as changed. What draws the inputs always reaches its row's operand
-/// function through a pointer: the hash of the operands covers it by value.
+/// operation captures. An operation that captures a pointer to memory that code fills counts the
+/// function that offers the crate's cells too, which builds that memory. `None` for a loop that
+/// reaches code decided at run time, which no hash covers: such a cell always counts as changed.
+/// What draws the inputs always reaches its row's operand function through a pointer: the hash of
+/// the operands covers it by value.
 pub fn code(identity: &mut Identity<'_>, case: &ListedCase) -> Result<Option<String>, ModuleError> {
     let batch = identity.entry(slot(case.batch, "the batch loop")?)?;
     if batch.indirect {
@@ -103,7 +105,11 @@ pub fn code(identity: &mut Identity<'_>, case: &ListedCase) -> Result<Option<Str
     state.update_hash(identity.entry(slot(case.draw, "the draw")?)?.hash);
     state.update_hash(identity.entry(slot(case.setup, "the setup")?)?.hash);
     take(&mut state, case.operands.as_bytes());
-    state.update_hash(identity.captures(&bytes(&case.captures)?));
+    let captures = bytes(&case.captures)?;
+    state.update_hash(identity.captures(&captures));
+    if identity.captures_filled_memory(&captures) {
+        state.update_hash(identity.entry(slot(case.adapter, "the adapter")?)?.hash);
+    }
     Ok(Some(format!("{:032x}", state.finish())))
 }
 

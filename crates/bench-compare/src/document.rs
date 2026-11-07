@@ -5,9 +5,10 @@ use std::fs;
 
 use crate::changed::CellId;
 use crate::count::{FEWEST_STEP_CYCLES, REPETITIONS, RETRIES};
-use crate::error::{Error, ToolError, UnmatchedVerdict};
+use crate::error::Error;
 use crate::record::{Count, Key, Measurement, Outcome, Record, Recorded, Sweep};
 use crate::run::Paths;
+use crate::tool_error::{ToolError, UnmatchedVerdict};
 
 /// The 1-minute load average from which a sweep ran under load.
 pub const LOAD: f64 = 2.0;

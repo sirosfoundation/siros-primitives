@@ -8,11 +8,12 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::browser::{Cpus, LISTING, Threads, list, run as run_in_browser};
-use crate::error::{Error, ToolError};
+use crate::error::Error;
 use crate::fewest::fewest;
 use crate::fingerprint::Fingerprint;
 use crate::record::Count;
 use crate::selection::{Plan, Selection};
+use crate::tool_error::ToolError;
 use crate::wasm::{FLAVOURS, WASM, WasmBuild};
 use crate::window::load;
 

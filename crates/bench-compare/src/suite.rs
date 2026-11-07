@@ -163,6 +163,8 @@ pub(crate) struct Builders {
     pub(crate) draw: usize,
     /// The function that builds what the inputs share.
     pub(crate) setup: usize,
+    /// The function that offers the crate's cells, which builds what an operation can capture.
+    pub(crate) adapter: usize,
 }
 
 /// Draws one input through `fresh`: a function of its own, which the listing of a module names.
@@ -190,6 +192,23 @@ fn set_up<S, F: FnOnce() -> S>(setup: F) -> S {
 #[cfg(target_arch = "wasm32")]
 fn setup_entry<S, F: FnOnce() -> S>() -> usize {
     let entry: fn(F) -> S = set_up::<S, F>;
+    entry as usize
+}
+
+/// Runs `adapter`: a function of its own, which the listing of a module names.
+#[cfg(target_arch = "wasm32")]
+#[inline(never)]
+fn run_adapter<O, K, V, F: FnOnce(Cells<O, K, V>) -> Cells<O, K, V>>(
+    adapter: F,
+    cells: Cells<O, K, V>,
+) -> Cells<O, K, V> {
+    adapter(cells)
+}
+
+/// The entry of [`run_adapter`] for `adapter`, as the module's table holds it.
+#[cfg(target_arch = "wasm32")]
+fn adapter_entry<O, K, V, F: FnOnce(Cells<O, K, V>) -> Cells<O, K, V>>(_adapter: &F) -> usize {
+    let entry: fn(F, Cells<O, K, V>) -> Cells<O, K, V> = run_adapter::<O, K, V, F>;
     entry as usize
 }
 
@@ -325,12 +344,20 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Row<O, K, V> {
         lib: &'static str,
         adapter: impl FnOnce(Cells<O, K, V>) -> Cells<O, K, V>,
     ) -> Self {
-        let cells = adapter(Cells {
+        #[cfg(target_arch = "wasm32")]
+        let entry = adapter_entry(&adapter);
+        let cells = Cells {
             row: self,
             lib,
             offered: 0,
             deviation: None,
-        });
+            #[cfg(target_arch = "wasm32")]
+            adapter: entry,
+        };
+        #[cfg(target_arch = "wasm32")]
+        let cells = run_adapter(adapter, cells);
+        #[cfg(not(target_arch = "wasm32"))]
+        let cells = adapter(cells);
         assert_eq!(
             cells.offered, 1,
             "{lib} offers {} cells for {} on {}",
@@ -354,6 +381,9 @@ pub struct Cells<O, K, V> {
     offered: usize,
     /// The deviation that [`deviating`](Self::deviating) declared for the next case.
     deviation: Option<&'static str>,
+    /// The function that offers these cells, as the module's table holds it.
+    #[cfg(target_arch = "wasm32")]
+    adapter: usize,
 }
 
 impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
@@ -529,6 +559,7 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
                 builders: Builders {
                     draw: draw_entry(&fresh),
                     setup: setup_entry::<S, Setup>(),
+                    adapter: self.adapter,
                 },
             };
             let measured = self.row.visitor.measure(&id, &inputs, case.run);

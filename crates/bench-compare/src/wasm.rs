@@ -4,8 +4,9 @@
 //! [`crate::changed`].
 
 use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
+use std::process::{Child, Stdio};
 use std::time::Instant;
 
 use crate::browser::{
@@ -15,7 +16,7 @@ use crate::browser::{
 use crate::changed::{CellId, code, compact, harness, merge, overtaken, select};
 use crate::count::CPU;
 use crate::document::Layout;
-use crate::error::{Error, ToolError};
+use crate::error::Error;
 use crate::fewest::fewest;
 use crate::identity::Identity;
 use crate::module::{custom_section, used_features};
@@ -23,8 +24,9 @@ use crate::record::{
     Cell, Engine, Key, Line, Listed, ListedCall, Measurement, Outcome, Overhead, Record, Recorded,
     Run,
 };
-use crate::run::{Measured, Options, Paths, cargo, check_features, git, parse_cpu};
+use crate::run::{Measured, Options, Paths, check_features, git, parse_cpu, with_cargo};
 use crate::selection::{Plan, Selection};
+use crate::tool_error::ToolError;
 use crate::window::{Window, load};
 use crate::workspace::Sources;
 
@@ -132,13 +134,22 @@ fn module_features(module: &[u8], path: &Path) -> Result<Vec<String>, ToolError>
     Ok(used_features(section)?)
 }
 
-/// Builds the benches of one compilation.
-fn build_flavour(
+/// A running build of one compilation.
+struct Building {
+    child: Child,
+    /// The command of `child`, for its errors.
+    command: String,
+    /// The file of its JSON messages.
+    messages: PathBuf,
+}
+
+/// Starts the build of the benches of one compilation.
+fn start_build(
     paths: &Paths,
     measured: &Measured,
     base: Option<&Path>,
     flavour: &Flavour,
-) -> Result<Built, ToolError> {
+) -> Result<Building, Error> {
     let features = measured.features.join(",");
     let mut args = vec!["bench", "--locked", "-p", measured.package];
     if !features.is_empty() {
@@ -150,52 +161,86 @@ fn build_flavour(
     }
     args.extend(["--no-run", "--message-format=json"]);
     let target = results(paths, base, flavour);
+    fs::create_dir_all(&target).map_err(|source| Error::io(&target, source))?;
+    let messages = target.join("messages.json");
+    let file = File::create(&messages).map_err(|source| Error::io(&messages, source))?;
     let rustflags = format!("{} {KEEP_RELOCATIONS}", flavour.rustflags);
-    let messages = cargo(&paths.root, &target, &rustflags, &args)?;
-    let modules = check_features(measured, &messages)?;
-    let mut features: Option<Vec<String>> = None;
-    for path in &modules {
-        let module = fs::read(path).map_err(|source| Error::io(path, source))?;
-        let found = module_features(&module, path)?;
-        match &features {
-            Some(first) if *first != found => {
-                return Err(Error::missing(
-                    &format!("the target features of the first module, {first:?}"),
-                    &path.display().to_string(),
-                )
-                .into());
-            }
-            Some(_) => {}
-            None => features = Some(found),
-        }
-    }
-    let target_features = features.ok_or_else(|| Error::missing("bench module", "the build"))?;
-    Ok(Built {
-        modules,
-        target_features,
+    with_cargo(&paths.root, &target, &rustflags, &args, |command| {
+        let line = format!("{command:?}");
+        let child = command
+            .stdout(file)
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|source| Error::Spawn {
+                command: line.clone(),
+                source,
+            })?;
+        Ok(Building {
+            child,
+            command: line,
+            messages,
+        })
     })
 }
 
-/// Builds the benches of every compilation, at once: the two take the same time.
+impl Building {
+    /// Waits for the end of the build, and checks what it built.
+    fn finish(mut self, measured: &Measured) -> Result<Built, ToolError> {
+        let status = self.child.wait().map_err(|source| Error::Spawn {
+            command: self.command.clone(),
+            source,
+        })?;
+        if !status.success() {
+            return Err(Error::Failed {
+                command: self.command,
+                status,
+            }
+            .into());
+        }
+        let messages = fs::read_to_string(&self.messages)
+            .map_err(|source| Error::io(&self.messages, source))?;
+        let modules = check_features(measured, &messages)?;
+        let mut features: Option<Vec<String>> = None;
+        for path in &modules {
+            let module = fs::read(path).map_err(|source| Error::io(path, source))?;
+            let found = module_features(&module, path)?;
+            match &features {
+                Some(first) if *first != found => {
+                    return Err(Error::missing(
+                        &format!("the target features of the first module, {first:?}"),
+                        &path.display().to_string(),
+                    )
+                    .into());
+                }
+                Some(_) => {}
+                None => features = Some(found),
+            }
+        }
+        let target_features =
+            features.ok_or_else(|| Error::missing("bench module", "the build"))?;
+        Ok(Built {
+            modules,
+            target_features,
+        })
+    }
+}
+
+/// Builds the benches of every compilation at once. Every build ends before the first failure
+/// returns.
 fn build_all(
     paths: &Paths,
     measured: &Measured,
     base: Option<&Path>,
 ) -> Result<Vec<Built>, ToolError> {
-    std::thread::scope(|scope| {
-        let builds: Vec<_> = FLAVOURS
-            .iter()
-            .map(|flavour| scope.spawn(move || build_flavour(paths, measured, base, flavour)))
-            .collect();
-        builds
-            .into_iter()
-            .map(|build| {
-                build
-                    .join()
-                    .map_err(|_payload| Error::missing("result", "a thread of the build"))?
-            })
-            .collect()
-    })
+    let building: Vec<Result<Building, Error>> = FLAVOURS
+        .iter()
+        .map(|flavour| start_build(paths, measured, base, flavour))
+        .collect();
+    let finished: Vec<Result<Built, ToolError>> = building
+        .into_iter()
+        .map(|build| build?.finish(measured))
+        .collect();
+    finished.into_iter().collect()
 }
 
 /// A cell of a module.

@@ -32,6 +32,9 @@ mod mark {
     pub(super) const TABLE: u8 = 0xd5;
 }
 
+/// The lowest number that counts as an address in what a closure captures.
+const LOWEST_ADDRESS: u32 = 1024;
+
 /// What a function computes, with all that it can reach.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CodeHash {
@@ -414,6 +417,23 @@ impl<'a> Identity<'a> {
         }
         state.update(tail);
         state.finish()
+    }
+
+    /// Whether a word of `bytes`, which a closure of the module captures, can address memory that
+    /// code fills: a number of at least [`LOWEST_ADDRESS`] outside the read-only symbols, as a
+    /// pointer to the stack or the heap is. A number that looks like one counts too.
+    #[must_use]
+    pub fn captures_filled_memory(&self, bytes: &[u8]) -> bool {
+        bytes.as_chunks::<4>().0.iter().any(|word| {
+            let value = u32::from_le_bytes(*word);
+            value >= LOWEST_ADDRESS
+                && self.symbol_at(value).is_none_or(|(symbol, _)| {
+                    !matches!(
+                        self.module.symbols[symbol as usize],
+                        Symbol::Data(data) if self.module.segments[data.segment].read_only
+                    )
+                })
+        })
     }
 
     /// The symbol that holds the address `value`, and the distance of the address from it.

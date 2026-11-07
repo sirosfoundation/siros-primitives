@@ -10,8 +10,9 @@ use serde::Deserialize;
 
 use crate::browser::Browser;
 use crate::count::CPU;
-use crate::error::{Error, ToolError};
+use crate::error::Error;
 use crate::record::{Cell, Key, Line, Measurement, Record, Recorded, Run, Sweep, Version};
+use crate::tool_error::ToolError;
 use crate::wasm::{bench_wasm, stamp_wasm, write_modules};
 use crate::window::Window;
 use crate::workspace::Sources;
@@ -536,16 +537,17 @@ struct Counted<K> {
     target_features: Vec<String>,
 }
 
-/// The standard output of `cargo` with `args` in the workspace at `root`, which must succeed. The
-/// build takes exactly `rustflags`, whatever the environment and the configuration set, and keeps
-/// its artifacts in `target_dir`. `CARGO` names the cargo that runs this tool.
-pub fn cargo(
+/// The result of `run` on `cargo` with `args` in the workspace at `root`. The build takes exactly
+/// `rustflags`, whatever the environment and the configuration set, and keeps its artifacts in
+/// `target_dir`. `CARGO` names the cargo that runs this tool.
+pub(crate) fn with_cargo<T>(
     root: &Path,
     target_dir: &Path,
     rustflags: &str,
     args: &[&str],
-) -> Result<String, Error> {
-    output(
+    run: impl FnOnce(&mut Command) -> T,
+) -> T {
+    run(
         Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
             .args(args)
             .current_dir(root)
@@ -553,6 +555,16 @@ pub fn cargo(
             .env("RUSTFLAGS", rustflags)
             .env_remove("CARGO_ENCODED_RUSTFLAGS"),
     )
+}
+
+/// The standard output of `cargo` with `args`, which must succeed. See [`with_cargo`].
+pub fn cargo(
+    root: &Path,
+    target_dir: &Path,
+    rustflags: &str,
+    args: &[&str],
+) -> Result<String, Error> {
+    with_cargo(root, target_dir, rustflags, args, output)
 }
 
 /// The target features that `rustc --print cfg` reports under the flags of the native `build`. A

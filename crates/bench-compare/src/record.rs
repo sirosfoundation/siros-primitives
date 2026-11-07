@@ -202,6 +202,8 @@ pub struct ListedCase {
     pub draw: usize,
     /// The function that builds what the inputs share.
     pub setup: usize,
+    /// The function that offers the crate's cells, which builds what the operation can capture.
+    pub adapter: usize,
     /// A hash of the operands that the row draws from a fixed seed.
     pub operands: String,
     /// The bytes that the operation captures, in hexadecimal digits.

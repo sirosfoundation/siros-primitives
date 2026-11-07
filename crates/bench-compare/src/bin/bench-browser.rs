@@ -317,7 +317,8 @@ mod linux {
             .collect())
     }
 
-    /// The cells of the module at `path`: for each, its name, its code and the names of its loops.
+    /// The cells of the module at `path`: for each, its name, its code, what it captures and the
+    /// names of its loops, apart by tabs.
     fn listing(path: &str, chrome: &str) -> Result<Vec<String>, ToolError> {
         let bytes = read(path)?;
         let lines = list_in_browser(&bytes, &LISTING, Path::new(chrome))?;
@@ -333,7 +334,7 @@ mod linux {
             let text = |field: &str| value.get(field).and_then(Value::as_str).unwrap_or_default();
             let cell = format!("{}/{}/{}", text("op"), text("row"), text("crate"));
             let Some(case) = value.get("case") else {
-                listed.push(format!("{cell} absent"));
+                listed.push(format!("{cell}\tabsent"));
                 continue;
             };
             let case = serde_json::from_value(case.clone()).map_err(Error::Cells)?;
@@ -352,7 +353,11 @@ mod linux {
                     names.get(&function).map_or("", String::as_str)
                 ));
             }
-            listed.push(format!("{cell} {hash} {}", functions.join(" ")));
+            listed.push(format!(
+                "{cell}\t{hash}\t{}\t{}",
+                case.captures,
+                functions.join(" ")
+            ));
         }
         Ok(listed)
     }

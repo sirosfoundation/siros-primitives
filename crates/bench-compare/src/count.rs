@@ -701,6 +701,7 @@ impl<O: Clone + std::fmt::Display, K: Clone + std::fmt::Display> Measuring<'_, O
             chains: Vec::new(),
             draw: inputs.builders.draw,
             setup: inputs.builders.setup,
+            adapter: inputs.builders.adapter,
             operands: operands_hash(self.operands, &id.op, &id.key),
             captures: crate::host::hex(run).map_err(Error::Plan)?,
         };
