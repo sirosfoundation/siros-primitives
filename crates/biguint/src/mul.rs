@@ -214,11 +214,31 @@ pub(crate) fn truncated_product<N: Bits, B: ArrayLength, const MASKED: bool>(
     b: &GenericArray<u64, B>,
 ) -> GenericArray<u64, N::Limbs> {
     if Shape::<N::Limbs, B, N::Limbs>::TRUNCATED_SPLIT {
+        #[cfg(target_arch = "wasm32")]
+        if const { N::LIMBS == ARRAY_SPLIT_LIMBS } {
+            return split_arrays::<N, B, MASKED>(a, b);
+        }
         return split_truncated::<N, MASKED>(a, b);
     }
     let mut product = GenericArray::<u64, N::Limbs>::default();
     basecase::product(&mut product, a, b);
     product
+}
+
+/// The limbs of the split product that [`split_arrays`] calls on WebAssembly.
+#[cfg(target_arch = "wasm32")]
+const ARRAY_SPLIT_LIMBS: usize = 32;
+
+/// [`split_truncated`] as a call on arrays, whose lengths its body sees. At 2048 bits with wide
+/// arithmetic Chrome took 1,693 cycles against 1,837 and Firefox 3,008 against 3,090. At 4096 bits
+/// Firefox took 10,977 against 10,758 and Chrome 6,779 against 6,732.
+#[cfg(target_arch = "wasm32")]
+#[inline(never)]
+fn split_arrays<N: Bits, B: ArrayLength, const MASKED: bool>(
+    a: &GenericArray<u64, N::Limbs>,
+    b: &GenericArray<u64, B>,
+) -> GenericArray<u64, N::Limbs> {
+    split_truncated::<N, MASKED>(a, b)
 }
 
 /// [`truncated_product`] of two `N`-bit operands by divide and conquer: a call that owns the

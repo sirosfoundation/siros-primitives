@@ -762,9 +762,10 @@ pub(crate) const fn half_redc_signed(x: u64, p: u64, inv: u64) -> u64 {
 
 /// Montgomery reduction `value / 2^64 mod p` for `p = 2^64 - 2^32 + 1` and `value < p 2^64`, in
 /// winter-math's `mont_red_cst` order: `m = low + (low << 32)` with its carry `e`, and
-/// `(m p) >> 64 = m - (m >> 32) - e` from `m`. A conversion runs unchained, where this order takes
-/// fewer cycles per element than [`Shape::SHIFT_REDC`]'s order, which shortens a chain of products.
-/// A borrow adds `p`, which modulo `2^64` subtracts `2^32 - 1`.
+/// `(m p) >> 64 = m - (m >> 32) - e` from `m`. This order takes fewer cycles per element than
+/// [`Shape::shift_redc_split`], which shortens a chain of products: conversions take it, and with
+/// wide arithmetic `mul` and `square`. A borrow adds `p`, which modulo `2^64` subtracts
+/// `2^32 - 1`.
 pub(crate) const fn shift_redc(value: u128) -> u64 {
     let (low, high) = (value as u64, (value >> 64) as u64);
     let (m, e) = low.overflowing_add(low << 32);
