@@ -17,10 +17,11 @@ use crate::module::ModuleError;
 use crate::record::{Cell, Key, ListedCase, Recorded, Run};
 
 /// The sources that measure, whose text is part of the key of every cell.
-const HARNESS: [&str; 11] = [
+const HARNESS: [&str; 12] = [
     include_str!("count.rs"),
     include_str!("counters.rs"),
     include_str!("barrier.rs"),
+    include_str!("fewest.rs"),
     include_str!("suite.rs"),
     include_str!("host.rs"),
     include_str!("browser/mod.rs"),

@@ -2,10 +2,11 @@
 //! `modules` writes. The owner's rule: a fresh figure is compared only with one of the same
 //! conditions, so baseline and change run back to back in each build.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::browser::{Cpus, LISTING, Threads, list, run as run_in_browser};
 use crate::error::Error;
@@ -36,13 +37,24 @@ pub struct Decision<'a> {
 }
 
 /// The fields of a line that name no part of its row.
-const NOT_ROW: [&str; 5] = ["op", "crate", "counted", "absent", "row"];
+const NOT_ROW: [&str; 6] = ["op", "crate", "counted", "case", "absent", "row"];
 
 /// A module with the names of its cells.
 struct Named {
     bytes: Vec<u8>,
     /// Per cell: its operation, its row and its crate, as a selection names them.
     cells: Vec<(String, String, String)>,
+    /// The name of each row, as a selection names it, by the fields that the lines of a run hold.
+    rows: HashMap<String, String>,
+}
+
+/// The fields of the row of the cell `line`, as one text.
+fn row_fields(line: &Map<String, Value>) -> String {
+    line.iter()
+        .filter(|(field, _)| !NOT_ROW.contains(&field.as_str()))
+        .map(|(_, value)| value.to_string())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The lines that the module at `path` lists, which the file `<path>.list` keeps per content of the
@@ -68,8 +80,8 @@ fn listing(path: &Path, bytes: &[u8], chrome: &Path) -> Result<Vec<String>, Erro
     Ok(lines)
 }
 
-/// The string field `field` of the JSON object `line`.
-fn text(line: &Value, field: &str) -> Result<String, Error> {
+/// The string field `field` of the cell `line`.
+fn text(line: &Map<String, Value>, field: &str) -> Result<String, Error> {
     line.get(field)
         .and_then(Value::as_str)
         .map(str::to_owned)
@@ -84,15 +96,14 @@ impl Named {
         }
         let bytes = fs::read(path).map_err(|source| Error::io(path, source))?;
         let mut cells = Vec::new();
+        let mut rows = HashMap::new();
         for line in listing(path, &bytes, chrome)? {
-            let line: Value = serde_json::from_str(&line).map_err(Error::Cells)?;
-            cells.push((
-                text(&line, "op")?,
-                text(&line, "row")?,
-                text(&line, "crate")?,
-            ));
+            let line: Map<String, Value> = serde_json::from_str(&line).map_err(Error::Cells)?;
+            let row = text(&line, "row")?;
+            drop(rows.insert(row_fields(&line), row.clone()));
+            cells.push((text(&line, "op")?, row, text(&line, "crate")?));
         }
-        Ok(Some(Self { bytes, cells }))
+        Ok(Some(Self { bytes, cells, rows }))
     }
 }
 
@@ -124,26 +135,21 @@ struct Figures {
     count: Option<Count>,
 }
 
-/// The cells in `lines`.
-fn figures(lines: Vec<String>) -> Result<Vec<Figures>, Error> {
+/// The cells in `lines`, the lines of a run of `module`.
+fn figures(lines: Vec<String>, module: &Named) -> Result<Vec<Figures>, Error> {
     let mut cells = Vec::new();
     for line in lines {
         let line: Value = serde_json::from_str(&line).map_err(Error::Cells)?;
         let Some(cell) = line.get("cell").and_then(Value::as_object) else {
             continue;
         };
-        let row: Vec<String> = cell
-            .iter()
-            .filter(|(field, _)| !NOT_ROW.contains(&field.as_str()))
-            .map(|(_, value)| {
-                value
-                    .as_str()
-                    .map_or_else(|| value.to_string(), str::to_owned)
-            })
-            .collect();
-        let field = |name: &str| cell.get(name).and_then(Value::as_str).unwrap_or_default();
+        let fields = row_fields(cell);
+        let row = module
+            .rows
+            .get(&fields)
+            .ok_or_else(|| Error::missing(&format!("row {fields}"), "the listing of the module"))?;
         cells.push(Figures {
-            name: format!("{}/{}/{}", field("op"), row.join(" "), field("crate")),
+            name: format!("{}/{row}/{}", text(cell, "op")?, text(cell, "crate")?),
             count: cell
                 .get("counted")
                 .cloned()
@@ -236,14 +242,15 @@ fn decide_bench(
         }
     }
     let after = load()?;
-    let [baseline, change] = runs.map(|lines| {
-        if lines.is_empty() {
-            Ok(Vec::new())
-        } else {
-            fewest(lines).and_then(figures)
+    let side = |lines: Vec<Vec<String>>, module: Option<&Named>| match module {
+        Some(module) if !lines.is_empty() => {
+            fewest(lines).and_then(|lines| figures(lines, module))
         }
-    });
-    let (baseline, change) = (baseline?, change?);
+        _ => Ok(Vec::new()),
+    };
+    let [baseline, change] = runs;
+    let baseline = side(baseline, sides[0])?;
+    let change = side(change, sides[1])?;
     println!(
         "{}, {bench}: {} runs each; load {before} before, {after} after",
         build.name, decision.runs
