@@ -9,6 +9,14 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+# Tests live in `tests/`. A unit-test build would compile these targets again for no test.
+[lib]
+test = false
+
+[[bin]]
+name = "bench-browser"
+test = false
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true

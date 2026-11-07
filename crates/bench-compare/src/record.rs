@@ -7,6 +7,7 @@ use std::path::Path;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::error::Error;
 
@@ -156,6 +157,68 @@ pub enum Line<K> {
     Sweep(Sweep),
 }
 
+/// A line of a WebAssembly bench that lists its cells without running any: what the tool needs to
+/// tell whether the code of a cell changed.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Listed<K> {
+    /// The operation.
+    pub op: String,
+    /// The row.
+    #[serde(flatten)]
+    pub key: K,
+    /// The row, as a selection names it.
+    pub row: String,
+    /// The crate.
+    #[serde(rename = "crate")]
+    pub library: String,
+    /// The case, or the reason for its absence.
+    #[serde(flatten)]
+    pub call: ListedCall,
+}
+
+/// What a listed cell runs.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ListedCall {
+    /// The crate's function.
+    Case(ListedCase),
+    /// The crate has no function for the operation on the row; the reason.
+    Absent(String),
+}
+
+/// What a case runs. The indices are those of the module's function table.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ListedCase {
+    /// The function.
+    pub function: String,
+    /// How its results deviate from the row's definition, in one phrase; `None` for a function
+    /// that meets it.
+    pub deviation: Option<String>,
+    /// The loop of independent operations.
+    pub batch: usize,
+    /// The chains, one per class that can hold the value of a step.
+    pub chains: Vec<ListedChain>,
+    /// The function that draws one input.
+    pub draw: usize,
+    /// The function that builds what the inputs share.
+    pub setup: usize,
+    /// The function that offers the crate's cells, which builds what the operation can capture.
+    pub adapter: usize,
+    /// A hash of the operands that the row draws from a fixed seed.
+    pub operands: String,
+    /// The bytes that the operation captures, in hexadecimal digits.
+    pub captures: String,
+}
+
+/// A chain of a listed case.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct ListedChain {
+    /// Where the chain holds its value between steps.
+    pub class: Class,
+    /// The loop of the chain.
+    pub entry: usize,
+}
+
 /// The cost of a count of a WebAssembly bench, from empty counts before its sweep: the requests
 /// to the driver and the wake-up of the measuring thread.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -229,14 +292,53 @@ pub struct Measurement<K> {
     /// The cost of a count in each bench of a WebAssembly build, in the order of the benches.
     #[serde(default)]
     pub overheads: Vec<Overhead>,
-    /// The sweep that measured the build.
-    pub sweep: Sweep,
+    /// The hash of the harness sources that measure, for a WebAssembly build with keys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harness: Option<String>,
+    /// The runs that the cells come from.
+    pub runs: Vec<Run>,
     /// Every cell of the comparison.
-    pub cells: Vec<Cell<K>>,
+    pub cells: Vec<Recorded<K>>,
+}
+
+/// One run of a build, over all or some of its cells.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Run {
+    /// The commit that ran it.
+    pub commit: String,
+    /// Whether the measured files differed from the commit.
+    pub dirty: bool,
+    /// The UTC date of the run, `YYYY-MM-DD`.
+    pub date: String,
+    /// Where it measured, and the load around it.
+    pub sweep: Sweep,
+}
+
+/// A cell of a record, with where its figures come from.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Recorded<K> {
+    /// The cell.
+    #[serde(flatten)]
+    pub cell: Cell<K>,
+    /// The index in [`Measurement::runs`] of the run that counted it; 0 for an absent cell.
+    #[serde(default)]
+    pub run: usize,
+    /// The hash of what its figures depend on in the module, in hexadecimal digits; `None` for a
+    /// cell that always counts as changed: one without a key, or that reaches code which the hash
+    /// cannot cover.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+}
+
+impl<K> Recorded<K> {
+    /// Whether the cell holds counts.
+    pub const fn counted(&self) -> bool {
+        matches!(self.cell.outcome, Outcome::Counted(_))
+    }
 }
 
 /// The browser that ran a WebAssembly build.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Engine {
     /// The browser, such as `Chrome`.
     pub name: String,
@@ -246,11 +348,41 @@ pub struct Engine {
     pub settings: String,
 }
 
+/// Gives a run to each build of the record `value` that names none: a sweep over all its cells,
+/// which the head and the date of the record name.
+fn with_runs(value: &mut Value) {
+    let origin: Vec<(&str, Value)> = ["head", "dirty", "date"]
+        .into_iter()
+        .filter_map(|field| Some((field, value.get(field)?.clone())))
+        .collect();
+    let Some(builds) = value.get_mut("builds").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for build in builds.iter_mut().filter_map(Value::as_object_mut) {
+        if build.contains_key("runs") {
+            continue;
+        }
+        let Some(sweep) = build.remove("sweep") else {
+            continue;
+        };
+        let mut run = serde_json::Map::new();
+        for (field, origin) in &origin {
+            let name = if *field == "head" { "commit" } else { field };
+            *run.entry(name).or_insert(Value::Null) = origin.clone();
+        }
+        *run.entry("sweep").or_insert(Value::Null) = sweep;
+        *build.entry("runs").or_insert(Value::Null) = Value::Array(vec![Value::Object(run)]);
+    }
+}
+
 impl<K: Key> Record<K> {
     /// Reads the record at `path`.
     pub fn read(path: &Path) -> Result<Self, Error> {
         let text = fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
-        serde_json::from_str(&text).map_err(|source| Error::json(path, source))
+        let mut value: Value =
+            serde_json::from_str(&text).map_err(|source| Error::json(path, source))?;
+        with_runs(&mut value);
+        serde_json::from_value(value).map_err(|source| Error::json(path, source))
     }
 
     /// Writes the record to `path`.

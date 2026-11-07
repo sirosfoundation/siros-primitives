@@ -125,6 +125,14 @@ pub enum Error {
         /// What failed.
         reason: String,
     },
+    /// The plan that the driver sent a WebAssembly bench is no UTF-8.
+    #[cfg(target_arch = "wasm32")]
+    #[error("the plan of the run: {0}")]
+    Plan(std::string::FromUtf8Error),
+    /// The selection that the driver sent a WebAssembly bench.
+    #[cfg(target_arch = "wasm32")]
+    #[error(transparent)]
+    Selection(crate::selection::SelectionError),
     /// A WebAssembly bench stopped.
     #[error("the WebAssembly bench: {reason}")]
     Bench {

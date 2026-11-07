@@ -149,6 +149,67 @@ impl<A, B: Copy, C: Copy> Chain<A> for (A, B, C) {
 /// representation.
 pub struct Inputs<'a, I> {
     fresh: &'a dyn Fn(&mut Rng) -> I,
+    /// The functions that build the inputs, as the module's table holds them.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) builders: Builders,
+}
+
+/// The functions that build the inputs of a case, as the module's table holds them. A change in
+/// them changes the operands of a measured loop whose code stays the same.
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Builders {
+    /// The function that draws one input.
+    pub(crate) draw: usize,
+    /// The function that builds what the inputs share.
+    pub(crate) setup: usize,
+    /// The function that offers the crate's cells, which builds what an operation can capture.
+    pub(crate) adapter: usize,
+}
+
+/// Draws one input through `fresh`: a function of its own, which the listing of a module names.
+#[cfg(target_arch = "wasm32")]
+#[inline(never)]
+fn draw_one<I, F: Fn(&mut Rng) -> I>(fresh: &F, rng: &mut Rng) -> I {
+    fresh(rng)
+}
+
+/// The entry of [`draw_one`] for `fresh`, as the module's table holds it.
+#[cfg(target_arch = "wasm32")]
+fn draw_entry<I, F: Fn(&mut Rng) -> I>(_fresh: &F) -> usize {
+    let entry: fn(&F, &mut Rng) -> I = draw_one::<I, F>;
+    entry as usize
+}
+
+/// Runs `setup`: a function of its own, which the listing of a module names.
+#[cfg(target_arch = "wasm32")]
+#[inline(never)]
+fn set_up<S, F: FnOnce() -> S>(setup: F) -> S {
+    setup()
+}
+
+/// The entry of [`set_up`] for `F`, as the module's table holds it.
+#[cfg(target_arch = "wasm32")]
+fn setup_entry<S, F: FnOnce() -> S>() -> usize {
+    let entry: fn(F) -> S = set_up::<S, F>;
+    entry as usize
+}
+
+/// Runs `adapter`: a function of its own, which the listing of a module names.
+#[cfg(target_arch = "wasm32")]
+#[inline(never)]
+fn run_adapter<O, K, V, F: FnOnce(Cells<O, K, V>) -> Cells<O, K, V>>(
+    adapter: F,
+    cells: Cells<O, K, V>,
+) -> Cells<O, K, V> {
+    adapter(cells)
+}
+
+/// The entry of [`run_adapter`] for `adapter`, as the module's table holds it.
+#[cfg(target_arch = "wasm32")]
+fn adapter_entry<O, K, V, F: FnOnce(Cells<O, K, V>) -> Cells<O, K, V>>(_adapter: &F) -> usize {
+    let entry: fn(_, _) -> _ = run_adapter::<O, K, V, F>;
+    entry as usize
 }
 
 impl<I> Inputs<'_, I> {
@@ -283,12 +344,20 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Row<O, K, V> {
         lib: &'static str,
         adapter: impl FnOnce(Cells<O, K, V>) -> Cells<O, K, V>,
     ) -> Self {
-        let cells = adapter(Cells {
+        #[cfg(target_arch = "wasm32")]
+        let entry = adapter_entry(&adapter);
+        let cells = Cells {
             row: self,
             lib,
             offered: 0,
             deviation: None,
-        });
+            #[cfg(target_arch = "wasm32")]
+            adapter: entry,
+        };
+        #[cfg(target_arch = "wasm32")]
+        let cells = run_adapter(adapter, cells);
+        #[cfg(not(target_arch = "wasm32"))]
+        let cells = adapter(cells);
         assert_eq!(
             cells.offered, 1,
             "{lib} offers {} cells for {} on {}",
@@ -312,6 +381,9 @@ pub struct Cells<O, K, V> {
     offered: usize,
     /// The deviation that [`deviating`](Self::deviating) declared for the next case.
     deviation: Option<&'static str>,
+    /// The function that offers these cells, as the module's table holds it.
+    #[cfg(target_arch = "wasm32")]
+    adapter: usize,
 }
 
 impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
@@ -464,6 +536,9 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
         });
         self.row.visitor.note(&id, &call);
         if self.row.visitor.wants(&id) {
+            #[cfg(target_arch = "wasm32")]
+            let shared = set_up(case.setup);
+            #[cfg(not(target_arch = "wasm32"))]
             let shared = (case.setup)();
             if self.row.visitor.checks(&id) {
                 let samples = self.row.samples();
@@ -478,7 +553,15 @@ impl<O: Copy + Eq + fmt::Display, K: Key, V: Visitor<O, K>> Cells<O, K, V> {
             }
             let operands = self.row.operands;
             let fresh = |rng: &mut Rng| (case.prepare)(&shared, &operands(id.op, &id.key, rng));
-            let inputs = Inputs { fresh: &fresh };
+            let inputs = Inputs {
+                fresh: &fresh,
+                #[cfg(target_arch = "wasm32")]
+                builders: Builders {
+                    draw: draw_entry(&fresh),
+                    setup: setup_entry::<S, Setup>(),
+                    adapter: self.adapter,
+                },
+            };
             let measured = self.row.visitor.measure(&id, &inputs, case.run);
             self.row.visitor = chain(measured, &id, &inputs);
         }

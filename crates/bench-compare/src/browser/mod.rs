@@ -6,12 +6,14 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::error::Error;
+#[cfg(not(target_os = "linux"))]
+use crate::selection::Plan;
 
 #[cfg(target_os = "linux")]
 mod driver;
 
 #[cfg(target_os = "linux")]
-pub use driver::run;
+pub use driver::{list, run};
 
 /// Runs a bench in a browser: the counters need Linux.
 #[cfg(not(target_os = "linux"))]
@@ -21,7 +23,14 @@ pub fn run(
     _executable: &Path,
     _cpus: Cpus,
     _threads: Threads,
+    _plan: &Plan,
 ) -> Result<Vec<String>, Error> {
+    Err(Error::NoPerfEvent)
+}
+
+/// Lists the cells of a bench in a browser: the driver needs Linux.
+#[cfg(not(target_os = "linux"))]
+pub fn list(_module: &[u8], _browser: &Browser, _executable: &Path) -> Result<Vec<String>, Error> {
     Err(Error::NoPerfEvent)
 }
 
@@ -79,6 +88,12 @@ pub const FIREFOX_WIDE: Browser = Browser::Firefox {
             value: "true",
         },
     ],
+};
+
+/// Chrome with the settings that list the cells of a module of any build at once: it compiles a
+/// function when its first call comes.
+pub const LISTING: Browser = Browser::Chrome {
+    js_flags: &["--wasm-wide-arithmetic"],
 };
 
 /// A preference of Firefox: its name and its value as JavaScript, such as `false`.

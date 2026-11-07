@@ -6,7 +6,10 @@ and without carry-less multiplication, and writes `crates/binary-field/BENCHMARK
 ```sh
 cargo run -p binary-field-bench-report -- bench [--cpu <cpu>] [--machine <description>]
 cargo run -p binary-field-bench-report -- bench-wasm --chrome <executable> --firefox <executable> \
-  [--cpu <cpu>] [--browser-cpu <cpu>] [--machine <description>]
+  [--changed [--dry-run]] [--runs <runs>] [--target-dir <directory>] [--cpu <cpu>] \
+  [--browser-cpu <cpu>] [--machine <description>]
+cargo run -p binary-field-bench-report -- stamp-wasm --chrome <executable> [--target-dir <directory>]
+cargo run -p binary-field-bench-report -- modules --out <directory> [--target-dir <directory>]
 cargo run -p binary-field-bench-report -- report
 ```
 
@@ -21,4 +24,7 @@ table. `bench` needs Linux with `kernel.perf_event_paranoid` at 2 or below; a un
 
 `bench-wasm` builds the benches for `wasm32-unknown-unknown`, with and without wide arithmetic,
 runs each build in Chrome and in Firefox, and records the counts in `benchmarks/record-wasm.json`;
-`report` adds their tables. [`bench-compare`](../../bench-compare) describes the browser driver.
+`report` adds their tables. `--changed` measures the cells whose key differs from the record, with
+the figures they are compared with; `stamp-wasm` writes the keys of the tree into a record of the same
+sources; `modules` writes the modules of a `bench-browser decide`.
+[`bench-compare`](../../bench-compare) describes the browser driver and these keys.
