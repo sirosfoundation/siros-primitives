@@ -39,7 +39,8 @@ const ROUNDS: usize = 12;
 
 /// The runs of a bench that measures a selection, unless `--runs` says otherwise. The repetitions
 /// of a selected cell come within seconds and meet one burst of load, where those of a full run
-/// spread over minutes. See the README for the figures that chose it.
+/// spread over minutes. See the README for the figures that chose it. A sweep over part of a build
+/// runs a bench whole, once, where its selection holds at least this share of its cells.
 pub const SELECTED_RUNS: usize = 3;
 
 /// The linker flag that keeps in each module the relocations that [`Identity`] reads. Only custom
@@ -573,7 +574,9 @@ impl<K: Key> Context<'_, K> {
         ))
     }
 
-    /// Runs the cells of `listing` in `selected`, if it has any, as many times as the options say.
+    /// Runs the cells of `listing` in `selected`, if it has any: `--runs` times, or by default
+    /// [`SELECTED_RUNS`] times, where one run of the whole bench costs more. That run takes the
+    /// bench's other cells with it.
     fn run_module(
         &self,
         build: &WasmBuild,
@@ -591,14 +594,25 @@ impl<K: Key> Context<'_, K> {
         if patterns.is_empty() {
             return Ok(None);
         }
-        let (plan, runs) = if patterns.len() == listing.cases() {
-            (Plan::All, self.runs.unwrap_or(1))
+        let cases = listing.cases();
+        let whole = patterns.len() == cases
+            || (self.runs.is_none() && patterns.len() * SELECTED_RUNS >= cases);
+        let (plan, cells, runs) = if whole {
+            (Plan::All, cases, self.runs.unwrap_or(1))
         } else {
+            let cells = patterns.len();
             (
                 Plan::Only(Selection::of(patterns)?),
+                cells,
                 self.runs.unwrap_or(SELECTED_RUNS),
             )
         };
+        println!(
+            "{}: {}: {cells} of {cases} cells, {runs} runs; load {}",
+            build.name,
+            listing.bench,
+            load()?
+        );
         let lines = (0..runs)
             .map(|_| {
                 run_in_browser(

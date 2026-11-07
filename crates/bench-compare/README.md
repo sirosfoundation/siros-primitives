@@ -180,8 +180,9 @@ while the record holds its key:
 
 A cell without a key counts as changed, and so does a cell whose loop can reach an indirect call. A
 round runs the changed cells, the subject's columns in their rows, and each row's fewest figure and
-best competitor per part; a module with none of them stays out. Fresh figures replace old ones, with
-no minimum across runs. A round repeats while a kept figure leads a re-measured row, 12 times at most;
+best competitor per part; a module with none of them stays out, and a module where they hold a third
+of its cells or more runs whole, once, for no more time than three runs of them. Fresh figures replace
+old ones, with no minimum across runs. A round repeats while a kept figure leads a re-measured row, 12 times at most;
 past that the tool stops with an error. `--dry-run` prints the cells of the first round of each
 build. A `bench-wasm` without `--changed` measures every cell.
 
