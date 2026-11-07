@@ -191,44 +191,77 @@ pub(crate) fn opaque<T>(value: &T) -> &T {
     #[cfg(target_arch = "x86_64")]
     return registers::opaque(value);
     #[cfg(not(target_arch = "x86_64"))]
-    return hide(value);
+    return through(&mut { value }, value);
 }
 
-/// `value` from a store and a volatile load, which hide it as `core::hint::black_box` does. The
-/// empty block after them bounds the search of LLVM's DAG combiner to the operation's own loads:
-/// it gives up after 18 steps, and a 512-bit sum by value takes 17 to pass its first store over
-/// its 16 loads.
+/// `value` from a volatile store to `slot` and a volatile load, which hide it as
+/// `core::hint::black_box` does. The empty block after them bounds the search of LLVM's DAG
+/// combiner to the operation's own loads: it gives up after 18 steps, and a 512-bit sum by value
+/// takes 17 to pass its first store over its 16 loads.
 #[cfg(not(target_arch = "x86_64"))]
 #[inline(always)]
-fn hide<P: Copy>(value: P) -> P {
-    // SAFETY: `value` is a local, valid for reads.
-    let hidden = unsafe { core::ptr::read_volatile(&raw const value) };
+fn through<P: Copy>(slot: &mut P, value: P) -> P {
+    // SAFETY: `slot` is a reference, valid for writes and reads.
+    let hidden = unsafe {
+        core::ptr::write_volatile(slot, value);
+        core::ptr::read_volatile(slot)
+    };
     core::hint::black_box(());
     hidden
 }
 
-/// `visit` on each input of `batch` in order: each address passes through [`hide`], and the next
-/// one follows from what comes out. LLVM cannot count such a loop, so it unrolls none, where it
-/// would unroll a WebAssembly loop of at most 16 IR instructions and halve the exit tests of only
-/// the operations that small.
+/// A walk over the inputs of a nonempty batch: each address passes through [`through`], and the
+/// walk ends on what comes out. LLVM cannot count such a loop, so it unrolls none, where it would
+/// unroll a WebAssembly loop of at most 16 IR instructions and halve the exit tests of only the
+/// operations that small. The next address stays in a local: taken from the volatile load, it
+/// chains each input on the last through memory, and the plain 128-bit product took Chrome 12 to 16
+/// cycles against 9.8.
 #[cfg(target_arch = "wasm32")]
-#[inline(always)]
-pub(crate) fn each_hidden<I>(batch: &[I], mut visit: impl FnMut(&I)) {
-    const {
-        assert!(
-            size_of::<I>() > 0,
-            "the end of a batch needs inputs with a size"
-        )
-    };
-    let range = batch.as_ptr_range();
-    let mut next = range.start;
-    while next != range.end {
-        let hidden = hide(next);
-        // SAFETY: `hidden` is `next`, the address of an input: it starts below the end of `batch`,
-        // and each step moves it by one input up to that end.
-        visit(unsafe { &*hidden });
-        // SAFETY: `hidden` addresses an input, so the next address is at most the end of `batch`.
-        next = unsafe { hidden.add(1) };
+pub(crate) struct HiddenWalk<'a, I> {
+    /// The address of an input of the batch.
+    next: *const I,
+    /// The address after the last input.
+    end: *const I,
+    /// Where each address passes through memory: apart from the result of an operation, which
+    /// otherwise shares its stack slot.
+    slot: *const I,
+    batch: core::marker::PhantomData<&'a [I]>,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<'a, I> HiddenWalk<'a, I> {
+    /// The walk over `batch`, unless it is empty.
+    #[inline(always)]
+    pub(crate) fn of(batch: &'a [I]) -> Option<Self> {
+        const {
+            assert!(
+                size_of::<I>() > 0,
+                "the end of a batch needs inputs with a size"
+            )
+        };
+        let range = batch.as_ptr_range();
+        (range.start != range.end).then_some(Self {
+            next: range.start,
+            end: range.end,
+            slot: range.start,
+            batch: core::marker::PhantomData,
+        })
+    }
+
+    /// The current input.
+    #[inline(always)]
+    pub(crate) fn input(&mut self) -> &'a I {
+        let hidden = through(&mut self.slot, self.next);
+        // SAFETY: `next` addresses an input of the batch, which lives for `'a`.
+        unsafe { &*hidden }
+    }
+
+    /// Moves past `input`, the current input. Returns whether an input remains.
+    #[inline(always)]
+    pub(crate) fn advance(&mut self, input: &I) -> bool {
+        // SAFETY: `next` addresses an input, so the next address is at most the end of the batch.
+        self.next = unsafe { self.next.add(1) };
+        core::ptr::from_ref(input).wrapping_add(1) != self.end
     }
 }
 

@@ -11,7 +11,7 @@
 use core::fmt;
 
 #[cfg(target_arch = "wasm32")]
-use crate::barrier::each_hidden;
+use crate::barrier::HiddenWalk;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::barrier::opaque;
 use crate::barrier::{Barrier, sink};
@@ -220,7 +220,15 @@ pub fn visit<S: Suite, V: Visitor<S::Op, S::Key>>(visitor: V) -> V {
 pub fn run_batch<I, R>(batch: &[I], run: impl Fn(&I) -> R) -> usize {
     #[cfg(target_arch = "wasm32")]
     {
-        each_hidden(batch, |input| sink(&run(input)));
+        if let Some(mut walk) = HiddenWalk::of(batch) {
+            loop {
+                let input = walk.input();
+                sink(&run(input));
+                if !walk.advance(input) {
+                    break;
+                }
+            }
+        }
         batch.len()
     }
     #[cfg(not(target_arch = "wasm32"))]
