@@ -15,7 +15,7 @@ impl<M: Modulus> Fp<M> {
     pub fn sqrt(self) -> Option<Self> {
         if Shape::<M>::THREE_MOD_FOUR {
             let root = self.pow_program::<false>(&Shape::<M>::SQRT_CHAIN);
-            return if chain_square!(false, root).equals(&self) {
+            return if root.square_with::<false>().equals(&self) {
                 Some(root)
             } else {
                 None
@@ -30,16 +30,17 @@ impl<M: Modulus> Fp<M> {
         // the power of `c` that takes `b` one step closer to `1`. The subgroup generator of a
         // round is `c^(2^offset)` with `offset + order = s`, so every power it needs is a table
         // entry: `index` counts down from `s` with the squarings that find `i`, and lands on the
-        // entry of the next generator.
+        // entry of the next generator. These steps stay on `mul` and `square`: the chain forms took
+        // Firefox 7,820 cycles against 4,366 on Goldilocks and Chrome 3,910 against 3,960.
         let w = self.pow_program::<false>(&Shape::<M>::SQRT_CHAIN);
-        let mut root = chain_mul!(false, w, self);
-        let mut b = chain_mul!(false, w, root);
+        let mut root = w.mul_with::<false>(self);
+        let mut b = w.mul_with::<false>(root);
         let mut offset = 0;
         while !b.equals(&Self::ONE) {
             let mut power = b;
             let mut index = Shape::<M>::TWO_ADICITY;
             loop {
-                power = chain_square!(false, power);
+                power = power.square_with::<false>();
                 index -= 1;
                 if index == offset {
                     return None;
@@ -48,8 +49,8 @@ impl<M: Modulus> Fp<M> {
                     break;
                 }
             }
-            root = chain_mul!(false, root, Self::root_power(index - 1));
-            b = chain_mul!(false, b, Self::root_power(index));
+            root = root.mul_with::<false>(Self::root_power(index - 1));
+            b = b.mul_with::<false>(Self::root_power(index));
             offset = index;
         }
         Some(root)
@@ -125,7 +126,7 @@ impl<M: Modulus> Fp<M> {
         }
         let mut power = Self::from_limbs(Shape::<M>::TWO_ADIC_ROOT_POWERS[ROOT_POWERS - 1]);
         for _ in ROOT_POWERS - 1..index {
-            power = chain_square!(false, power);
+            power = power.square_with::<false>();
         }
         power
     }
