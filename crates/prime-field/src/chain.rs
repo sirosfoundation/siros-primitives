@@ -27,6 +27,37 @@ use crate::kernel::{bit, bit_len, limb, set};
 use crate::params::{Limbs, Shape};
 use crate::width::Width;
 
+/// `$a * $b` as a step of a chain, which waits for the step before it. Without wide arithmetic it
+/// names `mul_with` itself: a method in between changes what rustc inlines in native code.
+#[cfg(wide_arithmetic)]
+macro_rules! chain_mul {
+    ($ct:tt, $a:expr, $b:expr) => {
+        $a.chain_mul::<$ct>($b)
+    };
+}
+#[cfg(not(wide_arithmetic))]
+macro_rules! chain_mul {
+    ($ct:tt, $a:expr, $b:expr) => {
+        $a.mul_with::<$ct>($b)
+    };
+}
+pub(crate) use chain_mul;
+
+/// `$a * $a` as a step of a chain, as [`chain_mul`].
+#[cfg(wide_arithmetic)]
+macro_rules! chain_square {
+    ($ct:tt, $a:expr) => {
+        $a.chain_square::<$ct>()
+    };
+}
+#[cfg(not(wide_arithmetic))]
+macro_rules! chain_square {
+    ($ct:tt, $a:expr) => {
+        $a.square_with::<$ct>()
+    };
+}
+pub(crate) use chain_square;
+
 /// The widest window of odd values: the dictionary holds odd values below `2^MAX_WINDOW`.
 const MAX_WINDOW: usize = 6;
 /// The registers of the runtime loop, a power of two: the base in register `0`, then the
@@ -988,7 +1019,7 @@ impl<M: Modulus> Fp<M> {
                 let value =
                     registers[step.src as usize % REGISTERS].square_times::<CT>(step.squarings);
                 registers[step.dst as usize % REGISTERS] = match step.mul {
-                    Some(mul) => value.chain_mul::<CT>(registers[mul as usize % REGISTERS]),
+                    Some(mul) => chain_mul!(CT, value, registers[mul as usize % REGISTERS]),
                     None => value,
                 };
                 index += 1;
@@ -1017,7 +1048,7 @@ impl<M: Modulus> Fp<M> {
                 let step = program.climb(index);
                 acc = acc.square_times::<CT>(step.squarings);
                 if let Some(mul) = step.mul {
-                    acc = acc.chain_mul::<CT>(registers[mul as usize % REGISTERS]);
+                    acc = chain_mul!(CT, acc, registers[mul as usize % REGISTERS]);
                 }
                 index += 1;
             };
@@ -1045,34 +1076,30 @@ impl<M: Modulus> Fp<M> {
         let mut value = self;
         let mut remaining = count;
         while remaining >= 2 {
-            value = value.chain_square::<CT>().chain_square::<CT>();
+            value = chain_square!(CT, chain_square!(CT, value));
             remaining -= 2;
         }
         if remaining == 1 {
-            value = value.chain_square::<CT>();
+            value = chain_square!(CT, value);
         }
         value
     }
 
     /// `self * rhs` as a step of a chain.
+    #[cfg(wide_arithmetic)]
     #[inline(always)]
     pub(crate) fn chain_mul<const CT: bool>(self, rhs: Self) -> Self {
-        #[cfg(wide_arithmetic)]
-        return Self::from_limbs(Shape::<M>::chain_mul::<CT>(
+        Self::from_limbs(Shape::<M>::chain_mul::<CT>(
             self.limb_array(),
             rhs.limb_array(),
-        ));
-        #[cfg(not(wide_arithmetic))]
-        return self.mul_with::<CT>(rhs);
+        ))
     }
 
     /// `self * self` as a step of a chain.
+    #[cfg(wide_arithmetic)]
     #[inline(always)]
     pub(crate) fn chain_square<const CT: bool>(self) -> Self {
-        #[cfg(wide_arithmetic)]
-        return Self::from_limbs(Shape::<M>::chain_square::<CT>(self.limb_array()));
-        #[cfg(not(wide_arithmetic))]
-        return self.square_with::<CT>();
+        Self::from_limbs(Shape::<M>::chain_square::<CT>(self.limb_array()))
     }
 }
 

@@ -7,6 +7,7 @@ use biguint::generic_array::GenericArray;
 use biguint::typenum::{IsLess, True};
 use biguint::{Bits, NonZeroUint, OutOfRange, Uint};
 
+use crate::chain::{chain_mul, chain_square};
 use crate::kernel::{bit, bit_len, equal};
 use crate::params::{Limbs, Shape};
 use crate::width::Width;
@@ -327,17 +328,17 @@ impl<M: Modulus> Fp<M> {
         let window = pow_window(bits);
         // `table[i] = self^(2 i + 1)`.
         let mut table = [self; 1 << (POW_WINDOW - 1)];
-        let square = self.chain_square::<CT>();
+        let square = chain_square!(CT, self);
         let mut previous = self;
         for entry in table.iter_mut().take(1 << (window - 1)).skip(1) {
-            previous = previous.chain_mul::<CT>(square);
+            previous = chain_mul!(CT, previous, square);
             *entry = previous;
         }
         let mut result = Self::ONE;
         let mut index = bits;
         while index > 0 {
             if !bit(exponent, index - 1) {
-                result = result.chain_square::<CT>();
+                result = chain_square!(CT, result);
                 index -= 1;
                 continue;
             }
@@ -349,9 +350,9 @@ impl<M: Modulus> Fp<M> {
             let trailing = value.trailing_zeros() as usize;
             let used = width - trailing;
             for _ in 0..used {
-                result = result.chain_square::<CT>();
+                result = chain_square!(CT, result);
             }
-            result = result.chain_mul::<CT>(table_entry(&table, (value >> trailing) / 2));
+            result = chain_mul!(CT, result, table_entry(&table, (value >> trailing) / 2));
             index -= used;
         }
         result
@@ -611,7 +612,7 @@ impl<M: Modulus> Sum for Fp<M> {
 impl<M: Modulus> Product for Fp<M> {
     #[inline]
     fn product<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Self::ONE, |product, item| product.chain_mul::<false>(item))
+        iter.fold(Self::ONE, |product, item| chain_mul!(false, product, item))
     }
 }
 
