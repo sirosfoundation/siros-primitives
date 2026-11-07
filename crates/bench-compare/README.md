@@ -165,7 +165,7 @@ cargo run --release -p bench-compare --bin bench-browser -- decide \
 ```
 
 It runs both sides back to back in each of the four builds, `--runs` times, and prints each cell's
-fewest figures and the load.
+median figures and the load.
 
 `bench-wasm --changed` is a content-addressed action cache, as in Bazel. A cell keeps its figures
 while the record holds its key:
@@ -206,16 +206,5 @@ a record that ran dirty, uncommitted changes in the measured sources, and source
 the record's `head`. The files of `bench-compare` stay out of that check: run `bench-browser diff`
 between the modules of both commits first.
 
-A selected cell takes the fewest figures of `SELECTED_RUNS`, 3, runs of its bench: repetitions within
-one run meet one burst of load, where a full run spreads them over minutes. Cycles of 48 cells across
-16 operations in two crates, against a full run back to back, at load 25 to 60:
-
-| Against a full run | Figures | Median distance | 95th percentile | Median signed difference |
-| ------------------ | ------- | --------------- | --------------- | ------------------------ |
-| A second full run  | 176     | 1.9%            | 22.9%           | +0.1%                    |
-| 1 selected run     | 192     | 2.4%            | 29.6%           | +0.2%                    |
-| 3 selected runs    | 192     | 1.6%            | 18.4%           | -0.9%                    |
-| 7 selected runs    | 96      | 4.7%            | 36.8%           | -3.0%                    |
-
-Instruction counts differ by a median of 0.000% on each line. More runs read lower, as a minimum over
-more samples does. A verdict compares figures of one run, so this offset between runs stays out of it.
+A selected cell takes the median figures of `SELECTED_RUNS`, 3, runs of its bench. A figure is a
+difference of two fewest counts, so a run errs either way.

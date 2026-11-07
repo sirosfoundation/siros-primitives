@@ -10,8 +10,8 @@ use serde_json::{Map, Value};
 
 use crate::browser::{Cpus, LISTING, Threads, list, run as run_in_browser};
 use crate::error::Error;
-use crate::fewest::fewest;
 use crate::fingerprint::Fingerprint;
+use crate::median::median_of_runs;
 use crate::record::Count;
 use crate::selection::{Plan, Selection};
 use crate::tool_error::ToolError;
@@ -219,7 +219,7 @@ fn run_side(
     .map(Some)
 }
 
-/// Runs the bench `bench` of one build on both sides, back to back, and prints each cell's fewest
+/// Runs the bench `bench` of one build on both sides, back to back, and prints each cell's median
 /// figures over the runs and the load around them.
 fn decide_bench(
     decision: &Decision<'_>,
@@ -243,7 +243,9 @@ fn decide_bench(
     }
     let after = load()?;
     let side = |lines: Vec<Vec<String>>, module: Option<&Named>| match module {
-        Some(module) if !lines.is_empty() => fewest(lines).and_then(|lines| figures(lines, module)),
+        Some(module) if !lines.is_empty() => {
+            median_of_runs(lines).and_then(|lines| figures(lines, module))
+        }
         _ => Ok(Vec::new()),
     };
     let [baseline, change] = runs;

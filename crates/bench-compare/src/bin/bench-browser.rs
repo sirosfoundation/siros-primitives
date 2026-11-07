@@ -35,7 +35,7 @@ mod linux {
     use bench_compare::{
         Browser, CHROME, CHROME_WIDE, CPU, Cpus, Decision, Error, FIREFOX, FIREFOX_WIDE, Identity,
         LISTING, Line, Plan, SELECTED_RUNS, Selection, Threads, ToolError, Window, code, decide,
-        fewest, list_in_browser, run_in_browser,
+        list_in_browser, median_of_runs, run_in_browser,
     };
     use serde_json::Value;
 
@@ -179,7 +179,7 @@ mod linux {
                 &plan,
             )?);
         }
-        let mut lines = fewest(all)?;
+        let mut lines = median_of_runs(all)?;
         let sweep = Line::<Value>::Sweep(window.close()?);
         lines.push(serde_json::to_string(&sweep).map_err(Error::Cells)?);
         Ok(lines)

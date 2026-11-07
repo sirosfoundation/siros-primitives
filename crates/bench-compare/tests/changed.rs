@@ -2,11 +2,10 @@
 //! figures replace the kept ones, and the rule that a verdict compares figures of one run.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
 
 use bench_compare::{
-    Cell, CellId, Count, Events, Layout, Load, Measurement, Operation, Outcome, Paths, Record,
-    Recorded, Run, Selection, SelectionError, Sweep, ToolError, compact, merge, overtaken, report,
+    Cell, CellId, Count, Events, Layout, Load, Measurement, Operation, Outcome, Record, Recorded,
+    Run, Selection, SelectionError, Sweep, ToolError, check_records, compact, merge, overtaken,
     select,
 };
 
@@ -225,24 +224,15 @@ fn record(cells: Vec<Recorded<u32>>) -> Record<u32> {
 /// The owner's rule: a fresh figure is never compared with one recorded under other conditions.
 #[test]
 fn report_refuses_a_verdict_across_runs() {
-    let library = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("report_refuses");
-    std::fs::create_dir_all(&library).expect("a directory for the document");
-    let paths = Paths {
-        root: library.clone(),
-        record: library.join("record.json"),
-        wasm_record: library.join("record-wasm.json"),
-        library,
-    };
-
     let matched = record(sample());
-    report(&paths, &LAYOUT, &matched, None).expect("a record of one run");
+    check_records(&LAYOUT, &matched, None).expect("a record of one run");
 
     // The subject comes from the second run, and the row's leader stays in the first.
     let mut unmatched = sample();
     merge(&mut unmatched, vec![counted("mul", 256, SUBJECT, 8.0)], 1)
         .expect("a cell of the sample");
     let error =
-        report(&paths, &LAYOUT, &record(unmatched), None).expect_err("a verdict across runs");
+        check_records(&LAYOUT, &record(unmatched), None).expect_err("a verdict across runs");
     assert!(matches!(error, ToolError::Unmatched(_)), "{error}");
 
     // A figure of the second run ties the leader's kept figure: the verdict holds in that run.
@@ -253,7 +243,7 @@ fn report_refuses_a_verdict_across_runs() {
         recorded("mul", 1024, "a", 6.0, 0),
         recorded("mul", 1024, "b", 6.0, 1),
     ]);
-    report(&paths, &LAYOUT, &record(tied), None).expect("a tie that holds a cell of the run");
+    check_records(&LAYOUT, &record(tied), None).expect("a tie that holds a cell of the run");
 }
 
 /// A pattern that names no cell of the bench stops a run before it measures: a mistyped selection

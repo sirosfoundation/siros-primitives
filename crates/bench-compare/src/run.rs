@@ -114,7 +114,7 @@ pub struct Options {
     pub changed: bool,
     /// Whether `bench-wasm --changed` stops after it names what it would measure.
     pub dry_run: bool,
-    /// The runs of a bench, whose fewest figures count.
+    /// The runs of a bench, whose median figures count.
     pub runs: Option<String>,
     /// The directory of the targets of the WebAssembly builds, for `target` of the workspace.
     pub target_dir: Option<PathBuf>,

@@ -87,19 +87,16 @@ pub struct Layout<'a, K> {
     pub wasm_native: &'a str,
 }
 
-/// Writes the document from `record` and from `wasm`, the record of the WebAssembly builds when
-/// there is one, and prints to the terminal every odd cell: a crate's figure on a row that exceeds
-/// its figure on a row of more bits, in the same table, by more than 10%. Then it prints every
-/// trailing cell of the native and the WebAssembly builds: a figure of the subject 0.5 cycles or
-/// more above the fewest figure of its row and part among the functions that keep the row's
-/// definition. It refuses a record where a figure of the subject and the figure it is compared with
-/// come from different runs: [`ToolError::Unmatched`].
-pub fn report<K: Key>(
-    paths: &Paths,
-    layout: &Layout<'_, K>,
-    record: &Record<K>,
-    wasm: Option<&Record<K>>,
-) -> Result<(), ToolError> {
+/// A build and its table.
+type MeasuredTable<'r, K> = (&'r Measurement<K>, Table<'r, K>);
+
+/// The table of each build of `record` and `wasm`, which hold the same cells; a verdict that compares
+/// figures of different runs is a [`ToolError::Unmatched`].
+fn checked_tables<'r, K: Key>(
+    layout: &'r Layout<'_, K>,
+    record: &'r Record<K>,
+    wasm: Option<&'r Record<K>>,
+) -> Result<Vec<MeasuredTable<'r, K>>, ToolError> {
     let tables = record
         .builds
         .iter()
@@ -119,6 +116,35 @@ pub fn report<K: Key>(
         }
         check_matched(layout, table, build)?;
     }
+    Ok(tables)
+}
+
+/// Whether [`report`] takes `record` and `wasm`.
+pub fn check_records<K: Key>(
+    layout: &Layout<'_, K>,
+    record: &Record<K>,
+    wasm: Option<&Record<K>>,
+) -> Result<(), ToolError> {
+    checked_tables(layout, record, wasm).map(drop)
+}
+
+/// Writes the document from `record` and from `wasm`, the record of the WebAssembly builds when
+/// there is one, and prints to the terminal every odd cell: a crate's figure on a row that exceeds
+/// its figure on a row of more bits, in the same table, by more than 10%. Then it prints every
+/// trailing cell of the native and the WebAssembly builds: a figure of the subject 0.5 cycles or
+/// more above the fewest figure of its row and part among the functions that keep the row's
+/// definition. It refuses a record where a figure of the subject and the figure it is compared with
+/// come from different runs: [`ToolError::Unmatched`].
+pub fn report<K: Key>(
+    paths: &Paths,
+    layout: &Layout<'_, K>,
+    record: &Record<K>,
+    wasm: Option<&Record<K>>,
+) -> Result<(), ToolError> {
+    let tables = checked_tables(layout, record, wasm)?;
+    let [(_, first), ..] = tables.as_slice() else {
+        return Err(Error::missing("build", "the run record").into());
+    };
     let (native, browsers) = tables.split_at(record.builds.len());
     let mut lines = header(record, layout, first);
     lines.extend(setup(record, "## Setup"));
@@ -854,7 +880,7 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
     }
     if record.builds.iter().any(|build| build.runs.len() > 1) {
         lines.push(format!(
-            "- A sweep over part of a build gives each selected cell the fewest figures of \
+            "- A sweep over part of a build gives each selected cell the median figures of \
              {SELECTED_RUNS} runs of its bench by default, or the figures of one run of the whole \
              bench where the selection holds 1/{SELECTED_RUNS} of its cells or more. The setup table \
              names each run, and a verdict compares figures of one run."
