@@ -730,7 +730,8 @@ fn webassembly_method() -> [String; 9] {
              {FEWEST_STEP_CYCLES} cycles, ran {REPETITIONS} more repetitions, up to {RETRIES} \
              times. A form whose difference counted under {SIGNAL} times the noise of the fixed \
              cost of a count ran {REPETITIONS} repetitions of twice its operations, up to \
-             {DOUBLINGS} times. A case that stays so stops the sweep."
+             {DOUBLINGS} times. A case that stays so stops the sweep. Each such round ran every \
+             case again, in the order of the first round, and kept the counts of those forms alone."
         ),
         "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \
          whichever is faster."
@@ -885,7 +886,8 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
             "- Each native figure: over {REPETITIONS} repetitions, the fewest cycles of 2n operations \
              less the fewest of n, over n. A case whose 2n runs counted no more than its n runs, \
              or whose chain step counted under {FEWEST_STEP_CYCLES} cycles, ran {REPETITIONS} \
-             more, up to {RETRIES} times."
+             more, up to {RETRIES} times. Each such round ran every case again, in the order of \
+             the first round, and kept the counts of that case alone."
         ),
     ];
     if record

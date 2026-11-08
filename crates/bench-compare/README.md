@@ -36,6 +36,10 @@ complete bench of two operations.
   repetitions, after nanoBench (Abel and Reineke, ISPASS 2020). A busy sibling hardware thread
   doubled a one-`add` chain step: the fewest of each length is the run that met an idle sibling.
   [`bench-tools`](../bench-tools) gives the WebAssembly figure.
+- A case whose long runs count no more cycles than its short runs, or whose chain step counts under
+  0.75 cycles, runs up to three more rounds of 31 repetitions. Each round runs every case again, in
+  the order of the first round, and keeps the counts of that case alone: its repetitions meet the
+  load over as long a span as the first round's, each after the same cases.
 - Latency runs the chain `x = op(x, y)` with `x` held in registers between steps. Every case first
   matches the accepted results. The bench pins itself to CPU 15.
 - A sweep stops on multiplexed counters, on long runs that count no more cycles than short runs,

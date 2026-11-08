@@ -23,8 +23,7 @@
 //! than [`FEWEST_STEP_CYCLES`], runs [`REPETITIONS`] more repetitions, up to [`RETRIES`] times: a
 //! disturbance that hits every short run inflates the fewest of the short runs alone, and more
 //! repetitions give the short runs more chances to run undisturbed. A case that stays so stops the
-//! sweep. A WebAssembly bench sizes and repeats its runs by its own
-//! [`Protocol`].
+//! sweep. A WebAssembly bench sizes and repeats its runs by its own [`Protocol`].
 //!
 //! A WebAssembly count leaves out the fewest cycles of an empty count, and a figure of cycles is the
 //! lower rate of the fewest short run and the fewest long run. Each rate bounds the undisturbed rate
@@ -41,6 +40,15 @@
 //! of 38 to 50 the noise reached 20,700 cycles, which put the bound at about the difference of a
 //! run of 4 million instructions. A form within the bound keeps its run and its figures, and the
 //! `operations` of a cell's line name the run of its figure.
+//!
+//! A round past the first runs every case again, in the order of the first round, and keeps the
+//! counts of the forms that need more repetitions or a longer run: their repetitions meet the load
+//! over as long a span as the first round's, each after the same cases. A round of those forms
+//! alone can fall within one burst of load, which raises every repetition and so the fewest. With
+//! the noise held at 20,700 cycles, and the counted cores' sibling threads busy in bursts of 12 to
+//! 20 s for half of the sweep, rounds of those forms alone put 15.6% of the lengthened forms more
+//! than 10% above a natural sweep, and rounds of every case none, against 0.9% and 0.7% of the
+//! forms of the same size that kept their run.
 
 use std::mem::size_of;
 use std::process::ExitCode;
@@ -413,11 +421,11 @@ fn cells<S: Suite>(
                 return Err(error);
             }
         }
-        let mut runs = false;
+        let mut keeps = false;
         for case in &mut measuring.cases {
-            runs |= case.next_round(noise)?;
+            keeps |= case.next_round(noise)?;
         }
-        if !runs {
+        if !keeps {
             break;
         }
         round += 1;
@@ -527,8 +535,8 @@ struct Form {
     cap: usize,
     /// The doublings of the sized run that `run` holds.
     doublings: usize,
-    /// Whether the passes of the current round run the form.
-    runs: bool,
+    /// Whether the current round keeps the counts of the form. Every round runs every form.
+    keeps: bool,
     /// The counts of the short run and of the long run of every repetition of `run`.
     repetitions: Vec<[Counts; 2]>,
 }
@@ -540,7 +548,7 @@ impl Form {
             run,
             cap,
             doublings: 0,
-            runs: true,
+            keeps: true,
             repetitions: Vec::new(),
         }
     }
@@ -656,12 +664,12 @@ struct Case {
 }
 
 impl Case {
-    /// Readies the case for the next round of [`REPETITIONS`] repetitions; returns whether a form
-    /// of it runs there. A form whose difference counts under [`SIGNAL`] times `noise` runs twice
-    /// its operations, up to [`DOUBLINGS`] times. A case whose long runs count no more cycles than
-    /// its short runs, or whose chain step counts under [`FEWEST_STEP_CYCLES`], in any form, runs
-    /// more repetitions of every form, up to [`RETRIES`] times. Every other form keeps its run and
-    /// its figure.
+    /// Readies the case for the next round of [`REPETITIONS`] repetitions; returns whether that
+    /// round keeps the counts of a form of it. A form whose difference counts under [`SIGNAL`]
+    /// times `noise` runs twice its operations, up to [`DOUBLINGS`] times. A case whose long runs
+    /// count no more cycles than its short runs, or whose chain step counts under
+    /// [`FEWEST_STEP_CYCLES`], in any form, keeps more repetitions of every form, up to
+    /// [`RETRIES`] times. Every other form keeps its run and its figure.
     fn next_round(&mut self, noise: Option<f64>) -> Result<bool, Error> {
         let mut implausible = false;
         for (name, form, least) in self.forms() {
@@ -671,17 +679,17 @@ impl Case {
         if retries {
             self.retries += 1;
         }
-        let mut runs = false;
+        let mut keeps = false;
         for (name, form, least) in self.forms() {
             let lengthens =
                 form.doublings < DOUBLINGS && form.verdict(&name, noise, least)? == Verdict::Noisy;
             if lengthens {
                 form.lengthen();
             }
-            form.runs = lengthens || retries;
-            runs |= form.runs;
+            form.keeps = lengthens || retries;
+            keeps |= form.keeps;
         }
-        Ok(runs)
+        Ok(keeps)
     }
 
     /// The batch form and then the chain forms of the case, each with its name in messages and
@@ -1008,7 +1016,7 @@ impl<O, K> Measuring<'_, O, K> {
     }
 
     /// Sizes, in pass 0, the batch form of the case `id`, which `trial` runs; in pass `r`, runs
-    /// its repetition `r` where the round of the pass runs the form.
+    /// its repetition `r`, whose counts the form keeps where the round of the pass keeps them.
     fn batch(&mut self, id: String, trial: &dyn Trial, cap: usize) -> Result<(), Error> {
         #[cfg(target_arch = "wasm32")]
         {
@@ -1025,13 +1033,11 @@ impl<O, K> Measuring<'_, O, K> {
             return Ok(());
         }
         let index = self.case(&id)?;
-        let batch = &self.cases[index].batch;
-        if !batch.runs {
-            return Ok(());
-        }
-        let run = batch.run;
+        let Form { run, keeps, .. } = self.cases[index].batch;
         let counts = self.repetition(trial, run, &id)?;
-        self.cases[index].batch.repetitions.push(counts);
+        if keeps {
+            self.cases[index].batch.repetitions.push(counts);
+        }
         Ok(())
     }
 
@@ -1047,7 +1053,8 @@ impl<O, K> Measuring<'_, O, K> {
     }
 
     /// Sizes, in pass 0, the chain form of the case `index` in `class`, which `trial` runs; in
-    /// pass `r`, runs its repetition `r` where the round of the pass runs the form.
+    /// pass `r`, runs its repetition `r`, whose counts the form keeps where the round of the pass
+    /// keeps them.
     fn chain_form(
         &mut self,
         index: usize,
@@ -1062,25 +1069,23 @@ impl<O, K> Measuring<'_, O, K> {
             return Ok(());
         }
         let missing = || Error::missing(&format!("chain in {class}"), id);
-        let form = &self.cases[index]
+        let Form { run, keeps, .. } = self.cases[index]
             .chains
             .iter()
             .find(|chain| chain.class == class)
             .ok_or_else(missing)?
             .form;
-        if !form.runs {
-            return Ok(());
-        }
-        let run = form.run;
         let counts = self.repetition(trial, run, id)?;
-        self.cases[index]
-            .chains
-            .iter_mut()
-            .find(|chain| chain.class == class)
-            .ok_or_else(missing)?
-            .form
-            .repetitions
-            .push(counts);
+        if keeps {
+            self.cases[index]
+                .chains
+                .iter_mut()
+                .find(|chain| chain.class == class)
+                .ok_or_else(missing)?
+                .form
+                .repetitions
+                .push(counts);
+        }
         Ok(())
     }
 }

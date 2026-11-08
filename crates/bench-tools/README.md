@@ -113,7 +113,12 @@ cargo run --release -p bench-tools --bin bench-browser -- \
   runs 31 fresh repetitions of twice its operations, up to three times, and past them stops the
   sweep: the run grows until the cost of a count is a bounded share of the figure, as nanobench
   sizes its epochs. A form within the bound keeps its run, and a cell's `operations` name the run
-  of its figure.
+  of its figure. A round of longer runs, like a round of more repetitions, runs every case again in
+  the order of the first round and keeps the counts of the forms that need them: their repetitions
+  meet the load over as long a span as the first round's, each after the same cases. With the
+  noise held at 20,700 cycles, and the sibling hardware threads of the counted CPUs busy in bursts
+  of 12 to 20 s for half of the sweep, rounds of those forms alone put 15.6% of the lengthened
+  forms more than 10% above a natural sweep, and rounds of every case none.
 - A figure of cycles is the lower rate of the fewest run of n operations and the fewest of 2n, each
   less the fewest empty count. A disturbance only adds counts (Chen and Revels, 2016), so each rate
   bounds the undisturbed one from above, where a difference moves by twice what the other run
