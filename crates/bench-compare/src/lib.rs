@@ -18,7 +18,7 @@ pub use barrier::Ymm;
 pub use barrier::{Barrier, Memory};
 #[cfg(target_arch = "x86_64")]
 pub use barrier::{Gpr, Xmm};
-pub use count::{CPU, FEWEST_STEP_CYCLES, REPETITIONS, RETRIES, TARGET, main};
+pub use count::{CPU, DOUBLINGS, FEWEST_STEP_CYCLES, REPETITIONS, RETRIES, SIGNAL, TARGET, main};
 #[cfg(target_os = "linux")]
 pub use counters::pin_thread;
 #[cfg(not(target_arch = "wasm32"))]

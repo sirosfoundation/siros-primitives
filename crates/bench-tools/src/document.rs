@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::fs;
 
 use bench_compare::{
-    Count, FEWEST_STEP_CYCLES, Key, Outcome, Overhead, REPETITIONS, RETRIES, Sweep,
+    Count, DOUBLINGS, FEWEST_STEP_CYCLES, Key, Outcome, Overhead, REPETITIONS, RETRIES, SIGNAL,
+    Sweep,
 };
 
 use crate::changed::CellId;
@@ -692,35 +693,50 @@ fn webassembly<K: Key>(
         ),
         String::new(),
     ];
-    lines.extend(WEBASSEMBLY.iter().map(|line| format!("- {line}")));
+    lines.extend(webassembly_method().iter().map(|line| format!("- {line}")));
     lines.push(String::new());
     lines.extend(setup(record, "### Setup, WebAssembly"));
     lines
 }
 
 /// How the WebAssembly builds ran, one short line each.
-const WEBASSEMBLY: &[&str] = &[
-    "The bench module runs in a dedicated worker of the browser, on the measuring CPU. A driver \
-     counts that thread with perf_event, and holds the CPU while the thread sleeps.",
-    "A second worker carries the start and the end of each count to the driver while the \
-     measuring worker sleeps.",
-    "The browser's flags compile every function with its optimizing tier when the module loads.",
-    "A counted loop runs behind a function pointer, which keeps V8 from inlining it into the code \
-     around the count.",
-    "A batch loop reads its step and its end by volatile loads, so LLVM unrolls it for no \
-     operation, whatever the operation's size. A chain through locals over operand sets of more \
-     than 32 bytes reads its step the same way.",
-    "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count 4 \
-     million instructions. They start at a 4 KiB boundary in every case.",
-    "A figure of cycles is the lower rate of the fewest run of n operations and the fewest of 2n, \
-     each less the fewest empty count: under load, a run of each length seldom meets an idle \
-     sibling hardware thread.",
-    "A case whose 2n runs counted no more than its n runs, whose difference counted under 50 times \
-     the noise of the fixed cost of a count, or whose chain step counted under 0.75 cycles ran 31 \
-     more repetitions, up to 3 times. A case that stays so stops the sweep.",
-    "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \
-     whichever is faster.",
-];
+fn webassembly_method() -> [String; 9] {
+    [
+        "The bench module runs in a dedicated worker of the browser, on the measuring CPU. A \
+         driver counts that thread with perf_event, and holds the CPU while the thread sleeps."
+            .to_owned(),
+        "A second worker carries the start and the end of each count to the driver while the \
+         measuring worker sleeps."
+            .to_owned(),
+        "The browser's flags compile every function with its optimizing tier when the module \
+         loads."
+            .to_owned(),
+        "A counted loop runs behind a function pointer, which keeps V8 from inlining it into the \
+         code around the count."
+            .to_owned(),
+        "A batch loop reads its step and its end by volatile loads, so LLVM unrolls it for no \
+         operation, whatever the operation's size. A chain through locals over operand sets of \
+         more than 32 bytes reads its step the same way."
+            .to_owned(),
+        "A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count \
+         4 million instructions. They start at a 4 KiB boundary in every case."
+            .to_owned(),
+        "A figure of cycles is the lower rate of the fewest run of n operations and the fewest of \
+         2n, each less the fewest empty count: under load, a run of each length seldom meets an \
+         idle sibling hardware thread."
+            .to_owned(),
+        format!(
+            "A case whose 2n runs counted no more than its n runs, or whose chain step counted under \
+             {FEWEST_STEP_CYCLES} cycles, ran {REPETITIONS} more repetitions, up to {RETRIES} \
+             times. A form whose difference counted under {SIGNAL} times the noise of the fixed \
+             cost of a count ran {REPETITIONS} repetitions of twice its operations, up to \
+             {DOUBLINGS} times. A case that stays so stops the sweep."
+        ),
+        "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \
+         whichever is faster."
+            .to_owned(),
+    ]
+}
 
 /// The first seven characters of a commit hash.
 fn short(commit: &str) -> &str {

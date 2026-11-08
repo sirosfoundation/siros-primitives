@@ -32,13 +32,15 @@ complete bench of two operations.
 
 ## Protocol
 
-- A figure is (fewest cycles of 2n operations − fewest cycles of n) / n over 31 repetitions,
-  after nanoBench (Abel and Reineke, ISPASS 2020). A busy sibling hardware thread doubled a
-  one-`add` chain step: the fewest of each length is the run that met an idle sibling.
+- A native figure is (fewest cycles of 2n operations − fewest cycles of n) / n over 31
+  repetitions, after nanoBench (Abel and Reineke, ISPASS 2020). A busy sibling hardware thread
+  doubled a one-`add` chain step: the fewest of each length is the run that met an idle sibling.
+  [`bench-tools`](../bench-tools) gives the WebAssembly figure.
 - Latency runs the chain `x = op(x, y)` with `x` held in registers between steps. Every case first
   matches the accepted results. The bench pins itself to CPU 15.
 - A sweep stops on multiplexed counters, on long runs that count no more cycles than short runs,
-  on a chain step under 0.75 cycles, and on a `[profile.bench]` without `lto = "fat"`.
+  on a chain step under 0.75 cycles, on a WebAssembly difference under 50 times the noise of a
+  count after three doublings of the run, and on a `[profile.bench]` without `lto = "fat"`.
 - Bold ties the row's fewest. `*` deviates from the row's definition and is never bold. A crate
   without a variable-time function shows its constant-time one in the variable-time table.
 - `report` prints every odd cell to the terminal: a figure more than 10% above the crate's figure

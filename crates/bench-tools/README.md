@@ -109,8 +109,11 @@ cargo run --release -p bench-tools --bin bench-browser -- \
   loaded machine.
 - Each bench first counts 1,000 empty regions: the fewest of the last 248 is the fixed cost that
   every later count leaves out. Its noise is the difference of the fewest counts of two sets of 31
-  empty counts, the largest of four pairs. A case whose difference counts under 50 times that noise
-  stops the sweep.
+  empty counts, the largest of four pairs. A form whose difference counts under 50 times that noise
+  runs 31 fresh repetitions of twice its operations, up to three times, and past them stops the
+  sweep: the run grows until the cost of a count is a bounded share of the figure, as nanobench
+  sizes its epochs. A form within the bound keeps its run, and a cell's `operations` name the run
+  of its figure.
 - A figure of cycles is the lower rate of the fewest run of n operations and the fewest of 2n, each
   less the fewest empty count. A disturbance only adds counts (Chen and Revels, 2016), so each rate
   bounds the undisturbed one from above, where a difference moves by twice what the other run

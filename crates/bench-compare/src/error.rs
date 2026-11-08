@@ -110,15 +110,23 @@ pub enum Error {
         operations: usize,
     },
     /// The fewest count of a WebAssembly case's long runs less the fewest of its short runs
-    /// counts fewer cycles than 50 times the noise of the fixed cost of a count.
+    /// counts fewer cycles than [`SIGNAL`](crate::SIGNAL) times the noise of the fixed cost of a
+    /// count.
     #[error(
-        "{case}: the long runs count {cycles:.0} cycles more than the short runs, within 50 times \
-         the noise of the cost of a count, {noise:.0}: other work ran on the counted threads. Short \
-         runs: {short}; long runs: {long}"
+        "{case}: the runs of {} operations count {cycles:.0} cycles more than the runs of \
+         {operations}, after {doublings} doublings of the operations, within {} times the noise of \
+         the cost of a count, {noise:.0}: other work ran on the counted threads. Short runs: \
+         {short}; long runs: {long}",
+        2 * operations,
+        crate::count::SIGNAL
     )]
     Noisy {
         /// The case and its form.
         case: String,
+        /// The operations of a short run.
+        operations: usize,
+        /// The doublings of the sized run.
+        doublings: usize,
         /// The difference.
         cycles: f64,
         /// The noise of the fixed cost of a count.

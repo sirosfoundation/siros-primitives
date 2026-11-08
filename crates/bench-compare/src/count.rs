@@ -33,6 +33,14 @@
 //! benches, the median distance of a cell between two runs fell from 2.2% to 0.5% in Chrome and from
 //! 3.3% to 1.3% in Firefox, the 95th percentile from 18.7% to 8.5% and from 39.0% to 26.8%, and the
 //! figures above 6.1 instructions per cycle, past the core's width, from 5 to none.
+//!
+//! A WebAssembly form whose difference counts under [`SIGNAL`] times the noise of the fixed cost
+//! of a count runs [`REPETITIONS`] fresh repetitions of twice its operations, up to [`DOUBLINGS`]
+//! times, and past them stops the sweep: the run grows until that cost is a bounded share of its
+//! figure, as nanobench runs an epoch for 1,000 times the clock's resolution (Ankerl). At a load
+//! of 38 to 50 the noise reached 20,700 cycles, which put the bound at about the difference of a
+//! run of 4 million instructions. A form within the bound keeps its run and its figures, and the
+//! `operations` of a cell's line name the run of its figure.
 
 use std::mem::size_of;
 use std::process::ExitCode;
@@ -141,7 +149,11 @@ impl Length {
 /// The fewest times the noise of the fixed cost of a count that a difference of a case counts,
 /// where the counts reach the counters through requests: its figure then moves by at most 2%
 /// with that cost.
-const SIGNAL: f64 = 50.0;
+pub const SIGNAL: f64 = 50.0;
+
+/// The doublings of the operations of a form whose difference counts under [`SIGNAL`] times the
+/// noise of a count. Each doubles the difference; past them the form stops the sweep.
+pub const DOUBLINGS: usize = 3;
 
 /// The operations of the first sizing run, and the fewest of a short run.
 const FEWEST: usize = 16;
@@ -292,7 +304,6 @@ fn listing<S: Suite>(counters: &mut Counters) -> Result<Vec<String>, Error> {
         rng: Rng(SEED),
         cells: Vec::new(),
         cases: Vec::new(),
-        settled: Vec::new(),
         next: 0,
         error: None,
         plan: Plan::List,
@@ -366,7 +377,7 @@ fn stream(id: &str, pass: usize) -> Rng {
 /// Checks and measures every case with `counters` that `plan` holds; returns the line of each cell,
 /// in the order of [`visit`]. `noise` is the noise of the fixed cost of a count where the counts
 /// reach the counters through requests; such a difference counts at least [`SIGNAL`] times as many
-/// cycles.
+/// cycles, in a run of up to [`DOUBLINGS`] doublings of its operations.
 fn cells<S: Suite>(
     counters: &mut Counters,
     noise: Option<f64>,
@@ -379,7 +390,6 @@ fn cells<S: Suite>(
         rng: Rng(SEED),
         cells: Vec::new(),
         cases: Vec::new(),
-        settled: Vec::new(),
         next: 0,
         error: None,
         #[cfg(target_arch = "wasm32")]
@@ -389,8 +399,9 @@ fn cells<S: Suite>(
         #[cfg(target_arch = "wasm32")]
         operands: S::operands,
     };
+    // Round `k` runs passes `k · REPETITIONS + 1` to `(k + 1) · REPETITIONS`.
     let mut passes = 0..=REPETITIONS;
-    let mut retries = 0;
+    let mut round = 0;
     loop {
         for pass in passes {
             measuring = visit::<S, _>(Measuring {
@@ -402,17 +413,15 @@ fn cells<S: Suite>(
                 return Err(error);
             }
         }
-        let settled: Vec<bool> = measuring
-            .cases
-            .iter()
-            .map(|case| case.settled(noise))
-            .collect();
-        if retries == RETRIES || settled.iter().all(|settled| *settled) {
+        let mut runs = false;
+        for case in &mut measuring.cases {
+            runs |= case.next_round(noise)?;
+        }
+        if !runs {
             break;
         }
-        retries += 1;
-        measuring.settled = settled;
-        passes = retries * REPETITIONS + 1..=(retries + 1) * REPETITIONS;
+        round += 1;
+        passes = round * REPETITIONS + 1..=(round + 1) * REPETITIONS;
     }
     #[cfg(target_arch = "wasm32")]
     measuring.check_plan()?;
@@ -478,17 +487,82 @@ impl Run {
             passes: self.passes,
         }
     }
+
+    /// The run of twice the operations: twice the sets while they stay within `cap`, else twice
+    /// the passes.
+    const fn doubled(self, cap: usize) -> Self {
+        if 2 * self.sets <= cap {
+            Self {
+                sets: 2 * self.sets,
+                passes: self.passes,
+            }
+        } else {
+            Self {
+                sets: self.sets,
+                passes: 2 * self.passes,
+            }
+        }
+    }
+}
+
+/// What the repetitions of a form show.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Verdict {
+    /// A figure that stands.
+    Plausible,
+    /// A difference under [`SIGNAL`] times the noise of a count: a run of more operations counts
+    /// a larger one.
+    Noisy,
+    /// Long runs that count no more cycles than short runs, or a chain step under
+    /// [`FEWEST_STEP_CYCLES`]: more repetitions give the short runs more chances to run
+    /// undisturbed.
+    Implausible,
 }
 
 /// The counted runs of one form of a case.
 struct Form {
     /// The shape of a short run.
     run: Run,
-    /// The counts of the short run and of the long run of every repetition.
+    /// The most operand sets of a short run: [`cap`].
+    cap: usize,
+    /// The doublings of the sized run that `run` holds.
+    doublings: usize,
+    /// Whether the passes of the current round run the form.
+    runs: bool,
+    /// The counts of the short run and of the long run of every repetition of `run`.
     repetitions: Vec<[Counts; 2]>,
 }
 
 impl Form {
+    /// The form that runs `run`, of at most `cap` operand sets, before its repetitions.
+    const fn sized(run: Run, cap: usize) -> Self {
+        Self {
+            run,
+            cap,
+            doublings: 0,
+            runs: true,
+            repetitions: Vec::new(),
+        }
+    }
+
+    /// Readies the form to run twice the operations, from no repetitions.
+    fn lengthen(&mut self) {
+        self.run = self.run.doubled(self.cap);
+        self.doublings += 1;
+        self.repetitions.clear();
+    }
+
+    /// What the repetitions of the form `name` show, whose figure of cycles must reach `least`.
+    fn verdict(&self, name: &str, noise: Option<f64>, least: f64) -> Result<Verdict, Error> {
+        match self.events(name, noise) {
+            Ok(events) if events.cycles < least => Ok(Verdict::Implausible),
+            Ok(_) => Ok(Verdict::Plausible),
+            Err(Error::Noisy { .. }) => Ok(Verdict::Noisy),
+            Err(Error::Flat { .. }) => Ok(Verdict::Implausible),
+            Err(error) => Err(error),
+        }
+    }
+
     /// The events per operation of the form `name`: the fewest that a long run counts less the
     /// fewest that a short run counts, over the operations of a short run. On WebAssembly the
     /// cycles are the lower rate of the two lengths. Long runs whose fewest cycles are no more than
@@ -533,6 +607,8 @@ impl Form {
             };
             return Err(Error::Noisy {
                 case: name.to_owned(),
+                operations,
+                doublings: self.doublings,
                 cycles,
                 noise,
                 short: spread(0),
@@ -562,25 +638,65 @@ struct ChainForm {
     form: Form,
 }
 
+impl ChainForm {
+    /// The name in messages of this chain form of the case `id`.
+    fn name(&self, id: &str) -> String {
+        format!("{id} chain in {}", self.class)
+    }
+}
+
 /// One measured case.
 struct Case {
     id: String,
     batch: Form,
     /// The chain forms, one per barrier; none for a case without a chain form.
     chains: Vec<ChainForm>,
+    /// The rounds of more repetitions that the case ran for an implausible figure.
+    retries: usize,
 }
 
 impl Case {
-    /// Whether every form of the case has a plausible figure: its long runs count more cycles
-    /// than its short runs, and each chain step at least [`FEWEST_STEP_CYCLES`].
-    fn settled(&self, noise: Option<f64>) -> bool {
-        self.batch.events(&self.id, noise).is_ok()
-            && self.chains.iter().all(|chain| {
-                chain
-                    .form
-                    .events(&self.id, noise)
-                    .is_ok_and(|events| events.cycles >= FEWEST_STEP_CYCLES)
-            })
+    /// Readies the case for the next round of [`REPETITIONS`] repetitions; returns whether a form
+    /// of it runs there. A form whose difference counts under [`SIGNAL`] times `noise` runs twice
+    /// its operations, up to [`DOUBLINGS`] times. A case whose long runs count no more cycles than
+    /// its short runs, or whose chain step counts under [`FEWEST_STEP_CYCLES`], in any form, runs
+    /// more repetitions of every form, up to [`RETRIES`] times. Every other form keeps its run and
+    /// its figure.
+    fn next_round(&mut self, noise: Option<f64>) -> Result<bool, Error> {
+        let mut implausible = false;
+        for (name, form, least) in self.forms() {
+            implausible |= form.verdict(&name, noise, least)? == Verdict::Implausible;
+        }
+        let retries = implausible && self.retries < RETRIES;
+        if retries {
+            self.retries += 1;
+        }
+        let mut runs = false;
+        for (name, form, least) in self.forms() {
+            let lengthens =
+                form.doublings < DOUBLINGS && form.verdict(&name, noise, least)? == Verdict::Noisy;
+            if lengthens {
+                form.lengthen();
+            }
+            form.runs = lengthens || retries;
+            runs |= form.runs;
+        }
+        Ok(runs)
+    }
+
+    /// The batch form and then the chain forms of the case, each with its name in messages and
+    /// the fewest cycles per operation that its figure may count: none for the batch form,
+    /// [`FEWEST_STEP_CYCLES`] for a chain step.
+    fn forms(&mut self) -> impl Iterator<Item = (String, &mut Form, f64)> {
+        let Self {
+            id, batch, chains, ..
+        } = self;
+        let id: &str = id;
+        core::iter::once((id.to_owned(), batch, 0.0)).chain(
+            chains
+                .iter_mut()
+                .map(move |chain| (chain.name(id), &mut chain.form, FEWEST_STEP_CYCLES)),
+        )
     }
 
     /// The cell of the case, which runs `function`: its latency is its chain form with the fewest
@@ -591,7 +707,7 @@ impl Case {
             .chains
             .iter()
             .map(|chain| {
-                let name = format!("{} chain in {}", self.id, chain.class);
+                let name = chain.name(&self.id);
                 let events = chain.form.events(&name, noise)?;
                 if events.cycles < FEWEST_STEP_CYCLES {
                     return Err(Error::Reassociated {
@@ -628,8 +744,6 @@ struct Measuring<'a, O, K> {
     /// Every cell of the comparison, in the order of [`visit`], noted by pass 0.
     cells: Vec<(CaseId<O, K>, Call)>,
     cases: Vec<Case>,
-    /// Per case, whether the passes past the first [`REPETITIONS`] skip it; empty before them.
-    settled: Vec<bool>,
     /// The case that the pass visits next.
     next: usize,
     /// The first failure of the pass, which ends it.
@@ -853,10 +967,7 @@ impl<O, K> Measuring<'_, O, K> {
                 };
             }
             if PROTOCOL.long.reached(&fewest) || (run.sets >= cap && !PROTOCOL.passes) {
-                return Ok(Form {
-                    run,
-                    repetitions: Vec::new(),
-                });
+                return Ok(Form::sized(run, cap));
             }
             if run.sets < cap {
                 run.sets = (2 * run.sets).min(cap);
@@ -885,11 +996,6 @@ impl<O, K> Measuring<'_, O, K> {
         }
     }
 
-    /// Whether this pass skips the case `index`: a retry, for a case whose figures are plausible.
-    fn skips(&self, index: usize) -> bool {
-        self.settled.get(index).copied().unwrap_or(false)
-    }
-
     /// Keeps the first failure.
     fn fail(self, result: Result<(), Error>) -> Self {
         match result {
@@ -902,7 +1008,7 @@ impl<O, K> Measuring<'_, O, K> {
     }
 
     /// Sizes, in pass 0, the batch form of the case `id`, which `trial` runs; in pass `r`, runs
-    /// its repetition `r`.
+    /// its repetition `r` where the round of the pass runs the form.
     fn batch(&mut self, id: String, trial: &dyn Trial, cap: usize) -> Result<(), Error> {
         #[cfg(target_arch = "wasm32")]
         {
@@ -914,14 +1020,16 @@ impl<O, K> Measuring<'_, O, K> {
                 id,
                 batch,
                 chains: Vec::new(),
+                retries: 0,
             });
             return Ok(());
         }
         let index = self.case(&id)?;
-        if self.skips(index) {
+        let batch = &self.cases[index].batch;
+        if !batch.runs {
             return Ok(());
         }
-        let run = self.cases[index].batch.run;
+        let run = batch.run;
         let counts = self.repetition(trial, run, &id)?;
         self.cases[index].batch.repetitions.push(counts);
         Ok(())
@@ -939,7 +1047,7 @@ impl<O, K> Measuring<'_, O, K> {
     }
 
     /// Sizes, in pass 0, the chain form of the case `index` in `class`, which `trial` runs; in
-    /// pass `r`, runs its repetition `r`.
+    /// pass `r`, runs its repetition `r` where the round of the pass runs the form.
     fn chain_form(
         &mut self,
         index: usize,
@@ -953,16 +1061,17 @@ impl<O, K> Measuring<'_, O, K> {
             self.cases[index].chains.push(ChainForm { class, form });
             return Ok(());
         }
-        if self.skips(index) {
-            return Ok(());
-        }
         let missing = || Error::missing(&format!("chain in {class}"), id);
-        let run = self.cases[index]
+        let form = &self.cases[index]
             .chains
             .iter()
             .find(|chain| chain.class == class)
-            .map(|chain| chain.form.run)
-            .ok_or_else(missing)?;
+            .ok_or_else(missing)?
+            .form;
+        if !form.runs {
+            return Ok(());
+        }
+        let run = form.run;
         let counts = self.repetition(trial, run, id)?;
         self.cases[index]
             .chains
