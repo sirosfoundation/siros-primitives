@@ -130,6 +130,21 @@ impl<N: Bits, RhsN: Bits> Add<Uint<RhsN>> for Uint<N> {
     #[inline(always)]
     fn add(self, rhs: Uint<RhsN>) -> Self::Output {
         #[cfg(target_arch = "wasm32")]
+        if const { N::LIMBS == WORD_SUM_LIMBS && RhsN::LIMBS == WORD_SUM_LIMBS } {
+            let mut sum = Self::ZERO;
+            if let (Some(out), Some(a), Some(b)) = (
+                sum.limbs.as_mut_slice().first_chunk_mut(),
+                self.limbs.as_slice().first_chunk(),
+                rhs.limbs.as_slice().first_chunk(),
+            ) {
+                word_sum(out, a, b);
+                if let Some(top) = sum.limbs.as_mut_slice().last_mut() {
+                    *top &= N::TOP_MASK;
+                }
+                return sum;
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
         if const {
             N::LIMBS == RhsN::LIMBS && (N::LIMBS == 4 || (N::LIMBS == 2 && cfg!(wide_arithmetic)))
         } {
@@ -172,10 +187,8 @@ impl<N: Bits, RhsN: Bits> Add<Uint<RhsN>> for Uint<N> {
 
 /// `a + b` into `out` by pairs of limbs, each pair one `i64.add128` with wide arithmetic. The 256-bit
 /// sum took Firefox 11.0 cycles against 12.2 limb by limb, and Chrome 9.1 against 8.7; without wide
-/// arithmetic Firefox 10.0 against 10.3, and Chrome 9.6 against 10.3. The other sums run limb by
-/// limb: with wide arithmetic the 1024-bit one took Chrome 61.6 by pairs against 46.9, and Firefox
-/// 76.3 against 69.7; without, the 128-bit one Chrome 4.1 against 4.0, the 1024-bit one Chrome 62.5
-/// against 55.6.
+/// arithmetic Firefox 10.0 against 10.3, and Chrome 9.6 against 10.3. By pairs, the 128-bit sum
+/// without wide arithmetic took Chrome 4.1 against 4.0 limb by limb.
 #[cfg(target_arch = "wasm32")]
 #[inline(always)]
 fn pair_sum(out: &mut [u64], a: &[u64], b: &[u64]) {
@@ -195,6 +208,37 @@ fn pair_sum(out: &mut [u64], a: &[u64], b: &[u64]) {
             *slot = (sum >> 64) as u64;
         }
         index += 2;
+    }
+}
+
+/// The limbs of the sums by [`word_sum`].
+#[cfg(target_arch = "wasm32")]
+const WORD_SUM_LIMBS: usize = 16;
+
+/// `a + b` into `out` by 128-bit words. LLVM turns the copy of each operand's bytes into 16 loads
+/// ahead of the additions. The 1024-bit sum took Chrome 53.8 cycles against 55.8 limb by limb, and
+/// Firefox 50.8 against 59.4; with wide arithmetic Firefox 58.5 against 68.0, and Chrome 52.3
+/// against 45.8, at a latency of 64.9 cycles against 58.4 and 51.2 against 39.8. [`pair_sum`],
+/// whose loads interleave with the additions, took Chrome 62.5 against 55.6 limb by limb, and with
+/// wide arithmetic Chrome 61.6 against 46.9 and Firefox 76.3 against 69.7.
+#[cfg(target_arch = "wasm32")]
+#[inline(always)]
+fn word_sum(out: &mut [u64; WORD_SUM_LIMBS], a: &[u64; WORD_SUM_LIMBS], b: &[u64; WORD_SUM_LIMBS]) {
+    let words = |limbs: &[u64; WORD_SUM_LIMBS]| {
+        let bytes = limbs.map(u64::to_le_bytes);
+        let mut words = [0u128; WORD_SUM_LIMBS / 2];
+        for (word, chunk) in words.iter_mut().zip(bytes.as_flattened().as_chunks().0) {
+            *word = u128::from_le_bytes(*chunk);
+        }
+        words
+    };
+    let (x, y) = (words(a), words(b));
+    let mut carry = false;
+    for ((pair, x), y) in out.as_chunks_mut().0.iter_mut().zip(x).zip(y) {
+        let (sum, first) = x.overflowing_add(y);
+        let (sum, second) = sum.overflowing_add(u128::from(carry));
+        carry = first | second;
+        *pair = [sum as u64, (sum >> 64) as u64];
     }
 }
 

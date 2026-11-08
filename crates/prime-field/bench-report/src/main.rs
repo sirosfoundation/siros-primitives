@@ -109,6 +109,11 @@ const LAYOUT: Layout<'static, Field> = Layout {
         "`prime-field` holds each element in Montgomery form, which favours `mul`. `k256/p256` holds \
          a P-256 scalar as a plain integer, which favours `add_u64`, `sub_u64`, `add_uint`, \
          `sub_uint` and `from_u64` over that field.",
+        "Over BabyBear in WebAssembly without wide arithmetic, `mul` takes the reduction with the \
+         fewest cycles summed over Chrome and Firefox, which leaves Chrome's throughput and the \
+         latency of both browsers behind `plonky3`.",
+        "Over Goldilocks with wide arithmetic, `sub_u64` and `sub_uint` take the correction with the \
+         higher throughput, which costs Firefox latency against `winter-math`.",
     ],
     wasm_native: "",
 };
