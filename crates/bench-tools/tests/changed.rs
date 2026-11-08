@@ -6,7 +6,9 @@ use std::collections::HashSet;
 use std::fmt;
 use std::path::Path;
 
-use bench_compare::{Cell, Count, Events, Load, Outcome, Selection, SelectionError, Sweep};
+use bench_compare::{
+    Cell, Count, Events, Load, Outcome, Selection, SelectionError, Sibling, Sweep,
+};
 use bench_tools::{
     CellId, Cpus, Layout, Measurement, Operation, Record, Recorded, Run, ToolError, Unfinished,
     check_records, compact, merge, overtaken, select, streams,
@@ -332,6 +334,25 @@ fn a_finished_record_is_never_an_unfinished_one() {
     finished.write(&path).expect("a writable file");
     drop(Record::<Bits>::read(&path).expect("a finished record"));
     drop(Unfinished::<Bits>::resume(&path).expect("a finished record"));
+}
+
+/// A resumed sweep keeps the figures and runs of its record bit for bit. A parser of best-effort
+/// precision reads 0.39345816544204787, a share of a sibling's busy time, as its neighbour
+/// 0.3934581654420478.
+#[test]
+fn a_record_reads_back_as_written() {
+    let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join("written-record.json");
+    let mut written: Unfinished<Bits> = on_file();
+    written.builds[0].runs[0].sweep.siblings.push(Sibling {
+        cpu: 24,
+        busy: f64::from_bits(0x3fd9_2e6b_283a_bc77),
+    });
+    written.write_unfinished(&path).expect("a writable file");
+    let read = Unfinished::<Bits>::resume(&path).expect("an unfinished record");
+    assert_eq!(
+        serde_json::to_string(&read).expect("a record"),
+        serde_json::to_string(&written).expect("a record")
+    );
 }
 
 /// Two streams that share a CPU would measure with each other's browser on it.

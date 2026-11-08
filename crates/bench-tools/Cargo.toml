@@ -32,7 +32,8 @@ test = false
 [dependencies]
 bench-compare = { path = "../bench-compare" }
 serde.workspace = true
-serde_json.workspace = true
+# A record that the tool reads and writes back keeps every float bit for bit.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 thiserror.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
