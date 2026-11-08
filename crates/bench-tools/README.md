@@ -107,7 +107,12 @@ loop, at load 15:
 
 The quiet rows come from another quiet sweep at load 9 to 13. Under bursts, CPU 25, the SMT sibling
 of the measuring CPU 9, ran a busy loop for 12 to 20 s and stayed idle as long, for 53% and 62% of
-two sweeps at load 11 to 16. A row of 1 run takes each pass of its sweeps alone.
+two sweeps at load 11 to 16. A row of 1 run takes each pass of its sweeps alone. Under bursts, the
+fewest of 3 runs puts 0.66% of the figures more than 10% below the quiet sweep, and 1 run 0.24%: a
+figure is a difference of two counts, so one run can land low, and the fewest takes that run.
+
+A full native sweep, its builds included, took 191 s for biguint, 715 s for prime-field and 1,122 s
+for binary-field at load 6 to 12; the builds took 83 s, 109 s and 139 s of them.
 
 ## WebAssembly
 
