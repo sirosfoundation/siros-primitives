@@ -89,6 +89,19 @@ const LAYOUT: Layout<'static, Width> = Layout {
          modulus mixing a compile error. `native` holds the modulus of its 64-bit and 128-bit \
          rows in a register, which leads `Residue -` at 128 bits natively, and the rows of reduced \
          operands at 64 and 128 bits in WebAssembly.",
+        "`biguint` takes the operands of `add` and `mul` by value, and in WebAssembly LLVM loads \
+         them into locals ahead of the operation. `crypto-bigint`'s product at 384 bits reads its \
+         operands by reference as it goes, and `bnum`'s sum at 1024 bits reads 128-bit words, whose \
+         16 loads LLVM keeps in place.",
+        "With wide arithmetic, `biguint` compiles to the same WebAssembly as `ruint` for `mul` at \
+         256, 384 and 512 bits and as `crypto-bigint` for `add` at 384, 512 and 1024 bits: those \
+         figures differ by where the browser places the code.",
+        "Where the browsers favour different forms, `biguint` takes the form with the fewest cycles \
+         summed over Chrome and Firefox: without wide arithmetic for reduced `add_mod` at 256 to 512 \
+         bits, `add` at 512 bits and reduced constant-time `sub_mod` at 384 bits, and with it for \
+         `add` at 384 bits and `mulmod` at 512 bits.",
+        "Without wide arithmetic, `add` at 512 bits runs `ruint`'s code with the operands in the \
+         order of the faster native sum, which costs latency in WebAssembly.",
     ],
     wasm_native: "",
 };

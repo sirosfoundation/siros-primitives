@@ -11,7 +11,7 @@
 | Profile | `bench`: `opt-level = 3`, `lto = "fat"`, `codegen-units = 1` |
 | Features | `biguint` with its default features |
 | RUSTFLAGS | `-C target-cpu=native -C codegen-units=1 -C llvm-args=-align-loops=64` |
-| Load | CPU 13; 1-minute load 15.83 before, 18.13 after; its SMT sibling, CPU 29, 35% busy |
+| Run 1 | `a0a67b8`, 2026-11-05: 557 cells; CPU 13; 1-minute load 15.83 before, 18.13 after; its SMT sibling, CPU 29, 35% busy |
 | Crates | ruint 1.21.1, crypto-bigint 0.7.10, bnum 0.14.4, uint 0.10.2, num-bigint 0.5.1 |
 
 ## Method
@@ -19,7 +19,7 @@
 - Each cell: throughput / latency, in user-mode cycles per operation.
 - Throughput: independent operations on fresh operands.
 - Latency: the chain `x = op(x, y)`, with `x` in registers or in memory, whichever is faster.
-- Each figure: over 31 repetitions, the fewest cycles of 2n operations less the fewest of n, over n. A case whose 2n runs counted no more than its n runs, or whose chain step counted under 0.75 cycles, ran 31 more, up to 3 times.
+- Each native figure: over 31 repetitions, the fewest cycles of 2n operations less the fewest of n, over n. A case whose 2n runs counted no more than its n runs, or whose chain step counted under 0.75 cycles, ran 31 more, up to 3 times.
 - A sweep ran at a 1-minute load of 2 or more: compare figures within a table only.
 - Operands at width N: uniform below 2^N; a divisor of N/2 bits; a modulus of N bits with operands below it.
 - Every result matches `num-bigint` before it is measured.
@@ -28,6 +28,10 @@
 - add_mod and sub_mod take operands of any value. A `*` there marks a function with an unchecked precondition, operands below the modulus, which gives a wrong result for other inputs: those cells compare against an unchecked precondition.
 - The rows of reduced operands take the one modulus of the width. `biguint` runs `Residue` and `ConstantTimeResidue` of a ring that `Modulus::scope` prepares outside the measured loop: the type holds each operand below the modulus, with no check.
 - `Residue` keeps a reference to its ring and reads the modulus through it, which makes modulus mixing a compile error. `native` holds the modulus of its 64-bit and 128-bit rows in a register, which leads `Residue -` at 128 bits natively, and the rows of reduced operands at 64 and 128 bits in WebAssembly.
+- `biguint` takes the operands of `add` and `mul` by value, and in WebAssembly LLVM loads them into locals ahead of the operation. `crypto-bigint`'s product at 384 bits reads its operands by reference as it goes, and `bnum`'s sum at 1024 bits reads 128-bit words, whose 16 loads LLVM keeps in place.
+- With wide arithmetic, `biguint` compiles to the same WebAssembly as `ruint` for `mul` at 256, 384 and 512 bits and as `crypto-bigint` for `add` at 384, 512 and 1024 bits: those figures differ by where the browser places the code.
+- Where the browsers favour different forms, `biguint` takes the form with the fewest cycles summed over Chrome and Firefox: without wide arithmetic for reduced `add_mod` at 256 to 512 bits, `add` at 512 bits and reduced constant-time `sub_mod` at 384 bits, and with it for `add` at 384 bits and `mulmod` at 512 bits.
+- Without wide arithmetic, `add` at 512 bits runs `ruint`'s code with the operands in the order of the faster native sum, which costs latency in WebAssembly.
 
 ## Functions
 
@@ -348,13 +352,16 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ## WebAssembly
 
-`biguint` at commit `c7970be` against `native`, `ruint`, `crypto-bigint`, `bnum`, `uint` and `num-bigint`, built for `wasm32-unknown-unknown` and run in headless browsers, in cycles per operation, measured on 2026-11-06.
+`biguint` at commit `47a91e3` against `native`, `ruint`, `crypto-bigint`, `bnum`, `uint` and `num-bigint`, built for `wasm32-unknown-unknown` and run in headless browsers, in cycles per operation, measured on 2026-11-07.
 
 - The bench module runs in a dedicated worker of the browser, on the measuring CPU. A driver counts that thread with perf_event, and holds the CPU while the thread sleeps.
 - A second worker carries the start and the end of each count to the driver while the measuring worker sleeps.
 - The browser's flags compile every function with its optimizing tier when the module loads.
-- A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count 4 million instructions.
-- A case whose difference counts under 50 times the noise of the fixed cost of a count stops the sweep.
+- A counted loop runs behind a function pointer, which keeps V8 from inlining it into the code around the count.
+- A batch loop reads its step and its end by volatile loads, so LLVM unrolls it for no operation, whatever the operation's size. A chain through locals over operand sets of more than 32 bytes reads its step the same way.
+- A run passes over its operand sets, of up to 256 KiB, as many times as it takes to count 4 million instructions. They start at a 4 KiB boundary in every case.
+- A figure of cycles is the lower rate of the fewest run of n operations and the fewest of 2n, each less the fewest empty count: under load, a run of each length seldom meets an idle sibling hardware thread.
+- A case whose 2n runs counted no more than its n runs, whose difference counted under 50 times the noise of the fixed cost of a count, or whose chain step counted under 0.75 cycles ran 31 more repetitions, up to 3 times. A case that stays so stops the sweep.
 - Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, whichever is faster.
 
 ### Setup, WebAssembly
@@ -371,20 +378,20 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | RUSTFLAGS, in WebAssembly with wide arithmetic, Firefox | `-C codegen-units=1 -C target-feature=+wide-arithmetic` |
 | Browser, in WebAssembly, Chrome | Google Chrome for Testing 156.0.8078.4; `--js-flags=--no-liftoff` |
 | Target features, in WebAssembly, Chrome | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext` |
-| Cost of a count, in WebAssembly, Chrome | 7,138 to 13,497 cycles and 3,081 instructions; its noise in a figure, 204 to 7,466 cycles |
+| Cost of a count, in WebAssembly, Chrome | 5,692 to 29,827 cycles and 3,081 instructions; its noise in a figure, 132 to 17,312 cycles |
 | Browser, in WebAssembly with wide arithmetic, Chrome | Google Chrome for Testing 156.0.8078.4; `--js-flags=--no-liftoff --wasm-wide-arithmetic` |
 | Target features, in WebAssembly with wide arithmetic, Chrome | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext`, `wide-arithmetic` |
-| Cost of a count, in WebAssembly with wide arithmetic, Chrome | 6,072 to 14,196 cycles and 3,081 instructions; its noise in a figure, 242 to 7,310 cycles |
+| Cost of a count, in WebAssembly with wide arithmetic, Chrome | 5,203 to 14,757 cycles and 3,081 instructions; its noise in a figure, 158 to 4,689 cycles |
 | Browser, in WebAssembly, Firefox | Mozilla Firefox 158.0.1; `javascript.options.wasm_baselinejit=false`, `javascript.options.wasm_wide_arithmetic=false` |
 | Target features, in WebAssembly, Firefox | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext` |
-| Cost of a count, in WebAssembly, Firefox | 10,056 to 37,322 cycles and 1,885 instructions; its noise in a figure, 550 to 13,270 cycles |
+| Cost of a count, in WebAssembly, Firefox | 5,072 to 19,223 cycles and 1,885 instructions; its noise in a figure, 141 to 5,813 cycles |
 | Browser, in WebAssembly with wide arithmetic, Firefox | Mozilla Firefox 158.0.1; `javascript.options.wasm_baselinejit=false`, `javascript.options.wasm_wide_arithmetic=true` |
 | Target features, in WebAssembly with wide arithmetic, Firefox | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext`, `wide-arithmetic` |
-| Cost of a count, in WebAssembly with wide arithmetic, Firefox | 9,236 to 21,509 cycles and 1,885 instructions; its noise in a figure, 511 to 8,195 cycles |
-| Load, in WebAssembly, Chrome | CPU 12; 1-minute load 53.1 before, 36.99 after; its SMT sibling, CPU 28, 63% busy |
-| Load, in WebAssembly with wide arithmetic, Chrome | CPU 12; 1-minute load 36.99 before, 55.66 after; its SMT sibling, CPU 28, 57% busy |
-| Load, in WebAssembly, Firefox | CPU 12; 1-minute load 55.66 before, 51.77 after; its SMT sibling, CPU 28, 65% busy |
-| Load, in WebAssembly with wide arithmetic, Firefox | CPU 12; 1-minute load 49.86 before, 18.11 after; its SMT sibling, CPU 28, 46% busy |
+| Cost of a count, in WebAssembly with wide arithmetic, Firefox | 5,771 to 22,143 cycles and 1,885 instructions; its noise in a figure, 40.0 to 9,677 cycles |
+| Run 1, in WebAssembly, Chrome | `5d2b0e1`, 2026-11-07: 557 cells; CPU 12; 1-minute load 37.45 before, 36.77 after; its SMT sibling, CPU 28, 64% busy |
+| Run 1, in WebAssembly with wide arithmetic, Chrome | `5d2b0e1`, 2026-11-07: 557 cells; CPU 12; 1-minute load 36.77 before, 24.55 after; its SMT sibling, CPU 28, 28% busy |
+| Run 1, in WebAssembly, Firefox | `5d2b0e1`, 2026-11-07: 557 cells; CPU 12; 1-minute load 24.55 before, 24.42 after; its SMT sibling, CPU 28, 41% busy |
+| Run 1, in WebAssembly with wide arithmetic, Firefox | `5d2b0e1`, 2026-11-07: 557 cells; CPU 12; 1-minute load 24.42 before, 18.33 after; its SMT sibling, CPU 28, 18% busy |
 | Crates | ruint 1.21.1, crypto-bigint 0.7.10, bnum 0.14.4, uint 0.10.2, num-bigint 0.5.1 |
 
 
@@ -394,150 +401,150 @@ Cycles per operation of `biguint` against the fewest of the crates whose functio
 
 | Operation | Bits | Chrome | Δ | Chrome, wide arithmetic | Δ | Firefox | Δ | Firefox, wide arithmetic | Δ |
 |---|---|---|---:|---|---:|---|---:|---|---:|
-| add | 64 | 2.1 vs ruint 2.1 | +0.0 (1.00×) | 2.2 vs native 2.2 | +0.0 (1.00×) | 2.4 vs ruint 2.1 | +0.3 (1.14×) | 2.3 vs native 2.2 | +0.1 (1.05×) |
-| add | 128 | 4.2 vs native 3.7 | +0.5 (1.14×) | 3.9 vs native 3.7 | +0.2 (1.05×) | 3.9 vs bnum 3.6 | +0.3 (1.08×) | 4.3 vs bnum 3.5 | +0.8 (1.23×) |
-| add | 256 | 9.7 vs crypto-bigint 10.3 | −0.6 (0.94×) | 8.8 vs ruint 9.0 | −0.2 (0.98×) | 10.0 vs bnum 9.9 | +0.1 (1.01×) | 11.5 vs bnum 11.1 | +0.4 (1.04×) |
-| add | 384 | 16.5 vs bnum 17.1 | −0.6 (0.96×) | 12.8 vs crypto-bigint 12.3 | +0.5 (1.04×) | 15.3 vs ruint 16.2 | −0.9 (0.94×) | 18.0 vs crypto-bigint 18.0 | +0.0 (1.00×) |
-| add | 512 | 26.3 vs bnum 24.7 | +1.6 (1.06×) | 20.8 vs crypto-bigint 20.9 | −0.1 (1.00×) | 26.0 vs bnum 23.6 | +2.4 (1.10×) | 32.3 vs bnum 27.6 | +4.7 (1.17×) |
-| add | 1024 | 55.4 vs bnum 61.8 | −6.4 (0.90×) | 45.4 vs crypto-bigint 45.3 | +0.1 (1.00×) | 72.5 vs ruint 67.8 | +4.7 (1.07×) | 69.9 vs crypto-bigint 69.3 | +0.6 (1.01×) |
-| add | 2048 | 115 vs crypto-bigint 199 | −84.0 (0.58×) | 108 vs crypto-bigint 137 | −29.0 (0.79×) | 143 vs bnum 204 | −61.0 (0.70×) | 149 vs crypto-bigint 177 | −28.0 (0.84×) |
-| add | 4096 | 349 vs crypto-bigint 395 | −46.0 (0.88×) | 263 vs crypto-bigint 265 | −2.0 (0.99×) | 402 vs bnum 396 | +6.0 (1.02×) | 322 vs crypto-bigint 326 | −4.0 (0.99×) |
-| mul | 64 | 2.2 vs native 2.2 | +0.0 (1.00×) | 2.2 vs native 2.2 | +0.0 (1.00×) | 2.2 vs native 2.2 | +0.0 (1.00×) | 2.2 vs uint 2.1 | +0.1 (1.05×) |
-| mul | 128 | 10.0 vs uint 11.0 | −1.0 (0.91×) | 7.1 vs native 4.3 | +2.8 (1.65×) | 12.3 vs bnum 13.6 | −1.3 (0.90×) | 5.7 vs crypto-bigint 5.1 | +0.6 (1.12×) |
-| mul | 256 | 48.0 vs ruint 66.7 | −18.7 (0.72×) | 15.6 vs ruint 17.7 | −2.1 (0.88×) | 67.7 vs ruint 81.1 | −13.4 (0.83×) | 26.0 vs ruint 26.1 | −0.1 (1.00×) |
-| mul | 384 | 117 vs uint 165 | −48.0 (0.71×) | 54.2 vs crypto-bigint 39.9 | +14.3 (1.36×) | 166 vs ruint 218 | −52.0 (0.76×) | 72.8 vs crypto-bigint 71.7 | +1.1 (1.02×) |
-| mul | 512 | 207 vs ruint 329 | −122 (0.63×) | 78.1 vs ruint 76.7 | +1.4 (1.02×) | 307 vs ruint 439 | −132 (0.70×) | 132 vs ruint 131 | +1.0 (1.01×) |
-| mul | 1024 | 1,261 vs bnum 1,515 | −254 (0.83×) | 317 vs uint 521 | −204 (0.61×) | 1,491 vs bnum 2,354 | −863 (0.63×) | 568 vs crypto-bigint 900 | −332 (0.63×) |
-| mul | 2048 | 5,611 vs bnum 6,283 | −672 (0.89×) | 2,320 vs ruint 2,185 | +135 (1.06×) | 6,714 vs bnum 8,650 | −1,936 (0.78×) | 3,522 vs ruint 3,247 | +275 (1.08×) |
-| mul | 4096 | 17,771 vs bnum 23,617 | −5,846 (0.75×) | 7,925 vs ruint 8,132 | −207 (0.97×) | 21,315 vs bnum 31,724 | −10,409 (0.67×) | 11,934 vs ruint 11,640 | +294 (1.03×) |
-| div | 64 | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) |
-| div | 128 | 59.7 vs ruint 88.6 | −28.9 (0.67×) | 28.5 vs ruint 41.7 | −13.2 (0.68×) | 83.7 vs ruint 152 | −68.3 (0.55×) | 36.1 vs ruint 54.9 | −18.8 (0.66×) |
-| div | 256 | 210 vs ruint 325 | −115 (0.65×) | 84.1 vs ruint 161 | −76.9 (0.52×) | 221 vs ruint 402 | −181 (0.55×) | 110 vs ruint 174 | −64.0 (0.63×) |
-| div | 384 | 354 vs num-bigint 618 | −264 (0.57×) | 207 vs ruint 349 | −142 (0.59×) | 405 vs num-bigint 753 | −348 (0.54×) | 285 vs ruint 437 | −152 (0.65×) |
-| div | 512 | 474 vs num-bigint 819 | −345 (0.58×) | 306 vs ruint 444 | −138 (0.69×) | 573 vs num-bigint 1,006 | −433 (0.57×) | 414 vs ruint 549 | −135 (0.75×) |
-| div | 1024 | 1,144 vs num-bigint 1,972 | −828 (0.58×) | 775 vs ruint 1,082 | −307 (0.72×) | 1,477 vs num-bigint 2,282 | −805 (0.65×) | 868 vs ruint 1,135 | −267 (0.76×) |
-| div | 2048 | 3,234 vs num-bigint 5,752 | −2,518 (0.56×) | 2,037 vs ruint 2,349 | −312 (0.87×) | 4,342 vs num-bigint 6,245 | −1,903 (0.70×) | 2,257 vs ruint 2,726 | −469 (0.83×) |
-| div | 4096 | 12,808 vs num-bigint 20,009 | −7,201 (0.64×) | 7,115 vs ruint 7,593 | −478 (0.94×) | 15,198 vs num-bigint 20,353 | −5,155 (0.75×) | 7,494 vs ruint 9,150 | −1,656 (0.82×) |
-| mod | 64 | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.1 vs native 7.0 | +0.1 (1.01×) | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) |
-| mod | 128 | 52.8 vs ruint 96.0 | −43.2 (0.55×) | 30.0 vs ruint 40.2 | −10.2 (0.75×) | 92.6 vs ruint 97.9 | −5.3 (0.95×) | 33.7 vs ruint 51.0 | −17.3 (0.66×) |
-| mod | 256 | 208 vs ruint 323 | −115 (0.64×) | 74.5 vs ruint 160 | −85.5 (0.47×) | 224 vs ruint 400 | −176 (0.56×) | 109 vs ruint 175 | −66.0 (0.62×) |
-| mod | 384 | 347 vs ruint 577 | −230 (0.60×) | 198 vs ruint 310 | −112 (0.64×) | 410 vs ruint 720 | −310 (0.57×) | 266 vs ruint 344 | −78.0 (0.77×) |
-| mod | 512 | 467 vs ruint 804 | −337 (0.58×) | 285 vs ruint 419 | −134 (0.68×) | 548 vs ruint 984 | −436 (0.56×) | 350 vs ruint 477 | −127 (0.73×) |
-| mod | 1024 | 1,195 vs num-bigint 1,939 | −744 (0.62×) | 717 vs ruint 1,168 | −451 (0.61×) | 1,476 vs num-bigint 2,223 | −747 (0.66×) | 905 vs ruint 1,052 | −147 (0.86×) |
-| mod | 2048 | 3,311 vs num-bigint 5,742 | −2,431 (0.58×) | 1,934 vs ruint 2,302 | −368 (0.84×) | 4,367 vs num-bigint 6,124 | −1,757 (0.71×) | 2,114 vs ruint 2,626 | −512 (0.81×) |
-| mod | 4096 | 12,974 vs num-bigint 20,046 | −7,072 (0.65×) | 6,515 vs ruint 7,779 | −1,264 (0.84×) | 15,422 vs num-bigint 20,392 | −4,970 (0.76×) | 7,649 vs ruint 8,930 | −1,281 (0.86×) |
-| mulmod | 64 | 61.4 vs ruint 85.0 | −23.6 (0.72×) | 31.2 vs ruint 40.0 | −8.8 (0.78×) | 107 vs ruint 188 | −81.0 (0.57×) | 36.1 vs ruint 53.7 | −17.6 (0.67×) |
-| mulmod | 128 | 201 vs ruint 322 | −121 (0.62×) | 82.2 vs ruint 135 | −52.8 (0.61×) | 240 vs ruint 386 | −146 (0.62×) | 127 vs ruint 206 | −79.0 (0.62×) |
-| mulmod | 256 | 581 vs ruint 813 | −232 (0.71×) | 284 vs ruint 308 | −24.0 (0.92×) | 701 vs ruint 898 | −197 (0.78×) | 360 vs ruint 380 | −20.0 (0.95×) |
-| mulmod | 384 | 977 vs ruint 1,611 | −634 (0.61×) | 515 vs ruint 540 | −25.0 (0.95×) | 1,345 vs ruint 1,712 | −367 (0.79×) | 628 vs ruint 696 | −68.0 (0.90×) |
-| mulmod | 512 | 1,583 vs ruint 2,794 | −1,211 (0.57×) | 884 vs ruint 857 | +27.0 (1.03×) | 2,154 vs num-bigint 3,105 | −951 (0.69×) | 1,074 vs ruint 1,115 | −41.0 (0.96×) |
-| mulmod | 1024 | 5,346 vs num-bigint 9,009 | −3,663 (0.59×) | 2,737 vs ruint 2,649 | +88.0 (1.03×) | 6,727 vs num-bigint 9,249 | −2,522 (0.73×) | 3,605 vs ruint 3,639 | −34.0 (0.99×) |
-| mulmod | 2048 | 17,492 vs num-bigint 32,028 | −14,536 (0.55×) | 8,747 vs ruint 10,720 | −1,973 (0.82×) | 22,288 vs num-bigint 32,375 | −10,087 (0.69×) | 13,109 vs ruint 13,800 | −691 (0.95×) |
-| mulmod | 4096 | 56,007 vs num-bigint 112,495 | −56,488 (0.50×) | 26,793 vs ruint 41,119 | −14,326 (0.65×) | 69,330 vs num-bigint 115,974 | −46,644 (0.60×) | 46,093 vs ruint 53,398 | −7,305 (0.86×) |
-| add_mod | 64 | 4.0 vs ruint 43.6 | −39.6 (0.09×) | 4.0 vs ruint 43.2 | −39.2 (0.09×) | 8.0 vs ruint 80.2 | −72.2 (0.10×) | 7.7 vs ruint 80.4 | −72.7 (0.10×) |
-| add_mod | 128 | 9.1 vs ruint 23.0 | −13.9 (0.40×) | 9.2 vs ruint 21.9 | −12.7 (0.42×) | 12.5 vs ruint 22.1 | −9.6 (0.57×) | 13.7 vs ruint 25.0 | −11.3 (0.55×) |
-| add_mod | 256 | 23.1 vs ruint 43.2 | −20.1 (0.53×) | 21.9 vs ruint 43.9 | −22.0 (0.50×) | 24.7 vs ruint 61.2 | −36.5 (0.40×) | 30.4 vs ruint 59.2 | −28.8 (0.51×) |
-| add_mod | 384 | 30.9 vs ruint 62.5 | −31.6 (0.49×) | 28.5 vs ruint 60.0 | −31.5 (0.47×) | 46.8 vs ruint 96.7 | −49.9 (0.48×) | 45.2 vs ruint 86.1 | −40.9 (0.52×) |
-| add_mod | 512 | 44.8 vs ruint 90.2 | −45.4 (0.50×) | 38.7 vs ruint 86.0 | −47.3 (0.45×) | 60.7 vs ruint 121 | −60.3 (0.50×) | 62.4 vs ruint 122 | −59.6 (0.51×) |
-| add_mod | 1024 | 114 vs ruint 212 | −98.0 (0.54×) | 104 vs ruint 183 | −79.0 (0.57×) | 144 vs ruint 273 | −129 (0.53×) | 135 vs ruint 251 | −116 (0.54×) |
-| add_mod | 2048 | 278 vs ruint 806 | −528 (0.34×) | 245 vs ruint 746 | −501 (0.33×) | 378 vs ruint 1,041 | −663 (0.36×) | 291 vs ruint 882 | −591 (0.33×) |
-| add_mod | 4096 | 734 vs ruint 1,532 | −798 (0.48×) | 750 vs ruint 1,415 | −665 (0.53×) | 792 vs ruint 1,859 | −1,067 (0.43×) | 941 vs ruint 1,673 | −732 (0.56×) |
-| sub_mod | 64 | 3.9 vs ruint 53.9 | −50.0 (0.07×) | 4.0 vs ruint 50.5 | −46.5 (0.08×) | 8.0 vs ruint 80.3 | −72.3 (0.10×) | 8.1 vs ruint 80.0 | −71.9 (0.10×) |
-| sub_mod | 128 | 10.8 vs ruint 31.2 | −20.4 (0.35×) | 10.2 vs ruint 30.1 | −19.9 (0.34×) | 13.8 vs ruint 37.2 | −23.4 (0.37×) | 15.8 vs ruint 37.3 | −21.5 (0.42×) |
-| sub_mod | 256 | 23.8 vs ruint 60.4 | −36.6 (0.39×) | 19.8 vs ruint 60.0 | −40.2 (0.33×) | 26.1 vs ruint 86.9 | −60.8 (0.30×) | 28.8 vs ruint 87.0 | −58.2 (0.33×) |
-| sub_mod | 384 | 31.1 vs ruint 87.4 | −56.3 (0.36×) | 27.0 vs ruint 82.6 | −55.6 (0.33×) | 44.1 vs ruint 142 | −97.9 (0.31×) | 48.4 vs ruint 128 | −79.6 (0.38×) |
-| sub_mod | 512 | 45.5 vs ruint 121 | −75.5 (0.38×) | 37.6 vs ruint 114 | −76.4 (0.33×) | 62.0 vs ruint 177 | −115 (0.35×) | 68.0 vs ruint 173 | −105 (0.39×) |
-| sub_mod | 1024 | 105 vs ruint 355 | −250 (0.30×) | 110 vs ruint 331 | −221 (0.33×) | 128 vs ruint 575 | −447 (0.22×) | 134 vs ruint 564 | −430 (0.24×) |
-| sub_mod | 2048 | 237 vs ruint 1,114 | −877 (0.21×) | 249 vs ruint 1,063 | −814 (0.23×) | 287 vs ruint 1,386 | −1,099 (0.21×) | 277 vs ruint 1,270 | −993 (0.22×) |
-| sub_mod | 4096 | 725 vs ruint 2,122 | −1,397 (0.34×) | 775 vs ruint 2,021 | −1,246 (0.38×) | 846 vs ruint 2,424 | −1,578 (0.35×) | 965 vs ruint 2,332 | −1,367 (0.41×) |
-| add_mod, reduced operands | 64 | 4.2 vs native 3.4 | +0.8 (1.24×) | 4.1 vs native 4.0 | +0.1 (1.02×) | 4.5 vs uint 3.7 | +0.8 (1.22×) | 4.3 vs native 5.0 | −0.7 (0.86×) |
-| add_mod, reduced operands | 128 | 8.3 vs native 9.6 | −1.3 (0.86×) | 9.0 vs native 9.1 | −0.1 (0.99×) | 8.2 vs native 9.7 | −1.5 (0.85×) | 11.5 vs native 9.1 | +2.4 (1.26×) |
-| add_mod, reduced operands | 256 | 16.9 vs uint 22.0 | −5.1 (0.77×) | 17.0 vs uint 21.6 | −4.6 (0.79×) | 18.7 vs uint 21.1 | −2.4 (0.89×) | 22.5 vs uint 24.7 | −2.2 (0.91×) |
-| add_mod, reduced operands | 384 | 27.8 vs uint 32.9 | −5.1 (0.84×) | 22.2 vs uint 38.2 | −16.0 (0.58×) | 28.2 vs uint 34.7 | −6.5 (0.81×) | 32.4 vs uint 40.8 | −8.4 (0.79×) |
-| add_mod, reduced operands | 512 | 34.8 vs uint 44.1 | −9.3 (0.79×) | 28.3 vs uint 43.5 | −15.2 (0.65×) | 41.4 vs uint 42.9 | −1.5 (0.97×) | 42.3 vs uint 62.4 | −20.1 (0.68×) |
-| add_mod, reduced operands | 1024 | 77.2 vs uint 102 | −24.8 (0.76×) | 68.9 vs uint 106 | −37.1 (0.65×) | 88.7 vs uint 145 | −56.3 (0.61×) | 92.1 vs uint 143 | −50.9 (0.64×) |
-| add_mod, reduced operands | 2048 | 198 vs uint 245 | −47.0 (0.81×) | 150 vs uint 225 | −75.0 (0.67×) | 233 vs uint 294 | −61.0 (0.79×) | 220 vs uint 260 | −40.0 (0.85×) |
-| add_mod, reduced operands | 4096 | 535 vs uint 619 | −84.0 (0.86×) | 462 vs uint 560 | −98.0 (0.82×) | 585 vs uint 683 | −98.0 (0.86×) | 525 vs uint 672 | −147 (0.78×) |
-| sub_mod, reduced operands | 64 | 3.6 vs native 3.0 | +0.6 (1.20×) | 4.0 vs native 3.0 | +1.0 (1.33×) | 4.7 vs native 3.1 | +1.6 (1.52×) | 6.2 vs native 3.0 | +3.2 (2.07×) |
-| sub_mod, reduced operands | 128 | 7.1 vs native 6.8 | +0.3 (1.04×) | 7.3 vs native 5.4 | +1.9 (1.35×) | 7.7 vs native 9.2 | −1.5 (0.84×) | 9.6 vs native 7.3 | +2.3 (1.32×) |
-| sub_mod, reduced operands | 256 | 17.0 vs uint 18.9 | −1.9 (0.90×) | 13.2 vs bnum 16.6 | −3.4 (0.80×) | 14.9 vs bnum 20.4 | −5.5 (0.73×) | 20.2 vs bnum 20.8 | −0.6 (0.97×) |
-| sub_mod, reduced operands | 384 | 26.5 vs uint 31.0 | −4.5 (0.85×) | 20.8 vs uint 31.6 | −10.8 (0.66×) | 25.6 vs bnum 32.8 | −7.2 (0.78×) | 30.4 vs bnum 42.8 | −12.4 (0.71×) |
-| sub_mod, reduced operands | 512 | 34.4 vs bnum 47.7 | −13.3 (0.72×) | 29.8 vs bnum 46.5 | −16.7 (0.64×) | 37.7 vs bnum 49.0 | −11.3 (0.77×) | 41.8 vs bnum 63.9 | −22.1 (0.65×) |
-| sub_mod, reduced operands | 1024 | 66.6 vs uint 132 | −65.4 (0.50×) | 68.0 vs uint 129 | −61.0 (0.53×) | 83.3 vs uint 154 | −70.7 (0.54×) | 90.2 vs uint 149 | −58.8 (0.61×) |
-| sub_mod, reduced operands | 2048 | 209 vs uint 291 | −82.0 (0.72×) | 157 vs uint 288 | −131 (0.55×) | 280 vs uint 369 | −89.0 (0.76×) | 199 vs uint 371 | −172 (0.54×) |
-| sub_mod, reduced operands | 4096 | 537 vs bnum 681 | −144 (0.79×) | 469 vs uint 696 | −227 (0.67×) | 588 vs bnum 715 | −127 (0.82×) | 589 vs bnum 780 | −191 (0.76×) |
-| add, constant time | 64 | 2.2 vs uint 2.1 | +0.1 (1.05×) | 2.2 vs native 2.2 | +0.0 (1.00×) | 2.2 vs crypto-bigint 2.1 | +0.1 (1.05×) | 2.2 vs bnum 2.0 | +0.2 (1.10×) |
-| add, constant time | 128 | 4.0 vs bnum 4.0 | +0.0 (1.00×) | 3.8 vs native 3.7 | +0.1 (1.03×) | 4.0 vs bnum 3.7 | +0.3 (1.08×) | 4.2 vs native 3.3 | +0.9 (1.27×) |
-| add, constant time | 256 | 10.2 vs crypto-bigint 9.7 | +0.5 (1.05×) | 9.0 vs crypto-bigint 8.9 | +0.1 (1.01×) | 10.1 vs bnum 10.1 | +0.0 (1.00×) | 11.5 vs bnum 11.1 | +0.4 (1.04×) |
-| add, constant time | 384 | 16.0 vs ruint 16.2 | −0.2 (0.99×) | 12.5 vs crypto-bigint 12.4 | +0.1 (1.01×) | 15.2 vs ruint 16.3 | −1.1 (0.93×) | 18.1 vs crypto-bigint 18.1 | +0.0 (1.00×) |
-| add, constant time | 512 | 27.9 vs bnum 24.6 | +3.3 (1.13×) | 20.9 vs crypto-bigint 20.8 | +0.1 (1.00×) | 26.3 vs bnum 23.7 | +2.6 (1.11×) | 32.3 vs bnum 27.7 | +4.6 (1.17×) |
-| add, constant time | 1024 | 59.7 vs bnum 61.9 | −2.2 (0.96×) | 45.8 vs crypto-bigint 45.0 | +0.8 (1.02×) | 71.1 vs bnum 67.5 | +3.6 (1.05×) | 69.8 vs crypto-bigint 69.1 | +0.7 (1.01×) |
-| add, constant time | 2048 | 117 vs crypto-bigint 196 | −79.0 (0.60×) | 109 vs crypto-bigint 138 | −29.0 (0.79×) | 144 vs crypto-bigint 207 | −63.0 (0.70×) | 150 vs crypto-bigint 177 | −27.0 (0.85×) |
-| add, constant time | 4096 | 344 vs crypto-bigint 392 | −48.0 (0.88×) | 267 vs crypto-bigint 278 | −11.0 (0.96×) | 400 vs bnum 397 | +3.0 (1.01×) | 319 vs crypto-bigint 328 | −9.0 (0.97×) |
-| mul, constant time | 64 | 2.2 vs ruint 2.0 | +0.2 (1.10×) | 2.2 vs crypto-bigint 2.3 | −0.1 (0.96×) | 2.2 vs native 2.2 | +0.0 (1.00×) | 2.2 vs ruint 2.2 | +0.0 (1.00×) |
-| mul, constant time | 128 | 10.1 vs uint 10.9 | −0.8 (0.93×) | 6.7 vs bnum 4.4 | +2.3 (1.52×) | 12.3 vs bnum 13.6 | −1.3 (0.90×) | 5.7 vs crypto-bigint 5.0 | +0.7 (1.14×) |
-| mul, constant time | 256 | 47.9 vs ruint 66.8 | −18.9 (0.72×) | 22.7 vs ruint 17.0 | +5.7 (1.34×) | 67.1 vs ruint 81.1 | −14.0 (0.83×) | 26.0 vs ruint 26.1 | −0.1 (1.00×) |
-| mul, constant time | 384 | 116 vs uint 168 | −52.0 (0.69×) | 55.9 vs crypto-bigint 40.4 | +15.5 (1.38×) | 168 vs ruint 218 | −50.0 (0.77×) | 72.4 vs crypto-bigint 71.5 | +0.9 (1.01×) |
-| mul, constant time | 512 | 210 vs ruint 321 | −111 (0.65×) | 74.9 vs crypto-bigint 85.0 | −10.1 (0.88×) | 307 vs ruint 442 | −135 (0.69×) | 132 vs ruint 131 | +1.0 (1.01×) |
-| mul, constant time | 1024 | 1,193 vs bnum 1,551 | −358 (0.77×) | 349 vs uint 504 | −155 (0.69×) | 1,491 vs bnum 2,347 | −856 (0.64×) | 566 vs crypto-bigint 895 | −329 (0.63×) |
-| mul, constant time | 2048 | 5,793 vs bnum 6,283 | −490 (0.92×) | 2,439 vs bnum 2,622 | −183 (0.93×) | 6,672 vs bnum 8,650 | −1,978 (0.77×) | 3,634 vs bnum 3,433 | +201 (1.06×) |
-| mul, constant time | 4096 | 18,754 vs bnum 23,617 | −4,863 (0.79×) | 8,525 vs bnum 10,106 | −1,581 (0.84×) | 21,984 vs bnum 31,724 | −9,740 (0.69×) | 12,511 vs bnum 12,846 | −335 (0.97×) |
-| div, constant time | 64 | 83.2 vs crypto-bigint 395 | −312 (0.21×) | 47.4 vs crypto-bigint 322 | −275 (0.15×) | 146 vs crypto-bigint 424 | −278 (0.34×) | 61.4 vs crypto-bigint 344 | −283 (0.18×) |
-| div, constant time | 128 | 280 vs crypto-bigint 909 | −629 (0.31×) | 179 vs crypto-bigint 780 | −601 (0.23×) | 362 vs crypto-bigint 1,070 | −708 (0.34×) | 231 vs crypto-bigint 925 | −694 (0.25×) |
-| div, constant time | 256 | 521 vs crypto-bigint 1,694 | −1,173 (0.31×) | 334 vs crypto-bigint 1,390 | −1,056 (0.24×) | 635 vs crypto-bigint 1,973 | −1,338 (0.32×) | 471 vs crypto-bigint 1,507 | −1,036 (0.31×) |
-| div, constant time | 384 | 819 vs crypto-bigint 2,521 | −1,702 (0.32×) | 457 vs crypto-bigint 2,038 | −1,581 (0.22×) | 811 vs crypto-bigint 3,042 | −2,231 (0.27×) | 545 vs crypto-bigint 2,301 | −1,756 (0.24×) |
-| div, constant time | 512 | 1,023 vs crypto-bigint 3,556 | −2,533 (0.29×) | 745 vs crypto-bigint 2,826 | −2,081 (0.26×) | 1,186 vs crypto-bigint 4,260 | −3,074 (0.28×) | 862 vs crypto-bigint 3,105 | −2,243 (0.28×) |
-| div, constant time | 1024 | 2,475 vs crypto-bigint 8,536 | −6,061 (0.29×) | 1,796 vs crypto-bigint 7,066 | −5,270 (0.25×) | 2,881 vs crypto-bigint 10,340 | −7,459 (0.28×) | 2,187 vs crypto-bigint 7,485 | −5,298 (0.29×) |
-| div, constant time | 2048 | 7,476 vs crypto-bigint 22,588 | −15,112 (0.33×) | 5,195 vs crypto-bigint 17,724 | −12,529 (0.29×) | 8,404 vs crypto-bigint 27,667 | −19,263 (0.30×) | 6,477 vs crypto-bigint 18,511 | −12,034 (0.35×) |
-| div, constant time | 4096 | 25,658 vs crypto-bigint 67,391 | −41,733 (0.38×) | 16,426 vs crypto-bigint 43,621 | −27,195 (0.38×) | 27,938 vs crypto-bigint 84,183 | −56,245 (0.33×) | 21,618 vs crypto-bigint 50,736 | −29,118 (0.43×) |
-| mod, constant time | 64 | 83.6 vs crypto-bigint 384 | −300 (0.22×) | 48.2 vs crypto-bigint 324 | −276 (0.15×) | 142 vs crypto-bigint 421 | −279 (0.34×) | 67.6 vs crypto-bigint 341 | −273 (0.20×) |
-| mod, constant time | 128 | 347 vs crypto-bigint 900 | −553 (0.39×) | 169 vs crypto-bigint 742 | −573 (0.23×) | 332 vs crypto-bigint 1,060 | −728 (0.31×) | 226 vs crypto-bigint 900 | −674 (0.25×) |
-| mod, constant time | 256 | 520 vs crypto-bigint 1,652 | −1,132 (0.31×) | 333 vs crypto-bigint 1,350 | −1,017 (0.25×) | 581 vs crypto-bigint 1,948 | −1,367 (0.30×) | 414 vs crypto-bigint 1,501 | −1,087 (0.28×) |
-| mod, constant time | 384 | 748 vs crypto-bigint 2,498 | −1,750 (0.30×) | 537 vs crypto-bigint 1,991 | −1,454 (0.27×) | 805 vs crypto-bigint 2,995 | −2,190 (0.27×) | 560 vs crypto-bigint 2,238 | −1,678 (0.25×) |
-| mod, constant time | 512 | 1,056 vs crypto-bigint 3,680 | −2,624 (0.29×) | 756 vs crypto-bigint 2,758 | −2,002 (0.27×) | 1,084 vs crypto-bigint 4,284 | −3,200 (0.25×) | 832 vs crypto-bigint 3,110 | −2,278 (0.27×) |
-| mod, constant time | 1024 | 2,541 vs crypto-bigint 8,511 | −5,970 (0.30×) | 1,955 vs crypto-bigint 7,283 | −5,328 (0.27×) | 2,745 vs crypto-bigint 10,449 | −7,704 (0.26×) | 1,996 vs crypto-bigint 7,421 | −5,425 (0.27×) |
-| mod, constant time | 2048 | 7,775 vs crypto-bigint 22,344 | −14,569 (0.35×) | 5,269 vs crypto-bigint 17,157 | −11,888 (0.31×) | 8,332 vs crypto-bigint 27,700 | −19,368 (0.30×) | 5,909 vs crypto-bigint 18,527 | −12,618 (0.32×) |
-| mod, constant time | 4096 | 25,871 vs crypto-bigint 69,260 | −43,389 (0.37×) | 16,456 vs crypto-bigint 43,339 | −26,883 (0.38×) | 29,046 vs crypto-bigint 88,465 | −59,419 (0.33×) | 20,672 vs crypto-bigint 50,385 | −29,713 (0.41×) |
-| mulmod, constant time | 64 | 203 vs crypto-bigint 482 | −279 (0.42×) | 99.7 vs crypto-bigint 357 | −257 (0.28×) | 237 vs crypto-bigint 528 | −291 (0.45×) | 113 vs crypto-bigint 380 | −267 (0.30×) |
-| mulmod, constant time | 128 | 573 vs crypto-bigint 1,270 | −697 (0.45×) | 360 vs crypto-bigint 996 | −636 (0.36×) | 601 vs crypto-bigint 1,540 | −939 (0.39×) | 372 vs crypto-bigint 1,146 | −774 (0.32×) |
-| mulmod, constant time | 256 | 1,218 vs crypto-bigint 2,772 | −1,554 (0.44×) | 744 vs crypto-bigint 1,984 | −1,240 (0.38×) | 1,348 vs crypto-bigint 3,330 | −1,982 (0.40×) | 818 vs crypto-bigint 2,279 | −1,461 (0.36×) |
-| mulmod, constant time | 384 | 1,965 vs crypto-bigint 4,839 | −2,874 (0.41×) | 1,225 vs crypto-bigint 3,252 | −2,027 (0.38×) | 2,257 vs crypto-bigint 5,649 | −3,392 (0.40×) | 1,500 vs crypto-bigint 3,747 | −2,247 (0.40×) |
-| mulmod, constant time | 512 | 3,009 vs crypto-bigint 7,718 | −4,709 (0.39×) | 1,824 vs crypto-bigint 4,665 | −2,841 (0.39×) | 3,495 vs crypto-bigint 8,680 | −5,185 (0.40×) | 2,307 vs crypto-bigint 5,528 | −3,221 (0.42×) |
-| mulmod, constant time | 1024 | 9,611 vs crypto-bigint 21,454 | −11,843 (0.45×) | 5,616 vs crypto-bigint 13,464 | −7,848 (0.42×) | 10,989 vs crypto-bigint 25,200 | −14,211 (0.44×) | 7,558 vs crypto-bigint 14,239 | −6,681 (0.53×) |
-| mulmod, constant time | 2048 | 32,861 vs crypto-bigint 64,781 | −31,920 (0.51×) | 18,903 vs crypto-bigint 36,271 | −17,368 (0.52×) | 36,878 vs crypto-bigint 77,299 | −40,421 (0.48×) | 25,971 vs crypto-bigint 46,201 | −20,230 (0.56×) |
-| mulmod, constant time | 4096 | 119,911 vs crypto-bigint 261,147 | −141,236 (0.46×) | 68,830 vs crypto-bigint 111,657 | −42,827 (0.62×) | 132,639 vs crypto-bigint 253,339 | −120,700 (0.52×) | 91,464 vs crypto-bigint 145,680 | −54,216 (0.63×) |
-| add_mod, constant time | 64 | 9.0 | – | 9.5 | – | 19.3 | – | 13.8 | – |
-| add_mod, constant time | 128 | 26.5 | – | 21.5 | – | 34.5 | – | 35.0 | – |
-| add_mod, constant time | 256 | 82.3 | – | 65.4 | – | 108 | – | 74.9 | – |
-| add_mod, constant time | 384 | 120 | – | 111 | – | 167 | – | 141 | – |
-| add_mod, constant time | 512 | 150 | – | 145 | – | 238 | – | 180 | – |
-| add_mod, constant time | 1024 | 323 | – | 272 | – | 607 | – | 344 | – |
-| add_mod, constant time | 2048 | 867 | – | 531 | – | 1,702 | – | 761 | – |
-| add_mod, constant time | 4096 | 1,886 | – | 1,717 | – | 2,017 | – | 2,011 | – |
-| sub_mod, constant time | 64 | 10.2 | – | 9.3 | – | 18.9 | – | 14.3 | – |
-| sub_mod, constant time | 128 | 15.6 | – | 13.0 | – | 30.9 | – | 23.0 | – |
-| sub_mod, constant time | 256 | 45.9 | – | 31.9 | – | 73.8 | – | 65.2 | – |
-| sub_mod, constant time | 384 | 103 | – | 51.4 | – | 136 | – | 96.7 | – |
-| sub_mod, constant time | 512 | 140 | – | 88.2 | – | 224 | – | 141 | – |
-| sub_mod, constant time | 1024 | 321 | – | 210 | – | 533 | – | 274 | – |
-| sub_mod, constant time | 2048 | 743 | – | 510 | – | 1,322 | – | 639 | – |
-| sub_mod, constant time | 4096 | 1,549 | – | 1,421 | – | 1,751 | – | 1,682 | – |
-| add_mod, reduced operands, constant time | 64 | 5.8 vs crypto-bigint 13.0 | −7.2 (0.45×) | 6.0 vs crypto-bigint 12.2 | −6.2 (0.49×) | 6.1 vs crypto-bigint 11.9 | −5.8 (0.51×) | 7.4 vs crypto-bigint 13.2 | −5.8 (0.56×) |
-| add_mod, reduced operands, constant time | 128 | 13.6 vs crypto-bigint 23.4 | −9.8 (0.58×) | 12.0 vs crypto-bigint 21.1 | −9.1 (0.57×) | 13.4 vs crypto-bigint 23.4 | −10.0 (0.57×) | 18.0 vs crypto-bigint 22.8 | −4.8 (0.79×) |
-| add_mod, reduced operands, constant time | 256 | 29.1 vs crypto-bigint 47.6 | −18.5 (0.61×) | 23.7 vs crypto-bigint 43.1 | −19.4 (0.55×) | 31.5 vs crypto-bigint 57.3 | −25.8 (0.55×) | 32.1 vs crypto-bigint 54.8 | −22.7 (0.59×) |
-| add_mod, reduced operands, constant time | 384 | 48.1 vs crypto-bigint 97.2 | −49.1 (0.49×) | 36.7 vs crypto-bigint 105 | −68.3 (0.35×) | 50.5 vs crypto-bigint 87.4 | −36.9 (0.58×) | 47.3 vs crypto-bigint 82.4 | −35.1 (0.57×) |
-| add_mod, reduced operands, constant time | 512 | 72.2 vs crypto-bigint 109 | −36.8 (0.66×) | 49.8 vs crypto-bigint 94.2 | −44.4 (0.53×) | 85.2 vs crypto-bigint 141 | −55.8 (0.60×) | 61.5 vs crypto-bigint 128 | −66.5 (0.48×) |
-| add_mod, reduced operands, constant time | 1024 | 138 vs crypto-bigint 379 | −241 (0.36×) | 96.4 vs crypto-bigint 344 | −248 (0.28×) | 295 vs crypto-bigint 464 | −169 (0.64×) | 122 vs crypto-bigint 383 | −261 (0.32×) |
-| add_mod, reduced operands, constant time | 2048 | 280 vs crypto-bigint 565 | −285 (0.50×) | 183 vs crypto-bigint 507 | −324 (0.36×) | 653 vs crypto-bigint 879 | −226 (0.74×) | 289 vs crypto-bigint 770 | −481 (0.38×) |
-| add_mod, reduced operands, constant time | 4096 | 812 vs crypto-bigint 1,190 | −378 (0.68×) | 748 vs crypto-bigint 1,052 | −304 (0.71×) | 862 vs crypto-bigint 1,608 | −746 (0.54×) | 876 vs crypto-bigint 1,446 | −570 (0.61×) |
-| sub_mod, reduced operands, constant time | 64 | 4.8 vs crypto-bigint 5.0 | −0.2 (0.96×) | 4.9 vs crypto-bigint 5.0 | −0.1 (0.98×) | 5.1 vs crypto-bigint 5.2 | −0.1 (0.98×) | 5.1 vs crypto-bigint 5.0 | +0.1 (1.02×) |
-| sub_mod, reduced operands, constant time | 128 | 9.7 vs crypto-bigint 10.2 | −0.5 (0.95×) | 9.0 vs crypto-bigint 11.0 | −2.0 (0.82×) | 9.0 vs crypto-bigint 10.6 | −1.6 (0.85×) | 12.0 vs crypto-bigint 11.0 | +1.0 (1.09×) |
-| sub_mod, reduced operands, constant time | 256 | 24.3 vs crypto-bigint 28.1 | −3.8 (0.86×) | 20.3 vs crypto-bigint 23.6 | −3.3 (0.86×) | 30.3 vs crypto-bigint 31.7 | −1.4 (0.96×) | 28.1 vs crypto-bigint 30.1 | −2.0 (0.93×) |
-| sub_mod, reduced operands, constant time | 384 | 40.6 vs crypto-bigint 48.9 | −8.3 (0.83×) | 33.3 vs crypto-bigint 39.1 | −5.8 (0.85×) | 50.0 vs crypto-bigint 57.4 | −7.4 (0.87×) | 44.7 vs crypto-bigint 52.3 | −7.6 (0.85×) |
-| sub_mod, reduced operands, constant time | 512 | 65.4 vs crypto-bigint 71.6 | −6.2 (0.91×) | 46.5 vs crypto-bigint 53.8 | −7.3 (0.86×) | 92.1 vs crypto-bigint 94.0 | −1.9 (0.98×) | 63.9 vs crypto-bigint 106 | −42.1 (0.60×) |
-| sub_mod, reduced operands, constant time | 1024 | 133 vs crypto-bigint 177 | −44.0 (0.75×) | 114 vs crypto-bigint 139 | −25.0 (0.82×) | 215 vs crypto-bigint 347 | −132 (0.62×) | 137 vs crypto-bigint 276 | −139 (0.50×) |
-| sub_mod, reduced operands, constant time | 2048 | 294 vs crypto-bigint 523 | −229 (0.56×) | 255 vs crypto-bigint 457 | −202 (0.56×) | 553 vs crypto-bigint 561 | −8.0 (0.99×) | 293 vs crypto-bigint 495 | −202 (0.59×) |
-| sub_mod, reduced operands, constant time | 4096 | 849 vs crypto-bigint 912 | −63.0 (0.93×) | 711 vs crypto-bigint 771 | −60.0 (0.92×) | 903 vs crypto-bigint 1,465 | −562 (0.62×) | 914 vs crypto-bigint 1,344 | −430 (0.68×) |
+| add | 64 | 2.5 vs crypto-bigint 2.4 | +0.1 (1.04×) | 2.4 vs native 2.4 | +0.0 (1.00×) | 2.2 vs native 2.2 | +0.0 (1.00×) | 2.2 vs native 2.2 | +0.0 (1.00×) |
+| add | 128 | 4.1 vs native 4.0 | +0.1 (1.02×) | 4.1 vs native 4.1 | +0.0 (1.00×) | 3.6 vs native 3.7 | −0.1 (0.97×) | 3.7 vs native 3.7 | +0.0 (1.00×) |
+| add | 256 | 9.7 vs bnum 9.7 | +0.0 (1.00×) | 8.6 vs bnum 8.7 | −0.1 (0.99×) | 9.5 vs bnum 9.5 | +0.0 (1.00×) | 9.1 vs bnum 9.1 | +0.0 (1.00×) |
+| add | 384 | 16.5 vs ruint 17.9 | −1.4 (0.92×) | 14.0 vs crypto-bigint 14.5 | −0.5 (0.97×) | 16.5 vs bnum 16.1 | +0.4 (1.02×) | 17.6 vs bnum 17.1 | +0.5 (1.03×) |
+| add | 512 | 24.1 vs ruint 24.0 | +0.1 (1.00×) | 18.3 vs crypto-bigint 18.1 | +0.2 (1.01×) | 23.3 vs bnum 22.4 | +0.9 (1.04×) | 24.1 vs crypto-bigint 24.2 | −0.1 (1.00×) |
+| add | 1024 | 55.8 vs bnum 53.6 | +2.2 (1.04×) | 45.2 vs crypto-bigint 45.3 | −0.1 (1.00×) | 59.4 vs bnum 50.9 | +8.5 (1.17×) | 67.5 vs bnum 58.1 | +9.4 (1.16×) |
+| add | 2048 | 120 vs crypto-bigint 192 | −72.0 (0.62×) | 108 vs crypto-bigint 136 | −28.0 (0.79×) | 131 vs bnum 207 | −76.0 (0.63×) | 146 vs crypto-bigint 177 | −31.0 (0.82×) |
+| add | 4096 | 250 vs crypto-bigint 394 | −144 (0.63×) | 257 vs crypto-bigint 261 | −4.0 (0.98×) | 320 vs bnum 394 | −74.0 (0.81×) | 318 vs crypto-bigint 325 | −7.0 (0.98×) |
+| mul | 64 | 2.6 vs native 2.5 | +0.1 (1.04×) | 2.5 vs native 2.5 | +0.0 (1.00×) | 2.3 vs native 2.3 | +0.0 (1.00×) | 2.3 vs native 2.3 | +0.0 (1.00×) |
+| mul | 128 | 10.4 vs uint 11.3 | −0.9 (0.92×) | 4.1 vs bnum 4.1 | +0.0 (1.00×) | 11.5 vs native 14.0 | −2.5 (0.82×) | 5.1 vs uint 4.7 | +0.4 (1.09×) |
+| mul | 256 | 46.9 vs ruint 63.2 | −16.3 (0.74×) | 17.1 vs ruint 17.2 | −0.1 (0.99×) | 63.3 vs ruint 79.5 | −16.2 (0.80×) | 24.1 vs ruint 24.1 | +0.0 (1.00×) |
+| mul | 384 | 117 vs uint 164 | −47.0 (0.71×) | 42.8 vs crypto-bigint 41.1 | +1.7 (1.04×) | 160 vs ruint 222 | −62.0 (0.72×) | 66.4 vs crypto-bigint 64.1 | +2.3 (1.04×) |
+| mul | 512 | 199 vs ruint 334 | −135 (0.60×) | 75.9 vs ruint 75.3 | +0.6 (1.01×) | 329 vs ruint 434 | −105 (0.76×) | 123 vs ruint 123 | +0.0 (1.00×) |
+| mul | 1024 | 1,293 vs bnum 1,681 | −388 (0.77×) | 308 vs uint 509 | −201 (0.61×) | 1,510 vs bnum 2,320 | −810 (0.65×) | 680 vs crypto-bigint 907 | −227 (0.75×) |
+| mul | 2048 | 4,887 vs bnum 6,289 | −1,402 (0.78×) | 1,706 vs ruint 2,109 | −403 (0.81×) | 5,807 vs bnum 8,656 | −2,849 (0.67×) | 3,065 vs ruint 3,279 | −214 (0.93×) |
+| mul | 4096 | 16,901 vs bnum 23,820 | −6,919 (0.71×) | 6,864 vs ruint 8,151 | −1,287 (0.84×) | 20,427 vs bnum 33,312 | −12,885 (0.61×) | 10,783 vs ruint 11,697 | −914 (0.92×) |
+| div | 64 | 7.0 vs ruint 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) |
+| div | 128 | 67.4 vs ruint 92.3 | −24.9 (0.73×) | 31.7 vs ruint 42.7 | −11.0 (0.74×) | 85.6 vs ruint 97.3 | −11.7 (0.88×) | 37.0 vs ruint 54.3 | −17.3 (0.68×) |
+| div | 256 | 214 vs ruint 324 | −110 (0.66×) | 86.5 vs ruint 149 | −62.5 (0.58×) | 222 vs ruint 397 | −175 (0.56×) | 104 vs ruint 167 | −63.0 (0.62×) |
+| div | 384 | 354 vs ruint 614 | −260 (0.58×) | 203 vs ruint 342 | −139 (0.59×) | 400 vs num-bigint 771 | −371 (0.52×) | 303 vs ruint 428 | −125 (0.71×) |
+| div | 512 | 492 vs ruint 847 | −355 (0.58×) | 313 vs ruint 416 | −103 (0.75×) | 577 vs num-bigint 1,007 | −430 (0.57×) | 392 vs ruint 555 | −163 (0.71×) |
+| div | 1024 | 1,187 vs num-bigint 2,007 | −820 (0.59×) | 597 vs ruint 882 | −285 (0.68×) | 1,504 vs num-bigint 2,185 | −681 (0.69×) | 844 vs ruint 1,097 | −253 (0.77×) |
+| div | 2048 | 3,234 vs num-bigint 6,239 | −3,005 (0.52×) | 1,557 vs ruint 2,378 | −821 (0.65×) | 4,239 vs num-bigint 6,106 | −1,867 (0.69×) | 2,306 vs ruint 2,712 | −406 (0.85×) |
+| div | 4096 | 12,989 vs num-bigint 21,374 | −8,385 (0.61×) | 4,990 vs ruint 7,612 | −2,622 (0.66×) | 15,190 vs num-bigint 20,245 | −5,055 (0.75×) | 7,182 vs ruint 9,001 | −1,819 (0.80×) |
+| mod | 64 | 7.1 vs native 7.0 | +0.1 (1.01×) | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) | 7.0 vs native 7.0 | +0.0 (1.00×) |
+| mod | 128 | 62.0 vs ruint 87.6 | −25.6 (0.71×) | 30.1 vs ruint 41.0 | −10.9 (0.73×) | 76.7 vs ruint 94.6 | −17.9 (0.81×) | 34.1 vs ruint 49.8 | −15.7 (0.68×) |
+| mod | 256 | 217 vs ruint 326 | −109 (0.67×) | 73.7 vs ruint 147 | −73.3 (0.50×) | 220 vs ruint 399 | −179 (0.55×) | 99.7 vs ruint 165 | −65.3 (0.60×) |
+| mod | 384 | 354 vs ruint 577 | −223 (0.61×) | 195 vs ruint 314 | −119 (0.62×) | 416 vs ruint 712 | −296 (0.58×) | 253 vs ruint 343 | −90.0 (0.74×) |
+| mod | 512 | 479 vs ruint 828 | −349 (0.58×) | 293 vs ruint 398 | −105 (0.74×) | 551 vs ruint 1,003 | −452 (0.55×) | 375 vs ruint 457 | −82.0 (0.82×) |
+| mod | 1024 | 1,217 vs num-bigint 2,046 | −829 (0.59×) | 585 vs ruint 941 | −356 (0.62×) | 1,504 vs num-bigint 2,184 | −680 (0.69×) | 805 vs ruint 1,036 | −231 (0.78×) |
+| mod | 2048 | 3,468 vs num-bigint 6,157 | −2,689 (0.56×) | 1,570 vs ruint 2,290 | −720 (0.69×) | 4,279 vs num-bigint 6,147 | −1,868 (0.70×) | 2,101 vs ruint 2,626 | −525 (0.80×) |
+| mod | 4096 | 13,079 vs num-bigint 20,564 | −7,485 (0.64×) | 5,125 vs ruint 7,743 | −2,618 (0.66×) | 15,237 vs num-bigint 20,174 | −4,937 (0.76×) | 6,900 vs ruint 8,911 | −2,011 (0.77×) |
+| mulmod | 64 | 68.8 vs ruint 86.1 | −17.3 (0.80×) | 30.7 vs ruint 46.2 | −15.5 (0.66×) | 95.9 vs ruint 178 | −82.1 (0.54×) | 36.0 vs ruint 54.6 | −18.6 (0.66×) |
+| mulmod | 128 | 188 vs ruint 319 | −131 (0.59×) | 81.8 vs ruint 123 | −41.2 (0.67×) | 232 vs ruint 381 | −149 (0.61×) | 137 vs ruint 197 | −60.0 (0.70×) |
+| mulmod | 256 | 573 vs ruint 801 | −228 (0.72×) | 264 vs ruint 299 | −35.0 (0.88×) | 690 vs ruint 896 | −206 (0.77×) | 362 vs ruint 377 | −15.0 (0.96×) |
+| mulmod | 384 | 963 vs ruint 1,596 | −633 (0.60×) | 461 vs ruint 528 | −67.0 (0.87×) | 1,284 vs ruint 1,686 | −402 (0.76×) | 627 vs ruint 684 | −57.0 (0.92×) |
+| mulmod | 512 | 1,586 vs ruint 2,815 | −1,229 (0.56×) | 823 vs ruint 848 | −25.0 (0.97×) | 2,027 vs num-bigint 3,093 | −1,066 (0.66×) | 1,125 vs ruint 1,116 | +9.0 (1.01×) |
+| mulmod | 1024 | 5,293 vs num-bigint 9,005 | −3,712 (0.59×) | 2,449 vs ruint 2,601 | −152 (0.94×) | 6,642 vs num-bigint 9,361 | −2,719 (0.71×) | 3,134 vs ruint 3,583 | −449 (0.87×) |
+| mulmod | 2048 | 17,435 vs num-bigint 32,056 | −14,621 (0.54×) | 7,954 vs ruint 10,659 | −2,705 (0.75×) | 21,831 vs num-bigint 32,181 | −10,350 (0.68×) | 11,252 vs ruint 13,745 | −2,493 (0.82×) |
+| mulmod | 4096 | 56,179 vs num-bigint 113,825 | −57,646 (0.49×) | 26,743 vs ruint 41,177 | −14,434 (0.65×) | 67,867 vs num-bigint 115,364 | −47,497 (0.59×) | 38,845 vs ruint 53,304 | −14,459 (0.73×) |
+| add_mod | 64 | 4.0 vs ruint 35.2 | −31.2 (0.11×) | 4.0 vs ruint 34.8 | −30.8 (0.11×) | 7.9 vs ruint 70.6 | −62.7 (0.11×) | 7.7 vs ruint 72.4 | −64.7 (0.11×) |
+| add_mod | 128 | 7.5 vs ruint 25.1 | −17.6 (0.30×) | 8.3 vs ruint 22.5 | −14.2 (0.37×) | 11.1 vs ruint 23.2 | −12.1 (0.48×) | 12.4 vs ruint 27.4 | −15.0 (0.45×) |
+| add_mod | 256 | 22.6 vs ruint 34.9 | −12.3 (0.65×) | 23.1 vs ruint 36.0 | −12.9 (0.64×) | 24.8 vs ruint 44.7 | −19.9 (0.55×) | 29.5 vs ruint 46.7 | −17.2 (0.63×) |
+| add_mod | 384 | 32.4 vs ruint 51.9 | −19.5 (0.62×) | 27.7 vs ruint 51.5 | −23.8 (0.54×) | 41.0 vs ruint 74.3 | −33.3 (0.55×) | 42.6 vs ruint 68.1 | −25.5 (0.63×) |
+| add_mod | 512 | 44.3 vs ruint 75.5 | −31.2 (0.59×) | 38.1 vs ruint 70.1 | −32.0 (0.54×) | 54.7 vs ruint 104 | −49.3 (0.53×) | 58.6 vs ruint 106 | −47.4 (0.55×) |
+| add_mod | 1024 | 113 vs ruint 157 | −44.0 (0.72×) | 103 vs ruint 138 | −35.0 (0.75×) | 133 vs ruint 210 | −77.0 (0.63×) | 128 vs ruint 196 | −68.0 (0.65×) |
+| add_mod | 2048 | 245 vs ruint 751 | −506 (0.33×) | 234 vs ruint 709 | −475 (0.33×) | 323 vs ruint 977 | −654 (0.33×) | 282 vs ruint 872 | −590 (0.32×) |
+| add_mod | 4096 | 634 vs ruint 1,473 | −839 (0.43×) | 621 vs ruint 1,363 | −742 (0.46×) | 654 vs ruint 1,735 | −1,081 (0.38×) | 766 vs ruint 1,568 | −802 (0.49×) |
+| sub_mod | 64 | 3.8 vs ruint 42.5 | −38.7 (0.09×) | 4.0 vs ruint 37.5 | −33.5 (0.11×) | 7.6 vs ruint 74.9 | −67.3 (0.10×) | 7.9 vs ruint 73.3 | −65.4 (0.11×) |
+| sub_mod | 128 | 9.5 vs ruint 30.3 | −20.8 (0.31×) | 8.0 vs ruint 29.2 | −21.2 (0.27×) | 10.5 vs ruint 36.5 | −26.0 (0.29×) | 12.0 vs ruint 37.4 | −25.4 (0.32×) |
+| sub_mod | 256 | 24.3 vs ruint 51.4 | −27.1 (0.47×) | 20.9 vs ruint 50.6 | −29.7 (0.41×) | 25.3 vs ruint 75.9 | −50.6 (0.33×) | 28.5 vs ruint 76.7 | −48.2 (0.37×) |
+| sub_mod | 384 | 31.3 vs ruint 82.9 | −51.6 (0.38×) | 27.0 vs ruint 79.0 | −52.0 (0.34×) | 35.8 vs ruint 122 | −86.2 (0.29×) | 40.9 vs ruint 118 | −77.1 (0.35×) |
+| sub_mod | 512 | 43.6 vs ruint 109 | −65.4 (0.40×) | 36.4 vs ruint 103 | −66.6 (0.35×) | 52.9 vs ruint 169 | −116 (0.31×) | 57.6 vs ruint 167 | −109 (0.34×) |
+| sub_mod | 1024 | 104 vs ruint 302 | −198 (0.34×) | 106 vs ruint 284 | −178 (0.37×) | 116 vs ruint 542 | −426 (0.21×) | 128 vs ruint 497 | −369 (0.26×) |
+| sub_mod | 2048 | 230 vs ruint 1,086 | −856 (0.21×) | 250 vs ruint 1,077 | −827 (0.23×) | 285 vs num-bigint 1,308 | −1,023 (0.22×) | 271 vs ruint 1,281 | −1,010 (0.21×) |
+| sub_mod | 4096 | 605 vs ruint 2,076 | −1,471 (0.29×) | 660 vs ruint 1,973 | −1,313 (0.33×) | 627 vs ruint 2,366 | −1,739 (0.27×) | 778 vs ruint 2,308 | −1,530 (0.34×) |
+| add_mod, reduced operands | 64 | 4.2 vs native 3.4 | +0.8 (1.24×) | 4.2 vs native 4.1 | +0.1 (1.02×) | 4.1 vs native 3.2 | +0.9 (1.28×) | 4.1 vs native 4.4 | −0.3 (0.93×) |
+| add_mod, reduced operands | 128 | 8.6 vs uint 9.1 | −0.5 (0.95×) | 8.8 vs native 9.4 | −0.6 (0.94×) | 7.7 vs uint 9.2 | −1.5 (0.84×) | 10.6 vs native 9.5 | +1.1 (1.12×) |
+| add_mod, reduced operands | 256 | 20.3 vs uint 18.9 | +1.4 (1.07×) | 18.1 vs uint 21.1 | −3.0 (0.86×) | 17.0 vs uint 17.8 | −0.8 (0.96×) | 21.3 vs uint 22.0 | −0.7 (0.97×) |
+| add_mod, reduced operands | 384 | 29.9 vs uint 32.2 | −2.3 (0.93×) | 25.8 vs uint 31.7 | −5.9 (0.81×) | 31.1 vs uint 30.1 | +1.0 (1.03×) | 31.6 vs uint 34.0 | −2.4 (0.93×) |
+| add_mod, reduced operands | 512 | 35.9 vs uint 42.2 | −6.3 (0.85×) | 32.1 vs uint 40.5 | −8.4 (0.79×) | 40.6 vs uint 39.0 | +1.6 (1.04×) | 43.2 vs uint 45.4 | −2.2 (0.95×) |
+| add_mod, reduced operands | 1024 | 76.7 vs uint 92.9 | −16.2 (0.83×) | 65.8 vs uint 94.0 | −28.2 (0.70×) | 78.9 vs uint 107 | −28.1 (0.74×) | 87.1 vs uint 116 | −28.9 (0.75×) |
+| add_mod, reduced operands | 2048 | 203 vs uint 217 | −14.0 (0.94×) | 149 vs uint 217 | −68.0 (0.69×) | 221 vs uint 254 | −33.0 (0.87×) | 195 vs uint 241 | −46.0 (0.81×) |
+| add_mod, reduced operands | 4096 | 427 vs uint 542 | −115 (0.79×) | 458 vs uint 559 | −101 (0.82×) | 506 vs uint 607 | −101 (0.83×) | 520 vs uint 608 | −88.0 (0.86×) |
+| sub_mod, reduced operands | 64 | 3.7 vs native 3.1 | +0.6 (1.19×) | 4.2 vs native 3.1 | +1.1 (1.35×) | 4.3 vs native 2.8 | +1.5 (1.54×) | 5.2 vs native 2.8 | +2.4 (1.86×) |
+| sub_mod, reduced operands | 128 | 6.5 vs native 7.2 | −0.7 (0.90×) | 7.5 vs native 5.9 | +1.6 (1.27×) | 6.7 vs native 7.3 | −0.6 (0.92×) | 9.5 vs native 6.8 | +2.7 (1.40×) |
+| sub_mod, reduced operands | 256 | 18.8 vs uint 19.4 | −0.6 (0.97×) | 14.3 vs bnum 16.9 | −2.6 (0.85×) | 15.1 vs bnum 19.0 | −3.9 (0.79×) | 19.2 vs uint 19.7 | −0.5 (0.97×) |
+| sub_mod, reduced operands | 384 | 27.6 vs uint 30.1 | −2.5 (0.92×) | 23.9 vs uint 30.2 | −6.3 (0.79×) | 26.0 vs uint 30.8 | −4.8 (0.84×) | 29.9 vs uint 33.6 | −3.7 (0.89×) |
+| sub_mod, reduced operands | 512 | 36.5 vs bnum 47.3 | −10.8 (0.77×) | 31.9 vs bnum 45.1 | −13.2 (0.71×) | 38.7 vs bnum 52.3 | −13.6 (0.74×) | 41.7 vs bnum 53.4 | −11.7 (0.78×) |
+| sub_mod, reduced operands | 1024 | 70.1 vs uint 132 | −61.9 (0.53×) | 70.1 vs uint 131 | −60.9 (0.54×) | 77.9 vs uint 167 | −89.1 (0.47×) | 90.2 vs uint 145 | −54.8 (0.62×) |
+| sub_mod, reduced operands | 2048 | 202 vs uint 252 | −50.0 (0.80×) | 160 vs uint 259 | −99.0 (0.62×) | 258 vs uint 318 | −60.0 (0.81×) | 202 vs uint 310 | −108 (0.65×) |
+| sub_mod, reduced operands | 4096 | 468 vs uint 629 | −161 (0.74×) | 476 vs uint 634 | −158 (0.75×) | 468 vs bnum 670 | −202 (0.70×) | 544 vs uint 691 | −147 (0.79×) |
+| add, constant time | 64 | 2.4 vs native 2.4 | +0.0 (1.00×) | 2.4 vs native 2.4 | +0.0 (1.00×) | 2.2 vs native 2.2 | +0.0 (1.00×) | 2.2 vs native 2.2 | +0.0 (1.00×) |
+| add, constant time | 128 | 4.1 vs native 4.1 | +0.0 (1.00×) | 4.1 vs native 4.1 | +0.0 (1.00×) | 3.6 vs ruint 3.6 | +0.0 (1.00×) | 3.7 vs native 3.7 | +0.0 (1.00×) |
+| add, constant time | 256 | 9.7 vs bnum 9.6 | +0.1 (1.01×) | 8.6 vs bnum 8.7 | −0.1 (0.99×) | 9.4 vs bnum 9.5 | −0.1 (0.99×) | 9.1 vs bnum 9.1 | +0.0 (1.00×) |
+| add, constant time | 384 | 16.5 vs ruint 17.9 | −1.4 (0.92×) | 14.1 vs crypto-bigint 14.5 | −0.4 (0.97×) | 16.5 vs bnum 16.1 | +0.4 (1.02×) | 17.6 vs bnum 17.2 | +0.4 (1.02×) |
+| add, constant time | 512 | 24.0 vs ruint 23.9 | +0.1 (1.00×) | 18.3 vs crypto-bigint 18.1 | +0.2 (1.01×) | 23.3 vs bnum 22.2 | +1.1 (1.05×) | 24.1 vs crypto-bigint 24.1 | +0.0 (1.00×) |
+| add, constant time | 1024 | 55.7 vs bnum 53.6 | +2.1 (1.04×) | 45.4 vs crypto-bigint 45.4 | +0.0 (1.00×) | 59.3 vs bnum 50.8 | +8.5 (1.17×) | 67.5 vs bnum 58.3 | +9.2 (1.16×) |
+| add, constant time | 2048 | 118 vs crypto-bigint 192 | −74.0 (0.61×) | 108 vs crypto-bigint 136 | −28.0 (0.79×) | 131 vs bnum 207 | −76.0 (0.63×) | 146 vs crypto-bigint 177 | −31.0 (0.82×) |
+| add, constant time | 4096 | 254 vs crypto-bigint 393 | −139 (0.65×) | 257 vs crypto-bigint 260 | −3.0 (0.99×) | 321 vs bnum 395 | −74.0 (0.81×) | 317 vs crypto-bigint 325 | −8.0 (0.98×) |
+| mul, constant time | 64 | 2.6 vs native 2.6 | +0.0 (1.00×) | 2.5 vs native 2.5 | +0.0 (1.00×) | 2.3 vs native 2.3 | +0.0 (1.00×) | 2.3 vs native 2.3 | +0.0 (1.00×) |
+| mul, constant time | 128 | 10.3 vs ruint 11.6 | −1.3 (0.89×) | 4.1 vs ruint 4.1 | +0.0 (1.00×) | 12.1 vs native 14.0 | −1.9 (0.86×) | 5.0 vs uint 4.7 | +0.3 (1.06×) |
+| mul, constant time | 256 | 49.9 vs uint 61.5 | −11.6 (0.81×) | 17.1 vs ruint 17.2 | −0.1 (0.99×) | 62.9 vs ruint 79.4 | −16.5 (0.79×) | 24.2 vs ruint 24.1 | +0.1 (1.00×) |
+| mul, constant time | 384 | 122 vs uint 164 | −42.0 (0.74×) | 42.9 vs crypto-bigint 41.1 | +1.8 (1.04×) | 162 vs ruint 222 | −60.0 (0.73×) | 66.1 vs crypto-bigint 64.2 | +1.9 (1.03×) |
+| mul, constant time | 512 | 203 vs ruint 336 | −133 (0.60×) | 75.0 vs ruint 75.1 | −0.1 (1.00×) | 328 vs ruint 434 | −106 (0.76×) | 123 vs ruint 124 | −1.0 (0.99×) |
+| mul, constant time | 1024 | 1,222 vs bnum 1,603 | −381 (0.76×) | 308 vs uint 510 | −202 (0.60×) | 1,531 vs bnum 2,318 | −787 (0.66×) | 671 vs crypto-bigint 907 | −236 (0.74×) |
+| mul, constant time | 2048 | 5,096 vs bnum 6,289 | −1,193 (0.81×) | 1,692 vs bnum 2,553 | −861 (0.66×) | 5,898 vs bnum 8,656 | −2,758 (0.68×) | 3,070 vs bnum 3,383 | −313 (0.91×) |
+| mul, constant time | 4096 | 16,851 vs bnum 23,820 | −6,969 (0.71×) | 7,041 vs bnum 9,832 | −2,791 (0.72×) | 20,693 vs bnum 33,312 | −12,619 (0.62×) | 11,038 vs bnum 12,816 | −1,778 (0.86×) |
+| div, constant time | 64 | 92.2 vs crypto-bigint 383 | −291 (0.24×) | 48.9 vs crypto-bigint 320 | −271 (0.15×) | 130 vs crypto-bigint 421 | −291 (0.31×) | 61.0 vs crypto-bigint 337 | −276 (0.18×) |
+| div, constant time | 128 | 339 vs crypto-bigint 931 | −592 (0.36×) | 169 vs crypto-bigint 734 | −565 (0.23×) | 364 vs crypto-bigint 1,081 | −717 (0.34×) | 236 vs crypto-bigint 900 | −664 (0.26×) |
+| div, constant time | 256 | 539 vs crypto-bigint 1,766 | −1,227 (0.31×) | 249 vs crypto-bigint 1,358 | −1,109 (0.18×) | 625 vs crypto-bigint 1,969 | −1,344 (0.32×) | 453 vs crypto-bigint 1,508 | −1,055 (0.30×) |
+| div, constant time | 384 | 752 vs crypto-bigint 2,598 | −1,846 (0.29×) | 424 vs crypto-bigint 2,017 | −1,593 (0.21×) | 836 vs crypto-bigint 3,051 | −2,215 (0.27×) | 511 vs crypto-bigint 2,260 | −1,749 (0.23×) |
+| div, constant time | 512 | 1,046 vs crypto-bigint 3,749 | −2,703 (0.28×) | 620 vs crypto-bigint 2,758 | −2,138 (0.22×) | 1,190 vs crypto-bigint 4,265 | −3,075 (0.28×) | 774 vs crypto-bigint 3,091 | −2,317 (0.25×) |
+| div, constant time | 1024 | 2,484 vs crypto-bigint 8,546 | −6,062 (0.29×) | 1,641 vs crypto-bigint 7,026 | −5,385 (0.23×) | 2,795 vs crypto-bigint 10,618 | −7,823 (0.26×) | 2,093 vs crypto-bigint 7,505 | −5,412 (0.28×) |
+| div, constant time | 2048 | 7,586 vs crypto-bigint 22,549 | −14,963 (0.34×) | 4,492 vs crypto-bigint 16,816 | −12,324 (0.27×) | 8,472 vs crypto-bigint 27,490 | −19,018 (0.31×) | 6,059 vs crypto-bigint 18,513 | −12,454 (0.33×) |
+| div, constant time | 4096 | 25,655 vs crypto-bigint 67,233 | −41,578 (0.38×) | 13,925 vs crypto-bigint 43,431 | −29,506 (0.32×) | 27,724 vs crypto-bigint 83,998 | −56,274 (0.33×) | 20,131 vs crypto-bigint 50,680 | −30,549 (0.40×) |
+| mod, constant time | 64 | 85.1 vs crypto-bigint 399 | −314 (0.21×) | 50.9 vs crypto-bigint 320 | −269 (0.16×) | 159 vs crypto-bigint 417 | −258 (0.38×) | 61.2 vs crypto-bigint 335 | −274 (0.18×) |
+| mod, constant time | 128 | 310 vs crypto-bigint 932 | −622 (0.33×) | 161 vs crypto-bigint 737 | −576 (0.22×) | 342 vs crypto-bigint 1,043 | −701 (0.33×) | 221 vs crypto-bigint 864 | −643 (0.26×) |
+| mod, constant time | 256 | 528 vs crypto-bigint 1,667 | −1,139 (0.32×) | 317 vs crypto-bigint 1,335 | −1,018 (0.24×) | 584 vs crypto-bigint 1,955 | −1,371 (0.30×) | 402 vs crypto-bigint 1,499 | −1,097 (0.27×) |
+| mod, constant time | 384 | 755 vs crypto-bigint 2,569 | −1,814 (0.29×) | 502 vs crypto-bigint 1,965 | −1,463 (0.26×) | 783 vs crypto-bigint 2,995 | −2,212 (0.26×) | 549 vs crypto-bigint 2,225 | −1,676 (0.25×) |
+| mod, constant time | 512 | 1,064 vs crypto-bigint 3,509 | −2,445 (0.30×) | 727 vs crypto-bigint 2,748 | −2,021 (0.26×) | 1,110 vs crypto-bigint 4,270 | −3,160 (0.26×) | 771 vs crypto-bigint 3,091 | −2,320 (0.25×) |
+| mod, constant time | 1024 | 2,531 vs crypto-bigint 8,449 | −5,918 (0.30×) | 1,680 vs crypto-bigint 6,976 | −5,296 (0.24×) | 2,741 vs crypto-bigint 10,400 | −7,659 (0.26×) | 1,914 vs crypto-bigint 7,454 | −5,540 (0.26×) |
+| mod, constant time | 2048 | 7,706 vs crypto-bigint 22,438 | −14,732 (0.34×) | 4,578 vs crypto-bigint 16,759 | −12,181 (0.27×) | 8,342 vs crypto-bigint 27,331 | −18,989 (0.31×) | 5,773 vs crypto-bigint 18,478 | −12,705 (0.31×) |
+| mod, constant time | 4096 | 25,982 vs crypto-bigint 67,461 | −41,479 (0.39×) | 14,274 vs crypto-bigint 43,225 | −28,951 (0.33×) | 28,438 vs crypto-bigint 85,248 | −56,810 (0.33×) | 19,678 vs crypto-bigint 50,466 | −30,788 (0.39×) |
+| mulmod, constant time | 64 | 178 vs crypto-bigint 470 | −292 (0.38×) | 86.1 vs crypto-bigint 349 | −263 (0.25×) | 225 vs crypto-bigint 524 | −299 (0.43×) | 106 vs crypto-bigint 367 | −261 (0.29×) |
+| mulmod, constant time | 128 | 563 vs crypto-bigint 1,275 | −712 (0.44×) | 346 vs crypto-bigint 992 | −646 (0.35×) | 595 vs crypto-bigint 1,519 | −924 (0.39×) | 363 vs crypto-bigint 1,132 | −769 (0.32×) |
+| mulmod, constant time | 256 | 1,217 vs crypto-bigint 2,860 | −1,643 (0.43×) | 680 vs crypto-bigint 1,984 | −1,304 (0.34×) | 1,338 vs crypto-bigint 3,266 | −1,928 (0.41×) | 796 vs crypto-bigint 2,274 | −1,478 (0.35×) |
+| mulmod, constant time | 384 | 1,944 vs crypto-bigint 4,804 | −2,860 (0.40×) | 1,257 vs crypto-bigint 3,217 | −1,960 (0.39×) | 2,244 vs crypto-bigint 5,627 | −3,383 (0.40×) | 1,421 vs crypto-bigint 3,700 | −2,279 (0.38×) |
+| mulmod, constant time | 512 | 3,025 vs crypto-bigint 7,711 | −4,686 (0.39×) | 1,855 vs crypto-bigint 4,908 | −3,053 (0.38×) | 3,553 vs crypto-bigint 9,023 | −5,470 (0.39×) | 2,240 vs crypto-bigint 5,845 | −3,605 (0.38×) |
+| mulmod, constant time | 1024 | 9,603 vs crypto-bigint 21,412 | −11,809 (0.45×) | 5,221 vs crypto-bigint 13,143 | −7,922 (0.40×) | 10,782 vs crypto-bigint 25,121 | −14,339 (0.43×) | 7,063 vs crypto-bigint 14,106 | −7,043 (0.50×) |
+| mulmod, constant time | 2048 | 32,976 vs crypto-bigint 65,661 | −32,685 (0.50×) | 17,090 vs crypto-bigint 36,341 | −19,251 (0.47×) | 36,417 vs crypto-bigint 76,095 | −39,678 (0.48×) | 24,018 vs crypto-bigint 45,806 | −21,788 (0.52×) |
+| mulmod, constant time | 4096 | 119,622 vs crypto-bigint 259,597 | −139,975 (0.46×) | 60,969 vs crypto-bigint 110,384 | −49,415 (0.55×) | 132,064 vs crypto-bigint 255,839 | −123,775 (0.52×) | 86,501 vs crypto-bigint 144,248 | −57,747 (0.60×) |
+| add_mod, constant time | 64 | 10.4 | – | 10.4 | – | 20.0 | – | 14.6 | – |
+| add_mod, constant time | 128 | 26.7 | – | 22.2 | – | 34.3 | – | 34.1 | – |
+| add_mod, constant time | 256 | 78.8 | – | 66.1 | – | 98.8 | – | 70.0 | – |
+| add_mod, constant time | 384 | 122 | – | 110 | – | 167 | – | 132 | – |
+| add_mod, constant time | 512 | 150 | – | 143 | – | 236 | – | 168 | – |
+| add_mod, constant time | 1024 | 323 | – | 267 | – | 594 | – | 337 | – |
+| add_mod, constant time | 2048 | 849 | – | 532 | – | 1,699 | – | 732 | – |
+| add_mod, constant time | 4096 | 1,857 | – | 1,675 | – | 2,040 | – | 1,988 | – |
+| sub_mod, constant time | 64 | 11.2 | – | 10.7 | – | 18.1 | – | 15.1 | – |
+| sub_mod, constant time | 128 | 16.0 | – | 13.7 | – | 29.1 | – | 22.1 | – |
+| sub_mod, constant time | 256 | 46.3 | – | 32.7 | – | 72.1 | – | 59.8 | – |
+| sub_mod, constant time | 384 | 105 | – | 52.2 | – | 135 | – | 88.3 | – |
+| sub_mod, constant time | 512 | 144 | – | 89.0 | – | 222 | – | 138 | – |
+| sub_mod, constant time | 1024 | 319 | – | 210 | – | 520 | – | 271 | – |
+| sub_mod, constant time | 2048 | 730 | – | 512 | – | 1,316 | – | 656 | – |
+| sub_mod, constant time | 4096 | 1,547 | – | 1,389 | – | 1,680 | – | 1,634 | – |
+| add_mod, reduced operands, constant time | 64 | 6.5 vs crypto-bigint 13.0 | −6.5 (0.50×) | 6.7 vs crypto-bigint 12.7 | −6.0 (0.53×) | 6.3 vs crypto-bigint 12.0 | −5.7 (0.53×) | 6.8 vs crypto-bigint 12.6 | −5.8 (0.54×) |
+| add_mod, reduced operands, constant time | 128 | 15.4 vs crypto-bigint 21.8 | −6.4 (0.71×) | 12.9 vs crypto-bigint 22.2 | −9.3 (0.58×) | 13.3 vs crypto-bigint 22.3 | −9.0 (0.60×) | 16.0 vs crypto-bigint 21.7 | −5.7 (0.74×) |
+| add_mod, reduced operands, constant time | 256 | 30.7 vs crypto-bigint 51.7 | −21.0 (0.59×) | 25.3 vs crypto-bigint 49.1 | −23.8 (0.52×) | 33.2 vs crypto-bigint 54.8 | −21.6 (0.61×) | 31.1 vs crypto-bigint 56.5 | −25.4 (0.55×) |
+| add_mod, reduced operands, constant time | 384 | 47.8 vs crypto-bigint 82.1 | −34.3 (0.58×) | 36.8 vs crypto-bigint 69.6 | −32.8 (0.53×) | 50.0 vs crypto-bigint 87.0 | −37.0 (0.57×) | 45.2 vs crypto-bigint 82.2 | −37.0 (0.55×) |
+| add_mod, reduced operands, constant time | 512 | 59.1 vs crypto-bigint 110 | −50.9 (0.54×) | 50.4 vs crypto-bigint 94.8 | −44.4 (0.53×) | 70.9 vs crypto-bigint 141 | −70.1 (0.50×) | 60.7 vs crypto-bigint 126 | −65.3 (0.48×) |
+| add_mod, reduced operands, constant time | 1024 | 137 vs crypto-bigint 377 | −240 (0.36×) | 95.6 vs crypto-bigint 347 | −251 (0.28×) | 285 vs crypto-bigint 453 | −168 (0.63×) | 120 vs crypto-bigint 378 | −258 (0.32×) |
+| add_mod, reduced operands, constant time | 2048 | 281 vs crypto-bigint 577 | −296 (0.49×) | 182 vs crypto-bigint 508 | −326 (0.36×) | 667 vs crypto-bigint 880 | −213 (0.76×) | 279 vs crypto-bigint 761 | −482 (0.37×) |
+| add_mod, reduced operands, constant time | 4096 | 778 vs crypto-bigint 1,194 | −416 (0.65×) | 733 vs crypto-bigint 1,017 | −284 (0.72×) | 805 vs crypto-bigint 1,616 | −811 (0.50×) | 878 vs crypto-bigint 1,395 | −517 (0.63×) |
+| sub_mod, reduced operands, constant time | 64 | 4.8 vs crypto-bigint 5.2 | −0.4 (0.92×) | 5.2 vs crypto-bigint 5.1 | +0.1 (1.02×) | 4.5 vs crypto-bigint 4.8 | −0.3 (0.94×) | 4.8 vs crypto-bigint 4.8 | +0.0 (1.00×) |
+| sub_mod, reduced operands, constant time | 128 | 9.5 vs crypto-bigint 11.2 | −1.7 (0.85×) | 9.5 vs crypto-bigint 11.3 | −1.8 (0.84×) | 9.2 vs crypto-bigint 11.1 | −1.9 (0.83×) | 11.0 vs crypto-bigint 11.8 | −0.8 (0.93×) |
+| sub_mod, reduced operands, constant time | 256 | 26.6 vs crypto-bigint 35.4 | −8.8 (0.75×) | 22.9 vs crypto-bigint 32.5 | −9.6 (0.70×) | 29.5 vs crypto-bigint 30.7 | −1.2 (0.96×) | 27.2 vs crypto-bigint 31.7 | −4.5 (0.86×) |
+| sub_mod, reduced operands, constant time | 384 | 41.2 vs crypto-bigint 56.3 | −15.1 (0.73×) | 36.2 vs crypto-bigint 44.7 | −8.5 (0.81×) | 59.2 vs crypto-bigint 56.6 | +2.6 (1.05×) | 44.0 vs crypto-bigint 52.7 | −8.7 (0.83×) |
+| sub_mod, reduced operands, constant time | 512 | 62.7 vs crypto-bigint 78.6 | −15.9 (0.80×) | 47.7 vs crypto-bigint 59.5 | −11.8 (0.80×) | 96.1 vs crypto-bigint 96.4 | −0.3 (1.00×) | 62.7 vs crypto-bigint 115 | −52.3 (0.55×) |
+| sub_mod, reduced operands, constant time | 1024 | 135 vs crypto-bigint 186 | −51.0 (0.73×) | 115 vs crypto-bigint 144 | −29.0 (0.80×) | 236 vs crypto-bigint 348 | −112 (0.68×) | 136 vs crypto-bigint 195 | −59.0 (0.70×) |
+| sub_mod, reduced operands, constant time | 2048 | 298 vs crypto-bigint 535 | −237 (0.56×) | 256 vs crypto-bigint 530 | −274 (0.48×) | 543 vs crypto-bigint 558 | −15.0 (0.97×) | 292 vs crypto-bigint 490 | −198 (0.60×) |
+| sub_mod, reduced operands, constant time | 4096 | 761 vs crypto-bigint 926 | −165 (0.82×) | 731 vs crypto-bigint 763 | −32.0 (0.96×) | 840 vs crypto-bigint 1,501 | −661 (0.56×) | 897 vs crypto-bigint 1,390 | −493 (0.65×) |
 
 ### Against the best competitor, latency
 
@@ -545,102 +552,102 @@ Cycles per operation of `biguint` against the fewest of the crates whose functio
 
 | Operation | Bits | Chrome | Δ | Chrome, wide arithmetic | Δ | Firefox | Δ | Firefox, wide arithmetic | Δ |
 |---|---|---|---:|---|---:|---|---:|---|---:|
-| add | 64 | 1.3 vs native 1.1 | +0.2 (1.18×) | 1.1 vs native 1.1 | +0.0 (1.00×) | 1.0 vs ruint 1.0 | +0.0 (1.00×) | 1.0 vs native 1.0 | +0.0 (1.00×) |
-| add | 128 | 3.1 vs native 2.8 | +0.3 (1.11×) | 2.5 vs bnum 2.1 | +0.4 (1.19×) | 2.7 vs crypto-bigint 2.7 | +0.0 (1.00×) | 3.2 vs bnum 2.5 | +0.7 (1.28×) |
-| add | 256 | 9.9 vs bnum 8.1 | +1.8 (1.22×) | 8.2 vs bnum 6.3 | +1.9 (1.30×) | 8.9 vs bnum 9.0 | −0.1 (0.99×) | 11.4 vs bnum 8.0 | +3.4 (1.43×) |
-| add | 384 | 14.6 vs bnum 16.7 | −2.1 (0.87×) | 12.2 vs crypto-bigint 12.3 | −0.1 (0.99×) | 16.1 vs ruint 15.7 | +0.4 (1.03×) | 18.1 vs bnum 17.9 | +0.2 (1.01×) |
-| add | 512 | 23.6 vs bnum 22.5 | +1.1 (1.05×) | 18.3 vs crypto-bigint 18.0 | +0.3 (1.02×) | 25.3 vs bnum 22.5 | +2.8 (1.12×) | 31.2 vs bnum 28.1 | +3.1 (1.11×) |
-| add | 1024 | 55.4 vs bnum 62.3 | −6.9 (0.89×) | 47.3 vs crypto-bigint 45.6 | +1.7 (1.04×) | 60.0 vs ruint 72.6 | −12.6 (0.83×) | 67.5 vs crypto-bigint 61.6 | +5.9 (1.10×) |
-| add | 2048 | 117 vs ruint 204 | −87.0 (0.57×) | 107 vs ruint 162 | −55.0 (0.66×) | 125 vs ruint 216 | −91.0 (0.58×) | 142 vs ruint 208 | −66.0 (0.68×) |
-| add | 4096 | 352 vs ruint 412 | −60.0 (0.85×) | 248 vs ruint 297 | −49.0 (0.84×) | 385 vs ruint 426 | −41.0 (0.90×) | 301 vs ruint 383 | −82.0 (0.79×) |
-| mulmod | 64 | 68.0 vs ruint 85.2 | −17.2 (0.80×) | 35.8 vs ruint 43.3 | −7.5 (0.83×) | 113 vs ruint 182 | −69.0 (0.62×) | 41.5 vs ruint 54.1 | −12.6 (0.77×) |
-| mulmod | 128 | 209 vs ruint 339 | −130 (0.62×) | 87.1 vs ruint 137 | −49.9 (0.64×) | 262 vs ruint 388 | −126 (0.68×) | 140 vs ruint 207 | −67.0 (0.68×) |
-| mulmod | 256 | 575 vs ruint 813 | −238 (0.71×) | 279 vs ruint 309 | −30.0 (0.90×) | 692 vs ruint 901 | −209 (0.77×) | 345 vs ruint 380 | −35.0 (0.91×) |
-| mulmod | 384 | 962 vs ruint 1,603 | −641 (0.60×) | 513 vs ruint 533 | −20.0 (0.96×) | 1,316 vs ruint 1,706 | −390 (0.77×) | 606 vs ruint 691 | −85.0 (0.88×) |
-| mulmod | 512 | 1,575 vs ruint 2,770 | −1,195 (0.57×) | 866 vs ruint 856 | +10.0 (1.01×) | 2,060 vs ruint 3,254 | −1,194 (0.63×) | 1,076 vs ruint 1,115 | −39.0 (0.97×) |
-| mulmod | 1024 | 5,328 vs ruint 10,803 | −5,475 (0.49×) | 2,754 vs ruint 2,608 | +146 (1.06×) | 6,822 vs ruint 12,692 | −5,870 (0.54×) | 3,527 vs ruint 3,637 | −110 (0.97×) |
-| mulmod | 2048 | 17,427 vs ruint 34,886 | −17,459 (0.50×) | 8,364 vs ruint 10,740 | −2,376 (0.78×) | 22,424 vs ruint 44,238 | −21,814 (0.51×) | 13,175 vs ruint 13,760 | −585 (0.96×) |
-| mulmod | 4096 | 55,946 vs ruint 160,386 | −104,440 (0.35×) | 27,016 vs ruint 41,317 | −14,301 (0.65×) | 68,443 vs ruint 170,597 | −102,154 (0.40×) | 45,374 vs ruint 53,475 | −8,101 (0.85×) |
-| add_mod | 64 | 6.4 vs ruint 40.4 | −34.0 (0.16×) | 6.3 vs ruint 41.0 | −34.7 (0.15×) | 9.5 vs ruint 77.7 | −68.2 (0.12×) | 9.2 vs ruint 77.0 | −67.8 (0.12×) |
-| add_mod | 128 | 31.7 vs ruint 39.1 | −7.4 (0.81×) | 11.0 vs ruint 31.2 | −20.2 (0.35×) | 41.8 vs ruint 53.8 | −12.0 (0.78×) | 16.2 vs ruint 40.1 | −23.9 (0.40×) |
-| add_mod | 256 | 41.0 vs ruint 81.9 | −40.9 (0.50×) | 31.7 vs ruint 62.2 | −30.5 (0.51×) | 56.2 vs ruint 99.9 | −43.7 (0.56×) | 43.5 vs ruint 76.3 | −32.8 (0.57×) |
-| add_mod | 384 | 55.2 vs ruint 107 | −51.8 (0.52×) | 47.2 vs ruint 77.4 | −30.2 (0.61×) | 83.7 vs ruint 150 | −66.3 (0.56×) | 63.4 vs ruint 103 | −39.6 (0.62×) |
-| add_mod | 512 | 66.6 vs ruint 134 | −67.4 (0.50×) | 55.9 vs ruint 105 | −49.1 (0.53×) | 95.3 vs ruint 158 | −62.7 (0.60×) | 83.5 vs ruint 140 | −56.5 (0.60×) |
-| add_mod | 1024 | 145 vs ruint 281 | −136 (0.52×) | 122 vs ruint 208 | −86.0 (0.59×) | 157 vs ruint 396 | −239 (0.40×) | 157 vs ruint 338 | −181 (0.46×) |
-| add_mod | 2048 | 307 vs ruint 910 | −603 (0.34×) | 237 vs ruint 799 | −562 (0.30×) | 375 vs ruint 1,194 | −819 (0.31×) | 315 vs ruint 962 | −647 (0.33×) |
-| add_mod | 4096 | 865 vs ruint 1,765 | −900 (0.49×) | 764 vs ruint 1,457 | −693 (0.52×) | 912 vs ruint 2,003 | −1,091 (0.46×) | 921 vs ruint 1,678 | −757 (0.55×) |
-| sub_mod | 64 | 4.8 vs ruint 48.2 | −43.4 (0.10×) | 7.2 vs ruint 46.2 | −39.0 (0.16×) | 8.7 vs ruint 75.6 | −66.9 (0.12×) | 9.1 vs ruint 75.9 | −66.8 (0.12×) |
-| sub_mod | 128 | 33.8 vs ruint 46.6 | −12.8 (0.73×) | 11.3 vs ruint 41.2 | −29.9 (0.27×) | 45.6 vs ruint 65.7 | −20.1 (0.69×) | 15.8 vs ruint 52.3 | −36.5 (0.30×) |
-| sub_mod | 256 | 46.4 vs ruint 96.9 | −50.5 (0.48×) | 33.8 vs ruint 81.3 | −47.5 (0.42×) | 60.4 vs ruint 130 | −69.6 (0.46×) | 44.1 vs ruint 116 | −71.9 (0.38×) |
-| sub_mod | 384 | 52.7 vs ruint 126 | −73.3 (0.42×) | 44.5 vs ruint 109 | −64.5 (0.41×) | 85.4 vs ruint 194 | −109 (0.44×) | 64.5 vs ruint 151 | −86.5 (0.43×) |
-| sub_mod | 512 | 71.6 vs ruint 182 | −110 (0.39×) | 53.3 vs ruint 140 | −86.7 (0.38×) | 103 vs ruint 252 | −149 (0.41×) | 87.4 vs ruint 211 | −124 (0.41×) |
-| sub_mod | 1024 | 116 vs ruint 447 | −331 (0.26×) | 105 vs ruint 370 | −265 (0.28×) | 179 vs ruint 667 | −488 (0.27×) | 167 vs ruint 603 | −436 (0.28×) |
-| sub_mod | 2048 | 281 vs ruint 1,229 | −948 (0.23×) | 260 vs ruint 1,104 | −844 (0.24×) | 379 vs ruint 1,450 | −1,071 (0.26×) | 358 vs ruint 1,399 | −1,041 (0.26×) |
-| sub_mod | 4096 | 873 vs ruint 2,334 | −1,461 (0.37×) | 820 vs ruint 2,075 | −1,255 (0.40×) | 923 vs ruint 2,711 | −1,788 (0.34×) | 1,099 vs ruint 2,397 | −1,298 (0.46×) |
-| add_mod, reduced operands | 64 | 5.0 vs ruint 44.0 | −39.0 (0.11×) | 5.0 vs ruint 44.4 | −39.4 (0.11×) | 5.0 vs ruint 87.2 | −82.2 (0.06×) | 5.0 vs ruint 83.4 | −78.4 (0.06×) |
-| add_mod, reduced operands | 128 | 6.7 vs ruint 23.5 | −16.8 (0.29×) | 7.6 vs ruint 23.8 | −16.2 (0.32×) | 7.6 vs ruint 24.4 | −16.8 (0.31×) | 10.4 vs ruint 25.0 | −14.6 (0.42×) |
-| add_mod, reduced operands | 256 | 17.0 vs ruint 43.0 | −26.0 (0.40×) | 13.1 vs ruint 43.0 | −29.9 (0.30×) | 16.8 vs ruint 60.5 | −43.7 (0.28×) | 21.3 vs ruint 59.3 | −38.0 (0.36×) |
-| add_mod, reduced operands | 384 | 29.5 vs ruint 61.8 | −32.3 (0.48×) | 19.6 vs ruint 59.9 | −40.3 (0.33×) | 28.5 vs ruint 92.9 | −64.4 (0.31×) | 32.1 vs ruint 81.0 | −48.9 (0.40×) |
-| add_mod, reduced operands | 512 | 35.6 vs ruint 86.1 | −50.5 (0.41×) | 28.4 vs ruint 82.0 | −53.6 (0.35×) | 43.0 vs ruint 116 | −73.0 (0.37×) | 43.3 vs ruint 111 | −67.7 (0.39×) |
-| add_mod, reduced operands | 1024 | 76.9 vs ruint 195 | −118 (0.39×) | 69.1 vs ruint 182 | −113 (0.38×) | 88.9 vs ruint 264 | −175 (0.34×) | 93.3 vs ruint 251 | −158 (0.37×) |
-| add_mod, reduced operands | 2048 | 204 vs ruint 817 | −613 (0.25×) | 157 vs ruint 755 | −598 (0.21×) | 231 vs ruint 1,036 | −805 (0.22×) | 205 vs ruint 918 | −713 (0.22×) |
-| add_mod, reduced operands | 4096 | 548 vs ruint 1,546 | −998 (0.35×) | 440 vs ruint 1,434 | −994 (0.31×) | 629 vs ruint 1,871 | −1,242 (0.34×) | 520 vs ruint 1,658 | −1,138 (0.31×) |
-| sub_mod, reduced operands | 64 | 2.7 vs ruint 46.2 | −43.5 (0.06×) | 2.7 vs ruint 44.9 | −42.2 (0.06×) | 2.6 vs ruint 83.4 | −80.8 (0.03×) | 3.5 vs ruint 83.4 | −79.9 (0.04×) |
-| sub_mod, reduced operands | 128 | 5.4 vs ruint 25.5 | −20.1 (0.21×) | 6.1 vs ruint 24.2 | −18.1 (0.25×) | 5.4 vs ruint 26.4 | −21.0 (0.20×) | 8.8 vs ruint 27.0 | −18.2 (0.33×) |
-| sub_mod, reduced operands | 256 | 15.0 vs ruint 49.6 | −34.6 (0.30×) | 12.0 vs ruint 50.7 | −38.7 (0.24×) | 13.3 vs ruint 65.9 | −52.6 (0.20×) | 19.0 vs ruint 66.7 | −47.7 (0.28×) |
-| sub_mod, reduced operands | 384 | 25.3 vs ruint 77.1 | −51.8 (0.33×) | 19.1 vs ruint 74.7 | −55.6 (0.26×) | 25.3 vs ruint 104 | −78.7 (0.24×) | 30.0 vs ruint 94.4 | −64.4 (0.32×) |
-| sub_mod, reduced operands | 512 | 34.9 vs ruint 110 | −75.1 (0.32×) | 29.2 vs ruint 103 | −73.8 (0.28×) | 40.6 vs ruint 131 | −90.4 (0.31×) | 41.9 vs ruint 134 | −92.1 (0.31×) |
-| sub_mod, reduced operands | 1024 | 68.6 vs ruint 262 | −193 (0.26×) | 68.0 vs ruint 237 | −169 (0.29×) | 80.2 vs ruint 318 | −238 (0.25×) | 92.3 vs ruint 308 | −216 (0.30×) |
-| sub_mod, reduced operands | 2048 | 213 vs ruint 979 | −766 (0.22×) | 172 vs ruint 915 | −743 (0.19×) | 299 vs ruint 1,225 | −926 (0.24×) | 205 vs ruint 1,075 | −870 (0.19×) |
-| sub_mod, reduced operands | 4096 | 570 vs ruint 1,900 | −1,330 (0.30×) | 450 vs ruint 1,747 | −1,297 (0.26×) | 610 vs ruint 2,169 | −1,559 (0.28×) | 571 vs ruint 1,976 | −1,405 (0.29×) |
-| add, constant time | 64 | 1.1 vs native 1.1 | +0.0 (1.00×) | 1.1 vs native 1.1 | +0.0 (1.00×) | 1.1 vs native 1.0 | +0.1 (1.10×) | 1.0 vs native 1.0 | +0.0 (1.00×) |
-| add, constant time | 128 | 3.0 vs bnum 2.7 | +0.3 (1.11×) | 2.5 vs bnum 2.1 | +0.4 (1.19×) | 2.7 vs crypto-bigint 2.7 | +0.0 (1.00×) | 3.2 vs bnum 2.6 | +0.6 (1.23×) |
-| add, constant time | 256 | 9.8 vs bnum 8.3 | +1.5 (1.18×) | 8.6 vs bnum 6.3 | +2.3 (1.37×) | 8.8 vs ruint 9.0 | −0.2 (0.98×) | 11.3 vs bnum 8.0 | +3.3 (1.41×) |
-| add, constant time | 384 | 14.9 vs ruint 15.4 | −0.5 (0.97×) | 12.2 vs crypto-bigint 12.2 | +0.0 (1.00×) | 16.1 vs ruint 15.5 | +0.6 (1.04×) | 18.1 vs crypto-bigint 18.0 | +0.1 (1.01×) |
-| add, constant time | 512 | 23.8 vs bnum 23.6 | +0.2 (1.01×) | 18.2 vs ruint 18.9 | −0.7 (0.96×) | 25.3 vs bnum 22.6 | +2.7 (1.12×) | 31.3 vs bnum 28.7 | +2.6 (1.09×) |
-| add, constant time | 1024 | 55.3 vs bnum 62.3 | −7.0 (0.89×) | 47.2 vs crypto-bigint 45.5 | +1.7 (1.04×) | 59.5 vs ruint 72.9 | −13.4 (0.82×) | 67.7 vs crypto-bigint 61.6 | +6.1 (1.10×) |
-| add, constant time | 2048 | 115 vs ruint 202 | −87.0 (0.57×) | 106 vs ruint 163 | −57.0 (0.65×) | 125 vs ruint 224 | −99.0 (0.56×) | 141 vs ruint 206 | −65.0 (0.68×) |
-| add, constant time | 4096 | 354 vs ruint 408 | −54.0 (0.87×) | 248 vs ruint 297 | −49.0 (0.84×) | 401 vs ruint 425 | −24.0 (0.94×) | 305 vs ruint 393 | −88.0 (0.78×) |
-| mulmod, constant time | 64 | 131 | – | 94.3 | – | 243 | – | 110 | – |
-| mulmod, constant time | 128 | 572 | – | 367 | – | 603 | – | 371 | – |
-| mulmod, constant time | 256 | 1,189 | – | 745 | – | 1,273 | – | 844 | – |
-| mulmod, constant time | 384 | 1,929 | – | 1,208 | – | 2,273 | – | 1,490 | – |
-| mulmod, constant time | 512 | 3,013 | – | 1,849 | – | 3,546 | – | 2,294 | – |
-| mulmod, constant time | 1024 | 9,551 | – | 5,652 | – | 10,948 | – | 7,484 | – |
-| mulmod, constant time | 2048 | 32,887 | – | 19,411 | – | 37,045 | – | 25,512 | – |
-| mulmod, constant time | 4096 | 120,362 | – | 68,757 | – | 132,524 | – | 91,127 | – |
-| add_mod, constant time | 64 | 12.3 | – | 13.0 | – | 18.8 | – | 14.0 | – |
-| add_mod, constant time | 128 | 28.2 | – | 22.5 | – | 43.3 | – | 34.1 | – |
-| add_mod, constant time | 256 | 83.7 | – | 67.1 | – | 98.7 | – | 92.7 | – |
-| add_mod, constant time | 384 | 112 | – | 108 | – | 178 | – | 127 | – |
-| add_mod, constant time | 512 | 151 | – | 135 | – | 246 | – | 168 | – |
-| add_mod, constant time | 1024 | 327 | – | 260 | – | 621 | – | 350 | – |
-| add_mod, constant time | 2048 | 868 | – | 519 | – | 1,605 | – | 758 | – |
-| add_mod, constant time | 4096 | 1,876 | – | 1,684 | – | 2,043 | – | 2,049 | – |
-| sub_mod, constant time | 64 | 12.1 | – | 11.0 | – | 18.3 | – | 14.1 | – |
-| sub_mod, constant time | 128 | 24.0 | – | 19.0 | – | 31.9 | – | 23.0 | – |
-| sub_mod, constant time | 256 | 54.7 | – | 37.0 | – | 76.1 | – | 57.5 | – |
-| sub_mod, constant time | 384 | 103 | – | 57.5 | – | 122 | – | 85.4 | – |
-| sub_mod, constant time | 512 | 142 | – | 85.9 | – | 199 | – | 117 | – |
-| sub_mod, constant time | 1024 | 310 | – | 200 | – | 534 | – | 254 | – |
-| sub_mod, constant time | 2048 | 742 | – | 512 | – | 1,278 | – | 584 | – |
-| sub_mod, constant time | 4096 | 1,563 | – | 1,422 | – | 1,737 | – | 1,715 | – |
-| add_mod, reduced operands, constant time | 64 | 8.1 | – | 8.0 | – | 8.0 | – | 8.5 | – |
-| add_mod, reduced operands, constant time | 128 | 15.0 | – | 13.2 | – | 14.7 | – | 16.2 | – |
-| add_mod, reduced operands, constant time | 256 | 30.9 | – | 23.1 | – | 28.1 | – | 31.6 | – |
-| add_mod, reduced operands, constant time | 384 | 51.7 | – | 35.0 | – | 51.6 | – | 49.3 | – |
-| add_mod, reduced operands, constant time | 512 | 68.6 | – | 50.4 | – | 87.4 | – | 64.2 | – |
-| add_mod, reduced operands, constant time | 1024 | 142 | – | 91.1 | – | 305 | – | 144 | – |
-| add_mod, reduced operands, constant time | 2048 | 277 | – | 184 | – | 669 | – | 298 | – |
-| add_mod, reduced operands, constant time | 4096 | 821 | – | 716 | – | 868 | – | 825 | – |
+| add | 64 | 1.1 vs ruint 1.1 | +0.0 (1.00×) | 1.1 vs native 1.1 | +0.0 (1.00×) | 1.0 vs native 1.0 | +0.0 (1.00×) | 1.0 vs ruint 1.0 | +0.0 (1.00×) |
+| add | 128 | 3.0 vs native 2.8 | +0.2 (1.07×) | 2.4 vs native 2.1 | +0.3 (1.14×) | 3.0 vs crypto-bigint 2.8 | +0.2 (1.07×) | 2.9 vs native 2.5 | +0.4 (1.16×) |
+| add | 256 | 8.9 vs bnum 8.9 | +0.0 (1.00×) | 6.6 vs bnum 6.6 | +0.0 (1.00×) | 8.9 vs bnum 8.9 | +0.0 (1.00×) | 7.7 vs bnum 7.7 | +0.0 (1.00×) |
+| add | 384 | 15.8 vs ruint 15.8 | +0.0 (1.00×) | 11.2 vs crypto-bigint 10.9 | +0.3 (1.03×) | 16.1 vs ruint 15.7 | +0.4 (1.03×) | 18.1 vs crypto-bigint 18.1 | +0.0 (1.00×) |
+| add | 512 | 22.2 vs ruint 21.9 | +0.3 (1.01×) | 16.2 vs crypto-bigint 16.6 | −0.4 (0.98×) | 21.5 vs ruint 21.2 | +0.3 (1.01×) | 24.6 vs crypto-bigint 25.1 | −0.5 (0.98×) |
+| add | 1024 | 50.7 vs bnum 51.1 | −0.4 (0.99×) | 39.7 vs crypto-bigint 39.6 | +0.1 (1.00×) | 52.2 vs bnum 51.3 | +0.9 (1.02×) | 58.0 vs crypto-bigint 58.2 | −0.2 (1.00×) |
+| add | 2048 | 115 vs ruint 204 | −89.0 (0.56×) | 94.6 vs ruint 160 | −65.4 (0.59×) | 118 vs ruint 216 | −98.0 (0.55×) | 125 vs ruint 206 | −81.0 (0.61×) |
+| add | 4096 | 233 vs ruint 416 | −183 (0.56×) | 219 vs ruint 295 | −76.0 (0.74×) | 237 vs ruint 422 | −185 (0.56×) | 269 vs ruint 380 | −111 (0.71×) |
+| mulmod | 64 | 68.5 vs ruint 85.2 | −16.7 (0.80×) | 34.8 vs ruint 42.9 | −8.1 (0.81×) | 122 vs ruint 178 | −56.0 (0.69×) | 42.8 vs ruint 55.0 | −12.2 (0.78×) |
+| mulmod | 128 | 209 vs ruint 335 | −126 (0.62×) | 85.0 vs ruint 127 | −42.0 (0.67×) | 258 vs ruint 387 | −129 (0.67×) | 150 vs ruint 198 | −48.0 (0.76×) |
+| mulmod | 256 | 588 vs ruint 809 | −221 (0.73×) | 268 vs ruint 303 | −35.0 (0.88×) | 700 vs ruint 890 | −190 (0.79×) | 344 vs ruint 378 | −34.0 (0.91×) |
+| mulmod | 384 | 950 vs ruint 1,598 | −648 (0.59×) | 445 vs ruint 534 | −89.0 (0.83×) | 1,260 vs ruint 1,685 | −425 (0.75×) | 647 vs ruint 683 | −36.0 (0.95×) |
+| mulmod | 512 | 1,567 vs ruint 2,809 | −1,242 (0.56×) | 776 vs ruint 855 | −79.0 (0.91×) | 2,114 vs ruint 3,257 | −1,143 (0.65×) | 1,087 vs ruint 1,113 | −26.0 (0.98×) |
+| mulmod | 1024 | 5,307 vs ruint 10,760 | −5,453 (0.49×) | 2,413 vs ruint 2,600 | −187 (0.93×) | 6,731 vs ruint 12,516 | −5,785 (0.54×) | 3,168 vs ruint 3,576 | −408 (0.89×) |
+| mulmod | 2048 | 17,524 vs ruint 34,518 | −16,994 (0.51×) | 8,004 vs ruint 10,667 | −2,663 (0.75×) | 21,812 vs ruint 43,637 | −21,825 (0.50×) | 11,326 vs ruint 13,737 | −2,411 (0.82×) |
+| mulmod | 4096 | 56,469 vs ruint 161,980 | −105,511 (0.35×) | 26,734 vs ruint 41,179 | −14,445 (0.65×) | 67,924 vs ruint 166,717 | −98,793 (0.41×) | 38,730 vs ruint 53,293 | −14,563 (0.73×) |
+| add_mod | 64 | 6.2 vs ruint 33.7 | −27.5 (0.18×) | 6.1 vs ruint 42.6 | −36.5 (0.14×) | 8.2 vs ruint 70.6 | −62.4 (0.12×) | 8.2 vs ruint 71.4 | −63.2 (0.11×) |
+| add_mod | 128 | 31.3 vs ruint 41.5 | −10.2 (0.75×) | 10.6 vs ruint 30.3 | −19.7 (0.35×) | 41.1 vs ruint 49.6 | −8.5 (0.83×) | 16.0 vs ruint 37.7 | −21.7 (0.42×) |
+| add_mod | 256 | 40.6 vs ruint 72.9 | −32.3 (0.56×) | 30.8 vs ruint 60.1 | −29.3 (0.51×) | 54.3 vs ruint 87.8 | −33.5 (0.62×) | 43.4 vs ruint 71.4 | −28.0 (0.61×) |
+| add_mod | 384 | 54.7 vs ruint 98.9 | −44.2 (0.55×) | 41.3 vs ruint 76.6 | −35.3 (0.54×) | 78.2 vs ruint 124 | −45.8 (0.63×) | 63.6 vs ruint 99.3 | −35.7 (0.64×) |
+| add_mod | 512 | 67.3 vs ruint 131 | −63.7 (0.51×) | 51.4 vs ruint 99.3 | −47.9 (0.52×) | 90.9 vs ruint 160 | −69.1 (0.57×) | 81.4 vs ruint 139 | −57.6 (0.59×) |
+| add_mod | 1024 | 128 vs ruint 266 | −138 (0.48×) | 118 vs ruint 204 | −86.0 (0.58×) | 158 vs ruint 350 | −192 (0.45×) | 160 vs ruint 298 | −138 (0.54×) |
+| add_mod | 2048 | 289 vs ruint 864 | −575 (0.33×) | 228 vs ruint 769 | −541 (0.30×) | 339 vs ruint 1,094 | −755 (0.31×) | 302 vs ruint 907 | −605 (0.33×) |
+| add_mod | 4096 | 659 vs ruint 1,580 | −921 (0.42×) | 699 vs ruint 1,401 | −702 (0.50×) | 834 vs ruint 1,858 | −1,024 (0.45×) | 869 vs ruint 1,638 | −769 (0.53×) |
+| sub_mod | 64 | 4.4 vs ruint 38.2 | −33.8 (0.12×) | 7.3 vs ruint 36.3 | −29.0 (0.20×) | 7.9 vs ruint 72.0 | −64.1 (0.11×) | 8.1 vs ruint 71.9 | −63.8 (0.11×) |
+| sub_mod | 128 | 32.1 vs ruint 47.4 | −15.3 (0.68×) | 9.2 vs ruint 42.9 | −33.7 (0.21×) | 40.2 vs ruint 63.3 | −23.1 (0.64×) | 15.3 vs ruint 52.7 | −37.4 (0.29×) |
+| sub_mod | 256 | 45.3 vs ruint 97.6 | −52.3 (0.46×) | 30.5 vs ruint 75.6 | −45.1 (0.40×) | 55.3 vs ruint 129 | −73.7 (0.43×) | 43.0 vs ruint 109 | −66.0 (0.39×) |
+| sub_mod | 384 | 53.9 vs ruint 127 | −73.1 (0.42×) | 41.3 vs ruint 104 | −62.7 (0.40×) | 70.9 vs ruint 178 | −107 (0.40×) | 60.1 vs ruint 145 | −84.9 (0.41×) |
+| sub_mod | 512 | 70.4 vs ruint 166 | −95.6 (0.42×) | 51.9 vs ruint 134 | −82.1 (0.39×) | 88.7 vs ruint 231 | −142 (0.38×) | 80.4 vs ruint 202 | −122 (0.40×) |
+| sub_mod | 1024 | 135 vs ruint 425 | −290 (0.32×) | 115 vs ruint 354 | −239 (0.32×) | 160 vs ruint 758 | −598 (0.21×) | 166 vs ruint 633 | −467 (0.26×) |
+| sub_mod | 2048 | 280 vs ruint 1,192 | −912 (0.23×) | 249 vs ruint 1,119 | −870 (0.22×) | 372 vs ruint 1,435 | −1,063 (0.26×) | 331 vs ruint 1,290 | −959 (0.26×) |
+| sub_mod | 4096 | 778 vs ruint 2,188 | −1,410 (0.36×) | 731 vs ruint 2,033 | −1,302 (0.36×) | 881 vs ruint 2,469 | −1,588 (0.36×) | 903 vs ruint 2,338 | −1,435 (0.39×) |
+| add_mod, reduced operands | 64 | 5.0 vs ruint 36.4 | −31.4 (0.14×) | 5.0 vs ruint 43.1 | −38.1 (0.12×) | 5.0 vs ruint 77.8 | −72.8 (0.06×) | 5.0 vs ruint 78.6 | −73.6 (0.06×) |
+| add_mod, reduced operands | 128 | 6.7 vs ruint 24.7 | −18.0 (0.27×) | 6.8 vs ruint 23.1 | −16.3 (0.29×) | 8.1 vs ruint 24.2 | −16.1 (0.33×) | 10.3 vs ruint 25.1 | −14.8 (0.41×) |
+| add_mod, reduced operands | 256 | 16.6 vs ruint 41.9 | −25.3 (0.40×) | 13.5 vs ruint 42.7 | −29.2 (0.32×) | 16.7 vs ruint 55.1 | −38.4 (0.30×) | 20.3 vs ruint 55.5 | −35.2 (0.37×) |
+| add_mod, reduced operands | 384 | 27.3 vs ruint 61.6 | −34.3 (0.44×) | 19.7 vs ruint 59.9 | −40.2 (0.33×) | 27.6 vs ruint 87.9 | −60.3 (0.31×) | 32.1 vs ruint 79.0 | −46.9 (0.41×) |
+| add_mod, reduced operands | 512 | 34.6 vs ruint 85.1 | −50.5 (0.41×) | 26.6 vs ruint 79.2 | −52.6 (0.34×) | 39.6 vs ruint 115 | −75.4 (0.34×) | 42.9 vs ruint 115 | −72.1 (0.37×) |
+| add_mod, reduced operands | 1024 | 75.5 vs ruint 189 | −114 (0.40×) | 63.0 vs ruint 172 | −109 (0.37×) | 76.5 vs ruint 265 | −189 (0.29×) | 88.5 vs ruint 248 | −160 (0.36×) |
+| add_mod, reduced operands | 2048 | 198 vs ruint 774 | −576 (0.26×) | 144 vs ruint 734 | −590 (0.20×) | 230 vs ruint 1,009 | −779 (0.23×) | 200 vs ruint 892 | −692 (0.22×) |
+| add_mod, reduced operands | 4096 | 414 vs ruint 1,487 | −1,073 (0.28×) | 419 vs ruint 1,387 | −968 (0.30×) | 497 vs ruint 1,740 | −1,243 (0.29×) | 538 vs ruint 1,603 | −1,065 (0.34×) |
+| sub_mod, reduced operands | 64 | 2.3 vs ruint 36.9 | −34.6 (0.06×) | 2.7 vs ruint 36.6 | −33.9 (0.07×) | 3.2 vs ruint 78.5 | −75.3 (0.04×) | 3.7 vs ruint 77.4 | −73.7 (0.05×) |
+| sub_mod, reduced operands | 128 | 5.8 vs ruint 26.1 | −20.3 (0.22×) | 5.6 vs ruint 23.7 | −18.1 (0.24×) | 6.2 vs ruint 26.1 | −19.9 (0.24×) | 8.8 vs ruint 26.1 | −17.3 (0.34×) |
+| sub_mod, reduced operands | 256 | 15.2 vs ruint 49.4 | −34.2 (0.31×) | 12.4 vs ruint 50.3 | −37.9 (0.25×) | 13.3 vs ruint 62.4 | −49.1 (0.21×) | 18.8 vs ruint 63.4 | −44.6 (0.30×) |
+| sub_mod, reduced operands | 384 | 24.9 vs ruint 78.7 | −53.8 (0.32×) | 19.1 vs ruint 75.9 | −56.8 (0.25×) | 25.3 vs ruint 97.3 | −72.0 (0.26×) | 29.6 vs ruint 90.7 | −61.1 (0.33×) |
+| sub_mod, reduced operands | 512 | 34.5 vs ruint 110 | −75.5 (0.31×) | 27.4 vs ruint 102 | −74.6 (0.27×) | 40.6 vs ruint 132 | −91.4 (0.31×) | 41.1 vs ruint 133 | −91.9 (0.31×) |
+| sub_mod, reduced operands | 1024 | 70.0 vs ruint 254 | −184 (0.28×) | 68.7 vs ruint 240 | −171 (0.29×) | 78.8 vs ruint 369 | −290 (0.21×) | 90.8 vs ruint 304 | −213 (0.30×) |
+| sub_mod, reduced operands | 2048 | 204 vs ruint 977 | −773 (0.21×) | 164 vs ruint 1,017 | −853 (0.16×) | 287 vs ruint 1,206 | −919 (0.24×) | 204 vs ruint 1,092 | −888 (0.19×) |
+| sub_mod, reduced operands | 4096 | 432 vs ruint 1,857 | −1,425 (0.23×) | 441 vs ruint 1,735 | −1,294 (0.25×) | 471 vs ruint 2,106 | −1,635 (0.22×) | 555 vs ruint 2,026 | −1,471 (0.27×) |
+| add, constant time | 64 | 1.1 vs native 1.1 | +0.0 (1.00×) | 1.1 vs native 1.1 | +0.0 (1.00×) | 1.0 vs native 1.0 | +0.0 (1.00×) | 1.0 vs ruint 1.0 | +0.0 (1.00×) |
+| add, constant time | 128 | 3.0 vs bnum 2.8 | +0.2 (1.07×) | 2.4 vs native 2.1 | +0.3 (1.14×) | 2.9 vs crypto-bigint 2.8 | +0.1 (1.04×) | 2.9 vs native 2.5 | +0.4 (1.16×) |
+| add, constant time | 256 | 8.9 vs bnum 9.0 | −0.1 (0.99×) | 6.6 vs bnum 6.6 | +0.0 (1.00×) | 8.8 vs bnum 8.9 | −0.1 (0.99×) | 7.7 vs bnum 7.8 | −0.1 (0.99×) |
+| add, constant time | 384 | 15.6 vs ruint 15.9 | −0.3 (0.98×) | 11.2 vs crypto-bigint 10.9 | +0.3 (1.03×) | 16.1 vs ruint 15.7 | +0.4 (1.03×) | 18.1 vs crypto-bigint 18.1 | +0.0 (1.00×) |
+| add, constant time | 512 | 22.4 vs ruint 21.7 | +0.7 (1.03×) | 16.7 vs crypto-bigint 16.8 | −0.1 (0.99×) | 21.6 vs ruint 21.0 | +0.6 (1.03×) | 24.6 vs crypto-bigint 25.1 | −0.5 (0.98×) |
+| add, constant time | 1024 | 50.6 vs bnum 51.2 | −0.6 (0.99×) | 39.7 vs crypto-bigint 39.6 | +0.1 (1.00×) | 52.1 vs bnum 51.3 | +0.8 (1.02×) | 58.0 vs crypto-bigint 58.1 | −0.1 (1.00×) |
+| add, constant time | 2048 | 114 vs ruint 204 | −90.0 (0.56×) | 94.6 vs ruint 159 | −64.4 (0.59×) | 118 vs ruint 216 | −98.0 (0.55×) | 125 vs ruint 206 | −81.0 (0.61×) |
+| add, constant time | 4096 | 234 vs ruint 417 | −183 (0.56×) | 219 vs ruint 296 | −77.0 (0.74×) | 237 vs ruint 422 | −185 (0.56×) | 269 vs ruint 382 | −113 (0.70×) |
+| mulmod, constant time | 64 | 159 | – | 93.1 | – | 242 | – | 115 | – |
+| mulmod, constant time | 128 | 567 | – | 312 | – | 606 | – | 362 | – |
+| mulmod, constant time | 256 | 1,183 | – | 696 | – | 1,303 | – | 819 | – |
+| mulmod, constant time | 384 | 1,921 | – | 1,175 | – | 2,268 | – | 1,428 | – |
+| mulmod, constant time | 512 | 3,013 | – | 1,736 | – | 3,451 | – | 2,222 | – |
+| mulmod, constant time | 1024 | 9,583 | – | 5,196 | – | 10,929 | – | 7,083 | – |
+| mulmod, constant time | 2048 | 33,040 | – | 17,147 | – | 36,976 | – | 24,135 | – |
+| mulmod, constant time | 4096 | 120,322 | – | 59,507 | – | 131,241 | – | 85,773 | – |
+| add_mod, constant time | 64 | 12.1 | – | 13.0 | – | 19.7 | – | 13.1 | – |
+| add_mod, constant time | 128 | 27.2 | – | 23.3 | – | 35.0 | – | 34.1 | – |
+| add_mod, constant time | 256 | 82.8 | – | 68.5 | – | 102 | – | 78.2 | – |
+| add_mod, constant time | 384 | 112 | – | 108 | – | 171 | – | 127 | – |
+| add_mod, constant time | 512 | 146 | – | 136 | – | 233 | – | 166 | – |
+| add_mod, constant time | 1024 | 328 | – | 263 | – | 629 | – | 353 | – |
+| add_mod, constant time | 2048 | 874 | – | 513 | – | 1,594 | – | 751 | – |
+| add_mod, constant time | 4096 | 1,859 | – | 1,691 | – | 2,003 | – | 1,958 | – |
+| sub_mod, constant time | 64 | 12.2 | – | 11.0 | – | 19.2 | – | 13.8 | – |
+| sub_mod, constant time | 128 | 24.8 | – | 20.0 | – | 31.7 | – | 22.0 | – |
+| sub_mod, constant time | 256 | 52.1 | – | 36.1 | – | 75.3 | – | 58.5 | – |
+| sub_mod, constant time | 384 | 103 | – | 57.6 | – | 125 | – | 87.4 | – |
+| sub_mod, constant time | 512 | 141 | – | 86.1 | – | 196 | – | 119 | – |
+| sub_mod, constant time | 1024 | 313 | – | 201 | – | 533 | – | 256 | – |
+| sub_mod, constant time | 2048 | 739 | – | 512 | – | 1,277 | – | 573 | – |
+| sub_mod, constant time | 4096 | 1,537 | – | 1,391 | – | 1,680 | – | 1,614 | – |
+| add_mod, reduced operands, constant time | 64 | 8.3 | – | 8.0 | – | 8.0 | – | 8.5 | – |
+| add_mod, reduced operands, constant time | 128 | 15.9 | – | 14.0 | – | 14.7 | – | 15.5 | – |
+| add_mod, reduced operands, constant time | 256 | 31.7 | – | 24.0 | – | 29.1 | – | 31.1 | – |
+| add_mod, reduced operands, constant time | 384 | 46.1 | – | 32.8 | – | 48.4 | – | 46.7 | – |
+| add_mod, reduced operands, constant time | 512 | 58.1 | – | 43.8 | – | 71.8 | – | 62.3 | – |
+| add_mod, reduced operands, constant time | 1024 | 142 | – | 93.7 | – | 298 | – | 122 | – |
+| add_mod, reduced operands, constant time | 2048 | 278 | – | 184 | – | 678 | – | 293 | – |
+| add_mod, reduced operands, constant time | 4096 | 720 | – | 712 | – | 814 | – | 823 | – |
 | sub_mod, reduced operands, constant time | 64 | 4.0 | – | 5.0 | – | 4.0 | – | 5.1 | – |
-| sub_mod, reduced operands, constant time | 128 | 10.6 | – | 10.0 | – | 10.0 | – | 10.1 | – |
-| sub_mod, reduced operands, constant time | 256 | 23.1 | – | 19.1 | – | 31.0 | – | 28.0 | – |
-| sub_mod, reduced operands, constant time | 384 | 42.1 | – | 32.7 | – | 50.1 | – | 43.5 | – |
-| sub_mod, reduced operands, constant time | 512 | 59.8 | – | 44.2 | – | 91.2 | – | 62.4 | – |
-| sub_mod, reduced operands, constant time | 1024 | 129 | – | 112 | – | 232 | – | 141 | – |
-| sub_mod, reduced operands, constant time | 2048 | 300 | – | 257 | – | 570 | – | 304 | – |
-| sub_mod, reduced operands, constant time | 4096 | 852 | – | 690 | – | 874 | – | 884 | – |
+| sub_mod, reduced operands, constant time | 128 | 11.1 | – | 9.4 | – | 10.1 | – | 10.3 | – |
+| sub_mod, reduced operands, constant time | 256 | 24.4 | – | 19.9 | – | 28.3 | – | 27.1 | – |
+| sub_mod, reduced operands, constant time | 384 | 39.3 | – | 29.9 | – | 45.6 | – | 44.7 | – |
+| sub_mod, reduced operands, constant time | 512 | 59.4 | – | 44.9 | – | 87.4 | – | 63.1 | – |
+| sub_mod, reduced operands, constant time | 1024 | 132 | – | 110 | – | 224 | – | 140 | – |
+| sub_mod, reduced operands, constant time | 2048 | 294 | – | 257 | – | 555 | – | 306 | – |
+| sub_mod, reduced operands, constant time | 4096 | 774 | – | 698 | – | 871 | – | 875 | – |
 
 ### Against native, throughput
 
@@ -648,150 +655,150 @@ Cycles per operation of `biguint` in each build, then its ratio to the native fi
 
 | Operation | Bits | Native | Chrome | Chrome, wide arithmetic | Firefox | Firefox, wide arithmetic |
 |---|---|---:|---:|---:|---:|---:|
-| add | 64 | 1.4 | 2.1 (1.5×) | 2.2 (1.6×) | 2.4 (1.7×) | 2.3 (1.6×) |
-| add | 128 | 2.4 | 4.2 (1.8×) | 3.9 (1.6×) | 3.9 (1.6×) | 4.3 (1.8×) |
-| add | 256 | 4.7 | 9.7 (2.1×) | 8.8 (1.9×) | 10.0 (2.1×) | 11.5 (2.4×) |
-| add | 384 | 7.1 | 16.5 (2.3×) | 12.8 (1.8×) | 15.3 (2.2×) | 18.0 (2.5×) |
-| add | 512 | 9.2 | 26.3 (2.9×) | 20.8 (2.3×) | 26.0 (2.8×) | 32.3 (3.5×) |
-| add | 1024 | 23.3 | 55.4 (2.4×) | 45.4 (1.9×) | 72.5 (3.1×) | 69.9 (3.0×) |
-| add | 2048 | 53.5 | 115 (2.1×) | 108 (2.0×) | 143 (2.7×) | 149 (2.8×) |
-| add | 4096 | 158 | 349 (2.2×) | 263 (1.7×) | 402 (2.5×) | 322 (2.0×) |
-| mul | 64 | 1.5 | 2.2 (1.5×) | 2.2 (1.5×) | 2.2 (1.5×) | 2.2 (1.5×) |
-| mul | 128 | 3.0 | 10.0 (3.3×) | 7.1 (2.4×) | 12.3 (4.1×) | 5.7 (1.9×) |
-| mul | 256 | 12.2 | 48.0 (3.9×) | 15.6 (1.3×) | 67.7 (5.5×) | 26.0 (2.1×) |
-| mul | 384 | 27.7 | 117 (4.2×) | 54.2 (2.0×) | 166 (6.0×) | 72.8 (2.6×) |
-| mul | 512 | 52.1 | 207 (4.0×) | 78.1 (1.5×) | 307 (5.9×) | 132 (2.5×) |
-| mul | 1024 | 221 | 1,261 (5.7×) | 317 (1.4×) | 1,491 (6.7×) | 568 (2.6×) |
-| mul | 2048 | 1,113 | 5,611 (5.0×) | 2,320 (2.1×) | 6,714 (6.0×) | 3,522 (3.2×) |
-| mul | 4096 | 3,859 | 17,771 (4.6×) | 7,925 (2.1×) | 21,315 (5.5×) | 11,934 (3.1×) |
+| add | 64 | 1.4 | 2.5 (1.8×) | 2.4 (1.7×) | 2.2 (1.6×) | 2.2 (1.6×) |
+| add | 128 | 2.4 | 4.1 (1.7×) | 4.1 (1.7×) | 3.6 (1.5×) | 3.7 (1.5×) |
+| add | 256 | 4.7 | 9.7 (2.1×) | 8.6 (1.8×) | 9.5 (2.0×) | 9.1 (1.9×) |
+| add | 384 | 7.1 | 16.5 (2.3×) | 14.0 (2.0×) | 16.5 (2.3×) | 17.6 (2.5×) |
+| add | 512 | 9.2 | 24.1 (2.6×) | 18.3 (2.0×) | 23.3 (2.5×) | 24.1 (2.6×) |
+| add | 1024 | 23.3 | 55.8 (2.4×) | 45.2 (1.9×) | 59.4 (2.5×) | 67.5 (2.9×) |
+| add | 2048 | 53.5 | 120 (2.2×) | 108 (2.0×) | 131 (2.4×) | 146 (2.7×) |
+| add | 4096 | 158 | 250 (1.6×) | 257 (1.6×) | 320 (2.0×) | 318 (2.0×) |
+| mul | 64 | 1.5 | 2.6 (1.7×) | 2.5 (1.7×) | 2.3 (1.5×) | 2.3 (1.5×) |
+| mul | 128 | 3.0 | 10.4 (3.5×) | 4.1 (1.4×) | 11.5 (3.8×) | 5.1 (1.7×) |
+| mul | 256 | 12.2 | 46.9 (3.8×) | 17.1 (1.4×) | 63.3 (5.2×) | 24.1 (2.0×) |
+| mul | 384 | 27.7 | 117 (4.2×) | 42.8 (1.5×) | 160 (5.8×) | 66.4 (2.4×) |
+| mul | 512 | 52.1 | 199 (3.8×) | 75.9 (1.5×) | 329 (6.3×) | 123 (2.4×) |
+| mul | 1024 | 221 | 1,293 (5.9×) | 308 (1.4×) | 1,510 (6.8×) | 680 (3.1×) |
+| mul | 2048 | 1,113 | 4,887 (4.4×) | 1,706 (1.5×) | 5,807 (5.2×) | 3,065 (2.8×) |
+| mul | 4096 | 3,859 | 16,901 (4.4×) | 6,864 (1.8×) | 20,427 (5.3×) | 10,783 (2.8×) |
 | div | 64 | 6.9 | 7.0 (1.0×) | 7.0 (1.0×) | 7.0 (1.0×) | 7.0 (1.0×) |
-| div | 128 | 16.3 | 59.7 (3.7×) | 28.5 (1.7×) | 83.7 (5.1×) | 36.1 (2.2×) |
-| div | 256 | 46.0 | 210 (4.6×) | 84.1 (1.8×) | 221 (4.8×) | 110 (2.4×) |
-| div | 384 | 111 | 354 (3.2×) | 207 (1.9×) | 405 (3.6×) | 285 (2.6×) |
-| div | 512 | 155 | 474 (3.1×) | 306 (2.0×) | 573 (3.7×) | 414 (2.7×) |
-| div | 1024 | 462 | 1,144 (2.5×) | 775 (1.7×) | 1,477 (3.2×) | 868 (1.9×) |
-| div | 2048 | 1,388 | 3,234 (2.3×) | 2,037 (1.5×) | 4,342 (3.1×) | 2,257 (1.6×) |
-| div | 4096 | 4,594 | 12,808 (2.8×) | 7,115 (1.5×) | 15,198 (3.3×) | 7,494 (1.6×) |
-| mod | 64 | 6.9 | 7.0 (1.0×) | 7.1 (1.0×) | 7.0 (1.0×) | 7.0 (1.0×) |
-| mod | 128 | 17.0 | 52.8 (3.1×) | 30.0 (1.8×) | 92.6 (5.4×) | 33.7 (2.0×) |
-| mod | 256 | 41.5 | 208 (5.0×) | 74.5 (1.8×) | 224 (5.4×) | 109 (2.6×) |
-| mod | 384 | 119 | 347 (2.9×) | 198 (1.7×) | 410 (3.4×) | 266 (2.2×) |
-| mod | 512 | 158 | 467 (3.0×) | 285 (1.8×) | 548 (3.5×) | 350 (2.2×) |
-| mod | 1024 | 485 | 1,195 (2.5×) | 717 (1.5×) | 1,476 (3.0×) | 905 (1.9×) |
-| mod | 2048 | 1,407 | 3,311 (2.4×) | 1,934 (1.4×) | 4,367 (3.1×) | 2,114 (1.5×) |
-| mod | 4096 | 4,562 | 12,974 (2.8×) | 6,515 (1.4×) | 15,422 (3.4×) | 7,649 (1.7×) |
-| mulmod | 64 | 11.9 | 61.4 (5.2×) | 31.2 (2.6×) | 107 (9.0×) | 36.1 (3.0×) |
-| mulmod | 128 | 47.4 | 201 (4.2×) | 82.2 (1.7×) | 240 (5.1×) | 127 (2.7×) |
-| mulmod | 256 | 162 | 581 (3.6×) | 284 (1.8×) | 701 (4.3×) | 360 (2.2×) |
-| mulmod | 384 | 297 | 977 (3.3×) | 515 (1.7×) | 1,345 (4.5×) | 628 (2.1×) |
-| mulmod | 512 | 467 | 1,583 (3.4×) | 884 (1.9×) | 2,154 (4.6×) | 1,074 (2.3×) |
-| mulmod | 1024 | 1,365 | 5,346 (3.9×) | 2,737 (2.0×) | 6,727 (4.9×) | 3,605 (2.6×) |
-| mulmod | 2048 | 5,191 | 17,492 (3.4×) | 8,747 (1.7×) | 22,288 (4.3×) | 13,109 (2.5×) |
-| mulmod | 4096 | 14,910 | 56,007 (3.8×) | 26,793 (1.8×) | 69,330 (4.6×) | 46,093 (3.1×) |
-| add_mod | 64 | 2.9 | 4.0 (1.4×) | 4.0 (1.4×) | 8.0 (2.8×) | 7.7 (2.7×) |
-| add_mod | 128 | 4.8 | 9.1 (1.9×) | 9.2 (1.9×) | 12.5 (2.6×) | 13.7 (2.9×) |
-| add_mod | 256 | 9.7 | 23.1 (2.4×) | 21.9 (2.3×) | 24.7 (2.5×) | 30.4 (3.1×) |
-| add_mod | 384 | 15.6 | 30.9 (2.0×) | 28.5 (1.8×) | 46.8 (3.0×) | 45.2 (2.9×) |
-| add_mod | 512 | 27.7 | 44.8 (1.6×) | 38.7 (1.4×) | 60.7 (2.2×) | 62.4 (2.3×) |
-| add_mod | 1024 | 71.7 | 114 (1.6×) | 104 (1.5×) | 144 (2.0×) | 135 (1.9×) |
-| add_mod | 2048 | 149 | 278 (1.9×) | 245 (1.6×) | 378 (2.5×) | 291 (2.0×) |
-| add_mod | 4096 | 268 | 734 (2.7×) | 750 (2.8×) | 792 (3.0×) | 941 (3.5×) |
-| sub_mod | 64 | 2.4 | 3.9 (1.6×) | 4.0 (1.7×) | 8.0 (3.3×) | 8.1 (3.4×) |
-| sub_mod | 128 | 4.3 | 10.8 (2.5×) | 10.2 (2.4×) | 13.8 (3.2×) | 15.8 (3.7×) |
-| sub_mod | 256 | 8.7 | 23.8 (2.7×) | 19.8 (2.3×) | 26.1 (3.0×) | 28.8 (3.3×) |
-| sub_mod | 384 | 15.6 | 31.1 (2.0×) | 27.0 (1.7×) | 44.1 (2.8×) | 48.4 (3.1×) |
-| sub_mod | 512 | 25.2 | 45.5 (1.8×) | 37.6 (1.5×) | 62.0 (2.5×) | 68.0 (2.7×) |
-| sub_mod | 1024 | 66.3 | 105 (1.6×) | 110 (1.7×) | 128 (1.9×) | 134 (2.0×) |
-| sub_mod | 2048 | 146 | 237 (1.6×) | 249 (1.7×) | 287 (2.0×) | 277 (1.9×) |
-| sub_mod | 4096 | 241 | 725 (3.0×) | 775 (3.2×) | 846 (3.5×) | 965 (4.0×) |
-| add_mod, reduced operands | 64 | 2.8 | 4.2 (1.5×) | 4.1 (1.5×) | 4.5 (1.6×) | 4.3 (1.5×) |
-| add_mod, reduced operands | 128 | 4.3 | 8.3 (1.9×) | 9.0 (2.1×) | 8.2 (1.9×) | 11.5 (2.7×) |
-| add_mod, reduced operands | 256 | 10.4 | 16.9 (1.6×) | 17.0 (1.6×) | 18.7 (1.8×) | 22.5 (2.2×) |
-| add_mod, reduced operands | 384 | 13.8 | 27.8 (2.0×) | 22.2 (1.6×) | 28.2 (2.0×) | 32.4 (2.3×) |
-| add_mod, reduced operands | 512 | 19.6 | 34.8 (1.8×) | 28.3 (1.4×) | 41.4 (2.1×) | 42.3 (2.2×) |
-| add_mod, reduced operands | 1024 | 48.3 | 77.2 (1.6×) | 68.9 (1.4×) | 88.7 (1.8×) | 92.1 (1.9×) |
-| add_mod, reduced operands | 2048 | 89.7 | 198 (2.2×) | 150 (1.7×) | 233 (2.6×) | 220 (2.5×) |
-| add_mod, reduced operands | 4096 | 227 | 535 (2.4×) | 462 (2.0×) | 585 (2.6×) | 525 (2.3×) |
-| sub_mod, reduced operands | 64 | 2.2 | 3.6 (1.6×) | 4.0 (1.8×) | 4.7 (2.1×) | 6.2 (2.8×) |
-| sub_mod, reduced operands | 128 | 4.7 | 7.1 (1.5×) | 7.3 (1.6×) | 7.7 (1.6×) | 9.6 (2.0×) |
-| sub_mod, reduced operands | 256 | 7.3 | 17.0 (2.3×) | 13.2 (1.8×) | 14.9 (2.0×) | 20.2 (2.8×) |
-| sub_mod, reduced operands | 384 | 11.0 | 26.5 (2.4×) | 20.8 (1.9×) | 25.6 (2.3×) | 30.4 (2.8×) |
-| sub_mod, reduced operands | 512 | 18.3 | 34.4 (1.9×) | 29.8 (1.6×) | 37.7 (2.1×) | 41.8 (2.3×) |
-| sub_mod, reduced operands | 1024 | 44.7 | 66.6 (1.5×) | 68.0 (1.5×) | 83.3 (1.9×) | 90.2 (2.0×) |
-| sub_mod, reduced operands | 2048 | 83.2 | 209 (2.5×) | 157 (1.9×) | 280 (3.4×) | 199 (2.4×) |
-| sub_mod, reduced operands | 4096 | 217 | 537 (2.5×) | 469 (2.2×) | 588 (2.7×) | 589 (2.7×) |
-| add, constant time | 64 | 1.4 | 2.2 (1.6×) | 2.2 (1.6×) | 2.2 (1.6×) | 2.2 (1.6×) |
-| add, constant time | 128 | 2.4 | 4.0 (1.7×) | 3.8 (1.6×) | 4.0 (1.7×) | 4.2 (1.8×) |
-| add, constant time | 256 | 4.5 | 10.2 (2.3×) | 9.0 (2.0×) | 10.1 (2.2×) | 11.5 (2.6×) |
-| add, constant time | 384 | 7.0 | 16.0 (2.3×) | 12.5 (1.8×) | 15.2 (2.2×) | 18.1 (2.6×) |
-| add, constant time | 512 | 9.5 | 27.9 (2.9×) | 20.9 (2.2×) | 26.3 (2.8×) | 32.3 (3.4×) |
-| add, constant time | 1024 | 23.4 | 59.7 (2.6×) | 45.8 (2.0×) | 71.1 (3.0×) | 69.8 (3.0×) |
-| add, constant time | 2048 | 53.3 | 117 (2.2×) | 109 (2.0×) | 144 (2.7×) | 150 (2.8×) |
-| add, constant time | 4096 | 162 | 344 (2.1×) | 267 (1.6×) | 400 (2.5×) | 319 (2.0×) |
-| mul, constant time | 64 | 1.5 | 2.2 (1.5×) | 2.2 (1.5×) | 2.2 (1.5×) | 2.2 (1.5×) |
-| mul, constant time | 128 | 3.0 | 10.1 (3.4×) | 6.7 (2.2×) | 12.3 (4.1×) | 5.7 (1.9×) |
-| mul, constant time | 256 | 12.4 | 47.9 (3.9×) | 22.7 (1.8×) | 67.1 (5.4×) | 26.0 (2.1×) |
-| mul, constant time | 384 | 30.0 | 116 (3.9×) | 55.9 (1.9×) | 168 (5.6×) | 72.4 (2.4×) |
-| mul, constant time | 512 | 50.9 | 210 (4.1×) | 74.9 (1.5×) | 307 (6.0×) | 132 (2.6×) |
-| mul, constant time | 1024 | 226 | 1,193 (5.3×) | 349 (1.5×) | 1,491 (6.6×) | 566 (2.5×) |
-| mul, constant time | 2048 | 1,154 | 5,793 (5.0×) | 2,439 (2.1×) | 6,672 (5.8×) | 3,634 (3.1×) |
-| mul, constant time | 4096 | 4,213 | 18,754 (4.5×) | 8,525 (2.0×) | 21,984 (5.2×) | 12,511 (3.0×) |
-| div, constant time | 64 | 25.1 | 83.2 (3.3×) | 47.4 (1.9×) | 146 (5.8×) | 61.4 (2.4×) |
-| div, constant time | 128 | 98.8 | 280 (2.8×) | 179 (1.8×) | 362 (3.7×) | 231 (2.3×) |
-| div, constant time | 256 | 199 | 521 (2.6×) | 334 (1.7×) | 635 (3.2×) | 471 (2.4×) |
-| div, constant time | 384 | 291 | 819 (2.8×) | 457 (1.6×) | 811 (2.8×) | 545 (1.9×) |
-| div, constant time | 512 | 461 | 1,023 (2.2×) | 745 (1.6×) | 1,186 (2.6×) | 862 (1.9×) |
-| div, constant time | 1024 | 1,139 | 2,475 (2.2×) | 1,796 (1.6×) | 2,881 (2.5×) | 2,187 (1.9×) |
-| div, constant time | 2048 | 3,426 | 7,476 (2.2×) | 5,195 (1.5×) | 8,404 (2.5×) | 6,477 (1.9×) |
-| div, constant time | 4096 | 11,846 | 25,658 (2.2×) | 16,426 (1.4×) | 27,938 (2.4×) | 21,618 (1.8×) |
-| mod, constant time | 64 | 25.5 | 83.6 (3.3×) | 48.2 (1.9×) | 142 (5.6×) | 67.6 (2.7×) |
-| mod, constant time | 128 | 105 | 347 (3.3×) | 169 (1.6×) | 332 (3.2×) | 226 (2.2×) |
-| mod, constant time | 256 | 216 | 520 (2.4×) | 333 (1.5×) | 581 (2.7×) | 414 (1.9×) |
-| mod, constant time | 384 | 311 | 748 (2.4×) | 537 (1.7×) | 805 (2.6×) | 560 (1.8×) |
-| mod, constant time | 512 | 466 | 1,056 (2.3×) | 756 (1.6×) | 1,084 (2.3×) | 832 (1.8×) |
-| mod, constant time | 1024 | 1,147 | 2,541 (2.2×) | 1,955 (1.7×) | 2,745 (2.4×) | 1,996 (1.7×) |
-| mod, constant time | 2048 | 3,445 | 7,775 (2.3×) | 5,269 (1.5×) | 8,332 (2.4×) | 5,909 (1.7×) |
-| mod, constant time | 4096 | 11,904 | 25,871 (2.2×) | 16,456 (1.4×) | 29,046 (2.4×) | 20,672 (1.7×) |
-| mulmod, constant time | 64 | 51.9 | 203 (3.9×) | 99.7 (1.9×) | 237 (4.6×) | 113 (2.2×) |
-| mulmod, constant time | 128 | 201 | 573 (2.9×) | 360 (1.8×) | 601 (3.0×) | 372 (1.9×) |
-| mulmod, constant time | 256 | 453 | 1,218 (2.7×) | 744 (1.6×) | 1,348 (3.0×) | 818 (1.8×) |
-| mulmod, constant time | 384 | 823 | 1,965 (2.4×) | 1,225 (1.5×) | 2,257 (2.7×) | 1,500 (1.8×) |
-| mulmod, constant time | 512 | 1,189 | 3,009 (2.5×) | 1,824 (1.5×) | 3,495 (2.9×) | 2,307 (1.9×) |
-| mulmod, constant time | 1024 | 3,856 | 9,611 (2.5×) | 5,616 (1.5×) | 10,989 (2.8×) | 7,558 (2.0×) |
-| mulmod, constant time | 2048 | 13,721 | 32,861 (2.4×) | 18,903 (1.4×) | 36,878 (2.7×) | 25,971 (1.9×) |
-| mulmod, constant time | 4096 | 48,937 | 119,911 (2.5×) | 68,830 (1.4×) | 132,639 (2.7×) | 91,464 (1.9×) |
-| add_mod, constant time | 64 | 6.6 | 9.0 (1.4×) | 9.5 (1.4×) | 19.3 (2.9×) | 13.8 (2.1×) |
-| add_mod, constant time | 128 | 11.0 | 26.5 (2.4×) | 21.5 (2.0×) | 34.5 (3.1×) | 35.0 (3.2×) |
-| add_mod, constant time | 256 | 20.6 | 82.3 (4.0×) | 65.4 (3.2×) | 108 (5.2×) | 74.9 (3.6×) |
-| add_mod, constant time | 384 | 38.7 | 120 (3.1×) | 111 (2.9×) | 167 (4.3×) | 141 (3.6×) |
-| add_mod, constant time | 512 | 56.5 | 150 (2.7×) | 145 (2.6×) | 238 (4.2×) | 180 (3.2×) |
-| add_mod, constant time | 1024 | 130 | 323 (2.5×) | 272 (2.1×) | 607 (4.7×) | 344 (2.6×) |
-| add_mod, constant time | 2048 | 303 | 867 (2.9×) | 531 (1.8×) | 1,702 (5.6×) | 761 (2.5×) |
-| add_mod, constant time | 4096 | 511 | 1,886 (3.7×) | 1,717 (3.4×) | 2,017 (3.9×) | 2,011 (3.9×) |
-| sub_mod, constant time | 64 | 6.2 | 10.2 (1.6×) | 9.3 (1.5×) | 18.9 (3.0×) | 14.3 (2.3×) |
-| sub_mod, constant time | 128 | 7.4 | 15.6 (2.1×) | 13.0 (1.8×) | 30.9 (4.2×) | 23.0 (3.1×) |
-| sub_mod, constant time | 256 | 13.7 | 45.9 (3.4×) | 31.9 (2.3×) | 73.8 (5.4×) | 65.2 (4.8×) |
-| sub_mod, constant time | 384 | 27.0 | 103 (3.8×) | 51.4 (1.9×) | 136 (5.0×) | 96.7 (3.6×) |
-| sub_mod, constant time | 512 | 33.6 | 140 (4.2×) | 88.2 (2.6×) | 224 (6.7×) | 141 (4.2×) |
-| sub_mod, constant time | 1024 | 96.9 | 321 (3.3×) | 210 (2.2×) | 533 (5.5×) | 274 (2.8×) |
-| sub_mod, constant time | 2048 | 414 | 743 (1.8×) | 510 (1.2×) | 1,322 (3.2×) | 639 (1.5×) |
-| sub_mod, constant time | 4096 | 487 | 1,549 (3.2×) | 1,421 (2.9×) | 1,751 (3.6×) | 1,682 (3.5×) |
-| add_mod, reduced operands, constant time | 64 | 3.8 | 5.8 (1.5×) | 6.0 (1.6×) | 6.1 (1.6×) | 7.4 (1.9×) |
-| add_mod, reduced operands, constant time | 128 | 6.9 | 13.6 (2.0×) | 12.0 (1.7×) | 13.4 (1.9×) | 18.0 (2.6×) |
-| add_mod, reduced operands, constant time | 256 | 9.9 | 29.1 (2.9×) | 23.7 (2.4×) | 31.5 (3.2×) | 32.1 (3.2×) |
-| add_mod, reduced operands, constant time | 384 | 13.2 | 48.1 (3.6×) | 36.7 (2.8×) | 50.5 (3.8×) | 47.3 (3.6×) |
-| add_mod, reduced operands, constant time | 512 | 19.8 | 72.2 (3.6×) | 49.8 (2.5×) | 85.2 (4.3×) | 61.5 (3.1×) |
-| add_mod, reduced operands, constant time | 1024 | 57.8 | 138 (2.4×) | 96.4 (1.7×) | 295 (5.1×) | 122 (2.1×) |
-| add_mod, reduced operands, constant time | 2048 | 132 | 280 (2.1×) | 183 (1.4×) | 653 (4.9×) | 289 (2.2×) |
-| add_mod, reduced operands, constant time | 4096 | 269 | 812 (3.0×) | 748 (2.8×) | 862 (3.2×) | 876 (3.3×) |
-| sub_mod, reduced operands, constant time | 64 | 3.2 | 4.8 (1.5×) | 4.9 (1.5×) | 5.1 (1.6×) | 5.1 (1.6×) |
-| sub_mod, reduced operands, constant time | 128 | 5.1 | 9.7 (1.9×) | 9.0 (1.8×) | 9.0 (1.8×) | 12.0 (2.4×) |
-| sub_mod, reduced operands, constant time | 256 | 8.9 | 24.3 (2.7×) | 20.3 (2.3×) | 30.3 (3.4×) | 28.1 (3.2×) |
-| sub_mod, reduced operands, constant time | 384 | 11.0 | 40.6 (3.7×) | 33.3 (3.0×) | 50.0 (4.5×) | 44.7 (4.1×) |
-| sub_mod, reduced operands, constant time | 512 | 18.5 | 65.4 (3.5×) | 46.5 (2.5×) | 92.1 (5.0×) | 63.9 (3.5×) |
-| sub_mod, reduced operands, constant time | 1024 | 48.5 | 133 (2.7×) | 114 (2.4×) | 215 (4.4×) | 137 (2.8×) |
-| sub_mod, reduced operands, constant time | 2048 | 116 | 294 (2.5×) | 255 (2.2×) | 553 (4.8×) | 293 (2.5×) |
-| sub_mod, reduced operands, constant time | 4096 | 270 | 849 (3.1×) | 711 (2.6×) | 903 (3.3×) | 914 (3.4×) |
+| div | 128 | 16.3 | 67.4 (4.1×) | 31.7 (1.9×) | 85.6 (5.3×) | 37.0 (2.3×) |
+| div | 256 | 46.0 | 214 (4.7×) | 86.5 (1.9×) | 222 (4.8×) | 104 (2.3×) |
+| div | 384 | 111 | 354 (3.2×) | 203 (1.8×) | 400 (3.6×) | 303 (2.7×) |
+| div | 512 | 155 | 492 (3.2×) | 313 (2.0×) | 577 (3.7×) | 392 (2.5×) |
+| div | 1024 | 462 | 1,187 (2.6×) | 597 (1.3×) | 1,504 (3.3×) | 844 (1.8×) |
+| div | 2048 | 1,388 | 3,234 (2.3×) | 1,557 (1.1×) | 4,239 (3.1×) | 2,306 (1.7×) |
+| div | 4096 | 4,594 | 12,989 (2.8×) | 4,990 (1.1×) | 15,190 (3.3×) | 7,182 (1.6×) |
+| mod | 64 | 6.9 | 7.1 (1.0×) | 7.0 (1.0×) | 7.0 (1.0×) | 7.0 (1.0×) |
+| mod | 128 | 17.0 | 62.0 (3.6×) | 30.1 (1.8×) | 76.7 (4.5×) | 34.1 (2.0×) |
+| mod | 256 | 41.5 | 217 (5.2×) | 73.7 (1.8×) | 220 (5.3×) | 99.7 (2.4×) |
+| mod | 384 | 119 | 354 (3.0×) | 195 (1.6×) | 416 (3.5×) | 253 (2.1×) |
+| mod | 512 | 158 | 479 (3.0×) | 293 (1.9×) | 551 (3.5×) | 375 (2.4×) |
+| mod | 1024 | 485 | 1,217 (2.5×) | 585 (1.2×) | 1,504 (3.1×) | 805 (1.7×) |
+| mod | 2048 | 1,407 | 3,468 (2.5×) | 1,570 (1.1×) | 4,279 (3.0×) | 2,101 (1.5×) |
+| mod | 4096 | 4,562 | 13,079 (2.9×) | 5,125 (1.1×) | 15,237 (3.3×) | 6,900 (1.5×) |
+| mulmod | 64 | 11.9 | 68.8 (5.8×) | 30.7 (2.6×) | 95.9 (8.1×) | 36.0 (3.0×) |
+| mulmod | 128 | 47.4 | 188 (4.0×) | 81.8 (1.7×) | 232 (4.9×) | 137 (2.9×) |
+| mulmod | 256 | 162 | 573 (3.5×) | 264 (1.6×) | 690 (4.3×) | 362 (2.2×) |
+| mulmod | 384 | 297 | 963 (3.2×) | 461 (1.6×) | 1,284 (4.3×) | 627 (2.1×) |
+| mulmod | 512 | 467 | 1,586 (3.4×) | 823 (1.8×) | 2,027 (4.3×) | 1,125 (2.4×) |
+| mulmod | 1024 | 1,365 | 5,293 (3.9×) | 2,449 (1.8×) | 6,642 (4.9×) | 3,134 (2.3×) |
+| mulmod | 2048 | 5,191 | 17,435 (3.4×) | 7,954 (1.5×) | 21,831 (4.2×) | 11,252 (2.2×) |
+| mulmod | 4096 | 14,910 | 56,179 (3.8×) | 26,743 (1.8×) | 67,867 (4.6×) | 38,845 (2.6×) |
+| add_mod | 64 | 2.9 | 4.0 (1.4×) | 4.0 (1.4×) | 7.9 (2.7×) | 7.7 (2.7×) |
+| add_mod | 128 | 4.8 | 7.5 (1.6×) | 8.3 (1.7×) | 11.1 (2.3×) | 12.4 (2.6×) |
+| add_mod | 256 | 9.7 | 22.6 (2.3×) | 23.1 (2.4×) | 24.8 (2.6×) | 29.5 (3.0×) |
+| add_mod | 384 | 15.6 | 32.4 (2.1×) | 27.7 (1.8×) | 41.0 (2.6×) | 42.6 (2.7×) |
+| add_mod | 512 | 27.7 | 44.3 (1.6×) | 38.1 (1.4×) | 54.7 (2.0×) | 58.6 (2.1×) |
+| add_mod | 1024 | 71.7 | 113 (1.6×) | 103 (1.4×) | 133 (1.9×) | 128 (1.8×) |
+| add_mod | 2048 | 149 | 245 (1.6×) | 234 (1.6×) | 323 (2.2×) | 282 (1.9×) |
+| add_mod | 4096 | 268 | 634 (2.4×) | 621 (2.3×) | 654 (2.4×) | 766 (2.9×) |
+| sub_mod | 64 | 2.4 | 3.8 (1.6×) | 4.0 (1.7×) | 7.6 (3.2×) | 7.9 (3.3×) |
+| sub_mod | 128 | 4.3 | 9.5 (2.2×) | 8.0 (1.9×) | 10.5 (2.4×) | 12.0 (2.8×) |
+| sub_mod | 256 | 8.7 | 24.3 (2.8×) | 20.9 (2.4×) | 25.3 (2.9×) | 28.5 (3.3×) |
+| sub_mod | 384 | 15.6 | 31.3 (2.0×) | 27.0 (1.7×) | 35.8 (2.3×) | 40.9 (2.6×) |
+| sub_mod | 512 | 25.2 | 43.6 (1.7×) | 36.4 (1.4×) | 52.9 (2.1×) | 57.6 (2.3×) |
+| sub_mod | 1024 | 66.3 | 104 (1.6×) | 106 (1.6×) | 116 (1.7×) | 128 (1.9×) |
+| sub_mod | 2048 | 146 | 230 (1.6×) | 250 (1.7×) | 285 (2.0×) | 271 (1.9×) |
+| sub_mod | 4096 | 241 | 605 (2.5×) | 660 (2.7×) | 627 (2.6×) | 778 (3.2×) |
+| add_mod, reduced operands | 64 | 2.8 | 4.2 (1.5×) | 4.2 (1.5×) | 4.1 (1.5×) | 4.1 (1.5×) |
+| add_mod, reduced operands | 128 | 4.3 | 8.6 (2.0×) | 8.8 (2.0×) | 7.7 (1.8×) | 10.6 (2.5×) |
+| add_mod, reduced operands | 256 | 10.4 | 20.3 (2.0×) | 18.1 (1.7×) | 17.0 (1.6×) | 21.3 (2.0×) |
+| add_mod, reduced operands | 384 | 13.8 | 29.9 (2.2×) | 25.8 (1.9×) | 31.1 (2.3×) | 31.6 (2.3×) |
+| add_mod, reduced operands | 512 | 19.6 | 35.9 (1.8×) | 32.1 (1.6×) | 40.6 (2.1×) | 43.2 (2.2×) |
+| add_mod, reduced operands | 1024 | 48.3 | 76.7 (1.6×) | 65.8 (1.4×) | 78.9 (1.6×) | 87.1 (1.8×) |
+| add_mod, reduced operands | 2048 | 89.7 | 203 (2.3×) | 149 (1.7×) | 221 (2.5×) | 195 (2.2×) |
+| add_mod, reduced operands | 4096 | 227 | 427 (1.9×) | 458 (2.0×) | 506 (2.2×) | 520 (2.3×) |
+| sub_mod, reduced operands | 64 | 2.2 | 3.7 (1.7×) | 4.2 (1.9×) | 4.3 (2.0×) | 5.2 (2.4×) |
+| sub_mod, reduced operands | 128 | 4.7 | 6.5 (1.4×) | 7.5 (1.6×) | 6.7 (1.4×) | 9.5 (2.0×) |
+| sub_mod, reduced operands | 256 | 7.3 | 18.8 (2.6×) | 14.3 (2.0×) | 15.1 (2.1×) | 19.2 (2.6×) |
+| sub_mod, reduced operands | 384 | 11.0 | 27.6 (2.5×) | 23.9 (2.2×) | 26.0 (2.4×) | 29.9 (2.7×) |
+| sub_mod, reduced operands | 512 | 18.3 | 36.5 (2.0×) | 31.9 (1.7×) | 38.7 (2.1×) | 41.7 (2.3×) |
+| sub_mod, reduced operands | 1024 | 44.7 | 70.1 (1.6×) | 70.1 (1.6×) | 77.9 (1.7×) | 90.2 (2.0×) |
+| sub_mod, reduced operands | 2048 | 83.2 | 202 (2.4×) | 160 (1.9×) | 258 (3.1×) | 202 (2.4×) |
+| sub_mod, reduced operands | 4096 | 217 | 468 (2.2×) | 476 (2.2×) | 468 (2.2×) | 544 (2.5×) |
+| add, constant time | 64 | 1.4 | 2.4 (1.7×) | 2.4 (1.7×) | 2.2 (1.6×) | 2.2 (1.6×) |
+| add, constant time | 128 | 2.4 | 4.1 (1.7×) | 4.1 (1.7×) | 3.6 (1.5×) | 3.7 (1.5×) |
+| add, constant time | 256 | 4.5 | 9.7 (2.2×) | 8.6 (1.9×) | 9.4 (2.1×) | 9.1 (2.0×) |
+| add, constant time | 384 | 7.0 | 16.5 (2.4×) | 14.1 (2.0×) | 16.5 (2.4×) | 17.6 (2.5×) |
+| add, constant time | 512 | 9.5 | 24.0 (2.5×) | 18.3 (1.9×) | 23.3 (2.5×) | 24.1 (2.5×) |
+| add, constant time | 1024 | 23.4 | 55.7 (2.4×) | 45.4 (1.9×) | 59.3 (2.5×) | 67.5 (2.9×) |
+| add, constant time | 2048 | 53.3 | 118 (2.2×) | 108 (2.0×) | 131 (2.5×) | 146 (2.7×) |
+| add, constant time | 4096 | 162 | 254 (1.6×) | 257 (1.6×) | 321 (2.0×) | 317 (2.0×) |
+| mul, constant time | 64 | 1.5 | 2.6 (1.7×) | 2.5 (1.7×) | 2.3 (1.5×) | 2.3 (1.5×) |
+| mul, constant time | 128 | 3.0 | 10.3 (3.4×) | 4.1 (1.4×) | 12.1 (4.0×) | 5.0 (1.7×) |
+| mul, constant time | 256 | 12.4 | 49.9 (4.0×) | 17.1 (1.4×) | 62.9 (5.1×) | 24.2 (2.0×) |
+| mul, constant time | 384 | 30.0 | 122 (4.1×) | 42.9 (1.4×) | 162 (5.4×) | 66.1 (2.2×) |
+| mul, constant time | 512 | 50.9 | 203 (4.0×) | 75.0 (1.5×) | 328 (6.4×) | 123 (2.4×) |
+| mul, constant time | 1024 | 226 | 1,222 (5.4×) | 308 (1.4×) | 1,531 (6.8×) | 671 (3.0×) |
+| mul, constant time | 2048 | 1,154 | 5,096 (4.4×) | 1,692 (1.5×) | 5,898 (5.1×) | 3,070 (2.7×) |
+| mul, constant time | 4096 | 4,213 | 16,851 (4.0×) | 7,041 (1.7×) | 20,693 (4.9×) | 11,038 (2.6×) |
+| div, constant time | 64 | 25.1 | 92.2 (3.7×) | 48.9 (1.9×) | 130 (5.2×) | 61.0 (2.4×) |
+| div, constant time | 128 | 98.8 | 339 (3.4×) | 169 (1.7×) | 364 (3.7×) | 236 (2.4×) |
+| div, constant time | 256 | 199 | 539 (2.7×) | 249 (1.3×) | 625 (3.1×) | 453 (2.3×) |
+| div, constant time | 384 | 291 | 752 (2.6×) | 424 (1.5×) | 836 (2.9×) | 511 (1.8×) |
+| div, constant time | 512 | 461 | 1,046 (2.3×) | 620 (1.3×) | 1,190 (2.6×) | 774 (1.7×) |
+| div, constant time | 1024 | 1,139 | 2,484 (2.2×) | 1,641 (1.4×) | 2,795 (2.5×) | 2,093 (1.8×) |
+| div, constant time | 2048 | 3,426 | 7,586 (2.2×) | 4,492 (1.3×) | 8,472 (2.5×) | 6,059 (1.8×) |
+| div, constant time | 4096 | 11,846 | 25,655 (2.2×) | 13,925 (1.2×) | 27,724 (2.3×) | 20,131 (1.7×) |
+| mod, constant time | 64 | 25.5 | 85.1 (3.3×) | 50.9 (2.0×) | 159 (6.2×) | 61.2 (2.4×) |
+| mod, constant time | 128 | 105 | 310 (3.0×) | 161 (1.5×) | 342 (3.3×) | 221 (2.1×) |
+| mod, constant time | 256 | 216 | 528 (2.4×) | 317 (1.5×) | 584 (2.7×) | 402 (1.9×) |
+| mod, constant time | 384 | 311 | 755 (2.4×) | 502 (1.6×) | 783 (2.5×) | 549 (1.8×) |
+| mod, constant time | 512 | 466 | 1,064 (2.3×) | 727 (1.6×) | 1,110 (2.4×) | 771 (1.7×) |
+| mod, constant time | 1024 | 1,147 | 2,531 (2.2×) | 1,680 (1.5×) | 2,741 (2.4×) | 1,914 (1.7×) |
+| mod, constant time | 2048 | 3,445 | 7,706 (2.2×) | 4,578 (1.3×) | 8,342 (2.4×) | 5,773 (1.7×) |
+| mod, constant time | 4096 | 11,904 | 25,982 (2.2×) | 14,274 (1.2×) | 28,438 (2.4×) | 19,678 (1.7×) |
+| mulmod, constant time | 64 | 51.9 | 178 (3.4×) | 86.1 (1.7×) | 225 (4.3×) | 106 (2.0×) |
+| mulmod, constant time | 128 | 201 | 563 (2.8×) | 346 (1.7×) | 595 (3.0×) | 363 (1.8×) |
+| mulmod, constant time | 256 | 453 | 1,217 (2.7×) | 680 (1.5×) | 1,338 (3.0×) | 796 (1.8×) |
+| mulmod, constant time | 384 | 823 | 1,944 (2.4×) | 1,257 (1.5×) | 2,244 (2.7×) | 1,421 (1.7×) |
+| mulmod, constant time | 512 | 1,189 | 3,025 (2.5×) | 1,855 (1.6×) | 3,553 (3.0×) | 2,240 (1.9×) |
+| mulmod, constant time | 1024 | 3,856 | 9,603 (2.5×) | 5,221 (1.4×) | 10,782 (2.8×) | 7,063 (1.8×) |
+| mulmod, constant time | 2048 | 13,721 | 32,976 (2.4×) | 17,090 (1.2×) | 36,417 (2.7×) | 24,018 (1.8×) |
+| mulmod, constant time | 4096 | 48,937 | 119,622 (2.4×) | 60,969 (1.2×) | 132,064 (2.7×) | 86,501 (1.8×) |
+| add_mod, constant time | 64 | 6.6 | 10.4 (1.6×) | 10.4 (1.6×) | 20.0 (3.0×) | 14.6 (2.2×) |
+| add_mod, constant time | 128 | 11.0 | 26.7 (2.4×) | 22.2 (2.0×) | 34.3 (3.1×) | 34.1 (3.1×) |
+| add_mod, constant time | 256 | 20.6 | 78.8 (3.8×) | 66.1 (3.2×) | 98.8 (4.8×) | 70.0 (3.4×) |
+| add_mod, constant time | 384 | 38.7 | 122 (3.2×) | 110 (2.8×) | 167 (4.3×) | 132 (3.4×) |
+| add_mod, constant time | 512 | 56.5 | 150 (2.7×) | 143 (2.5×) | 236 (4.2×) | 168 (3.0×) |
+| add_mod, constant time | 1024 | 130 | 323 (2.5×) | 267 (2.1×) | 594 (4.6×) | 337 (2.6×) |
+| add_mod, constant time | 2048 | 303 | 849 (2.8×) | 532 (1.8×) | 1,699 (5.6×) | 732 (2.4×) |
+| add_mod, constant time | 4096 | 511 | 1,857 (3.6×) | 1,675 (3.3×) | 2,040 (4.0×) | 1,988 (3.9×) |
+| sub_mod, constant time | 64 | 6.2 | 11.2 (1.8×) | 10.7 (1.7×) | 18.1 (2.9×) | 15.1 (2.4×) |
+| sub_mod, constant time | 128 | 7.4 | 16.0 (2.2×) | 13.7 (1.9×) | 29.1 (3.9×) | 22.1 (3.0×) |
+| sub_mod, constant time | 256 | 13.7 | 46.3 (3.4×) | 32.7 (2.4×) | 72.1 (5.3×) | 59.8 (4.4×) |
+| sub_mod, constant time | 384 | 27.0 | 105 (3.9×) | 52.2 (1.9×) | 135 (5.0×) | 88.3 (3.3×) |
+| sub_mod, constant time | 512 | 33.6 | 144 (4.3×) | 89.0 (2.6×) | 222 (6.6×) | 138 (4.1×) |
+| sub_mod, constant time | 1024 | 96.9 | 319 (3.3×) | 210 (2.2×) | 520 (5.4×) | 271 (2.8×) |
+| sub_mod, constant time | 2048 | 414 | 730 (1.8×) | 512 (1.2×) | 1,316 (3.2×) | 656 (1.6×) |
+| sub_mod, constant time | 4096 | 487 | 1,547 (3.2×) | 1,389 (2.9×) | 1,680 (3.4×) | 1,634 (3.4×) |
+| add_mod, reduced operands, constant time | 64 | 3.8 | 6.5 (1.7×) | 6.7 (1.8×) | 6.3 (1.7×) | 6.8 (1.8×) |
+| add_mod, reduced operands, constant time | 128 | 6.9 | 15.4 (2.2×) | 12.9 (1.9×) | 13.3 (1.9×) | 16.0 (2.3×) |
+| add_mod, reduced operands, constant time | 256 | 9.9 | 30.7 (3.1×) | 25.3 (2.6×) | 33.2 (3.4×) | 31.1 (3.1×) |
+| add_mod, reduced operands, constant time | 384 | 13.2 | 47.8 (3.6×) | 36.8 (2.8×) | 50.0 (3.8×) | 45.2 (3.4×) |
+| add_mod, reduced operands, constant time | 512 | 19.8 | 59.1 (3.0×) | 50.4 (2.5×) | 70.9 (3.6×) | 60.7 (3.1×) |
+| add_mod, reduced operands, constant time | 1024 | 57.8 | 137 (2.4×) | 95.6 (1.7×) | 285 (4.9×) | 120 (2.1×) |
+| add_mod, reduced operands, constant time | 2048 | 132 | 281 (2.1×) | 182 (1.4×) | 667 (5.1×) | 279 (2.1×) |
+| add_mod, reduced operands, constant time | 4096 | 269 | 778 (2.9×) | 733 (2.7×) | 805 (3.0×) | 878 (3.3×) |
+| sub_mod, reduced operands, constant time | 64 | 3.2 | 4.8 (1.5×) | 5.2 (1.6×) | 4.5 (1.4×) | 4.8 (1.5×) |
+| sub_mod, reduced operands, constant time | 128 | 5.1 | 9.5 (1.9×) | 9.5 (1.9×) | 9.2 (1.8×) | 11.0 (2.2×) |
+| sub_mod, reduced operands, constant time | 256 | 8.9 | 26.6 (3.0×) | 22.9 (2.6×) | 29.5 (3.3×) | 27.2 (3.1×) |
+| sub_mod, reduced operands, constant time | 384 | 11.0 | 41.2 (3.7×) | 36.2 (3.3×) | 59.2 (5.4×) | 44.0 (4.0×) |
+| sub_mod, reduced operands, constant time | 512 | 18.5 | 62.7 (3.4×) | 47.7 (2.6×) | 96.1 (5.2×) | 62.7 (3.4×) |
+| sub_mod, reduced operands, constant time | 1024 | 48.5 | 135 (2.8×) | 115 (2.4×) | 236 (4.9×) | 136 (2.8×) |
+| sub_mod, reduced operands, constant time | 2048 | 116 | 298 (2.6×) | 256 (2.2×) | 543 (4.7×) | 292 (2.5×) |
+| sub_mod, reduced operands, constant time | 4096 | 270 | 761 (2.8×) | 731 (2.7×) | 840 (3.1×) | 897 (3.3×) |
 
 ### Against native, latency
 
@@ -799,107 +806,108 @@ Cycles per operation of `biguint` in each build, then its ratio to the native fi
 
 | Operation | Bits | Native | Chrome | Chrome, wide arithmetic | Firefox | Firefox, wide arithmetic |
 |---|---|---:|---:|---:|---:|---:|
-| add | 64 | 1.0 | 1.3 (1.3×) | 1.1 (1.1×) | 1.0 (1.0×) | 1.0 (1.0×) |
-| add | 128 | 1.4 | 3.1 (2.2×) | 2.5 (1.8×) | 2.7 (1.9×) | 3.2 (2.3×) |
-| add | 256 | 2.5 | 9.9 (4.0×) | 8.2 (3.3×) | 8.9 (3.6×) | 11.4 (4.6×) |
-| add | 384 | 3.5 | 14.6 (4.2×) | 12.2 (3.5×) | 16.1 (4.6×) | 18.1 (5.2×) |
-| add | 512 | 4.0 | 23.6 (5.9×) | 18.3 (4.6×) | 25.3 (6.3×) | 31.2 (7.8×) |
-| add | 1024 | 22.1 | 55.4 (2.5×) | 47.3 (2.1×) | 60.0 (2.7×) | 67.5 (3.1×) |
-| add | 2048 | 51.4 | 117 (2.3×) | 107 (2.1×) | 125 (2.4×) | 142 (2.8×) |
-| add | 4096 | 163 | 352 (2.2×) | 248 (1.5×) | 385 (2.4×) | 301 (1.8×) |
-| mulmod | 64 | 23.0 | 68.0 (3.0×) | 35.8 (1.6×) | 113 (4.9×) | 41.5 (1.8×) |
-| mulmod | 128 | 50.7 | 209 (4.1×) | 87.1 (1.7×) | 262 (5.2×) | 140 (2.8×) |
-| mulmod | 256 | 183 | 575 (3.1×) | 279 (1.5×) | 692 (3.8×) | 345 (1.9×) |
-| mulmod | 384 | 316 | 962 (3.0×) | 513 (1.6×) | 1,316 (4.2×) | 606 (1.9×) |
-| mulmod | 512 | 483 | 1,575 (3.3×) | 866 (1.8×) | 2,060 (4.3×) | 1,076 (2.2×) |
-| mulmod | 1024 | 1,337 | 5,328 (4.0×) | 2,754 (2.1×) | 6,822 (5.1×) | 3,527 (2.6×) |
-| mulmod | 2048 | 5,198 | 17,427 (3.4×) | 8,364 (1.6×) | 22,424 (4.3×) | 13,175 (2.5×) |
-| mulmod | 4096 | 14,977 | 55,946 (3.7×) | 27,016 (1.8×) | 68,443 (4.6×) | 45,374 (3.0×) |
-| add_mod | 64 | 8.0 | 6.4 (0.8×) | 6.3 (0.8×) | 9.5 (1.2×) | 9.2 (1.1×) |
-| add_mod | 128 | 11.9 | 31.7 (2.7×) | 11.0 (0.9×) | 41.8 (3.5×) | 16.2 (1.4×) |
-| add_mod | 256 | 18.5 | 41.0 (2.2×) | 31.7 (1.7×) | 56.2 (3.0×) | 43.5 (2.4×) |
-| add_mod | 384 | 22.9 | 55.2 (2.4×) | 47.2 (2.1×) | 83.7 (3.7×) | 63.4 (2.8×) |
-| add_mod | 512 | 33.5 | 66.6 (2.0×) | 55.9 (1.7×) | 95.3 (2.8×) | 83.5 (2.5×) |
-| add_mod | 1024 | 79.2 | 145 (1.8×) | 122 (1.5×) | 157 (2.0×) | 157 (2.0×) |
-| add_mod | 2048 | 155 | 307 (2.0×) | 237 (1.5×) | 375 (2.4×) | 315 (2.0×) |
-| add_mod | 4096 | 333 | 865 (2.6×) | 764 (2.3×) | 912 (2.7×) | 921 (2.8×) |
-| sub_mod | 64 | 7.3 | 4.8 (0.7×) | 7.2 (1.0×) | 8.7 (1.2×) | 9.1 (1.2×) |
-| sub_mod | 128 | 11.3 | 33.8 (3.0×) | 11.3 (1.0×) | 45.6 (4.0×) | 15.8 (1.4×) |
-| sub_mod | 256 | 14.4 | 46.4 (3.2×) | 33.8 (2.3×) | 60.4 (4.2×) | 44.1 (3.1×) |
-| sub_mod | 384 | 23.1 | 52.7 (2.3×) | 44.5 (1.9×) | 85.4 (3.7×) | 64.5 (2.8×) |
-| sub_mod | 512 | 37.4 | 71.6 (1.9×) | 53.3 (1.4×) | 103 (2.8×) | 87.4 (2.3×) |
-| sub_mod | 1024 | 79.9 | 116 (1.5×) | 105 (1.3×) | 179 (2.2×) | 167 (2.1×) |
-| sub_mod | 2048 | 144 | 281 (2.0×) | 260 (1.8×) | 379 (2.6×) | 358 (2.5×) |
-| sub_mod | 4096 | 320 | 873 (2.7×) | 820 (2.6×) | 923 (2.9×) | 1,099 (3.4×) |
+| add | 64 | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.0 (1.0×) | 1.0 (1.0×) |
+| add | 128 | 1.4 | 3.0 (2.1×) | 2.4 (1.7×) | 3.0 (2.1×) | 2.9 (2.1×) |
+| add | 256 | 2.5 | 8.9 (3.6×) | 6.6 (2.6×) | 8.9 (3.6×) | 7.7 (3.1×) |
+| add | 384 | 3.5 | 15.8 (4.5×) | 11.2 (3.2×) | 16.1 (4.6×) | 18.1 (5.2×) |
+| add | 512 | 4.0 | 22.2 (5.5×) | 16.2 (4.0×) | 21.5 (5.4×) | 24.6 (6.2×) |
+| add | 1024 | 22.1 | 50.7 (2.3×) | 39.7 (1.8×) | 52.2 (2.4×) | 58.0 (2.6×) |
+| add | 2048 | 51.4 | 115 (2.2×) | 94.6 (1.8×) | 118 (2.3×) | 125 (2.4×) |
+| add | 4096 | 163 | 233 (1.4×) | 219 (1.3×) | 237 (1.5×) | 269 (1.7×) |
+| mulmod | 64 | 23.0 | 68.5 (3.0×) | 34.8 (1.5×) | 122 (5.3×) | 42.8 (1.9×) |
+| mulmod | 128 | 50.7 | 209 (4.1×) | 85.0 (1.7×) | 258 (5.1×) | 150 (3.0×) |
+| mulmod | 256 | 183 | 588 (3.2×) | 268 (1.5×) | 700 (3.8×) | 344 (1.9×) |
+| mulmod | 384 | 316 | 950 (3.0×) | 445 (1.4×) | 1,260 (4.0×) | 647 (2.0×) |
+| mulmod | 512 | 483 | 1,567 (3.2×) | 776 (1.6×) | 2,114 (4.4×) | 1,087 (2.3×) |
+| mulmod | 1024 | 1,337 | 5,307 (4.0×) | 2,413 (1.8×) | 6,731 (5.0×) | 3,168 (2.4×) |
+| mulmod | 2048 | 5,198 | 17,524 (3.4×) | 8,004 (1.5×) | 21,812 (4.2×) | 11,326 (2.2×) |
+| mulmod | 4096 | 14,977 | 56,469 (3.8×) | 26,734 (1.8×) | 67,924 (4.5×) | 38,730 (2.6×) |
+| add_mod | 64 | 8.0 | 6.2 (0.8×) | 6.1 (0.8×) | 8.2 (1.0×) | 8.2 (1.0×) |
+| add_mod | 128 | 11.9 | 31.3 (2.6×) | 10.6 (0.9×) | 41.1 (3.5×) | 16.0 (1.3×) |
+| add_mod | 256 | 18.5 | 40.6 (2.2×) | 30.8 (1.7×) | 54.3 (2.9×) | 43.4 (2.3×) |
+| add_mod | 384 | 22.9 | 54.7 (2.4×) | 41.3 (1.8×) | 78.2 (3.4×) | 63.6 (2.8×) |
+| add_mod | 512 | 33.5 | 67.3 (2.0×) | 51.4 (1.5×) | 90.9 (2.7×) | 81.4 (2.4×) |
+| add_mod | 1024 | 79.2 | 128 (1.6×) | 118 (1.5×) | 158 (2.0×) | 160 (2.0×) |
+| add_mod | 2048 | 155 | 289 (1.9×) | 228 (1.5×) | 339 (2.2×) | 302 (1.9×) |
+| add_mod | 4096 | 333 | 659 (2.0×) | 699 (2.1×) | 834 (2.5×) | 869 (2.6×) |
+| sub_mod | 64 | 7.3 | 4.4 (0.6×) | 7.3 (1.0×) | 7.9 (1.1×) | 8.1 (1.1×) |
+| sub_mod | 128 | 11.3 | 32.1 (2.8×) | 9.2 (0.8×) | 40.2 (3.6×) | 15.3 (1.4×) |
+| sub_mod | 256 | 14.4 | 45.3 (3.1×) | 30.5 (2.1×) | 55.3 (3.8×) | 43.0 (3.0×) |
+| sub_mod | 384 | 23.1 | 53.9 (2.3×) | 41.3 (1.8×) | 70.9 (3.1×) | 60.1 (2.6×) |
+| sub_mod | 512 | 37.4 | 70.4 (1.9×) | 51.9 (1.4×) | 88.7 (2.4×) | 80.4 (2.1×) |
+| sub_mod | 1024 | 79.9 | 135 (1.7×) | 115 (1.4×) | 160 (2.0×) | 166 (2.1×) |
+| sub_mod | 2048 | 144 | 280 (1.9×) | 249 (1.7×) | 372 (2.6×) | 331 (2.3×) |
+| sub_mod | 4096 | 320 | 778 (2.4×) | 731 (2.3×) | 881 (2.8×) | 903 (2.8×) |
 | add_mod, reduced operands | 64 | 4.9 | 5.0 (1.0×) | 5.0 (1.0×) | 5.0 (1.0×) | 5.0 (1.0×) |
-| add_mod, reduced operands | 128 | 6.0 | 6.7 (1.1×) | 7.6 (1.3×) | 7.6 (1.3×) | 10.4 (1.7×) |
-| add_mod, reduced operands | 256 | 12.9 | 17.0 (1.3×) | 13.1 (1.0×) | 16.8 (1.3×) | 21.3 (1.7×) |
-| add_mod, reduced operands | 384 | 14.6 | 29.5 (2.0×) | 19.6 (1.3×) | 28.5 (2.0×) | 32.1 (2.2×) |
-| add_mod, reduced operands | 512 | 20.2 | 35.6 (1.8×) | 28.4 (1.4×) | 43.0 (2.1×) | 43.3 (2.1×) |
-| add_mod, reduced operands | 1024 | 44.9 | 76.9 (1.7×) | 69.1 (1.5×) | 88.9 (2.0×) | 93.3 (2.1×) |
-| add_mod, reduced operands | 2048 | 83.0 | 204 (2.5×) | 157 (1.9×) | 231 (2.8×) | 205 (2.5×) |
-| add_mod, reduced operands | 4096 | 240 | 548 (2.3×) | 440 (1.8×) | 629 (2.6×) | 520 (2.2×) |
-| sub_mod, reduced operands | 64 | 3.9 | 2.7 (0.7×) | 2.7 (0.7×) | 2.6 (0.7×) | 3.5 (0.9×) |
-| sub_mod, reduced operands | 128 | 4.8 | 5.4 (1.1×) | 6.1 (1.3×) | 5.4 (1.1×) | 8.8 (1.8×) |
-| sub_mod, reduced operands | 256 | 7.4 | 15.0 (2.0×) | 12.0 (1.6×) | 13.3 (1.8×) | 19.0 (2.6×) |
-| sub_mod, reduced operands | 384 | 10.1 | 25.3 (2.5×) | 19.1 (1.9×) | 25.3 (2.5×) | 30.0 (3.0×) |
-| sub_mod, reduced operands | 512 | 16.1 | 34.9 (2.2×) | 29.2 (1.8×) | 40.6 (2.5×) | 41.9 (2.6×) |
-| sub_mod, reduced operands | 1024 | 37.8 | 68.6 (1.8×) | 68.0 (1.8×) | 80.2 (2.1×) | 92.3 (2.4×) |
-| sub_mod, reduced operands | 2048 | 75.6 | 213 (2.8×) | 172 (2.3×) | 299 (4.0×) | 205 (2.7×) |
-| sub_mod, reduced operands | 4096 | 238 | 570 (2.4×) | 450 (1.9×) | 610 (2.6×) | 571 (2.4×) |
-| add, constant time | 64 | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.1 (1.1×) | 1.0 (1.0×) |
-| add, constant time | 128 | 1.3 | 3.0 (2.3×) | 2.5 (1.9×) | 2.7 (2.1×) | 3.2 (2.5×) |
-| add, constant time | 256 | 2.3 | 9.8 (4.3×) | 8.6 (3.7×) | 8.8 (3.8×) | 11.3 (4.9×) |
-| add, constant time | 384 | 3.7 | 14.9 (4.0×) | 12.2 (3.3×) | 16.1 (4.4×) | 18.1 (4.9×) |
-| add, constant time | 512 | 4.1 | 23.8 (5.8×) | 18.2 (4.4×) | 25.3 (6.2×) | 31.3 (7.6×) |
-| add, constant time | 1024 | 22.0 | 55.3 (2.5×) | 47.2 (2.1×) | 59.5 (2.7×) | 67.7 (3.1×) |
-| add, constant time | 2048 | 51.0 | 115 (2.3×) | 106 (2.1×) | 125 (2.5×) | 141 (2.8×) |
-| add, constant time | 4096 | 161 | 354 (2.2×) | 248 (1.5×) | 401 (2.5×) | 305 (1.9×) |
-| mulmod, constant time | 64 | 93.9 | 131 (1.4×) | 94.3 (1.0×) | 243 (2.6×) | 110 (1.2×) |
-| mulmod, constant time | 128 | 206 | 572 (2.8×) | 367 (1.8×) | 603 (2.9×) | 371 (1.8×) |
-| mulmod, constant time | 256 | 471 | 1,189 (2.5×) | 745 (1.6×) | 1,273 (2.7×) | 844 (1.8×) |
-| mulmod, constant time | 384 | 830 | 1,929 (2.3×) | 1,208 (1.5×) | 2,273 (2.7×) | 1,490 (1.8×) |
-| mulmod, constant time | 512 | 1,189 | 3,013 (2.5×) | 1,849 (1.6×) | 3,546 (3.0×) | 2,294 (1.9×) |
-| mulmod, constant time | 1024 | 3,878 | 9,551 (2.5×) | 5,652 (1.5×) | 10,948 (2.8×) | 7,484 (1.9×) |
-| mulmod, constant time | 2048 | 13,505 | 32,887 (2.4×) | 19,411 (1.4×) | 37,045 (2.7×) | 25,512 (1.9×) |
-| mulmod, constant time | 4096 | 48,916 | 120,362 (2.5×) | 68,757 (1.4×) | 132,524 (2.7×) | 91,127 (1.9×) |
-| add_mod, constant time | 64 | 8.9 | 12.3 (1.4×) | 13.0 (1.5×) | 18.8 (2.1×) | 14.0 (1.6×) |
-| add_mod, constant time | 128 | 12.5 | 28.2 (2.3×) | 22.5 (1.8×) | 43.3 (3.5×) | 34.1 (2.7×) |
-| add_mod, constant time | 256 | 18.1 | 83.7 (4.6×) | 67.1 (3.7×) | 98.7 (5.5×) | 92.7 (5.1×) |
-| add_mod, constant time | 384 | 36.0 | 112 (3.1×) | 108 (3.0×) | 178 (4.9×) | 127 (3.5×) |
-| add_mod, constant time | 512 | 47.8 | 151 (3.2×) | 135 (2.8×) | 246 (5.1×) | 168 (3.5×) |
-| add_mod, constant time | 1024 | 131 | 327 (2.5×) | 260 (2.0×) | 621 (4.7×) | 350 (2.7×) |
-| add_mod, constant time | 2048 | 308 | 868 (2.8×) | 519 (1.7×) | 1,605 (5.2×) | 758 (2.5×) |
-| add_mod, constant time | 4096 | 551 | 1,876 (3.4×) | 1,684 (3.1×) | 2,043 (3.7×) | 2,049 (3.7×) |
-| sub_mod, constant time | 64 | 8.9 | 12.1 (1.4×) | 11.0 (1.2×) | 18.3 (2.1×) | 14.1 (1.6×) |
-| sub_mod, constant time | 128 | 11.8 | 24.0 (2.0×) | 19.0 (1.6×) | 31.9 (2.7×) | 23.0 (1.9×) |
-| sub_mod, constant time | 256 | 17.1 | 54.7 (3.2×) | 37.0 (2.2×) | 76.1 (4.5×) | 57.5 (3.4×) |
-| sub_mod, constant time | 384 | 27.5 | 103 (3.7×) | 57.5 (2.1×) | 122 (4.4×) | 85.4 (3.1×) |
-| sub_mod, constant time | 512 | 32.2 | 142 (4.4×) | 85.9 (2.7×) | 199 (6.2×) | 117 (3.6×) |
-| sub_mod, constant time | 1024 | 94.2 | 310 (3.3×) | 200 (2.1×) | 534 (5.7×) | 254 (2.7×) |
-| sub_mod, constant time | 2048 | 284 | 742 (2.6×) | 512 (1.8×) | 1,278 (4.5×) | 584 (2.1×) |
-| sub_mod, constant time | 4096 | 506 | 1,563 (3.1×) | 1,422 (2.8×) | 1,737 (3.4×) | 1,715 (3.4×) |
-| add_mod, reduced operands, constant time | 64 | 6.9 | 8.1 (1.2×) | 8.0 (1.2×) | 8.0 (1.2×) | 8.5 (1.2×) |
-| add_mod, reduced operands, constant time | 128 | 8.8 | 15.0 (1.7×) | 13.2 (1.5×) | 14.7 (1.7×) | 16.2 (1.8×) |
-| add_mod, reduced operands, constant time | 256 | 12.9 | 30.9 (2.4×) | 23.1 (1.8×) | 28.1 (2.2×) | 31.6 (2.4×) |
-| add_mod, reduced operands, constant time | 384 | 14.6 | 51.7 (3.5×) | 35.0 (2.4×) | 51.6 (3.5×) | 49.3 (3.4×) |
-| add_mod, reduced operands, constant time | 512 | 20.3 | 68.6 (3.4×) | 50.4 (2.5×) | 87.4 (4.3×) | 64.2 (3.2×) |
-| add_mod, reduced operands, constant time | 1024 | 51.6 | 142 (2.8×) | 91.1 (1.8×) | 305 (5.9×) | 144 (2.8×) |
-| add_mod, reduced operands, constant time | 2048 | 140 | 277 (2.0×) | 184 (1.3×) | 669 (4.8×) | 298 (2.1×) |
-| add_mod, reduced operands, constant time | 4096 | 301 | 821 (2.7×) | 716 (2.4×) | 868 (2.9×) | 825 (2.7×) |
+| add_mod, reduced operands | 128 | 6.0 | 6.7 (1.1×) | 6.8 (1.1×) | 8.1 (1.3×) | 10.3 (1.7×) |
+| add_mod, reduced operands | 256 | 12.9 | 16.6 (1.3×) | 13.5 (1.0×) | 16.7 (1.3×) | 20.3 (1.6×) |
+| add_mod, reduced operands | 384 | 14.6 | 27.3 (1.9×) | 19.7 (1.3×) | 27.6 (1.9×) | 32.1 (2.2×) |
+| add_mod, reduced operands | 512 | 20.2 | 34.6 (1.7×) | 26.6 (1.3×) | 39.6 (2.0×) | 42.9 (2.1×) |
+| add_mod, reduced operands | 1024 | 44.9 | 75.5 (1.7×) | 63.0 (1.4×) | 76.5 (1.7×) | 88.5 (2.0×) |
+| add_mod, reduced operands | 2048 | 83.0 | 198 (2.4×) | 144 (1.7×) | 230 (2.8×) | 200 (2.4×) |
+| add_mod, reduced operands | 4096 | 240 | 414 (1.7×) | 419 (1.7×) | 497 (2.1×) | 538 (2.2×) |
+| sub_mod, reduced operands | 64 | 3.9 | 2.3 (0.6×) | 2.7 (0.7×) | 3.2 (0.8×) | 3.7 (0.9×) |
+| sub_mod, reduced operands | 128 | 4.8 | 5.8 (1.2×) | 5.6 (1.2×) | 6.2 (1.3×) | 8.8 (1.8×) |
+| sub_mod, reduced operands | 256 | 7.4 | 15.2 (2.1×) | 12.4 (1.7×) | 13.3 (1.8×) | 18.8 (2.5×) |
+| sub_mod, reduced operands | 384 | 10.1 | 24.9 (2.5×) | 19.1 (1.9×) | 25.3 (2.5×) | 29.6 (2.9×) |
+| sub_mod, reduced operands | 512 | 16.1 | 34.5 (2.1×) | 27.4 (1.7×) | 40.6 (2.5×) | 41.1 (2.6×) |
+| sub_mod, reduced operands | 1024 | 37.8 | 70.0 (1.9×) | 68.7 (1.8×) | 78.8 (2.1×) | 90.8 (2.4×) |
+| sub_mod, reduced operands | 2048 | 75.6 | 204 (2.7×) | 164 (2.2×) | 287 (3.8×) | 204 (2.7×) |
+| sub_mod, reduced operands | 4096 | 238 | 432 (1.8×) | 441 (1.9×) | 471 (2.0×) | 555 (2.3×) |
+| add, constant time | 64 | 1.0 | 1.1 (1.1×) | 1.1 (1.1×) | 1.0 (1.0×) | 1.0 (1.0×) |
+| add, constant time | 128 | 1.3 | 3.0 (2.3×) | 2.4 (1.8×) | 2.9 (2.2×) | 2.9 (2.2×) |
+| add, constant time | 256 | 2.3 | 8.9 (3.9×) | 6.6 (2.9×) | 8.8 (3.8×) | 7.7 (3.3×) |
+| add, constant time | 384 | 3.7 | 15.6 (4.2×) | 11.2 (3.0×) | 16.1 (4.4×) | 18.1 (4.9×) |
+| add, constant time | 512 | 4.1 | 22.4 (5.5×) | 16.7 (4.1×) | 21.6 (5.3×) | 24.6 (6.0×) |
+| add, constant time | 1024 | 22.0 | 50.6 (2.3×) | 39.7 (1.8×) | 52.1 (2.4×) | 58.0 (2.6×) |
+| add, constant time | 2048 | 51.0 | 114 (2.2×) | 94.6 (1.9×) | 118 (2.3×) | 125 (2.5×) |
+| add, constant time | 4096 | 161 | 234 (1.5×) | 219 (1.4×) | 237 (1.5×) | 269 (1.7×) |
+| mulmod, constant time | 64 | 93.9 | 159 (1.7×) | 93.1 (1.0×) | 242 (2.6×) | 115 (1.2×) |
+| mulmod, constant time | 128 | 206 | 567 (2.8×) | 312 (1.5×) | 606 (2.9×) | 362 (1.8×) |
+| mulmod, constant time | 256 | 471 | 1,183 (2.5×) | 696 (1.5×) | 1,303 (2.8×) | 819 (1.7×) |
+| mulmod, constant time | 384 | 830 | 1,921 (2.3×) | 1,175 (1.4×) | 2,268 (2.7×) | 1,428 (1.7×) |
+| mulmod, constant time | 512 | 1,189 | 3,013 (2.5×) | 1,736 (1.5×) | 3,451 (2.9×) | 2,222 (1.9×) |
+| mulmod, constant time | 1024 | 3,878 | 9,583 (2.5×) | 5,196 (1.3×) | 10,929 (2.8×) | 7,083 (1.8×) |
+| mulmod, constant time | 2048 | 13,505 | 33,040 (2.4×) | 17,147 (1.3×) | 36,976 (2.7×) | 24,135 (1.8×) |
+| mulmod, constant time | 4096 | 48,916 | 120,322 (2.5×) | 59,507 (1.2×) | 131,241 (2.7×) | 85,773 (1.8×) |
+| add_mod, constant time | 64 | 8.9 | 12.1 (1.4×) | 13.0 (1.5×) | 19.7 (2.2×) | 13.1 (1.5×) |
+| add_mod, constant time | 128 | 12.5 | 27.2 (2.2×) | 23.3 (1.9×) | 35.0 (2.8×) | 34.1 (2.7×) |
+| add_mod, constant time | 256 | 18.1 | 82.8 (4.6×) | 68.5 (3.8×) | 102 (5.6×) | 78.2 (4.3×) |
+| add_mod, constant time | 384 | 36.0 | 112 (3.1×) | 108 (3.0×) | 171 (4.8×) | 127 (3.5×) |
+| add_mod, constant time | 512 | 47.8 | 146 (3.1×) | 136 (2.8×) | 233 (4.9×) | 166 (3.5×) |
+| add_mod, constant time | 1024 | 131 | 328 (2.5×) | 263 (2.0×) | 629 (4.8×) | 353 (2.7×) |
+| add_mod, constant time | 2048 | 308 | 874 (2.8×) | 513 (1.7×) | 1,594 (5.2×) | 751 (2.4×) |
+| add_mod, constant time | 4096 | 551 | 1,859 (3.4×) | 1,691 (3.1×) | 2,003 (3.6×) | 1,958 (3.6×) |
+| sub_mod, constant time | 64 | 8.9 | 12.2 (1.4×) | 11.0 (1.2×) | 19.2 (2.2×) | 13.8 (1.6×) |
+| sub_mod, constant time | 128 | 11.8 | 24.8 (2.1×) | 20.0 (1.7×) | 31.7 (2.7×) | 22.0 (1.9×) |
+| sub_mod, constant time | 256 | 17.1 | 52.1 (3.0×) | 36.1 (2.1×) | 75.3 (4.4×) | 58.5 (3.4×) |
+| sub_mod, constant time | 384 | 27.5 | 103 (3.7×) | 57.6 (2.1×) | 125 (4.5×) | 87.4 (3.2×) |
+| sub_mod, constant time | 512 | 32.2 | 141 (4.4×) | 86.1 (2.7×) | 196 (6.1×) | 119 (3.7×) |
+| sub_mod, constant time | 1024 | 94.2 | 313 (3.3×) | 201 (2.1×) | 533 (5.7×) | 256 (2.7×) |
+| sub_mod, constant time | 2048 | 284 | 739 (2.6×) | 512 (1.8×) | 1,277 (4.5×) | 573 (2.0×) |
+| sub_mod, constant time | 4096 | 506 | 1,537 (3.0×) | 1,391 (2.7×) | 1,680 (3.3×) | 1,614 (3.2×) |
+| add_mod, reduced operands, constant time | 64 | 6.9 | 8.3 (1.2×) | 8.0 (1.2×) | 8.0 (1.2×) | 8.5 (1.2×) |
+| add_mod, reduced operands, constant time | 128 | 8.8 | 15.9 (1.8×) | 14.0 (1.6×) | 14.7 (1.7×) | 15.5 (1.8×) |
+| add_mod, reduced operands, constant time | 256 | 12.9 | 31.7 (2.5×) | 24.0 (1.9×) | 29.1 (2.3×) | 31.1 (2.4×) |
+| add_mod, reduced operands, constant time | 384 | 14.6 | 46.1 (3.2×) | 32.8 (2.2×) | 48.4 (3.3×) | 46.7 (3.2×) |
+| add_mod, reduced operands, constant time | 512 | 20.3 | 58.1 (2.9×) | 43.8 (2.2×) | 71.8 (3.5×) | 62.3 (3.1×) |
+| add_mod, reduced operands, constant time | 1024 | 51.6 | 142 (2.8×) | 93.7 (1.8×) | 298 (5.8×) | 122 (2.4×) |
+| add_mod, reduced operands, constant time | 2048 | 140 | 278 (2.0×) | 184 (1.3×) | 678 (4.8×) | 293 (2.1×) |
+| add_mod, reduced operands, constant time | 4096 | 301 | 720 (2.4×) | 712 (2.4×) | 814 (2.7×) | 823 (2.7×) |
 | sub_mod, reduced operands, constant time | 64 | 3.9 | 4.0 (1.0×) | 5.0 (1.3×) | 4.0 (1.0×) | 5.1 (1.3×) |
-| sub_mod, reduced operands, constant time | 128 | 4.8 | 10.6 (2.2×) | 10.0 (2.1×) | 10.0 (2.1×) | 10.1 (2.1×) |
-| sub_mod, reduced operands, constant time | 256 | 6.9 | 23.1 (3.3×) | 19.1 (2.8×) | 31.0 (4.5×) | 28.0 (4.1×) |
-| sub_mod, reduced operands, constant time | 384 | 9.5 | 42.1 (4.4×) | 32.7 (3.4×) | 50.1 (5.3×) | 43.5 (4.6×) |
-| sub_mod, reduced operands, constant time | 512 | 18.0 | 59.8 (3.3×) | 44.2 (2.5×) | 91.2 (5.1×) | 62.4 (3.5×) |
-| sub_mod, reduced operands, constant time | 1024 | 44.8 | 129 (2.9×) | 112 (2.5×) | 232 (5.2×) | 141 (3.1×) |
-| sub_mod, reduced operands, constant time | 2048 | 121 | 300 (2.5×) | 257 (2.1×) | 570 (4.7×) | 304 (2.5×) |
-| sub_mod, reduced operands, constant time | 4096 | 304 | 852 (2.8×) | 690 (2.3×) | 874 (2.9×) | 884 (2.9×) |
+| sub_mod, reduced operands, constant time | 128 | 4.8 | 11.1 (2.3×) | 9.4 (2.0×) | 10.1 (2.1×) | 10.3 (2.1×) |
+| sub_mod, reduced operands, constant time | 256 | 6.9 | 24.4 (3.5×) | 19.9 (2.9×) | 28.3 (4.1×) | 27.1 (3.9×) |
+| sub_mod, reduced operands, constant time | 384 | 9.5 | 39.3 (4.1×) | 29.9 (3.1×) | 45.6 (4.8×) | 44.7 (4.7×) |
+| sub_mod, reduced operands, constant time | 512 | 18.0 | 59.4 (3.3×) | 44.9 (2.5×) | 87.4 (4.9×) | 63.1 (3.5×) |
+| sub_mod, reduced operands, constant time | 1024 | 44.8 | 132 (2.9×) | 110 (2.5×) | 224 (5.0×) | 140 (3.1×) |
+| sub_mod, reduced operands, constant time | 2048 | 121 | 294 (2.4×) | 257 (2.1×) | 555 (4.6×) | 306 (2.5×) |
+| sub_mod, reduced operands, constant time | 4096 | 304 | 774 (2.5×) | 698 (2.3×) | 871 (2.9×) | 875 (2.9×) |
 
 ## Reproduce
 
 ```sh
 cargo run -p biguint-bench-report -- bench    # the CPU's counts of the native build
 cargo run -p biguint-bench-report -- bench-wasm --chrome <chrome> --firefox <firefox>   # the WebAssembly builds
+cargo run -p biguint-bench-report -- bench-wasm --changed --chrome <chrome> --firefox <firefox>   # the cells whose code changed, with the figures they are compared with
 cargo run -p biguint-bench-report -- report   # this file
 ```
