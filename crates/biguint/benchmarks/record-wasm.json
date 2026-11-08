@@ -1,7 +1,7 @@
 {
-  "date": "2026-11-07",
-  "head": "5d2b0e19cea2d0b10681c3df26dfb7c4246b043a",
-  "library_commit": "47a91e3cdd9921c746568798f000c79ed3a4452e",
+  "date": "2026-11-08",
+  "head": "18979ad40b87ab5c2ceac2be8c7e81caac7b5094",
+  "library_commit": "18979ad40b87ab5c2ceac2be8c7e81caac7b5094",
   "dirty": false,
   "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
   "profile": [
@@ -59,9 +59,9 @@
       },
       "overheads": [
         {
-          "cycles": 5692.0,
+          "cycles": 6026.0,
           "instructions": 3081.0,
-          "noise": 132.0
+          "noise": 168.0
         },
         {
           "cycles": 9797.0,
@@ -105,6 +105,24 @@
               {
                 "cpu": 28,
                 "busy": 0.6434941728254691
+              }
+            ]
+          }
+        },
+        {
+          "commit": "18979ad40b87ab5c2ceac2be8c7e81caac7b5094",
+          "dirty": false,
+          "date": "2026-11-08",
+          "sweep": {
+            "cpu": 13,
+            "load": {
+              "before": 51.98,
+              "after": 44.68
+            },
+            "siblings": [
+              {
+                "cpu": 29,
+                "busy": 0.09026888604353393
               }
             ]
           }
@@ -802,22 +820,22 @@
             "deviation": null,
             "batch": {
               "operations": 32768,
-              "cycles": 55.7515869140625,
-              "instructions": 253.00003051757812,
-              "branch_misses": 0.00006103515625
+              "cycles": 52.970458984375,
+              "instructions": 242.0,
+              "branch_misses": -0.000274658203125
             },
             "chain": {
-              "class": "locals",
+              "class": "memory",
               "events": {
                 "operations": 32768,
-                "cycles": 50.706268310546875,
-                "instructions": 248.00003051757812,
-                "branch_misses": -0.000091552734375
+                "cycles": 51.024566650390625,
+                "instructions": 243.0,
+                "branch_misses": -0.000244140625
               }
             }
           },
-          "run": 0,
-          "code": "c6dc3ac426b70f1b18b4df4c8c056735"
+          "run": 1,
+          "code": "c018ca81a8f9f8324104afdedf2c1171"
         },
         {
           "op": "add",
@@ -887,21 +905,21 @@
             "deviation": null,
             "batch": {
               "operations": 32768,
-              "cycles": 53.62129211425781,
-              "instructions": 242.00003051757812,
-              "branch_misses": -0.000213623046875
+              "cycles": 53.09092712402344,
+              "instructions": 242.0,
+              "branch_misses": -0.00018310546875
             },
             "chain": {
               "class": "memory",
               "events": {
                 "operations": 32768,
-                "cycles": 51.132781982421875,
+                "cycles": 50.92271423339844,
                 "instructions": 243.0,
-                "branch_misses": 0.000091552734375
+                "branch_misses": -0.000152587890625
               }
             }
           },
-          "run": 0,
+          "run": 1,
           "code": "551fbc28aa347fa00903a5bfca30465e"
         },
         {
@@ -1859,22 +1877,22 @@
             "deviation": null,
             "batch": {
               "operations": 32768,
-              "cycles": 55.70654296875,
-              "instructions": 253.00003051757812,
-              "branch_misses": -0.00006103515625
+              "cycles": 53.062286376953125,
+              "instructions": 242.0,
+              "branch_misses": -0.000244140625
             },
             "chain": {
-              "class": "locals",
+              "class": "memory",
               "events": {
                 "operations": 32768,
-                "cycles": 50.60804748535156,
-                "instructions": 248.00003051757812,
-                "branch_misses": -0.000152587890625
+                "cycles": 50.93513488769531,
+                "instructions": 243.0,
+                "branch_misses": -0.00018310546875
               }
             }
           },
-          "run": 0,
-          "code": "204f416c02b422660db0c7bdfce8a84f"
+          "run": 1,
+          "code": "beab89168703dd9286d4c15aa0fd6a73"
         },
         {
           "op": "add_ct",
@@ -1944,21 +1962,21 @@
             "deviation": null,
             "batch": {
               "operations": 32768,
-              "cycles": 53.587890625,
-              "instructions": 242.00003051757812,
-              "branch_misses": -0.000274658203125
+              "cycles": 53.10334777832031,
+              "instructions": 242.0,
+              "branch_misses": -0.000213623046875
             },
             "chain": {
               "class": "memory",
               "events": {
                 "operations": 32768,
-                "cycles": 51.24102783203125,
+                "cycles": 50.94889831542969,
                 "instructions": 243.0,
-                "branch_misses": -0.000152587890625
+                "branch_misses": -0.000213623046875
               }
             }
           },
-          "run": 0,
+          "run": 1,
           "code": "551fbc28aa347fa00903a5bfca30465e"
         },
         {
@@ -14941,9 +14959,9 @@
       },
       "overheads": [
         {
-          "cycles": 7015.0,
+          "cycles": 6283.0,
           "instructions": 3081.0,
-          "noise": 3284.0
+          "noise": 189.0
         },
         {
           "cycles": 6353.0,
@@ -14987,6 +15005,24 @@
               {
                 "cpu": 28,
                 "busy": 0.2800497031616733
+              }
+            ]
+          }
+        },
+        {
+          "commit": "18979ad40b87ab5c2ceac2be8c7e81caac7b5094",
+          "dirty": false,
+          "date": "2026-11-08",
+          "sweep": {
+            "cpu": 13,
+            "load": {
+              "before": 44.68,
+              "after": 35.5
+            },
+            "siblings": [
+              {
+                "cpu": 29,
+                "busy": 0.06905561776782382
               }
             ]
           }
@@ -15684,22 +15720,22 @@
             "deviation": null,
             "batch": {
               "operations": 32768,
-              "cycles": 45.220611572265625,
-              "instructions": 184.0,
-              "branch_misses": -0.000152587890625
+              "cycles": 52.09930419921875,
+              "instructions": 252.0,
+              "branch_misses": -0.00018310546875
             },
             "chain": {
-              "class": "locals",
+              "class": "memory",
               "events": {
                 "operations": 32768,
-                "cycles": 39.711517333984375,
-                "instructions": 157.0,
+                "cycles": 51.22264099121094,
+                "instructions": 252.0,
                 "branch_misses": -0.000152587890625
               }
             }
           },
-          "run": 0,
-          "code": "88cc18e48e9b9b338ea27e997fb29521"
+          "run": 1,
+          "code": "adf8595c6966f83e730b7b40265bf598"
         },
         {
           "op": "add",
@@ -15743,21 +15779,21 @@
             "deviation": null,
             "batch": {
               "operations": 32768,
-              "cycles": 45.30419921875,
+              "cycles": 45.270294189453125,
               "instructions": 184.0,
-              "branch_misses": -0.000152587890625
+              "branch_misses": -0.00018310546875
             },
             "chain": {
               "class": "locals",
               "events": {
                 "operations": 32768,
-                "cycles": 39.59910583496094,
+                "cycles": 39.51849365234375,
                 "instructions": 157.0,
-                "branch_misses": -0.000244140625
+                "branch_misses": -0.00006103515625
               }
             }
           },
-          "run": 0,
+          "run": 1,
           "code": "db8fdd6f4c66dbd792f7c36517dfdc1f"
         },
         {
@@ -16741,22 +16777,22 @@
             "deviation": null,
             "batch": {
               "operations": 32768,
-              "cycles": 45.39404296875,
-              "instructions": 184.0,
-              "branch_misses": -0.00018310546875
+              "cycles": 52.0262451171875,
+              "instructions": 252.0,
+              "branch_misses": -0.000274658203125
             },
             "chain": {
-              "class": "locals",
+              "class": "memory",
               "events": {
                 "operations": 32768,
-                "cycles": 39.68060302734375,
-                "instructions": 157.0,
-                "branch_misses": -0.000213623046875
+                "cycles": 51.185516357421875,
+                "instructions": 252.0,
+                "branch_misses": -0.00018310546875
               }
             }
           },
-          "run": 0,
-          "code": "5b9ba32ddc26b675f5b9c4ba1f5d2103"
+          "run": 1,
+          "code": "7202d8ec6492834e50f3ac18b4452742"
         },
         {
           "op": "add_ct",
@@ -16800,7 +16836,7 @@
             "deviation": null,
             "batch": {
               "operations": 32768,
-              "cycles": 45.4273681640625,
+              "cycles": 45.257049560546875,
               "instructions": 184.0,
               "branch_misses": -0.00018310546875
             },
@@ -16808,13 +16844,13 @@
               "class": "locals",
               "events": {
                 "operations": 32768,
-                "cycles": 39.59100341796875,
+                "cycles": 39.515625,
                 "instructions": 157.0,
-                "branch_misses": -0.000152587890625
+                "branch_misses": -0.000091552734375
               }
             }
           },
-          "run": 0,
+          "run": 1,
           "code": "db8fdd6f4c66dbd792f7c36517dfdc1f"
         },
         {
@@ -29822,9 +29858,9 @@
       },
       "overheads": [
         {
-          "cycles": 13920.0,
+          "cycles": 4950.0,
           "instructions": 1885.0,
-          "noise": 5813.0
+          "noise": 207.0
         },
         {
           "cycles": 6744.0,
@@ -29868,6 +29904,24 @@
               {
                 "cpu": 28,
                 "busy": 0.4086756386380407
+              }
+            ]
+          }
+        },
+        {
+          "commit": "18979ad40b87ab5c2ceac2be8c7e81caac7b5094",
+          "dirty": false,
+          "date": "2026-11-08",
+          "sweep": {
+            "cpu": 13,
+            "load": {
+              "before": 35.5,
+              "after": 28.88
+            },
+            "siblings": [
+              {
+                "cpu": 29,
+                "busy": 0.10076976906927922
               }
             ]
           }
@@ -30564,23 +30618,23 @@
             "function": "+",
             "deviation": null,
             "batch": {
-              "operations": 16384,
-              "cycles": 59.35748291015625,
-              "instructions": 260.0,
+              "operations": 32768,
+              "cycles": 50.642547607421875,
+              "instructions": 235.0,
               "branch_misses": -0.0003662109375
             },
             "chain": {
-              "class": "locals",
+              "class": "memory",
               "events": {
                 "operations": 32768,
-                "cycles": 52.180908203125,
-                "instructions": 252.0,
-                "branch_misses": -0.000091552734375
+                "cycles": 50.843780517578125,
+                "instructions": 237.0,
+                "branch_misses": -0.0001220703125
               }
             }
           },
-          "run": 0,
-          "code": "c6dc3ac426b70f1b18b4df4c8c056735"
+          "run": 1,
+          "code": "c018ca81a8f9f8324104afdedf2c1171"
         },
         {
           "op": "add",
@@ -30650,21 +30704,21 @@
             "deviation": null,
             "batch": {
               "operations": 32768,
-              "cycles": 50.94203186035156,
-              "instructions": 235.0,
-              "branch_misses": -0.000244140625
+              "cycles": 50.84197998046875,
+              "instructions": 235.00003051757812,
+              "branch_misses": -0.000152587890625
             },
             "chain": {
               "class": "memory",
               "events": {
                 "operations": 32768,
-                "cycles": 51.301544189453125,
+                "cycles": 50.88838195800781,
                 "instructions": 237.0,
                 "branch_misses": -0.000244140625
               }
             }
           },
-          "run": 0,
+          "run": 1,
           "code": "551fbc28aa347fa00903a5bfca30465e"
         },
         {
@@ -31621,23 +31675,23 @@
             "function": "ConstantTime +",
             "deviation": null,
             "batch": {
-              "operations": 16384,
-              "cycles": 59.33209228515625,
-              "instructions": 260.0,
-              "branch_misses": -0.0003662109375
+              "operations": 32768,
+              "cycles": 50.60838317871094,
+              "instructions": 235.0,
+              "branch_misses": -0.000335693359375
             },
             "chain": {
-              "class": "locals",
+              "class": "memory",
               "events": {
                 "operations": 32768,
-                "cycles": 52.13703918457031,
-                "instructions": 252.0,
-                "branch_misses": 0.000030517578125
+                "cycles": 50.81877136230469,
+                "instructions": 237.0,
+                "branch_misses": -0.0001220703125
               }
             }
           },
-          "run": 0,
-          "code": "204f416c02b422660db0c7bdfce8a84f"
+          "run": 1,
+          "code": "beab89168703dd9286d4c15aa0fd6a73"
         },
         {
           "op": "add_ct",
@@ -31707,21 +31761,21 @@
             "deviation": null,
             "batch": {
               "operations": 32768,
-              "cycles": 50.80267333984375,
+              "cycles": 50.736968994140625,
               "instructions": 235.0,
-              "branch_misses": -0.000030517578125
+              "branch_misses": -0.00018310546875
             },
             "chain": {
               "class": "memory",
               "events": {
                 "operations": 32768,
-                "cycles": 51.339508056640625,
+                "cycles": 50.98321533203125,
                 "instructions": 237.0,
-                "branch_misses": -0.00006103515625
+                "branch_misses": -0.000152587890625
               }
             }
           },
-          "run": 0,
+          "run": 1,
           "code": "551fbc28aa347fa00903a5bfca30465e"
         },
         {
@@ -44704,9 +44758,9 @@
       },
       "overheads": [
         {
-          "cycles": 6026.0,
+          "cycles": 13108.0,
           "instructions": 1885.0,
-          "noise": 615.0
+          "noise": 954.0
         },
         {
           "cycles": 12452.0,
@@ -44750,6 +44804,24 @@
               {
                 "cpu": 28,
                 "busy": 0.17819491389023015
+              }
+            ]
+          }
+        },
+        {
+          "commit": "18979ad40b87ab5c2ceac2be8c7e81caac7b5094",
+          "dirty": false,
+          "date": "2026-11-08",
+          "sweep": {
+            "cpu": 13,
+            "load": {
+              "before": 28.88,
+              "after": 31.31
+            },
+            "siblings": [
+              {
+                "cpu": 29,
+                "busy": 0.6267264785739582
               }
             ]
           }
@@ -45447,22 +45519,22 @@
             "deviation": null,
             "batch": {
               "operations": 16384,
-              "cycles": 67.49566650390625,
-              "instructions": 333.0,
-              "branch_misses": -0.00048828125
+              "cycles": 59.295654296875,
+              "instructions": 293.0,
+              "branch_misses": -0.0006103515625
             },
             "chain": {
-              "class": "locals",
+              "class": "memory",
               "events": {
                 "operations": 16384,
-                "cycles": 58.01947021484375,
-                "instructions": 307.0,
+                "cycles": 66.75360107421875,
+                "instructions": 298.0,
                 "branch_misses": -0.00042724609375
               }
             }
           },
-          "run": 0,
-          "code": "88cc18e48e9b9b338ea27e997fb29521"
+          "run": 1,
+          "code": "adf8595c6966f83e730b7b40265bf598"
         },
         {
           "op": "add",
@@ -45506,21 +45578,21 @@
             "deviation": null,
             "batch": {
               "operations": 16384,
-              "cycles": 68.4033203125,
+              "cycles": 69.29116821289062,
               "instructions": 333.0,
-              "branch_misses": -0.0006103515625
+              "branch_misses": -0.00042724609375
             },
             "chain": {
               "class": "locals",
               "events": {
                 "operations": 16384,
-                "cycles": 58.189971923828125,
+                "cycles": 58.28668212890625,
                 "instructions": 307.0,
-                "branch_misses": -0.00018310546875
+                "branch_misses": 0.0003662109375
               }
             }
           },
-          "run": 0,
+          "run": 1,
           "code": "db8fdd6f4c66dbd792f7c36517dfdc1f"
         },
         {
@@ -45532,21 +45604,21 @@
             "deviation": null,
             "batch": {
               "operations": 16384,
-              "cycles": 58.144073486328125,
+              "cycles": 59.86968994140625,
               "instructions": 293.0,
-              "branch_misses": -0.00054931640625
+              "branch_misses": -0.00006103515625
             },
             "chain": {
               "class": "memory",
               "events": {
                 "operations": 16384,
-                "cycles": 60.62640380859375,
+                "cycles": 62.675506591796875,
                 "instructions": 297.0,
-                "branch_misses": -0.00042724609375
+                "branch_misses": -0.00054931640625
               }
             }
           },
-          "run": 0,
+          "run": 1,
           "code": "6b3f72657399bb40bc1553661042aa3a"
         },
         {
@@ -46504,22 +46576,22 @@
             "deviation": null,
             "batch": {
               "operations": 16384,
-              "cycles": 67.49264526367188,
-              "instructions": 333.0,
-              "branch_misses": -0.00042724609375
+              "cycles": 60.207000732421875,
+              "instructions": 293.0,
+              "branch_misses": -0.00030517578125
             },
             "chain": {
-              "class": "locals",
+              "class": "memory",
               "events": {
                 "operations": 16384,
-                "cycles": 58.03045654296875,
-                "instructions": 307.0,
-                "branch_misses": -0.00048828125
+                "cycles": 64.63360595703125,
+                "instructions": 298.0,
+                "branch_misses": -0.00091552734375
               }
             }
           },
-          "run": 0,
-          "code": "5b9ba32ddc26b675f5b9c4ba1f5d2103"
+          "run": 1,
+          "code": "7202d8ec6492834e50f3ac18b4452742"
         },
         {
           "op": "add_ct",
@@ -46563,21 +46635,21 @@
             "deviation": null,
             "batch": {
               "operations": 16384,
-              "cycles": 68.44647216796875,
+              "cycles": 68.92205810546875,
               "instructions": 333.0,
-              "branch_misses": -0.00054931640625
+              "branch_misses": -0.00042724609375
             },
             "chain": {
               "class": "locals",
               "events": {
                 "operations": 16384,
-                "cycles": 58.077239990234375,
+                "cycles": 58.87249755859375,
                 "instructions": 307.0,
-                "branch_misses": -0.00048828125
+                "branch_misses": -0.00054931640625
               }
             }
           },
-          "run": 0,
+          "run": 1,
           "code": "db8fdd6f4c66dbd792f7c36517dfdc1f"
         },
         {
@@ -46589,21 +46661,21 @@
             "deviation": null,
             "batch": {
               "operations": 16384,
-              "cycles": 58.2880859375,
+              "cycles": 58.587310791015625,
               "instructions": 293.0,
-              "branch_misses": -0.0003662109375
+              "branch_misses": -0.00018310546875
             },
             "chain": {
               "class": "memory",
               "events": {
                 "operations": 16384,
-                "cycles": 60.7689208984375,
-                "instructions": 297.0,
-                "branch_misses": -0.00048828125
+                "cycles": 63.73773193359375,
+                "instructions": 296.99505615234375,
+                "branch_misses": -0.00030517578125
               }
             }
           },
-          "run": 0,
+          "run": 1,
           "code": "6b3f72657399bb40bc1553661042aa3a"
         },
         {

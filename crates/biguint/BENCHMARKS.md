@@ -28,10 +28,11 @@
 - add_mod and sub_mod take operands of any value. A `*` there marks a function with an unchecked precondition, operands below the modulus, which gives a wrong result for other inputs: those cells compare against an unchecked precondition.
 - The rows of reduced operands take the one modulus of the width. `biguint` runs `Residue` and `ConstantTimeResidue` of a ring that `Modulus::scope` prepares outside the measured loop: the type holds each operand below the modulus, with no check.
 - `Residue` keeps a reference to its ring and reads the modulus through it, which makes modulus mixing a compile error. `native` holds the modulus of its 64-bit and 128-bit rows in a register, which leads `Residue -` at 128 bits natively, and the rows of reduced operands at 64 and 128 bits in WebAssembly.
-- `biguint` takes the operands of `add` and `mul` by value, and in WebAssembly LLVM loads them into locals ahead of the operation. `crypto-bigint`'s product at 384 bits reads its operands by reference as it goes, and `bnum`'s sum at 1024 bits reads 128-bit words, whose 16 loads LLVM keeps in place.
-- With wide arithmetic, `biguint` compiles to the same WebAssembly as `ruint` for `mul` at 256, 384 and 512 bits and as `crypto-bigint` for `add` at 384, 512 and 1024 bits: those figures differ by where the browser places the code.
-- Where the browsers favour different forms, `biguint` takes the form with the fewest cycles summed over Chrome and Firefox: without wide arithmetic for reduced `add_mod` at 256 to 512 bits, `add` at 512 bits and reduced constant-time `sub_mod` at 384 bits, and with it for `add` at 384 bits and `mulmod` at 512 bits.
+- `biguint` takes the operands of `add` and `mul` by value, and in WebAssembly LLVM loads them into locals ahead of the operation. `crypto-bigint`'s product at 384 bits reads its operands by reference as it goes.
+- With wide arithmetic, `biguint` compiles to the same WebAssembly as `ruint` for `mul` at 256, 384 and 512 bits and as `crypto-bigint` for `add` at 384 and 512 bits: those figures differ by where the browser places the code.
+- Where the browsers favour different forms, `biguint` takes the form with the fewest cycles summed over Chrome and Firefox: without wide arithmetic for reduced `add_mod` at 256 to 512 bits, `add` at 512 bits and reduced constant-time `sub_mod` at 384 bits, and with it for `add` at 384 and 1024 bits and `mulmod` at 512 bits.
 - Without wide arithmetic, `add` at 512 bits runs `ruint`'s code with the operands in the order of the faster native sum, which costs latency in WebAssembly.
+- With wide arithmetic, `add` at 1024 bits sums 128-bit words, which costs latency in both browsers.
 
 ## Functions
 
@@ -352,7 +353,7 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 
 ## WebAssembly
 
-`biguint` at commit `47a91e3` against `native`, `ruint`, `crypto-bigint`, `bnum`, `uint` and `num-bigint`, built for `wasm32-unknown-unknown` and run in headless browsers, in cycles per operation, measured on 2026-11-07.
+`biguint` at commit `18979ad` against `native`, `ruint`, `crypto-bigint`, `bnum`, `uint` and `num-bigint`, built for `wasm32-unknown-unknown` and run in headless browsers, in cycles per operation, measured on 2026-11-08.
 
 - The bench module runs in a dedicated worker of the browser, on the measuring CPU. A driver counts that thread with perf_event, and holds the CPU while the thread sleeps.
 - A second worker carries the start and the end of each count to the driver while the measuring worker sleeps.
@@ -378,20 +379,24 @@ Each cell: throughput cycles / latency cycles per operation. Bold: the fewest of
 | RUSTFLAGS, in WebAssembly with wide arithmetic, Firefox | `-C codegen-units=1 -C target-feature=+wide-arithmetic` |
 | Browser, in WebAssembly, Chrome | Google Chrome for Testing 156.0.8078.4; `--js-flags=--no-liftoff` |
 | Target features, in WebAssembly, Chrome | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext` |
-| Cost of a count, in WebAssembly, Chrome | 5,692 to 29,827 cycles and 3,081 instructions; its noise in a figure, 132 to 17,312 cycles |
+| Cost of a count, in WebAssembly, Chrome | 6,026 to 29,827 cycles and 3,081 instructions; its noise in a figure, 168 to 17,312 cycles |
 | Browser, in WebAssembly with wide arithmetic, Chrome | Google Chrome for Testing 156.0.8078.4; `--js-flags=--no-liftoff --wasm-wide-arithmetic` |
 | Target features, in WebAssembly with wide arithmetic, Chrome | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext`, `wide-arithmetic` |
 | Cost of a count, in WebAssembly with wide arithmetic, Chrome | 5,203 to 14,757 cycles and 3,081 instructions; its noise in a figure, 158 to 4,689 cycles |
 | Browser, in WebAssembly, Firefox | Mozilla Firefox 158.0.1; `javascript.options.wasm_baselinejit=false`, `javascript.options.wasm_wide_arithmetic=false` |
 | Target features, in WebAssembly, Firefox | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext` |
-| Cost of a count, in WebAssembly, Firefox | 5,072 to 19,223 cycles and 1,885 instructions; its noise in a figure, 141 to 5,813 cycles |
+| Cost of a count, in WebAssembly, Firefox | 4,950 to 19,223 cycles and 1,885 instructions; its noise in a figure, 141 to 5,438 cycles |
 | Browser, in WebAssembly with wide arithmetic, Firefox | Mozilla Firefox 158.0.1; `javascript.options.wasm_baselinejit=false`, `javascript.options.wasm_wide_arithmetic=true` |
 | Target features, in WebAssembly with wide arithmetic, Firefox | `bulk-memory`, `bulk-memory-opt`, `call-indirect-overlong`, `multivalue`, `mutable-globals`, `nontrapping-fptoint`, `reference-types`, `sign-ext`, `wide-arithmetic` |
 | Cost of a count, in WebAssembly with wide arithmetic, Firefox | 5,771 to 22,143 cycles and 1,885 instructions; its noise in a figure, 40.0 to 9,677 cycles |
-| Run 1, in WebAssembly, Chrome | `5d2b0e1`, 2026-11-07: 557 cells; CPU 12; 1-minute load 37.45 before, 36.77 after; its SMT sibling, CPU 28, 64% busy |
-| Run 1, in WebAssembly with wide arithmetic, Chrome | `5d2b0e1`, 2026-11-07: 557 cells; CPU 12; 1-minute load 36.77 before, 24.55 after; its SMT sibling, CPU 28, 28% busy |
-| Run 1, in WebAssembly, Firefox | `5d2b0e1`, 2026-11-07: 557 cells; CPU 12; 1-minute load 24.55 before, 24.42 after; its SMT sibling, CPU 28, 41% busy |
-| Run 1, in WebAssembly with wide arithmetic, Firefox | `5d2b0e1`, 2026-11-07: 557 cells; CPU 12; 1-minute load 24.42 before, 18.33 after; its SMT sibling, CPU 28, 18% busy |
+| Run 1, in WebAssembly, Chrome | `5d2b0e1`, 2026-11-07: 553 cells; CPU 12; 1-minute load 37.45 before, 36.77 after; its SMT sibling, CPU 28, 64% busy |
+| Run 2, in WebAssembly, Chrome | `18979ad`, 2026-11-08: 4 cells; CPU 13; 1-minute load 51.98 before, 44.68 after; its SMT sibling, CPU 29, 9% busy |
+| Run 1, in WebAssembly with wide arithmetic, Chrome | `5d2b0e1`, 2026-11-07: 553 cells; CPU 12; 1-minute load 36.77 before, 24.55 after; its SMT sibling, CPU 28, 28% busy |
+| Run 2, in WebAssembly with wide arithmetic, Chrome | `18979ad`, 2026-11-08: 4 cells; CPU 13; 1-minute load 44.68 before, 35.5 after; its SMT sibling, CPU 29, 7% busy |
+| Run 1, in WebAssembly, Firefox | `5d2b0e1`, 2026-11-07: 553 cells; CPU 12; 1-minute load 24.55 before, 24.42 after; its SMT sibling, CPU 28, 41% busy |
+| Run 2, in WebAssembly, Firefox | `18979ad`, 2026-11-08: 4 cells; CPU 13; 1-minute load 35.5 before, 28.88 after; its SMT sibling, CPU 29, 10% busy |
+| Run 1, in WebAssembly with wide arithmetic, Firefox | `5d2b0e1`, 2026-11-07: 551 cells; CPU 12; 1-minute load 24.42 before, 18.33 after; its SMT sibling, CPU 28, 18% busy |
+| Run 2, in WebAssembly with wide arithmetic, Firefox | `18979ad`, 2026-11-08: 6 cells; CPU 13; 1-minute load 28.88 before, 31.31 after; its SMT sibling, CPU 29, 63% busy |
 | Crates | ruint 1.21.1, crypto-bigint 0.7.10, bnum 0.14.4, uint 0.10.2, num-bigint 0.5.1 |
 
 
@@ -406,7 +411,7 @@ Cycles per operation of `biguint` against the fewest of the crates whose functio
 | add | 256 | 9.7 vs bnum 9.7 | +0.0 (1.00×) | 8.6 vs bnum 8.7 | −0.1 (0.99×) | 9.5 vs bnum 9.5 | +0.0 (1.00×) | 9.1 vs bnum 9.1 | +0.0 (1.00×) |
 | add | 384 | 16.5 vs ruint 17.9 | −1.4 (0.92×) | 14.0 vs crypto-bigint 14.5 | −0.5 (0.97×) | 16.5 vs bnum 16.1 | +0.4 (1.02×) | 17.6 vs bnum 17.1 | +0.5 (1.03×) |
 | add | 512 | 24.1 vs ruint 24.0 | +0.1 (1.00×) | 18.3 vs crypto-bigint 18.1 | +0.2 (1.01×) | 23.3 vs bnum 22.4 | +0.9 (1.04×) | 24.1 vs crypto-bigint 24.2 | −0.1 (1.00×) |
-| add | 1024 | 55.8 vs bnum 53.6 | +2.2 (1.04×) | 45.2 vs crypto-bigint 45.3 | −0.1 (1.00×) | 59.4 vs bnum 50.9 | +8.5 (1.17×) | 67.5 vs bnum 58.1 | +9.4 (1.16×) |
+| add | 1024 | 53.0 vs bnum 53.1 | −0.1 (1.00×) | 52.1 vs crypto-bigint 45.3 | +6.8 (1.15×) | 50.6 vs bnum 50.8 | −0.2 (1.00×) | 59.3 vs bnum 59.9 | −0.6 (0.99×) |
 | add | 2048 | 120 vs crypto-bigint 192 | −72.0 (0.62×) | 108 vs crypto-bigint 136 | −28.0 (0.79×) | 131 vs bnum 207 | −76.0 (0.63×) | 146 vs crypto-bigint 177 | −31.0 (0.82×) |
 | add | 4096 | 250 vs crypto-bigint 394 | −144 (0.63×) | 257 vs crypto-bigint 261 | −4.0 (0.98×) | 320 vs bnum 394 | −74.0 (0.81×) | 318 vs crypto-bigint 325 | −7.0 (0.98×) |
 | mul | 64 | 2.6 vs native 2.5 | +0.1 (1.04×) | 2.5 vs native 2.5 | +0.0 (1.00×) | 2.3 vs native 2.3 | +0.0 (1.00×) | 2.3 vs native 2.3 | +0.0 (1.00×) |
@@ -478,7 +483,7 @@ Cycles per operation of `biguint` against the fewest of the crates whose functio
 | add, constant time | 256 | 9.7 vs bnum 9.6 | +0.1 (1.01×) | 8.6 vs bnum 8.7 | −0.1 (0.99×) | 9.4 vs bnum 9.5 | −0.1 (0.99×) | 9.1 vs bnum 9.1 | +0.0 (1.00×) |
 | add, constant time | 384 | 16.5 vs ruint 17.9 | −1.4 (0.92×) | 14.1 vs crypto-bigint 14.5 | −0.4 (0.97×) | 16.5 vs bnum 16.1 | +0.4 (1.02×) | 17.6 vs bnum 17.2 | +0.4 (1.02×) |
 | add, constant time | 512 | 24.0 vs ruint 23.9 | +0.1 (1.00×) | 18.3 vs crypto-bigint 18.1 | +0.2 (1.01×) | 23.3 vs bnum 22.2 | +1.1 (1.05×) | 24.1 vs crypto-bigint 24.1 | +0.0 (1.00×) |
-| add, constant time | 1024 | 55.7 vs bnum 53.6 | +2.1 (1.04×) | 45.4 vs crypto-bigint 45.4 | +0.0 (1.00×) | 59.3 vs bnum 50.8 | +8.5 (1.17×) | 67.5 vs bnum 58.3 | +9.2 (1.16×) |
+| add, constant time | 1024 | 53.1 vs bnum 53.1 | +0.0 (1.00×) | 52.0 vs crypto-bigint 45.3 | +6.7 (1.15×) | 50.6 vs bnum 50.7 | −0.1 (1.00×) | 60.2 vs bnum 58.6 | +1.6 (1.03×) |
 | add, constant time | 2048 | 118 vs crypto-bigint 192 | −74.0 (0.61×) | 108 vs crypto-bigint 136 | −28.0 (0.79×) | 131 vs bnum 207 | −76.0 (0.63×) | 146 vs crypto-bigint 177 | −31.0 (0.82×) |
 | add, constant time | 4096 | 254 vs crypto-bigint 393 | −139 (0.65×) | 257 vs crypto-bigint 260 | −3.0 (0.99×) | 321 vs bnum 395 | −74.0 (0.81×) | 317 vs crypto-bigint 325 | −8.0 (0.98×) |
 | mul, constant time | 64 | 2.6 vs native 2.6 | +0.0 (1.00×) | 2.5 vs native 2.5 | +0.0 (1.00×) | 2.3 vs native 2.3 | +0.0 (1.00×) | 2.3 vs native 2.3 | +0.0 (1.00×) |
@@ -557,7 +562,7 @@ Cycles per operation of `biguint` against the fewest of the crates whose functio
 | add | 256 | 8.9 vs bnum 8.9 | +0.0 (1.00×) | 6.6 vs bnum 6.6 | +0.0 (1.00×) | 8.9 vs bnum 8.9 | +0.0 (1.00×) | 7.7 vs bnum 7.7 | +0.0 (1.00×) |
 | add | 384 | 15.8 vs ruint 15.8 | +0.0 (1.00×) | 11.2 vs crypto-bigint 10.9 | +0.3 (1.03×) | 16.1 vs ruint 15.7 | +0.4 (1.03×) | 18.1 vs crypto-bigint 18.1 | +0.0 (1.00×) |
 | add | 512 | 22.2 vs ruint 21.9 | +0.3 (1.01×) | 16.2 vs crypto-bigint 16.6 | −0.4 (0.98×) | 21.5 vs ruint 21.2 | +0.3 (1.01×) | 24.6 vs crypto-bigint 25.1 | −0.5 (0.98×) |
-| add | 1024 | 50.7 vs bnum 51.1 | −0.4 (0.99×) | 39.7 vs crypto-bigint 39.6 | +0.1 (1.00×) | 52.2 vs bnum 51.3 | +0.9 (1.02×) | 58.0 vs crypto-bigint 58.2 | −0.2 (1.00×) |
+| add | 1024 | 51.0 vs bnum 50.9 | +0.1 (1.00×) | 51.2 vs crypto-bigint 39.5 | +11.7 (1.30×) | 50.8 vs bnum 50.9 | −0.1 (1.00×) | 66.8 vs crypto-bigint 58.3 | +8.5 (1.15×) |
 | add | 2048 | 115 vs ruint 204 | −89.0 (0.56×) | 94.6 vs ruint 160 | −65.4 (0.59×) | 118 vs ruint 216 | −98.0 (0.55×) | 125 vs ruint 206 | −81.0 (0.61×) |
 | add | 4096 | 233 vs ruint 416 | −183 (0.56×) | 219 vs ruint 295 | −76.0 (0.74×) | 237 vs ruint 422 | −185 (0.56×) | 269 vs ruint 380 | −111 (0.71×) |
 | mulmod | 64 | 68.5 vs ruint 85.2 | −16.7 (0.80×) | 34.8 vs ruint 42.9 | −8.1 (0.81×) | 122 vs ruint 178 | −56.0 (0.69×) | 42.8 vs ruint 55.0 | −12.2 (0.78×) |
@@ -605,7 +610,7 @@ Cycles per operation of `biguint` against the fewest of the crates whose functio
 | add, constant time | 256 | 8.9 vs bnum 9.0 | −0.1 (0.99×) | 6.6 vs bnum 6.6 | +0.0 (1.00×) | 8.8 vs bnum 8.9 | −0.1 (0.99×) | 7.7 vs bnum 7.8 | −0.1 (0.99×) |
 | add, constant time | 384 | 15.6 vs ruint 15.9 | −0.3 (0.98×) | 11.2 vs crypto-bigint 10.9 | +0.3 (1.03×) | 16.1 vs ruint 15.7 | +0.4 (1.03×) | 18.1 vs crypto-bigint 18.1 | +0.0 (1.00×) |
 | add, constant time | 512 | 22.4 vs ruint 21.7 | +0.7 (1.03×) | 16.7 vs crypto-bigint 16.8 | −0.1 (0.99×) | 21.6 vs ruint 21.0 | +0.6 (1.03×) | 24.6 vs crypto-bigint 25.1 | −0.5 (0.98×) |
-| add, constant time | 1024 | 50.6 vs bnum 51.2 | −0.6 (0.99×) | 39.7 vs crypto-bigint 39.6 | +0.1 (1.00×) | 52.1 vs bnum 51.3 | +0.8 (1.02×) | 58.0 vs crypto-bigint 58.1 | −0.1 (1.00×) |
+| add, constant time | 1024 | 50.9 vs bnum 50.9 | +0.0 (1.00×) | 51.2 vs crypto-bigint 39.5 | +11.7 (1.30×) | 50.8 vs bnum 51.0 | −0.2 (1.00×) | 64.6 vs crypto-bigint 58.9 | +5.7 (1.10×) |
 | add, constant time | 2048 | 114 vs ruint 204 | −90.0 (0.56×) | 94.6 vs ruint 159 | −64.4 (0.59×) | 118 vs ruint 216 | −98.0 (0.55×) | 125 vs ruint 206 | −81.0 (0.61×) |
 | add, constant time | 4096 | 234 vs ruint 417 | −183 (0.56×) | 219 vs ruint 296 | −77.0 (0.74×) | 237 vs ruint 422 | −185 (0.56×) | 269 vs ruint 382 | −113 (0.70×) |
 | mulmod, constant time | 64 | 159 | – | 93.1 | – | 242 | – | 115 | – |
@@ -660,7 +665,7 @@ Cycles per operation of `biguint` in each build, then its ratio to the native fi
 | add | 256 | 4.7 | 9.7 (2.1×) | 8.6 (1.8×) | 9.5 (2.0×) | 9.1 (1.9×) |
 | add | 384 | 7.1 | 16.5 (2.3×) | 14.0 (2.0×) | 16.5 (2.3×) | 17.6 (2.5×) |
 | add | 512 | 9.2 | 24.1 (2.6×) | 18.3 (2.0×) | 23.3 (2.5×) | 24.1 (2.6×) |
-| add | 1024 | 23.3 | 55.8 (2.4×) | 45.2 (1.9×) | 59.4 (2.5×) | 67.5 (2.9×) |
+| add | 1024 | 23.3 | 53.0 (2.3×) | 52.1 (2.2×) | 50.6 (2.2×) | 59.3 (2.5×) |
 | add | 2048 | 53.5 | 120 (2.2×) | 108 (2.0×) | 131 (2.4×) | 146 (2.7×) |
 | add | 4096 | 158 | 250 (1.6×) | 257 (1.6×) | 320 (2.0×) | 318 (2.0×) |
 | mul | 64 | 1.5 | 2.6 (1.7×) | 2.5 (1.7×) | 2.3 (1.5×) | 2.3 (1.5×) |
@@ -732,7 +737,7 @@ Cycles per operation of `biguint` in each build, then its ratio to the native fi
 | add, constant time | 256 | 4.5 | 9.7 (2.2×) | 8.6 (1.9×) | 9.4 (2.1×) | 9.1 (2.0×) |
 | add, constant time | 384 | 7.0 | 16.5 (2.4×) | 14.1 (2.0×) | 16.5 (2.4×) | 17.6 (2.5×) |
 | add, constant time | 512 | 9.5 | 24.0 (2.5×) | 18.3 (1.9×) | 23.3 (2.5×) | 24.1 (2.5×) |
-| add, constant time | 1024 | 23.4 | 55.7 (2.4×) | 45.4 (1.9×) | 59.3 (2.5×) | 67.5 (2.9×) |
+| add, constant time | 1024 | 23.4 | 53.1 (2.3×) | 52.0 (2.2×) | 50.6 (2.2×) | 60.2 (2.6×) |
 | add, constant time | 2048 | 53.3 | 118 (2.2×) | 108 (2.0×) | 131 (2.5×) | 146 (2.7×) |
 | add, constant time | 4096 | 162 | 254 (1.6×) | 257 (1.6×) | 321 (2.0×) | 317 (2.0×) |
 | mul, constant time | 64 | 1.5 | 2.6 (1.7×) | 2.5 (1.7×) | 2.3 (1.5×) | 2.3 (1.5×) |
@@ -811,7 +816,7 @@ Cycles per operation of `biguint` in each build, then its ratio to the native fi
 | add | 256 | 2.5 | 8.9 (3.6×) | 6.6 (2.6×) | 8.9 (3.6×) | 7.7 (3.1×) |
 | add | 384 | 3.5 | 15.8 (4.5×) | 11.2 (3.2×) | 16.1 (4.6×) | 18.1 (5.2×) |
 | add | 512 | 4.0 | 22.2 (5.5×) | 16.2 (4.0×) | 21.5 (5.4×) | 24.6 (6.2×) |
-| add | 1024 | 22.1 | 50.7 (2.3×) | 39.7 (1.8×) | 52.2 (2.4×) | 58.0 (2.6×) |
+| add | 1024 | 22.1 | 51.0 (2.3×) | 51.2 (2.3×) | 50.8 (2.3×) | 66.8 (3.0×) |
 | add | 2048 | 51.4 | 115 (2.2×) | 94.6 (1.8×) | 118 (2.3×) | 125 (2.4×) |
 | add | 4096 | 163 | 233 (1.4×) | 219 (1.3×) | 237 (1.5×) | 269 (1.7×) |
 | mulmod | 64 | 23.0 | 68.5 (3.0×) | 34.8 (1.5×) | 122 (5.3×) | 42.8 (1.9×) |
@@ -859,7 +864,7 @@ Cycles per operation of `biguint` in each build, then its ratio to the native fi
 | add, constant time | 256 | 2.3 | 8.9 (3.9×) | 6.6 (2.9×) | 8.8 (3.8×) | 7.7 (3.3×) |
 | add, constant time | 384 | 3.7 | 15.6 (4.2×) | 11.2 (3.0×) | 16.1 (4.4×) | 18.1 (4.9×) |
 | add, constant time | 512 | 4.1 | 22.4 (5.5×) | 16.7 (4.1×) | 21.6 (5.3×) | 24.6 (6.0×) |
-| add, constant time | 1024 | 22.0 | 50.6 (2.3×) | 39.7 (1.8×) | 52.1 (2.4×) | 58.0 (2.6×) |
+| add, constant time | 1024 | 22.0 | 50.9 (2.3×) | 51.2 (2.3×) | 50.8 (2.3×) | 64.6 (2.9×) |
 | add, constant time | 2048 | 51.0 | 114 (2.2×) | 94.6 (1.9×) | 118 (2.3×) | 125 (2.5×) |
 | add, constant time | 4096 | 161 | 234 (1.5×) | 219 (1.4×) | 237 (1.5×) | 269 (1.7×) |
 | mulmod, constant time | 64 | 93.9 | 159 (1.7×) | 93.1 (1.0×) | 242 (2.6×) | 115 (1.2×) |

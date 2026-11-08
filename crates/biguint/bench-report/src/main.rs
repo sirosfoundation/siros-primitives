@@ -101,6 +101,8 @@ const LAYOUT: Layout<'static, Width> = Layout {
          `add` at 384 and 1024 bits and `mulmod` at 512 bits.",
         "Without wide arithmetic, `add` at 512 bits runs `ruint`'s code with the operands in the \
          order of the faster native sum, which costs latency in WebAssembly.",
+        "With wide arithmetic, `add` at 1024 bits sums 128-bit words, which costs latency in both \
+         browsers.",
     ],
     wasm_native: "",
 };
