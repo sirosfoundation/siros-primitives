@@ -91,7 +91,7 @@
           "noise": 154.0
         }
       ],
-      "harness": "c5887440da86aeb0e6570153310908f5",
+      "harness": "e927847fd3122f3ccd92f54f899a3995",
       "runs": [
         {
           "commit": "5d2b0e19cea2d0b10681c3df26dfb7c4246b043a",
@@ -919,7 +919,7 @@
             }
           },
           "run": 0,
-          "code": "24cfc7daacaa0ca042cdcd75bab38d91"
+          "code": "49b3a8719a60e9bb6af7f4382c56084d"
         },
         {
           "op": "add",
@@ -946,7 +946,7 @@
             }
           },
           "run": 0,
-          "code": "6d0c45e7acabb236380a6d9881f7d83d"
+          "code": "703213eabfc4c2830fbd0d3c9884b586"
         },
         {
           "op": "add",
@@ -973,7 +973,7 @@
             }
           },
           "run": 0,
-          "code": "4d9445a4e15d929539c6b95dd812e033"
+          "code": "54181f86f140dc25fdef318aa5de9623"
         },
         {
           "op": "add",
@@ -2795,7 +2795,7 @@
             }
           },
           "run": 0,
-          "code": "c655b9dcbac6862de70127920d0c5779"
+          "code": "6d10666db86e8c769b86c43d991c7efa"
         },
         {
           "op": "mul",
@@ -2822,7 +2822,7 @@
             }
           },
           "run": 0,
-          "code": "ba61a24c6043cd0002a5174527325728"
+          "code": "67742e0cfd31cfdc694ae1db97f6a79e"
         },
         {
           "op": "mul",
@@ -3882,7 +3882,7 @@
             }
           },
           "run": 0,
-          "code": "880e750c7d8882c6838d078d784c7919"
+          "code": "e314280afcfe81262a41414308871673"
         },
         {
           "op": "mul_vartime",
@@ -4861,7 +4861,7 @@
             }
           },
           "run": 0,
-          "code": "c9e9ffdef0568db57d375df10cceb67d"
+          "code": "1fdd54d823e31a748474472e761d0efe"
         },
         {
           "op": "square",
@@ -4888,7 +4888,7 @@
             }
           },
           "run": 0,
-          "code": "cc22148c6c6c862bc7956df7861a0e03"
+          "code": "04935edbb6cca47bbecc0b69e6a722e5"
         },
         {
           "op": "square",
@@ -5948,7 +5948,7 @@
             }
           },
           "run": 0,
-          "code": "abfbb945f60b1c55c578d7d91581415e"
+          "code": "08a7122250e08b56f0ff99f2969de480"
         },
         {
           "op": "square_vartime",
@@ -6812,7 +6812,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "58d1482a54273b6c98ee979dfb28d679"
+          "code": "67267900d0f711752ec1e31e5c99a8a7"
         },
         {
           "op": "invert",
@@ -7707,7 +7707,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "130b3314481810cc75ebde1f37e1eb45"
+          "code": "bbd32022836923cd85fb3d8e96bb3526"
         },
         {
           "op": "invert_vartime",
@@ -7734,7 +7734,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "afffe0017a3f6fc4ce9d34d05e987a65"
+          "code": "0186a9d24224c6f935b97aa8cd2e5117"
         },
         {
           "op": "invert_vartime",
@@ -8577,7 +8577,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "ed46c6934ee6dfaa2525ef5481849020"
+          "code": "28acc9c23247a2424b66f3aed2d011e1"
         },
         {
           "op": "sqrt",
@@ -8596,7 +8596,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "0cfb935a363615577a00f98c0859c086"
+          "code": "b9c3ec2198230b979e96e69ebb6c8fb8"
         },
         {
           "op": "sqrt",
@@ -9496,7 +9496,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "cb228d062cc2cc785d95c7ce80d1fb6f"
+          "code": "6f46d0722c8a673dc571899a1f64354d"
         },
         {
           "op": "sqrt_vartime",
@@ -9868,7 +9868,7 @@
           "noise": 3812.0
         }
       ],
-      "harness": "c5887440da86aeb0e6570153310908f5",
+      "harness": "e927847fd3122f3ccd92f54f899a3995",
       "runs": [
         {
           "commit": "5d2b0e19cea2d0b10681c3df26dfb7c4246b043a",
@@ -10696,7 +10696,7 @@
             }
           },
           "run": 0,
-          "code": "12a6f8ec2da7da922b2b70d736928564"
+          "code": "ba3f573003fc851ab8c711bbe1c0cf51"
         },
         {
           "op": "add",
@@ -10723,7 +10723,7 @@
             }
           },
           "run": 0,
-          "code": "49f917c6e776bd2aa776b12a243cf4f5"
+          "code": "3e18045325e3e3f5ccb47a6406950349"
         },
         {
           "op": "add",
@@ -10750,7 +10750,7 @@
             }
           },
           "run": 0,
-          "code": "fa7422803dd3187006dafc398323878d"
+          "code": "619e174433b8126f69d5ff8ae4f4650b"
         },
         {
           "op": "add",
@@ -12572,7 +12572,7 @@
             }
           },
           "run": 0,
-          "code": "d0753c8a03cc5da9d0f651367b4f9060"
+          "code": "5ee9fd3144aaade36135a2746a646b05"
         },
         {
           "op": "mul",
@@ -12599,7 +12599,7 @@
             }
           },
           "run": 0,
-          "code": "3fbbbe28a1f62487f415c30b3e2ff07f"
+          "code": "a9ab8131440ff7908edf396e6c888e49"
         },
         {
           "op": "mul",
@@ -13659,7 +13659,7 @@
             }
           },
           "run": 0,
-          "code": "67b8a714ebf0bc2ea48bb14b128e1381"
+          "code": "593f7d43dbb0c8d62fb01c38a5e2bed0"
         },
         {
           "op": "mul_vartime",
@@ -14638,7 +14638,7 @@
             }
           },
           "run": 0,
-          "code": "931c0c205c737fdfcdfe2a4a363c7b84"
+          "code": "a70616a9c747b9dc6a87c7b9b295b621"
         },
         {
           "op": "square",
@@ -14665,7 +14665,7 @@
             }
           },
           "run": 0,
-          "code": "fff183dc0c0f643afb855cc6de3083a0"
+          "code": "a0922ebcc2fa6c6f80c1d5552fb9bcae"
         },
         {
           "op": "square",
@@ -15725,7 +15725,7 @@
             }
           },
           "run": 0,
-          "code": "7479ee13e2e0114219fef7addc2781fe"
+          "code": "71cdd628fb13fd4120ff92a58f140dbb"
         },
         {
           "op": "square_vartime",
@@ -16589,7 +16589,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "dbd5182a313877a572ec8466c0c828ce"
+          "code": "5647eed802c98b67e6ba14c72ca9c7c0"
         },
         {
           "op": "invert",
@@ -17484,7 +17484,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "60cfb3582fc1609b69405bcf5362a2cc"
+          "code": "8fa6cf7001554cccb421134ee5ac30c9"
         },
         {
           "op": "invert_vartime",
@@ -17511,7 +17511,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "6d92d8e5503970e8df4a0409c3f2cfb5"
+          "code": "3f61589891d69aef048a3eeda59b1b5c"
         },
         {
           "op": "invert_vartime",
@@ -18354,7 +18354,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "69d68df66cc148a9f15e5de185c499b9"
+          "code": "4155dda33f3aa62773d81a4f9860a7b2"
         },
         {
           "op": "sqrt",
@@ -18373,7 +18373,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "0847b50628bfa192e59a1041535d94dd"
+          "code": "e7f86738acbacf304bb03d76994c5fe3"
         },
         {
           "op": "sqrt",
@@ -19273,7 +19273,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "06b6867b444176ea941b01e5e2ef3e5b"
+          "code": "3efdeb0cfe36e5339761355e30e2fbd6"
         },
         {
           "op": "sqrt_vartime",
@@ -19644,7 +19644,7 @@
           "noise": 2774.0
         }
       ],
-      "harness": "c5887440da86aeb0e6570153310908f5",
+      "harness": "e927847fd3122f3ccd92f54f899a3995",
       "runs": [
         {
           "commit": "5d2b0e19cea2d0b10681c3df26dfb7c4246b043a",
@@ -20472,7 +20472,7 @@
             }
           },
           "run": 0,
-          "code": "24cfc7daacaa0ca042cdcd75bab38d91"
+          "code": "49b3a8719a60e9bb6af7f4382c56084d"
         },
         {
           "op": "add",
@@ -20499,7 +20499,7 @@
             }
           },
           "run": 0,
-          "code": "6d0c45e7acabb236380a6d9881f7d83d"
+          "code": "703213eabfc4c2830fbd0d3c9884b586"
         },
         {
           "op": "add",
@@ -20526,7 +20526,7 @@
             }
           },
           "run": 0,
-          "code": "4d9445a4e15d929539c6b95dd812e033"
+          "code": "54181f86f140dc25fdef318aa5de9623"
         },
         {
           "op": "add",
@@ -22348,7 +22348,7 @@
             }
           },
           "run": 0,
-          "code": "c655b9dcbac6862de70127920d0c5779"
+          "code": "6d10666db86e8c769b86c43d991c7efa"
         },
         {
           "op": "mul",
@@ -22375,7 +22375,7 @@
             }
           },
           "run": 0,
-          "code": "ba61a24c6043cd0002a5174527325728"
+          "code": "67742e0cfd31cfdc694ae1db97f6a79e"
         },
         {
           "op": "mul",
@@ -23435,7 +23435,7 @@
             }
           },
           "run": 0,
-          "code": "880e750c7d8882c6838d078d784c7919"
+          "code": "e314280afcfe81262a41414308871673"
         },
         {
           "op": "mul_vartime",
@@ -24414,7 +24414,7 @@
             }
           },
           "run": 0,
-          "code": "c9e9ffdef0568db57d375df10cceb67d"
+          "code": "1fdd54d823e31a748474472e761d0efe"
         },
         {
           "op": "square",
@@ -24441,7 +24441,7 @@
             }
           },
           "run": 0,
-          "code": "cc22148c6c6c862bc7956df7861a0e03"
+          "code": "04935edbb6cca47bbecc0b69e6a722e5"
         },
         {
           "op": "square",
@@ -25501,7 +25501,7 @@
             }
           },
           "run": 0,
-          "code": "abfbb945f60b1c55c578d7d91581415e"
+          "code": "08a7122250e08b56f0ff99f2969de480"
         },
         {
           "op": "square_vartime",
@@ -26365,7 +26365,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "58d1482a54273b6c98ee979dfb28d679"
+          "code": "67267900d0f711752ec1e31e5c99a8a7"
         },
         {
           "op": "invert",
@@ -27260,7 +27260,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "130b3314481810cc75ebde1f37e1eb45"
+          "code": "bbd32022836923cd85fb3d8e96bb3526"
         },
         {
           "op": "invert_vartime",
@@ -27287,7 +27287,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "afffe0017a3f6fc4ce9d34d05e987a65"
+          "code": "0186a9d24224c6f935b97aa8cd2e5117"
         },
         {
           "op": "invert_vartime",
@@ -28130,7 +28130,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "ed46c6934ee6dfaa2525ef5481849020"
+          "code": "28acc9c23247a2424b66f3aed2d011e1"
         },
         {
           "op": "sqrt",
@@ -28149,7 +28149,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "0cfb935a363615577a00f98c0859c086"
+          "code": "b9c3ec2198230b979e96e69ebb6c8fb8"
         },
         {
           "op": "sqrt",
@@ -29049,7 +29049,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "cb228d062cc2cc785d95c7ce80d1fb6f"
+          "code": "6f46d0722c8a673dc571899a1f64354d"
         },
         {
           "op": "sqrt_vartime",
@@ -29421,7 +29421,7 @@
           "noise": 148.0
         }
       ],
-      "harness": "c5887440da86aeb0e6570153310908f5",
+      "harness": "e927847fd3122f3ccd92f54f899a3995",
       "runs": [
         {
           "commit": "5d2b0e19cea2d0b10681c3df26dfb7c4246b043a",
@@ -30249,7 +30249,7 @@
             }
           },
           "run": 0,
-          "code": "12a6f8ec2da7da922b2b70d736928564"
+          "code": "ba3f573003fc851ab8c711bbe1c0cf51"
         },
         {
           "op": "add",
@@ -30276,7 +30276,7 @@
             }
           },
           "run": 0,
-          "code": "49f917c6e776bd2aa776b12a243cf4f5"
+          "code": "3e18045325e3e3f5ccb47a6406950349"
         },
         {
           "op": "add",
@@ -30303,7 +30303,7 @@
             }
           },
           "run": 0,
-          "code": "fa7422803dd3187006dafc398323878d"
+          "code": "619e174433b8126f69d5ff8ae4f4650b"
         },
         {
           "op": "add",
@@ -32125,7 +32125,7 @@
             }
           },
           "run": 0,
-          "code": "d0753c8a03cc5da9d0f651367b4f9060"
+          "code": "5ee9fd3144aaade36135a2746a646b05"
         },
         {
           "op": "mul",
@@ -32152,7 +32152,7 @@
             }
           },
           "run": 0,
-          "code": "3fbbbe28a1f62487f415c30b3e2ff07f"
+          "code": "a9ab8131440ff7908edf396e6c888e49"
         },
         {
           "op": "mul",
@@ -33212,7 +33212,7 @@
             }
           },
           "run": 0,
-          "code": "67b8a714ebf0bc2ea48bb14b128e1381"
+          "code": "593f7d43dbb0c8d62fb01c38a5e2bed0"
         },
         {
           "op": "mul_vartime",
@@ -34191,7 +34191,7 @@
             }
           },
           "run": 0,
-          "code": "931c0c205c737fdfcdfe2a4a363c7b84"
+          "code": "a70616a9c747b9dc6a87c7b9b295b621"
         },
         {
           "op": "square",
@@ -34218,7 +34218,7 @@
             }
           },
           "run": 0,
-          "code": "fff183dc0c0f643afb855cc6de3083a0"
+          "code": "a0922ebcc2fa6c6f80c1d5552fb9bcae"
         },
         {
           "op": "square",
@@ -35278,7 +35278,7 @@
             }
           },
           "run": 0,
-          "code": "7479ee13e2e0114219fef7addc2781fe"
+          "code": "71cdd628fb13fd4120ff92a58f140dbb"
         },
         {
           "op": "square_vartime",
@@ -36142,7 +36142,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "dbd5182a313877a572ec8466c0c828ce"
+          "code": "5647eed802c98b67e6ba14c72ca9c7c0"
         },
         {
           "op": "invert",
@@ -37037,7 +37037,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "60cfb3582fc1609b69405bcf5362a2cc"
+          "code": "8fa6cf7001554cccb421134ee5ac30c9"
         },
         {
           "op": "invert_vartime",
@@ -37064,7 +37064,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "6d92d8e5503970e8df4a0409c3f2cfb5"
+          "code": "3f61589891d69aef048a3eeda59b1b5c"
         },
         {
           "op": "invert_vartime",
@@ -37907,7 +37907,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "69d68df66cc148a9f15e5de185c499b9"
+          "code": "4155dda33f3aa62773d81a4f9860a7b2"
         },
         {
           "op": "sqrt",
@@ -37926,7 +37926,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "0847b50628bfa192e59a1041535d94dd"
+          "code": "e7f86738acbacf304bb03d76994c5fe3"
         },
         {
           "op": "sqrt",
@@ -38826,7 +38826,7 @@
             "chain": null
           },
           "run": 0,
-          "code": "06b6867b444176ea941b01e5e2ef3e5b"
+          "code": "3efdeb0cfe36e5339761355e30e2fbd6"
         },
         {
           "op": "sqrt_vartime",
