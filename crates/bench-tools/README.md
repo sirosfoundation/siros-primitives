@@ -88,6 +88,27 @@ cargo run --release -p bench-tools --bin bench-browser -- \
   [--threads measuring | process] [--only <op/key/crate,...>] [--runs <runs>]
 ```
 
+## Native sweeps
+
+`bench` builds every build, then runs `SELECTED_RUNS`, 3, passes: each runs every bench of every
+build once. A cell takes the fewest figures of its bench's runs, merged as for a selected
+WebAssembly cell. The runs of one bench are one run of the record, whose sweep spans them, so a
+verdict compares figures of one bench. A run of a bench lasts 2 to 14 s, and one burst of load can
+cover all its repetitions; the bench runs again a pass later, 34 to 48 s for biguint. Cycles of the
+760 figures of the 557 cells of biguint, against the fewest of 3 runs of a quiet sweep, with no busy
+loop, at load 15:
+
+| Against a quiet sweep | Median distance | 95th percentile | Off by more than 10% | Median signed difference |
+| --------------------- | --------------- | --------------- | -------------------- | ------------------------ |
+| Quiet, 1 run          | 0.68%           | 7.3%            | 2.5%                 | +0.45%                   |
+| Quiet, fewest of 3    | 0.45%           | 4.6%            | 0.8%                 | +0.05%                   |
+| Bursts, 1 run         | 1.06%           | 63.1%           | 22.7%                | +0.78%                   |
+| Bursts, fewest of 3   | 0.45%           | 4.1%            | 1.2%                 | +0.03%                   |
+
+The quiet rows come from another quiet sweep at load 9 to 13. Under bursts, CPU 25, the SMT sibling
+of the measuring CPU 9, ran a busy loop for 12 to 20 s and stayed idle as long, for 53% and 62% of
+two sweeps at load 11 to 16. A row of 1 run takes each pass of its sweeps alone.
+
 ## WebAssembly
 
 - The driver starts the browser headless with a fresh profile and serves the page, the module and

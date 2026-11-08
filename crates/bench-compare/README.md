@@ -35,7 +35,8 @@ complete bench of two operations.
 - A native figure is (fewest cycles of 2n operations − fewest cycles of n) / n over 31
   repetitions, after nanoBench (Abel and Reineke, ISPASS 2020). A busy sibling hardware thread
   doubled a one-`add` chain step: the fewest of each length is the run that met an idle sibling.
-  [`bench-tools`](../bench-tools) gives the WebAssembly figure.
+  [`bench-tools`](../bench-tools) keeps the fewest figures of three runs of each bench, and gives
+  the WebAssembly figure.
 - A case whose long runs count no more cycles than its short runs, or whose chain step counts under
   0.75 cycles, runs up to three more rounds of 31 repetitions. Each round runs every case again, in
   the order of the first round, and keeps the counts of that case alone: its repetitions meet the
