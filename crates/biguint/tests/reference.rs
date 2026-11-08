@@ -1,5 +1,6 @@
 //! Every operation against `ruint`, an independent fixed-width implementation. The widths cover
-//! one bit, partial top limbs, exact limb multiples, and the 521-bit case of nine limbs.
+//! one bit, partial top limbs, exact limb multiples, the 521-bit case of nine limbs, and for
+//! arithmetic the 1000-bit case of 16 limbs.
 
 use core::ops::Add;
 
@@ -8,7 +9,7 @@ use generic_array::GenericArray;
 use generic_array::sequence::GenericSequence;
 use typenum::{
     Sum, U1, U7, U8, U28, U63, U64, U65, U100, U128, U129, U130, U192, U256, U320, U384, U512,
-    U521, U1024,
+    U521, U1000, U1024,
 };
 
 type Reference<const B: usize, const L: usize> = ruint::Uint<B, L>;
@@ -153,6 +154,8 @@ fn arithmetic_matches_reference() {
         }
     }
     for_each_width!(check);
+    // The 16-limb sum that WebAssembly runs by 128-bit words, with a partial top limb.
+    check::<U1000, 1000, 16>();
 }
 
 #[test]
