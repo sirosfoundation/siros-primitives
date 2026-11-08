@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use bench_compare::{CPU, Cell, Error, Key, Line, Sweep, Window};
+use bench_compare::{CPU, Cell, Error, Key, Line, Sweep, Window, load};
 use serde::Deserialize;
 
 use crate::browser::Browser;
@@ -39,6 +39,32 @@ pub const NATIVE: Build = Build {
 
 /// The CPUs of the machine.
 const CPUINFO: &str = "/proc/cpuinfo";
+
+/// The attempts of one run of a bench: load can stop a bench, and another attempt meets other load.
+/// Past them the sweep stops.
+pub(crate) const ATTEMPTS: usize = 3;
+
+/// What `attempt` returns, in up to [`ATTEMPTS`] attempts of the run `run`. Each refused attempt
+/// before the last prints the run, the load and the error.
+pub(crate) fn attempts<T>(
+    run: &str,
+    mut attempt: impl FnMut() -> Result<T, ToolError>,
+) -> Result<T, ToolError> {
+    let mut number = 1;
+    loop {
+        match attempt() {
+            Err(error) if number < ATTEMPTS => {
+                println!(
+                    "{run}: attempt {number} of {ATTEMPTS} refused, load {}: {error}",
+                    load()?
+                );
+                number += 1;
+            }
+            Err(error) => return Err(error),
+            Ok(value) => return Ok(value),
+        }
+    }
+}
 
 /// The locations that a report tool reads and writes.
 pub struct Paths {
@@ -362,7 +388,7 @@ pub(crate) fn bench<K: Key>(
 /// that the benches print, measuring on the CPU of `options`, the bench's default CPU when absent.
 /// The benches are built first, in parallel, and the features of the build must pass
 /// [`check_features`]. They then run one after the other, in the order of
-/// [`Measured::benches`]; the sweep spans them all.
+/// [`Measured::benches`], each in up to [`ATTEMPTS`] attempts; the sweep spans them all.
 fn cells<K: Key>(
     paths: &Paths,
     measured: &Measured,
@@ -397,12 +423,19 @@ fn cells<K: Key>(
         if let Some(cpu) = cpu {
             run_args.extend(["--", "--cpu", cpu]);
         }
-        let text = cargo(
-            &paths.root,
-            &paths.results(build),
-            build.rustflags,
-            &run_args,
-        )?;
+        let run = if build.name.is_empty() {
+            (*bench).to_owned()
+        } else {
+            format!("{}: {bench}", build.name)
+        };
+        let text = attempts(&run, || {
+            cargo(
+                &paths.root,
+                &paths.results(build),
+                build.rustflags,
+                &run_args,
+            )
+        })?;
         let mut sweeps = Vec::new();
         for line in text.lines().filter(|line| !line.trim().is_empty()) {
             match serde_json::from_str(line).map_err(Error::Cells)? {

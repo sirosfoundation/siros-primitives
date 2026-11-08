@@ -210,9 +210,9 @@ follows its class, which each run picks by its cycles.
 `bench-wasm` writes its record after each run of a bench in a build, marked `"unfinished": true`, by
 renaming a complete file over the old one. `report` and `stamp-wasm` refuse such a record. The sweep
 drops the mark at its end, once every cell whose key differed holds figures of one of its runs. A
-run that its bench or its browser stops takes up to three attempts, `ATTEMPTS`. Past them the sweep
-hands out no more runs, lets the running ones end and record their figures, and stops with the
-error. `bench-wasm --changed` then measures what remains: a kept figure whose key differs holds no
+run that its bench or its browser stops takes up to three attempts, `ATTEMPTS`, in `bench` as in
+`bench-wasm`. Past them `bench` stops with the error; the sweep of `bench-wasm` hands out no more
+runs, lets the running ones end and record their figures, and stops with the error. `bench-wasm --changed` then measures what remains: a kept figure whose key differs holds no
 code until a run measures it again, and a row whose rounds a stop cut short starts the first round.
 A `bench-wasm` without `--changed` measures every cell again.
 

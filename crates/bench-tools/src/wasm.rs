@@ -27,7 +27,7 @@ use crate::fewest::fewest;
 use crate::identity::Identity;
 use crate::module::{custom_section, used_features};
 use crate::record::{Engine, Measurement, Record, Recorded, Run, Unfinished};
-use crate::run::{Measured, Options, Paths, cargo, check_features, git, locked_closure};
+use crate::run::{Measured, Options, Paths, attempts, cargo, check_features, git, locked_closure};
 use crate::tool_error::ToolError;
 use crate::workspace::Sources;
 
@@ -37,10 +37,6 @@ const WASM_TARGET: &str = "wasm32-unknown-unknown";
 /// The rounds of re-measuring of one build, of which a row needs at most one per crate. Past them a
 /// re-measured figure keeps trailing a kept one: [`ToolError::Unsettled`].
 const ROUNDS: usize = 12;
-
-/// The attempts of one run of a bench: load can stop a bench, and another attempt meets other load.
-/// Past them the sweep stops.
-const ATTEMPTS: usize = 3;
 
 /// The command of a report tool that runs one bench once, which [`Unit::attempt`] starts.
 pub(crate) const RUN_BENCH: &str = "run-bench";
@@ -471,24 +467,11 @@ impl Unit<'_> {
         Ok((fewest(lines)?, window.close()?))
     }
 
-    /// The lines of one run, in up to [`ATTEMPTS`] attempts.
+    /// The lines of one run, in up to [`ATTEMPTS`](crate::run::ATTEMPTS) attempts.
     fn attempts(&self, stream: Cpus) -> Result<Vec<String>, ToolError> {
-        let mut attempt = 1;
-        loop {
-            match self.attempt(stream) {
-                Err(error) if attempt < ATTEMPTS => {
-                    println!(
-                        "{}: {}: attempt {attempt} of {ATTEMPTS} refused, load {}: {error}",
-                        WASM[self.build].name,
-                        self.name,
-                        load()?
-                    );
-                    attempt += 1;
-                }
-                Err(error) => return Err(error),
-                Ok(lines) => return Ok(lines),
-            }
-        }
+        attempts(&format!("{}: {}", WASM[self.build].name, self.name), || {
+            self.attempt(stream)
+        })
     }
 
     /// The lines of one run, in a process of its own: the driver's subreaper and the processes it
@@ -1040,8 +1023,8 @@ fn print_selection<K: Key>(
 /// Measures the WebAssembly builds of the bench and writes their record after each run of a bench in
 /// a build. With `--changed` it measures the cells whose key differs from the record, what they are
 /// compared with, and what overtakes those by a round of its own; with `--dry-run` it stops after
-/// printing them. Without it, every cell. A run takes up to [`ATTEMPTS`]; past them the sweep stops
-/// with the record unfinished, and `--changed` measures the rest.
+/// printing them. Without it, every cell. A run takes up to [`ATTEMPTS`](crate::run::ATTEMPTS);
+/// past them the sweep stops with the record unfinished, and `--changed` measures the rest.
 pub(crate) fn bench_wasm<K: Key>(
     paths: &Paths,
     measured: &Measured,
