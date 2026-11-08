@@ -84,7 +84,7 @@ pub fn fewest(runs: Vec<Vec<String>>) -> Result<Vec<String>, ToolError> {
             .map(String::as_str)
             .map(parsed)
             .collect::<Result<Vec<_>, _>>()?;
-        let others = others
+        let mut others = others
             .iter()
             .map(cell)
             .filter_map(Result::transpose)
@@ -93,11 +93,12 @@ pub fn fewest(runs: Vec<Vec<String>>) -> Result<Vec<String>, ToolError> {
             let Some((name, count)) = cell(line)? else {
                 continue;
             };
-            let (_, other) = others
+            let index = others
                 .iter()
-                .find(|(other, _)| *other == name)
+                .position(|(other, _)| *other == name)
                 .ok_or_else(|| ToolError::missing(&name.to_string(), "a run of the bench"))?;
-            let merged = match (count, other.clone()) {
+            let (_, other) = others.swap_remove(index);
+            let merged = match (count, other) {
                 (Some(count), Some(other)) => fewer(count, other, &name)?,
                 (None, None) => continue,
                 (Some(_), None) | (None, Some(_)) => {
@@ -108,6 +109,12 @@ pub fn fewest(runs: Vec<Vec<String>>) -> Result<Vec<String>, ToolError> {
                 }
             };
             line[CELL][COUNTED] = serde_json::to_value(merged).map_err(Error::Cells)?;
+        }
+        if let Some((name, _)) = others.first() {
+            return Err(ToolError::missing(
+                &name.to_string(),
+                "the first run of the bench",
+            ));
         }
     }
     lines

@@ -23,7 +23,7 @@ allocation, no panics. Rust 1.93 or newer.
 cargo test --workspace --all-features
 RUSTFLAGS="-C target-feature=+pclmulqdq,+sse4.1" cargo test -p clmul -p binary-field --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test -p bench-tools --test changed --test identity  # the report tools, left out of the workspace's tests
+cargo test -p bench-tools --test changed --test fewest --test identity  # the report tools, left out of the workspace's tests
 cargo run -p ct-check                        # constant time under Valgrind's memcheck
 cargo run -p biguint-bench-report -- bench    # measure; likewise prime-field- and binary-field-bench-report
 cargo run -p biguint-bench-report -- report   # write BENCHMARKS.md from the record

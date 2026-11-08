@@ -10,7 +10,7 @@ repository.workspace = true
 authors.workspace = true
 
 # `cargo test` of the workspace compiles nothing of this crate. Its tests run by name:
-# `cargo test -p bench-tools --test changed --test identity`.
+# `cargo test -p bench-tools --test changed --test fewest --test identity`.
 [lib]
 test = false
 doctest = false
@@ -23,6 +23,10 @@ bench = false
 
 [[test]]
 name = "changed"
+test = false
+
+[[test]]
+name = "fewest"
 test = false
 
 [[test]]

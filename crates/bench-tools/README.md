@@ -23,7 +23,7 @@ No primitive depends on this crate.
 The tests run by name, which keeps `cargo test --workspace` from compiling this crate:
 
 ```sh
-cargo test -p bench-tools --test changed --test identity
+cargo test -p bench-tools --test changed --test fewest --test identity
 ```
 
 ## Usage

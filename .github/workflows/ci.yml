@@ -62,8 +62,8 @@ jobs:
       - uses: ./.github/actions/rust-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # `cargo test --workspace` and `cargo clippy --all-targets` leave out these targets.
-      - run: cargo test --locked -p bench-tools --test changed --test identity
-      - run: cargo clippy --locked -p bench-tools --test changed --test identity -- -D warnings
+      - run: cargo test --locked -p bench-tools --test changed --test fewest --test identity
+      - run: cargo clippy --locked -p bench-tools --test changed --test fewest --test identity -- -D warnings
 
   constant-time:
     name: Constant time
