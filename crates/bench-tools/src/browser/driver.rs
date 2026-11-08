@@ -653,11 +653,17 @@ fn descendants() -> Result<Vec<i32>, ToolError> {
     Ok(found.split_off(1))
 }
 
-/// The value of a read under `/proc`; `None` for a process or thread that exited meanwhile.
+/// The value of a read under `/proc`; `None` for a process or thread that exited meanwhile: its
+/// entries vanish, or a read of one that is still there fails with `ESRCH`.
 fn gone<T>(result: io::Result<T>, path: &Path) -> Result<Option<T>, ToolError> {
     match result {
         Ok(value) => Ok(Some(value)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error)
+            if error.kind() == io::ErrorKind::NotFound
+                || error.raw_os_error().map(nix::Error::from_raw) == Some(nix::Error::ESRCH) =>
+        {
+            Ok(None)
+        }
         Err(source) => Err(ToolError::io(path, source)),
     }
 }
