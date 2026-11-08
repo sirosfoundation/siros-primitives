@@ -10,9 +10,8 @@ use bench_compare::{
 
 use crate::changed::CellId;
 use crate::record::{Measurement, Record, Recorded};
-use crate::run::Paths;
+use crate::run::{Paths, SELECTED_RUNS};
 use crate::tool_error::{ToolError, UnmatchedVerdict};
-use crate::wasm::SELECTED_RUNS;
 
 /// The 1-minute load average from which a sweep ran under load.
 pub const LOAD: f64 = 2.0;
@@ -700,7 +699,7 @@ fn webassembly<K: Key>(
 }
 
 /// How the WebAssembly builds ran, one short line each.
-fn webassembly_method() -> [String; 9] {
+fn webassembly_method() -> [String; 10] {
     [
         "The bench module runs in a dedicated worker of the browser, on the measuring CPU. A \
          driver counts that thread with perf_event, and holds the CPU while the thread sleeps."
@@ -732,6 +731,12 @@ fn webassembly_method() -> [String; 9] {
              cost of a count ran {REPETITIONS} repetitions of twice its operations, up to \
              {DOUBLINGS} times. A case that stays so stops the sweep. Each such round ran every \
              case again, in the order of the first round, and kept the counts of those forms alone."
+        ),
+        format!(
+            "Each run of the setup table measures one bench of one build. A run over part of a \
+             bench gives each selected cell the fewest figures of {SELECTED_RUNS} runs by default, \
+             or the figures of one run of the whole bench where the selection holds \
+             1/{SELECTED_RUNS} of its cells or more. A verdict compares figures of one run."
         ),
         "Latency: `x` in WebAssembly locals, with a copy stored after each step, or in memory, \
          whichever is faster."
@@ -889,6 +894,12 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
              more, up to {RETRIES} times. Each such round ran every case again, in the order of \
              the first round, and kept the counts of that case alone."
         ),
+        format!(
+            "- Every bench ran {SELECTED_RUNS} times, in passes that each ran every bench of every \
+             build once, and each figure is the fewest of its bench's runs. Each run of the setup \
+             table is one bench, from its first pass to its last, and a verdict compares figures \
+             of one run."
+        ),
     ];
     if record
         .builds
@@ -899,14 +910,6 @@ fn method<K>(layout: &Layout<'_, K>, record: &Record<K>) -> Vec<String> {
         lines.push(format!(
             "- A sweep ran at a 1-minute load of {LOAD} or more: compare figures within a table \
              only."
-        ));
-    }
-    if record.builds.iter().any(|build| build.runs.len() > 1) {
-        lines.push(format!(
-            "- A run measures one bench of a build. A run over part of a bench gives each \
-             selected cell the fewest figures of {SELECTED_RUNS} runs by default, or the figures of \
-             one run of the whole bench where the selection holds 1/{SELECTED_RUNS} of its cells or \
-             more. The setup table names each run, and a verdict compares figures of one run."
         ));
     }
     lines.extend(layout.method.iter().map(|line| format!("- {line}")));

@@ -11,6 +11,7 @@ use bench_compare::{CPU, Cell, Error, Key, Line, Sweep, Window, load};
 use serde::Deserialize;
 
 use crate::browser::Browser;
+use crate::fewest::fewest;
 use crate::record::{Measurement, Record, Recorded, Run, Version};
 use crate::tool_error::ToolError;
 use crate::wasm::{RUN_BENCH, bench_wasm, run_bench, stamp_wasm, write_modules};
@@ -43,6 +44,14 @@ const CPUINFO: &str = "/proc/cpuinfo";
 /// The attempts of one run of a bench: load can stop a bench, and another attempt meets other load.
 /// Past them the sweep stops.
 pub(crate) const ATTEMPTS: usize = 3;
+
+/// The runs of each bench of a native sweep, and of a WebAssembly bench that measures a selection
+/// unless `--runs` says otherwise. Each cell takes the fewest figures of its runs. A native run of a
+/// bench lasts seconds, and the repetitions of a selected cell come within seconds: one burst of
+/// load can meet all of them, where those of a full WebAssembly run spread over minutes. See the
+/// README for the figures that chose it. A WebAssembly sweep over part of a build runs a bench
+/// whole, once, where its selection holds at least one in this many of its cells.
+pub const SELECTED_RUNS: usize = 3;
 
 /// What `attempt` returns, in up to [`ATTEMPTS`] attempts of the run `run`. Each refused attempt
 /// before the last prints the run, the load and the error.
@@ -118,7 +127,7 @@ pub struct Measured {
     pub features: &'static [&'static str],
     /// The features that no crate of a build may have.
     pub forbidden: &'static [&'static str],
-    /// The builds of the bench, measured one after the other.
+    /// The native builds of the bench, in the order of each pass of a sweep.
     pub builds: &'static [Build],
 }
 
@@ -335,7 +344,10 @@ pub(crate) fn skeleton<K: Key, O>(
 }
 
 /// Measures every case of the bench in each of the native `builds` and writes the record at
-/// `record`.
+/// `record`. Every build is built first. Then [`SELECTED_RUNS`] passes each run every bench of every
+/// build once, in the order of `builds` and of [`Measured::benches`], measuring on the CPU of
+/// `options`, the bench's default CPU when absent. Each cell takes the fewest figures of the runs of
+/// its bench, and the runs of each bench are one run of the record, whose sweep spans them.
 pub(crate) fn bench<K: Key>(
     paths: &Paths,
     measured: &Measured,
@@ -345,35 +357,59 @@ pub(crate) fn bench<K: Key>(
 ) -> Result<(), ToolError> {
     let started = now()?;
     let fresh: Record<K> = skeleton(paths, measured, &options, started)?;
-    let measurements = builds
+    let features = measured.features.join(",");
+    let mut args = vec!["bench", "--locked", "-p", measured.package];
+    if !features.is_empty() {
+        args.extend(["--features", &features]);
+    }
+    let cpu = options.cpu.as_deref();
+    let measuring = parse_cpu(cpu)?.unwrap_or(CPU);
+    let target_features = builds
+        .iter()
+        .map(|build| built(paths, measured, build, &args))
+        .collect::<Result<Vec<_>, ToolError>>()?;
+    let benches = builds
         .iter()
         .map(|build| {
-            let counted = cells(paths, measured, build, &options)?;
-            Ok(Measurement {
-                name: build.name.to_owned(),
-                rustflags: build.rustflags.to_owned(),
-                target_features: counted.target_features,
-                browser: None,
-                overheads: Vec::new(),
-                harness: None,
-                runs: vec![Run {
+            measured
+                .benches
+                .iter()
+                .map(|bench| Bench::new(paths, build, bench, &args, cpu, measuring))
+                .collect()
+        })
+        .collect();
+    let measurements = builds
+        .iter()
+        .zip(target_features)
+        .zip(passes::<K>(benches)?)
+        .map(|((build, target_features), benches)| {
+            let mut runs = Vec::with_capacity(benches.len());
+            let mut cells = Vec::new();
+            for (run, counted) in benches.into_iter().enumerate() {
+                runs.push(Run {
                     commit: fresh.head.clone(),
                     dirty: fresh.dirty,
                     date: fresh.date.clone(),
                     sweep: counted.sweep,
-                }],
-                cells: counted
-                    .cells
-                    .into_iter()
-                    .map(|cell| Recorded {
-                        cell,
-                        run: 0,
-                        code: None,
-                    })
-                    .collect(),
-            })
+                });
+                cells.extend(counted.cells.into_iter().map(|cell| Recorded {
+                    cell,
+                    run,
+                    code: None,
+                }));
+            }
+            Measurement {
+                name: build.name.to_owned(),
+                rustflags: build.rustflags.to_owned(),
+                target_features,
+                browser: None,
+                overheads: Vec::new(),
+                harness: None,
+                runs,
+                cells,
+            }
         })
-        .collect::<Result<Vec<_>, ToolError>>()?;
+        .collect();
     let written = Record {
         builds: measurements,
         ..fresh
@@ -384,23 +420,16 @@ pub(crate) fn bench<K: Key>(
     written.write(record)
 }
 
-/// Every cell of the comparison in the native `build` with its counts, and the sweep: the lines
-/// that the benches print, measuring on the CPU of `options`, the bench's default CPU when absent.
-/// The benches are built first, in parallel, and the features of the build must pass
-/// [`check_features`]. They then run one after the other, in the order of
-/// [`Measured::benches`], each in up to [`ATTEMPTS`] attempts; the sweep spans them all.
-fn cells<K: Key>(
+/// Builds every bench of `measured` in the native `build`, in parallel, by `cargo` with `args`, and
+/// returns the target features of the build. The features of its units must pass
+/// [`check_features`].
+fn built(
     paths: &Paths,
     measured: &Measured,
     build: &Build,
-    options: &Options,
-) -> Result<Counted<K>, ToolError> {
-    let features = measured.features.join(",");
-    let mut args = vec!["bench", "--locked", "-p", measured.package];
-    if !features.is_empty() {
-        args.extend(["--features", &features]);
-    }
-    let mut build_args = args.clone();
+    args: &[&str],
+) -> Result<Vec<String>, ToolError> {
+    let mut build_args = args.to_vec();
     for bench in measured.benches {
         build_args.extend(["--bench", bench]);
     }
@@ -412,67 +441,170 @@ fn cells<K: Key>(
         &build_args,
     )?;
     drop(check_features(measured, &messages)?);
-    let cpu = options.cpu.as_deref();
-    let cpu_number = parse_cpu(cpu)?.unwrap_or(CPU);
-    let target_features = target_features(paths, build)?;
-    let window = Window::open(cpu_number)?;
-    let mut cells = Vec::new();
-    for bench in measured.benches {
-        let mut run_args = args.clone();
-        run_args.extend(["--bench", bench]);
+    target_features(paths, build)
+}
+
+/// Runs every bench of `benches`, a list per build, [`SELECTED_RUNS`] times, in passes that each run
+/// every bench once: per build and bench, its cells with the fewest figures of its runs, and their
+/// span.
+fn passes<K: Key>(benches: Vec<Vec<Bench<'_>>>) -> Result<Vec<Vec<Counted<K>>>, ToolError> {
+    let mut spreads = benches
+        .into_iter()
+        .map(|build| {
+            build
+                .into_iter()
+                .map(Spread::start::<K>)
+                .collect::<Result<Vec<_>, ToolError>>()
+        })
+        .collect::<Result<Vec<_>, ToolError>>()?;
+    for _ in 2..SELECTED_RUNS {
+        for spread in spreads.iter_mut().flatten() {
+            spread.again::<K>()?;
+        }
+    }
+    spreads
+        .into_iter()
+        .map(|build| build.into_iter().map(Spread::finish).collect())
+        .collect()
+}
+
+/// One bench of one native build, as the passes of a sweep run it.
+struct Bench<'a> {
+    paths: &'a Paths,
+    build: &'a Build,
+    /// The arguments of `cargo` that run it once.
+    args: Vec<&'a str>,
+    /// The bench, after the name of its build where the build has one.
+    label: String,
+    /// The measuring CPU, which its sweep must name.
+    cpu: usize,
+}
+
+impl<'a> Bench<'a> {
+    /// The bench `name` of `build`, which `cargo` with `args` runs, with `--cpu <cpu>` where `cpu`
+    /// is present. `measuring` is the CPU that the bench measures on.
+    fn new(
+        paths: &'a Paths,
+        build: &'a Build,
+        name: &'a str,
+        args: &[&'a str],
+        cpu: Option<&'a str>,
+        measuring: usize,
+    ) -> Self {
+        let mut run_args = args.to_vec();
+        run_args.extend(["--bench", name]);
         if let Some(cpu) = cpu {
             run_args.extend(["--", "--cpu", cpu]);
         }
-        let run = if build.name.is_empty() {
-            (*bench).to_owned()
-        } else {
-            format!("{}: {bench}", build.name)
-        };
-        let text = attempts(&run, || {
-            cargo(
-                &paths.root,
-                &paths.results(build),
-                build.rustflags,
-                &run_args,
-            )
-        })?;
+        Self {
+            paths,
+            build,
+            args: run_args,
+            label: if build.name.is_empty() {
+                name.to_owned()
+            } else {
+                format!("{}: {name}", build.name)
+            },
+            cpu: measuring,
+        }
+    }
+
+    /// The lines of run `number` of the bench, in up to [`ATTEMPTS`] attempts, which
+    /// [`Bench::cells`] takes.
+    fn run<K: Key>(&self, number: usize) -> Result<Vec<String>, ToolError> {
+        let text = attempts(
+            &format!("{}, run {number} of {SELECTED_RUNS}", self.label),
+            || {
+                cargo(
+                    &self.paths.root,
+                    &self.paths.results(self.build),
+                    self.build.rustflags,
+                    &self.args,
+                )
+            },
+        )?;
+        let lines: Vec<String> = text
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(str::to_owned)
+            .collect();
+        drop(self.cells::<K>(&lines)?);
+        Ok(lines)
+    }
+
+    /// The cells of `lines`, which hold cells and one sweep, on the measuring CPU.
+    fn cells<K: Key>(&self, lines: &[String]) -> Result<Vec<Cell<K>>, ToolError> {
+        let origin = || format!("the lines of the bench {}", self.label);
+        let mut cells = Vec::new();
         let mut sweeps = Vec::new();
-        for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        for line in lines {
             match serde_json::from_str(line).map_err(Error::Cells)? {
                 Line::Cell(cell) => cells.push(cell),
                 Line::Sweep(sweep) => sweeps.push(sweep),
                 Line::Overhead(_) => {
                     return Err(ToolError::missing(
                         "cells and a sweep, where it sent the cost of a count",
-                        &format!("the lines of the bench {bench}"),
+                        &origin(),
                     ));
                 }
             }
         }
         match <[Sweep; 1]>::try_from(sweeps) {
-            Ok([sweep]) if sweep.cpu == cpu_number => {}
-            Ok([sweep]) => {
-                return Err(ToolError::missing(
-                    &format!(
-                        "sweep on CPU {cpu_number}, where it ran on CPU {}",
-                        sweep.cpu
-                    ),
-                    &format!("the lines of the bench {bench}"),
-                ));
-            }
-            Err(sweeps) => {
-                return Err(ToolError::missing(
-                    &format!("single sweep among its {}", sweeps.len()),
-                    &format!("the lines of the bench {bench}"),
-                ));
-            }
+            Ok([sweep]) if sweep.cpu == self.cpu => Ok(cells),
+            Ok([sweep]) => Err(ToolError::missing(
+                &format!(
+                    "sweep on CPU {}, where it ran on CPU {}",
+                    self.cpu, sweep.cpu
+                ),
+                &origin(),
+            )),
+            Err(sweeps) => Err(ToolError::missing(
+                &format!("single sweep among its {}", sweeps.len()),
+                &origin(),
+            )),
         }
     }
-    Ok(Counted {
-        cells,
-        sweep: window.close()?,
-        target_features,
-    })
+}
+
+/// The runs of one bench so far, and their span, open since before the first.
+struct Spread<'a> {
+    bench: Bench<'a>,
+    window: Window,
+    /// The lines of each run.
+    runs: Vec<Vec<String>>,
+}
+
+impl<'a> Spread<'a> {
+    /// Opens the span of `bench` and runs it once.
+    fn start<K: Key>(bench: Bench<'a>) -> Result<Self, ToolError> {
+        let window = Window::open(bench.cpu)?;
+        let runs = vec![bench.run::<K>(1)?];
+        Ok(Self {
+            bench,
+            window,
+            runs,
+        })
+    }
+
+    /// Runs the bench once more.
+    fn again<K: Key>(&mut self) -> Result<(), ToolError> {
+        let lines = self.bench.run::<K>(self.runs.len() + 1)?;
+        self.runs.push(lines);
+        Ok(())
+    }
+
+    /// Runs the bench in the last pass, where the first was not the last, and ends the span: the
+    /// cells with the fewest figures of the runs, and the span.
+    fn finish<K: Key>(mut self) -> Result<Counted<K>, ToolError> {
+        if self.runs.len() < SELECTED_RUNS {
+            self.again::<K>()?;
+        }
+        let sweep = self.window.close()?;
+        Ok(Counted {
+            cells: self.bench.cells(&fewest(self.runs)?)?,
+            sweep,
+        })
+    }
 }
 
 /// One JSON message of a cargo build: the fields that [`check_features`] reads.
@@ -564,14 +696,12 @@ pub(crate) fn parse_cpu(cpu: Option<&str>) -> Result<Option<usize>, ToolError> {
     .transpose()
 }
 
-/// What the benches of one build counted.
+/// What the runs of one bench of one native build counted.
 struct Counted<K> {
-    /// Every cell of the comparison.
+    /// Its cells, each with the fewest figures of the runs.
     cells: Vec<Cell<K>>,
-    /// The sweep that spans the benches.
+    /// The span of the runs.
     sweep: Sweep,
-    /// The target features of the build, of `rustc --print cfg`.
-    target_features: Vec<String>,
 }
 
 /// The standard output of `cargo` with `args` in the workspace at `root`, which must succeed. The

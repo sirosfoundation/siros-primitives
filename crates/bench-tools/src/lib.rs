@@ -24,6 +24,6 @@ pub use fewest::fewest;
 pub use identity::{CodeHash, Identity};
 pub use module::ModuleError;
 pub use record::{Engine, Measurement, Record, Recorded, Run, Unfinished, Version};
-pub use run::{Build, Measured, NATIVE, Options, Paths, execute};
+pub use run::{Build, Measured, NATIVE, Options, Paths, SELECTED_RUNS, execute};
 pub use tool_error::{ToolError, UnmatchedVerdict};
-pub use wasm::{FLAVOURS, Flavour, KEEP_RELOCATIONS, SELECTED_RUNS, WASM, WasmBuild, streams};
+pub use wasm::{FLAVOURS, Flavour, KEEP_RELOCATIONS, WASM, WasmBuild, streams};

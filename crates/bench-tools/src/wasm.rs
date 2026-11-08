@@ -27,7 +27,9 @@ use crate::fewest::fewest;
 use crate::identity::Identity;
 use crate::module::{custom_section, used_features};
 use crate::record::{Engine, Measurement, Record, Recorded, Run, Unfinished};
-use crate::run::{Measured, Options, Paths, attempts, cargo, check_features, git, locked_closure};
+use crate::run::{
+    Measured, Options, Paths, SELECTED_RUNS, attempts, cargo, check_features, git, locked_closure,
+};
 use crate::tool_error::ToolError;
 use crate::workspace::Sources;
 
@@ -43,12 +45,6 @@ pub(crate) const RUN_BENCH: &str = "run-bench";
 
 /// The reason of a cell that no run of this sweep or of the record measured yet.
 const NOT_MEASURED: &str = "not measured";
-
-/// The runs of a bench that measures a selection, unless `--runs` says otherwise. The repetitions
-/// of a selected cell come within seconds and can all meet one burst of load, where those of a full
-/// run spread over minutes. See the README for the figures that chose it. A sweep over part of a
-/// build runs a bench whole, once, where its selection holds at least one in this many of its cells.
-pub const SELECTED_RUNS: usize = 3;
 
 /// The linker flag that keeps in each module the relocations that [`Identity`] reads. Only custom
 /// sections and the zeros of `.bss` differ from a module without it.
