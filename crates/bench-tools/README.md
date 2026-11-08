@@ -215,9 +215,10 @@ renaming a complete file over the old one. `report` and `stamp-wasm` refuse such
 drops the mark at its end, once every cell whose key differed holds figures of one of its runs. A
 run that its bench or its browser stops takes up to three attempts, `ATTEMPTS`, in `bench` as in
 `bench-wasm`. Past them `bench` stops with the error; the sweep of `bench-wasm` hands out no more
-runs, lets the running ones end and record their figures, and stops with the error. `bench-wasm --changed` then measures what remains: a kept figure whose key differs holds no
-code until a run measures it again, and a row whose rounds a stop cut short starts the first round.
-A `bench-wasm` without `--changed` measures every cell again.
+runs, lets the running ones end and record their figures, and stops with the error.
+`bench-wasm --changed` then measures what remains: a kept figure whose key differs holds no code
+until a run measures it again, and a row whose rounds a stop cut short starts the first round. A
+`bench-wasm` without `--changed` measures every cell again.
 
 Each run of a bench runs in a process of its own, which reads its module from the standard input and
 which the kernel kills when the sweep dies. A browser whose driver died waits for requests that
